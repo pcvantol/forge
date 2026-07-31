@@ -5,7 +5,7 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
-## Version 0.7 scope
+## Version 0.8 scope
 
 Forge 0.2 defines a versioned Foundation Model. It includes:
 
@@ -47,6 +47,15 @@ requirements. The artifact lifecycle is `DRAFT` then `READY`; ready remains an
 instruction only and never invokes a provider or operates a repository. See
 [Engineering Prompt Artifact Foundation 0.7](docs/architecture/engineering-prompt-artifacts.md)
 and [the example](examples/engineering-prompt-artifact.example.json).
+
+Forge 0.8 introduces Engineering Intent as the canonical, model-independent
+architecture concept for bounded engineering work. An intent defines context,
+goal, architecture decisions, scope, constraints, deliverables, validation,
+and expected evidence. Runtime Prompts are temporary, provider-specific
+representations derived from an intent; they are not the canonical source of
+truth. This increment is documentation-only: it adds no intent storage,
+prompt generator, runtime provider, or execution pipeline. See
+[Engineering Intent Architecture 0.8](docs/architecture/engineering-intent.md).
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote
@@ -107,10 +116,10 @@ and [the example](examples/planning.example.json).
 
 ## Roadmap direction
 
-The next increment can define the governed Architect Provider boundary for
-read-only, evidence-backed planning assistance and human review. It must not
-add agents, runtime execution, remote APIs, cloud services, or write access
-without a separate foundation decision.
+Future increments may define durable intent contracts, migration from bootstrap
+prompts, or a governed Runtime Provider boundary, each through a separate
+bounded decision. They must not add runtime execution, remote APIs, cloud
+services, or repository write access without explicit authorization.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),
