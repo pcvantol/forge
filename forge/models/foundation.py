@@ -41,6 +41,28 @@ class GovernanceProfile(str, Enum):
     ENTERPRISE = "enterprise"
 
 
+class KnowledgeAccessMode(str, Enum):
+    """The only permitted Forge access mode for external knowledge."""
+
+    READ_ONLY = "read_only"
+
+
+class KnowledgeTrustClassification(str, Enum):
+    """Authority classification declared by the knowledge-source owner."""
+
+    CERTIFIED = "certified"
+    REFERENCE = "reference"
+    UNVERIFIED = "unverified"
+
+
+class KnowledgeLifecycle(str, Enum):
+    """Availability state for a registered knowledge source."""
+
+    AVAILABLE = "available"
+    DEPRECATED = "deprecated"
+    RETIRED = "retired"
+
+
 @dataclass(frozen=True)
 class Repository:
     """Repository identity and descriptive metadata, independent of catalog role."""
@@ -100,15 +122,30 @@ class KnowledgeSource:
     read_only: bool = True
     metadata: dict[str, str] = field(default_factory=dict)
     schema_version: str = SCHEMA_VERSION
+    version: str = "unversioned"
+    reference: str = "unspecified"
+    access_mode: KnowledgeAccessMode = KnowledgeAccessMode.READ_ONLY
+    trust_classification: KnowledgeTrustClassification = KnowledgeTrustClassification.REFERENCE
+    lifecycle: KnowledgeLifecycle = KnowledgeLifecycle.AVAILABLE
 
     def __post_init__(self) -> None:
         if not self.id or not self.name or not self.source_type or not self.locator:
             raise ValueError("knowledge source id, name, type, and locator are required")
         if not self.read_only:
             raise ValueError("Forge knowledge sources must be read-only")
+        if self.access_mode is not KnowledgeAccessMode.READ_ONLY:
+            raise ValueError("Forge knowledge sources must use read_only access mode")
+        if not self.version or not self.reference:
+            raise ValueError("knowledge source version and reference are required")
+        if any(not isinstance(key, str) or not isinstance(value, str) for key, value in self.metadata.items()):
+            raise ValueError("knowledge source metadata must contain string keys and values")
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        document = asdict(self)
+        document["access_mode"] = self.access_mode.value
+        document["trust_classification"] = self.trust_classification.value
+        document["lifecycle"] = self.lifecycle.value
+        return document
 
 
 @dataclass(frozen=True)

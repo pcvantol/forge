@@ -10,7 +10,7 @@ local callers without adding a framework dependency.
 | Workspace | Represents a software product and selected operating profiles. | Repository execution. |
 | Repository | Identifies one repository and its local locator. | Workspace role or authority. |
 | Repository Catalog | Assigns repository roles and enforces one canonical entry. | Git operations. |
-| Knowledge Source | Describes a read-only external evidence provider. | Editing, synchronizing, or authoring that source. |
+| Knowledge Source | Declares a versioned, read-only external evidence provider and its authority/lifecycle metadata. | Editing, synchronizing, extracting, or authoring that source. |
 | Capability | Declares a reusable engineering capability. | Implementing or running it. |
 | Engineering Mode | Catalogs maturity choices. | Activating a choice by itself. |
 | Governance Profile | Catalogs human authority shapes. | Replacing human approval. |

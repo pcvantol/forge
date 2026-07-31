@@ -5,7 +5,7 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
-## Version 0.3 scope
+## Version 0.4 scope
 
 Forge 0.2 defines a versioned Foundation Model. It includes:
 
@@ -21,6 +21,12 @@ strictly local pipeline: version detection, packaged-schema resolution,
 validation, immutable model construction, cross-reference checks, and a
 deterministic validation report. It does not fetch schemas or follow document
 supplied `$schema` values.
+
+Forge 0.4 adds a local Knowledge Source Registry and a deterministic,
+metadata-only consumption interface. Registered sources declare their version,
+reference, trust classification, lifecycle, and mandatory read-only access
+mode. Consumption returns source evidence references only; it performs no
+source extraction, semantic retrieval, LLM call, or mutation.
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote
@@ -62,12 +68,20 @@ copied into Forge.
 The evidence record is in
 [docs/evidence/bootstrap-evidence.md](docs/evidence/bootstrap-evidence.md).
 
+## Knowledge consumption
+
+Knowledge sources remain external, versioned evidence providers. Certified
+sources are authoritative; registering a reference or a generated Forge output
+does not make it authoritative knowledge. Forge persists only its own local
+declarations and never modifies a source. See
+[Knowledge Consumption 0.4](docs/architecture/knowledge-consumption.md).
+
 ## Roadmap direction
 
-The next increment should load and validate a local Workspace Foundation file
-without performing repository mutations. Subsequent increments can add
-repository discovery and human-approved execution plans only after their
-governance and evidence contracts are explicit.
+The next increment can define the governed Architect Provider boundary for
+future retrieval adapters while preserving the source lifecycle, authority,
+and read-only contracts. It must not add agents, runtime execution, remote
+APIs, cloud services, or write access without a separate foundation decision.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),

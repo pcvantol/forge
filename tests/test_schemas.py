@@ -41,6 +41,12 @@ class SchemaContractTests(unittest.TestCase):
         self.assertEqual(modes["enum"], ["prototype", "managed", "production", "enterprise"])
         self.assertEqual(profiles["enum"], ["solo", "two_person", "team", "enterprise"])
 
+    def test_knowledge_consumption_schema_requires_read_only_evidence_metadata(self) -> None:
+        document = json.loads((ROOT / "schemas" / "knowledge-source-0.4.schema.json").read_text())
+        self.assertEqual(document["properties"]["schema_version"]["const"], "0.4")
+        self.assertEqual(document["properties"]["access_mode"]["const"], "read_only")
+        self.assertEqual(document["properties"]["trust_classification"]["enum"], ["certified", "reference", "unverified"])
+
 
 if __name__ == "__main__":
     unittest.main()
