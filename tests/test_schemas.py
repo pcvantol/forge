@@ -19,6 +19,7 @@ SCHEMAS = (
     "engineering-plan-0.5.schema.json",
     "planning-document-0.5.schema.json",
     "engineering-proposal-0.6.schema.json",
+    "engineering-prompt-artifact-0.7.schema.json",
 )
 
 
@@ -27,7 +28,7 @@ class SchemaContractTests(unittest.TestCase):
         for name in SCHEMAS:
             document = json.loads((ROOT / "schemas" / name).read_text())
             self.assertIn("$id", document)
-            self.assertTrue(any(version in document["$id"] for version in ("0.2", "0.3", "0.5", "0.6")))
+            self.assertTrue(any(version in document["$id"] for version in ("0.2", "0.3", "0.5", "0.6", "0.7")))
 
     def test_foundation_document_has_a_versioned_composite_envelope(self) -> None:
         document = json.loads((ROOT / "schemas" / "foundation-document.schema.json").read_text())
@@ -64,6 +65,12 @@ class SchemaContractTests(unittest.TestCase):
         proposal = json.loads((ROOT / "schemas" / "engineering-proposal-0.6.schema.json").read_text())
         self.assertEqual(proposal["properties"]["schema_version"]["const"], "0.6")
         self.assertEqual(proposal["properties"]["status"]["enum"], ["DRAFT", "PROPOSED", "APPROVED", "EXECUTED"])
+
+    def test_prompt_artifact_schema_is_provider_independent_and_versioned(self) -> None:
+        artifact = json.loads((ROOT / "schemas" / "engineering-prompt-artifact-0.7.schema.json").read_text())
+        self.assertEqual(artifact["properties"]["schema_version"]["const"], "0.7")
+        self.assertEqual(artifact["properties"]["status"]["enum"], ["DRAFT", "READY"])
+        self.assertNotIn("provider", artifact["properties"]["execution_instructions"])
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
-## Version 0.5 scope
+## Version 0.7 scope
 
 Forge 0.2 defines a versioned Foundation Model. It includes:
 
@@ -39,6 +39,14 @@ validated planning context into a separate, traceable proposal artifact with
 structured scope, rationale, dependencies, risk, evidence, and lifecycle.
 Generation always produces `DRAFT`; explicit lifecycle changes remain local
 state transitions and never execute work or grant approval.
+
+Forge 0.7 adds a deterministic Engineering Prompt Artifact layer. It converts
+an approved proposal into a versioned, provider-independent instruction draft
+with context, objective, scope, typed evidence, constraints, and validation
+requirements. The artifact lifecycle is `DRAFT` then `READY`; ready remains an
+instruction only and never invokes a provider or operates a repository. See
+[Engineering Prompt Artifact Foundation 0.7](docs/architecture/engineering-prompt-artifacts.md)
+and [the example](examples/engineering-prompt-artifact.example.json).
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote

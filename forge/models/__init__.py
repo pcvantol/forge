@@ -34,6 +34,17 @@ from .proposal import (
     RiskAssessment,
     transition_proposal,
 )
+from .prompt_artifact import (
+    EngineeringPromptArtifact,
+    ExecutionInstructions,
+    PromptArtifactContext,
+    PromptArtifactObjective,
+    PromptArtifactScope,
+    PromptArtifactStatus,
+    SourceProposalReference,
+    ValidationRequirements,
+    transition_prompt_artifact,
+)
 
 __all__ = [
     "Capability",
@@ -64,4 +75,13 @@ __all__ = [
     "ProposalStatus",
     "RiskAssessment",
     "transition_proposal",
+    "EngineeringPromptArtifact",
+    "ExecutionInstructions",
+    "PromptArtifactContext",
+    "PromptArtifactObjective",
+    "PromptArtifactScope",
+    "PromptArtifactStatus",
+    "SourceProposalReference",
+    "ValidationRequirements",
+    "transition_prompt_artifact",
 ]

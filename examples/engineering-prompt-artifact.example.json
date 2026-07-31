@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.7", "id": "planning-contracts-prompt", "version": "1", "created_at": "2026-07-31T00:00:00Z",
+  "source_proposal": {"id": "planning-contracts-proposal", "version": "0.6"},
+  "context": {"workspace_id": "forge-workspace", "repository_id": "forge-repository", "repository_reference": "example/forge", "engineering_mode": "prototype", "governance_profile": "solo", "capability_references": ["engineering-planning"]},
+  "objective": {"engineering_goal": "Establish a declarative planning vocabulary.", "expected_outcome": "Forge can represent and validate planned increments.", "success_criteria": ["Planning contracts validate deterministically."]},
+  "scope": {"included_changes": ["Models, schemas, validation, and local persistence only."], "excluded_changes": ["Repository execution, tool invocation, commits, and approval are excluded."], "affected_areas": ["engineering-planning"]},
+  "evidence_references": [{"kind": "knowledge_source", "source_id": "engineering-kb", "source_version": "2026.07", "reference": "planning-governance", "location": "local://engineering-kb/planning"}, {"kind": "architecture_document", "source_id": "knowledge-consumption", "source_version": "0.4", "reference": "read-only-boundary", "location": "docs/architecture/knowledge-consumption.md"}],
+  "execution_instructions": {"engineering_task_description": "Implement the declared planning contracts.", "validation_expectations": ["Run focused planning tests."], "constraints": ["Do not invoke a runtime provider or operate repositories."]},
+  "validation_requirements": {"required_checks": ["Focused planning tests pass."], "expected_evidence": ["Deterministic test result."], "completion_criteria": ["All required checks and evidence are present."]},
+  "status": "DRAFT"
+}
