@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/workspace-0.1.schema.json",
+  "title": "Forge Workspace Foundation",
+  "description": "Declarative, local-only workspace metadata and repository catalog for Forge 0.1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workspace", "repositories"],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "workspace": {
+      "$ref": "#/$defs/workspace"
+    },
+    "repositories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/repository" },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "metadata", "engineering_mode", "governance_profile"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{2,62}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["created_at", "updated_at", "runtime"],
+          "properties": {
+            "created_at": { "type": "string", "format": "date-time" },
+            "updated_at": { "type": "string", "format": "date-time" },
+            "runtime": { "const": "local" },
+            "description": { "type": "string", "maxLength": 500 }
+          }
+        },
+        "engineering_mode": { "const": "prototype" },
+        "governance_profile": { "const": "solo" }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "canonical_reference", "local_path"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{2,62}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "canonical_reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "repository"],
+          "properties": {
+            "provider": { "type": "string", "enum": ["git"] },
+            "repository": {
+              "type": "string",
+              "pattern": "^[^/\\s]+/[^/\\s]+$"
+            }
+          }
+        },
+        "local_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

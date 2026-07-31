@@ -1,0 +1,4 @@
+.DS_Store
+.forge/
+__pycache__/
+*.py[cod]
