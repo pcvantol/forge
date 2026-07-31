@@ -5,7 +5,7 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
-## Version 0.4 scope
+## Version 0.5 scope
 
 Forge 0.2 defines a versioned Foundation Model. It includes:
 
@@ -27,6 +27,12 @@ metadata-only consumption interface. Registered sources declare their version,
 reference, trust classification, lifecycle, and mandatory read-only access
 mode. Consumption returns source evidence references only; it performs no
 source extraction, semantic retrieval, LLM call, or mutation.
+
+Forge 0.5 adds Engineering Planning Foundation: versioned, local contracts
+for Goals, Increment Proposals, Plans, dependencies, risk, rationale, and
+typed evidence references. The planning loader and registry validate and
+persist declarations only. Plans do not retrieve knowledge, approve work,
+operate repositories, execute tools, or create commits.
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote
@@ -76,12 +82,21 @@ does not make it authoritative knowledge. Forge persists only its own local
 declarations and never modifies a source. See
 [Knowledge Consumption 0.4](docs/architecture/knowledge-consumption.md).
 
+## Engineering planning
+
+Planning references Knowledge Sources, evidence records, architecture
+documents, and foundation documents without copying their content. When a
+known source set is supplied, the loader rejects unknown knowledge-source
+references; all processing remains local and deterministic. See
+[Engineering Planning Foundation 0.5](docs/architecture/engineering-planning.md)
+and [the example](examples/planning.example.json).
+
 ## Roadmap direction
 
 The next increment can define the governed Architect Provider boundary for
-future retrieval adapters while preserving the source lifecycle, authority,
-and read-only contracts. It must not add agents, runtime execution, remote
-APIs, cloud services, or write access without a separate foundation decision.
+read-only, evidence-backed planning assistance and human review. It must not
+add agents, runtime execution, remote APIs, cloud services, or write access
+without a separate foundation decision.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),

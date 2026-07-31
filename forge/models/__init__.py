@@ -13,6 +13,16 @@ from .foundation import (
     RepositoryRole,
     Workspace,
 )
+from .planning import (
+    EngineeringGoal,
+    EngineeringIncrementProposal,
+    EngineeringPlan,
+    EvidenceKind,
+    EvidenceReference,
+    IncrementDependency,
+    PlanStatus,
+    RiskLevel,
+)
 
 __all__ = [
     "Capability",
@@ -26,4 +36,12 @@ __all__ = [
     "RepositoryCatalog",
     "RepositoryRole",
     "Workspace",
+    "EngineeringGoal",
+    "EngineeringIncrementProposal",
+    "EngineeringPlan",
+    "EvidenceKind",
+    "EvidenceReference",
+    "IncrementDependency",
+    "PlanStatus",
+    "RiskLevel",
 ]

@@ -1,0 +1,41 @@
+{
+  "document_type": "forge.engineering_planning",
+  "schema_version": "0.5",
+  "workspace_id": "forge-workspace",
+  "goals": [
+    {
+      "schema_version": "0.5",
+      "id": "planning-foundation",
+      "description": "Establish a declarative planning vocabulary.",
+      "desired_outcome": "Planning records can be validated locally without execution.",
+      "workspace_id": "forge-workspace",
+      "evidence_references": [{"kind": "knowledge_source", "source_id": "engineering-kb", "source_version": "2026.07", "reference": "planning-governance", "location": "local://engineering-kb/planning"}]
+    }
+  ],
+  "increment_proposals": [
+    {
+      "schema_version": "0.5",
+      "id": "planning-contracts",
+      "goal_id": "planning-foundation",
+      "scope": "Models, schemas, validation, and local persistence only.",
+      "expected_outcome": "Forge can represent and validate planned increments.",
+      "affected_capabilities": ["engineering-planning"],
+      "dependencies": [],
+      "risk_level": "low",
+      "rationale": "Planning must remain declarative before any execution layer exists.",
+      "evidence_references": [{"kind": "architecture_document", "source_id": "knowledge-consumption", "source_version": "0.4", "reference": "read-only-boundary", "location": "docs/architecture/knowledge-consumption.md"}]
+    }
+  ],
+  "plans": [
+    {
+      "schema_version": "0.5",
+      "id": "planning-foundation-plan",
+      "workspace_id": "forge-workspace",
+      "ordered_increment_ids": ["planning-contracts"],
+      "dependencies": [{"increment_id": "planning-contracts", "depends_on": []}],
+      "assumptions": ["Approval and execution remain future capabilities."],
+      "status": "proposed",
+      "evidence_references": []
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/engineering-goal-0.5.schema.json",
+  "title": "Forge Engineering Goal 0.5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "description", "desired_outcome", "workspace_id", "evidence_references"],
+  "properties": {
+    "schema_version": {"const": "0.5"},
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "description": {"type": "string", "minLength": 1},
+    "desired_outcome": {"type": "string", "minLength": 1},
+    "workspace_id": {"$ref": "common.schema.json#/$defs/id"},
+    "evidence_references": {"type": "array", "items": {"$ref": "evidence-reference-0.5.schema.json"}}
+  }
+}

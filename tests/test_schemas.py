@@ -13,6 +13,11 @@ SCHEMAS = (
     "engineering-mode.schema.json",
     "governance-profile.schema.json",
     "foundation-document.schema.json",
+    "evidence-reference-0.5.schema.json",
+    "engineering-goal-0.5.schema.json",
+    "engineering-increment-proposal-0.5.schema.json",
+    "engineering-plan-0.5.schema.json",
+    "planning-document-0.5.schema.json",
 )
 
 
@@ -21,7 +26,7 @@ class SchemaContractTests(unittest.TestCase):
         for name in SCHEMAS:
             document = json.loads((ROOT / "schemas" / name).read_text())
             self.assertIn("$id", document)
-            self.assertTrue("0.2" in document["$id"] or "0.3" in document["$id"])
+            self.assertTrue(any(version in document["$id"] for version in ("0.2", "0.3", "0.5")))
 
     def test_foundation_document_has_a_versioned_composite_envelope(self) -> None:
         document = json.loads((ROOT / "schemas" / "foundation-document.schema.json").read_text())
@@ -46,6 +51,13 @@ class SchemaContractTests(unittest.TestCase):
         self.assertEqual(document["properties"]["schema_version"]["const"], "0.4")
         self.assertEqual(document["properties"]["access_mode"]["const"], "read_only")
         self.assertEqual(document["properties"]["trust_classification"]["enum"], ["certified", "reference", "unverified"])
+
+    def test_planning_schemas_remain_declarative_and_versioned(self) -> None:
+        document = json.loads((ROOT / "schemas" / "planning-document-0.5.schema.json").read_text())
+        proposal = json.loads((ROOT / "schemas" / "engineering-increment-proposal-0.5.schema.json").read_text())
+        self.assertEqual(document["properties"]["document_type"]["const"], "forge.engineering_planning")
+        self.assertEqual(document["properties"]["schema_version"]["const"], "0.5")
+        self.assertEqual(proposal["properties"]["risk_level"]["enum"], ["low", "medium", "high"])
 
 
 if __name__ == "__main__":

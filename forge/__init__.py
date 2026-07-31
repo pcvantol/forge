@@ -1,4 +1,4 @@
-"""Forge's local-only Foundation Model and document loader."""
+"""Forge's local-only Foundation Model, knowledge, and planning contracts."""
 
 from .models import (
     Capability,
@@ -10,6 +10,7 @@ from .models import (
     Workspace,
 )
 from .foundation import FoundationDocument, FoundationDocumentLoader, ValidationIssue, ValidationReport
+from .planning import EngineeringPlanningDocument, PlanningDocumentLoader, PlanningRegistry, PlanningValidationReport
 
 __all__ = [
     "Capability",
@@ -23,4 +24,8 @@ __all__ = [
     "FoundationDocumentLoader",
     "ValidationIssue",
     "ValidationReport",
+    "EngineeringPlanningDocument",
+    "PlanningDocumentLoader",
+    "PlanningRegistry",
+    "PlanningValidationReport",
 ]
