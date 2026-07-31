@@ -1,4 +1,4 @@
-"""Forge's local-only Foundation Model."""
+"""Forge's local-only Foundation Model and document loader."""
 
 from .models import (
     Capability,
@@ -9,6 +9,7 @@ from .models import (
     RepositoryCatalog,
     Workspace,
 )
+from .foundation import FoundationDocument, FoundationDocumentLoader, ValidationIssue, ValidationReport
 
 __all__ = [
     "Capability",
@@ -18,4 +19,8 @@ __all__ = [
     "Repository",
     "RepositoryCatalog",
     "Workspace",
+    "FoundationDocument",
+    "FoundationDocumentLoader",
+    "ValidationIssue",
+    "ValidationReport",
 ]

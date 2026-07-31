@@ -5,7 +5,7 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
-## Version 0.2 scope
+## Version 0.3 scope
 
 Forge 0.2 defines a versioned Foundation Model. It includes:
 
@@ -15,6 +15,12 @@ Forge 0.2 defines a versioned Foundation Model. It includes:
 - bootstrap activation of `prototype` and `solo` only;
 - deterministic, human-readable local JSON persistence; and
 - versioned JSON Schemas, an example, architecture records, and tests.
+
+Forge 0.3 additionally loads one versioned Foundation Document through a
+strictly local pipeline: version detection, packaged-schema resolution,
+validation, immutable model construction, cross-reference checks, and a
+deterministic validation report. It does not fetch schemas or follow document
+supplied `$schema` values.
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote

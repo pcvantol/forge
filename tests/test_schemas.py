@@ -12,6 +12,7 @@ SCHEMAS = (
     "capability.schema.json",
     "engineering-mode.schema.json",
     "governance-profile.schema.json",
+    "foundation-document.schema.json",
 )
 
 
@@ -20,7 +21,12 @@ class SchemaContractTests(unittest.TestCase):
         for name in SCHEMAS:
             document = json.loads((ROOT / "schemas" / name).read_text())
             self.assertIn("$id", document)
-            self.assertIn("0.2", document["$id"])
+            self.assertTrue("0.2" in document["$id"] or "0.3" in document["$id"])
+
+    def test_foundation_document_has_a_versioned_composite_envelope(self) -> None:
+        document = json.loads((ROOT / "schemas" / "foundation-document.schema.json").read_text())
+        self.assertEqual(document["properties"]["document_type"]["const"], "forge.foundation_document")
+        self.assertEqual(document["properties"]["schema_version"]["const"], "0.3")
 
     def test_catalog_declares_roles_and_one_canonical_constraint(self) -> None:
         catalog = json.loads((ROOT / "schemas" / "repository-catalog.schema.json").read_text())

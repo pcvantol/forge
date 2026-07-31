@@ -1,4 +1,6 @@
 {
+  "document_type": "forge.foundation_document",
+  "schema_version": "0.3",
   "workspace": {
     "schema_version": "0.2",
     "id": "forge-workspace",
