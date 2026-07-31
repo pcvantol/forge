@@ -23,6 +23,17 @@ from .planning import (
     PlanStatus,
     RiskLevel,
 )
+from .proposal import (
+    EngineeringProposal,
+    ProposalCreationMetadata,
+    ProposalDependencies,
+    ProposalRationale,
+    ProposalRisk,
+    ProposalScope,
+    ProposalStatus,
+    RiskAssessment,
+    transition_proposal,
+)
 
 __all__ = [
     "Capability",
@@ -44,4 +55,13 @@ __all__ = [
     "IncrementDependency",
     "PlanStatus",
     "RiskLevel",
+    "EngineeringProposal",
+    "ProposalCreationMetadata",
+    "ProposalDependencies",
+    "ProposalRationale",
+    "ProposalRisk",
+    "ProposalScope",
+    "ProposalStatus",
+    "RiskAssessment",
+    "transition_proposal",
 ]

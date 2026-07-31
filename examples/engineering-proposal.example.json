@@ -1,0 +1,17 @@
+{
+  "schema_version": "0.6",
+  "id": "planning-contracts-proposal",
+  "title": "Engineering proposal: planning-contracts",
+  "objective": "Establish a declarative planning vocabulary.",
+  "expected_outcome": "Forge can represent and validate planned increments.",
+  "creation_metadata": {"generator": "forge.engineering_proposal_generator", "generator_version": "0.6", "workspace_id": "forge-workspace", "source_plan_id": "planning-foundation-plan", "source_increment_id": "planning-contracts"},
+  "scope": {"included_work": ["Models, schemas, validation, and local persistence only."], "excluded_work": ["Repository execution, tool invocation, commits, and approval are excluded."], "affected_capabilities": ["engineering-planning"]},
+  "rationale": {"why_this_increment_exists": "Planning must remain declarative before any execution layer exists.", "roadmap_relationship": "Advances engineering goal planning-foundation through plan planning-foundation-plan.", "evidence_relationship": "Preserves the planning and supplied knowledge evidence references."},
+  "dependencies": {"required_capabilities": [], "required_previous_increments": [], "assumptions": ["Approval and execution remain future capabilities."]},
+  "risk": {"technical_risk": {"level": "low", "rationale": "Derived from the planned increment risk classification."}, "governance_risk": {"level": "low", "rationale": "The artifact remains governed intention and does not approve or execute work."}, "scope_risk": {"level": "low", "rationale": "Scope is bounded to the declared increment and its affected capabilities."}},
+  "evidence_references": [
+    {"kind": "knowledge_source", "source_id": "engineering-kb", "source_version": "2026.07", "reference": "planning-governance", "location": "local://engineering-kb/planning"},
+    {"kind": "architecture_document", "source_id": "knowledge-consumption", "source_version": "0.4", "reference": "read-only-boundary", "location": "docs/architecture/knowledge-consumption.md"}
+  ],
+  "status": "DRAFT"
+}

@@ -34,6 +34,12 @@ typed evidence references. The planning loader and registry validate and
 persist declarations only. Plans do not retrieve knowledge, approve work,
 operate repositories, execute tools, or create commits.
 
+Forge 0.6 adds deterministic Engineering Proposal generation. It transforms
+validated planning context into a separate, traceable proposal artifact with
+structured scope, rationale, dependencies, risk, evidence, and lifecycle.
+Generation always produces `DRAFT`; explicit lifecycle changes remain local
+state transitions and never execute work or grant approval.
+
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote
 integration.
