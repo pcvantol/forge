@@ -5,15 +5,16 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
-## Version 0.1 scope
+## Version 0.2 scope
 
-Forge 0.1 defines a versioned Workspace Foundation only. It includes:
+Forge 0.2 defines a versioned Foundation Model. It includes:
 
-- a workspace metadata contract;
-- a repository catalog with canonical repository references;
-- explicit `prototype` engineering mode and `solo` governance profile;
-- a JSON Schema and a valid example; and
-- architecture, governance, roadmap, and bootstrap-evidence records.
+- separate Workspace, Repository, Repository Catalog, Knowledge Source, and
+  Capability contracts;
+- full Engineering Mode and Governance Profile value catalogs;
+- bootstrap activation of `prototype` and `solo` only;
+- deterministic, human-readable local JSON persistence; and
+- versioned JSON Schemas, an example, architecture records, and tests.
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote
@@ -28,18 +29,19 @@ Forge makes no runtime dependency on it.
 
 ## Working model
 
-Start with the schema and example:
+Start with the Foundation Model schemas and example:
 
 ```text
-schemas/workspace.schema.json
+schemas/
         +
-examples/workspace.example.json
+examples/foundation.example.json
 ```
 
-A workspace owns descriptive metadata and a catalog. Each catalog entry has
-one canonical repository reference, expressed as a stable repository ID plus
-one local path. The catalog is declarative; it does not clone, modify, push,
-or otherwise operate on any repository.
+A Workspace is a software product, not a repository. It references a separate
+Repository Catalog, which assigns exactly one canonical repository and any
+supporting, documentation, or future-capability repositories. Repository
+identity remains independent of its catalog role. The catalog is declarative:
+it does not clone, modify, push, or otherwise operate on repositories.
 
 ## Knowledge sources
 
@@ -61,6 +63,6 @@ without performing repository mutations. Subsequent increments can add
 repository discovery and human-approved execution plans only after their
 governance and evidence contracts are explicit.
 
-See [docs/roadmap/0.1.md](docs/roadmap/0.1.md) for the bounded roadmap and
-[docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md)
-for the architecture.
+See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
+[docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),
+and [docs/handoff/forge-bootstrap-increment-002.md](docs/handoff/forge-bootstrap-increment-002.md).

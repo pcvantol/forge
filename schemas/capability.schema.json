@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/capability-0.2.schema.json",
+  "title": "Forge Capability",
+  "description": "A reusable engineering-capability declaration, not an implementation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "description", "status"],
+  "properties": {
+    "schema_version": {"const": "0.2"},
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "name": {"$ref": "common.schema.json#/$defs/name"},
+    "description": {"type": "string", "minLength": 1, "maxLength": 500},
+    "status": {"const": "declared"},
+    "metadata": {"$ref": "common.schema.json#/$defs/metadata"}
+  }
+}

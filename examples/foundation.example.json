@@ -1,0 +1,59 @@
+{
+  "workspace": {
+    "schema_version": "0.2",
+    "id": "forge-workspace",
+    "name": "Forge Workspace",
+    "repository_catalog_id": "forge-catalog",
+    "engineering_mode": "prototype",
+    "governance_profile": "solo",
+    "metadata": {
+      "runtime": "local",
+      "description": "Example-only Foundation Model; no repository operation is defined."
+    }
+  },
+  "repositories": [
+    {
+      "schema_version": "0.2",
+      "id": "forge-repository",
+      "name": "Forge",
+      "provider": "git",
+      "repository": "example/forge",
+      "local_path": "/workspaces/forge"
+    },
+    {
+      "schema_version": "0.2",
+      "id": "forge-docs",
+      "name": "Forge Docs",
+      "provider": "git",
+      "repository": "example/forge-docs",
+      "local_path": "/workspaces/forge-docs"
+    }
+  ],
+  "repository_catalog": {
+    "schema_version": "0.2",
+    "id": "forge-catalog",
+    "entries": {
+      "canonical": ["forge-repository"],
+      "documentation": ["forge-docs"]
+    }
+  },
+  "knowledge_sources": [
+    {
+      "schema_version": "0.2",
+      "id": "platform-kb",
+      "name": "AI Platform Engineering Knowledge Base",
+      "source_type": "knowledge_base",
+      "locator": "local://platform-kb",
+      "read_only": true
+    }
+  ],
+  "capabilities": [
+    {
+      "schema_version": "0.2",
+      "id": "workspace-management",
+      "name": "Workspace Management",
+      "description": "Declared only; implementation is deferred.",
+      "status": "declared"
+    }
+  ]
+}

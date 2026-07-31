@@ -1,30 +1,13 @@
 {
   "$schema": "../schemas/workspace.schema.json",
-  "schema_version": "0.1",
-  "workspace": {
-    "id": "forge-local",
-    "name": "Forge Local Workspace",
-    "metadata": {
-      "created_at": "2026-07-31T00:00:00Z",
-      "updated_at": "2026-07-31T00:00:00Z",
-      "runtime": "local",
-      "description": "Example-only catalog; Forge 0.1 does not operate on repositories."
-    },
-    "engineering_mode": "prototype",
-    "governance_profile": "solo"
-  },
-  "repositories": [
-    {
-      "id": "example-service",
-      "name": "Example Service",
-      "canonical_reference": {
-        "provider": "git",
-        "repository": "example/example-service"
-      },
-      "local_path": "/workspaces/example-service",
-      "metadata": {
-        "role": "example"
-      }
-    }
-  ]
+  "schema_version": "0.2",
+  "id": "forge-workspace",
+  "name": "Forge Workspace",
+  "repository_catalog_id": "forge-catalog",
+  "engineering_mode": "prototype",
+  "governance_profile": "solo",
+  "metadata": {
+    "runtime": "local",
+    "description": "A Workspace references its Repository Catalog instead of embedding repositories."
+  }
 }

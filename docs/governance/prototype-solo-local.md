@@ -2,14 +2,14 @@
 
 ## Status
 
-Active for Forge 0.1.
+Active for Forge Foundation Model 0.2.
 
 ## Operating constraints
 
 | Dimension | Forge 0.1 decision |
 | --- | --- |
-| Engineering mode | `prototype` |
-| Governance profile | `solo` |
+| Engineering mode | `prototype` (available catalog also includes `managed`, `production`, `enterprise`) |
+| Governance profile | `solo` (available catalog also includes `two_person`, `team`, `enterprise`) |
 | Runtime | Local only |
 | Execution provider | Codex CLI through Engineering Platform 1.5 |
 | Repository operations | Not implemented |

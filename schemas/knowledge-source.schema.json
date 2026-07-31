@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/knowledge-source-0.2.schema.json",
+  "title": "Forge Knowledge Source",
+  "description": "An external, read-only evidence provider; Forge must never modify it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "source_type", "locator", "read_only"],
+  "properties": {
+    "schema_version": {"const": "0.2"},
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "name": {"$ref": "common.schema.json#/$defs/name"},
+    "source_type": {"type": "string", "enum": ["knowledge_base", "repository", "service"]},
+    "locator": {"type": "string", "minLength": 1},
+    "read_only": {"const": true},
+    "metadata": {"$ref": "common.schema.json#/$defs/metadata"}
+  }
+}

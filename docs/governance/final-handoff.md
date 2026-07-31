@@ -1,4 +1,4 @@
-# Forge 0.1 Final Handoff
+# Forge 0.1 Bootstrap Handoff
 
 ## Outcome
 
@@ -27,6 +27,5 @@ behavior.
 
 ## Validation and next increment
 
-The initial commit is the complete Forge 0.1 baseline. The recommended next
-increment is a local, read-only schema loader and validator; it must not
-operate on cataloged repositories.
+The next increment is recorded in
+[`docs/handoff/forge-bootstrap-increment-002.md`](../handoff/forge-bootstrap-increment-002.md).
