@@ -81,6 +81,12 @@ from .intent import (
     transition_intent,
     validate_intent_relationships,
 )
+from .intent_authoring import (
+    ENGINEERING_INTENT_AUTHORING_SCHEMA_VERSION,
+    AuthoringSource,
+    AuthoringSourceKind,
+    EngineeringIntentAuthoringContext,
+)
 
 __all__ = [
     "Capability",
@@ -150,4 +156,8 @@ __all__ = [
     "IntentTraceability",
     "transition_intent",
     "validate_intent_relationships",
+    "ENGINEERING_INTENT_AUTHORING_SCHEMA_VERSION",
+    "AuthoringSource",
+    "AuthoringSourceKind",
+    "EngineeringIntentAuthoringContext",
 ]

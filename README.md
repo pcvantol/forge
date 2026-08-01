@@ -82,10 +82,18 @@ versioned statuses, typed relationships, reproducible evidence, mandatory
 traceability, and pure lifecycle validation. It neither migrates historical
 work nor implements a provider, execution, queue, or Studio.
 
+Phase B — Increment 1.4 adds [Engineering Intent Authoring](docs/architecture/engineering-intent-authoring.md):
+a deterministic, repository-grounded context for authoring future Intents from
+the Constitution, Architecture Handbook, Roadmap, Engineering History,
+Repository Evidence, Capability Catalogue, and Knowledge Model. It authorizes
+neither an Intent nor runtime activity, and it implements no prompt generation
+or execution.
+
 The canonical engineering chain is:
 
 ```text
-Knowledge → Planning → Proposal → Engineering Intent → Runtime Provider → Runtime Prompt → Execution → Evidence
+Repository Knowledge → Architecture Context → Roadmap Context → Engineering History
+→ Engineering Intent → Runtime Provider → Runtime Prompt → Execution → Evidence
 ```
 
 Prompt Artifact is retained as the compatible transitional execution
@@ -158,10 +166,9 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is Forge Phase B — Increment 1.3 — Bootstrap
-Intent Migration. Forge still does not provide intent persistence, a Runtime
-Provider, a Mission Runtime, a queue, Studio, repository operations, or
-execution.
+The recommended next increment is Forge Phase B — Increment 1.5 — Runtime
+Provider Contracts. Forge still does not provide a Runtime Provider, a Mission
+Runtime, a queue, Studio, repository operations, or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),
