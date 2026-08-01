@@ -82,6 +82,12 @@ versioned statuses, typed relationships, reproducible evidence, mandatory
 traceability, and pure lifecycle validation. It neither migrates historical
 work nor implements a provider, execution, queue, or Studio.
 
+Phase B — Increment 1.3a adds the immutable,
+evidence-only [Historical Engineering Intent](docs/architecture/historical-engineering-intent.md)
+model. It preserves engineering that predates Intent governance without
+inventing historical proposals or approvals. It performs no bootstrap migration
+and does not modify the normal Engineering Intent lifecycle.
+
 Phase B — Increment 1.4 adds [Engineering Intent Authoring](docs/architecture/engineering-intent-authoring.md):
 a deterministic, repository-grounded context for authoring future Intents from
 the Constitution, Architecture Handbook, Roadmap, Engineering History,
