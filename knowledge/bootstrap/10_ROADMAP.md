@@ -1,0 +1,421 @@
+# Forge Roadmap
+
+## Purpose and authority
+
+This is Forge's canonical strategic roadmap captured from bootstrap knowledge.
+It explains strategic evolution, architectural maturity, and long-term
+destination without creating an implementation backlog, selecting delivery
+order, or authorizing work. The [Forge Constitution](01_CONSTITUTION.md),
+[Vision](02_VISION.md), [Core Architecture](03_ARCHITECTURE.md), [Engineering
+Model](05_ENGINEERING_MODEL.md), [Knowledge Model](06_KNOWLEDGE_MODEL.md),
+[Governance Model](07_GOVERNANCE.md), and [Capability Catalogue](09_CAPABILITIES.md)
+remain authoritative for their respective boundaries.
+
+## Roadmap philosophy
+
+### Context
+
+Forge needs a stable account of strategic evolution without treating a list of
+possible features as an implementation plan.
+
+### Current state
+
+Bootstrap established a local, deterministic foundation and a capability-first
+model. The canonical lifecycle distinguishes Roadmap, Backlog, Proposal,
+Engineering Intent, Approval, Runtime Provider, Runtime Prompt, Execution,
+Evidence, and Knowledge Evolution.
+
+### Target state
+
+The roadmap remains capability-driven: it frames the enduring direction in
+which Forge can evolve, while individually bounded Capabilities make that
+direction concrete. It is independent from Engineering Intents. A Roadmap may
+inform an Intent, but an Engineering Intent is the canonical, model-independent
+statement of one bounded engineering change and does not derive authority from
+roadmap presence alone.
+
+### Rationale
+
+Separating strategic direction from bounded work preserves human governance and
+prevents a roadmap from becoming either an implied approval or an execution
+instruction. Engineering Intents implement Roadmap direction only when a
+separately governed proposal and approval bound the work.
+
+### Dependencies
+
+This philosophy depends on the Constitution's human-governance,
+repository-first, and capability-first principles; the Engineering Model's
+Intent and evidence boundaries; and the Knowledge Model's reconciliation
+boundary.
+
+## Bootstrap path
+
+### Context
+
+Forge required an engineering environment before it could own its future
+runtime. Bootstrap was therefore intentionally conducted through the temporary
+Engineering Platform 1.5 Bootstrap Execution Host.
+
+### Current state
+
+Bootstrap preceded autonomous engineering so that Forge could first establish
+its Workspace, knowledge, engineering, governance, and evidence boundaries in
+repository-held form. The temporary host executed bounded Genesis transactions;
+it did not become the owner of Forge knowledge, engineering meaning, or
+governance.
+
+### Target state
+
+Forge can progress from its completed Foundation through Self Engineering and
+later runtime maturity toward a governed Production state. The progression is
+strategic rather than a delivery sequence.
+
+### Rationale
+
+Autonomous behavior without a durable product model would allow an execution
+environment to define its own work. Bootstrap first established the durable
+boundaries that let future execution remain governed, repository-first, and
+provider-independent.
+
+### Dependencies
+
+The path depends on the temporary Bootstrap Execution Host boundary, durable
+Engineering Intent, Runtime Provider abstraction, human approval, and
+evidence-based phase completion.
+
+```mermaid
+flowchart TD
+    B[Bootstrap] --> F[Foundation]
+    F --> SE[Self Engineering]
+    SE --> R[Runtime]
+    R --> P[Production]
+```
+
+`Self Hosting` was named in the bootstrap objective but is not established in
+the captured Forge architecture as a phase, capability, or runtime commitment.
+It is therefore not asserted by this roadmap; any future use requires its own
+reconciled architectural evidence and governed Intent.
+
+## Phase A — Foundation (complete)
+
+### Context
+
+Phase A was the bootstrap effort to create a small, deterministic engineering
+foundation before Forge attempts to perform its own engineering through a
+Forge-owned runtime.
+
+### Current state
+
+**Phase A is complete.** It established the Workspace and Foundation Model;
+Knowledge source and consumption boundaries; Engineering planning, proposal,
+Prompt Artifact, and Engineering Intent architecture; Governance boundaries;
+Bootstrap Knowledge Packages; and the local, evidence-first foundation needed
+to assess phase completion. The architectural outcome is a repository-first
+model in which Workspace product meaning, canonical Intent, runtime-specific
+translation, execution, governance, and evidence have separate authorities.
+
+The completed state is local and deterministic. It provides schemas, immutable
+models, loaders, registries, declarations, and typed evidence references. It
+does not provide intent persistence, Runtime Providers, a Mission Runtime,
+repository operation, execution, Studio, cloud service, or multi-user model.
+
+### Target state
+
+Foundation remains the durable base for subsequent capability evolution. Its
+boundaries are preserved as Self Engineering acquires separately governed
+capabilities; it is not replaced by provider prompts or a future execution
+host.
+
+### Rationale
+
+Establishing Foundation first makes future engineering accountable to durable
+knowledge and observable evidence instead of to a temporary bootstrap prompt
+or runtime convention.
+
+### Dependencies
+
+Phase A relies on the Constitution, the Foundation Model, read-only knowledge
+sources, repository evidence, and human governance. Future use of the
+Foundation relies on preserving those same boundaries.
+
+## Phase B — Self Engineering (underway)
+
+### Context
+
+Self Engineering is the established direction in which Forge turns its
+repository-held engineering model into more durable, governed engineering
+capabilities without giving execution authority to a runtime.
+
+### Current state
+
+Phase B is underway but incomplete. Its delivered Increment 1.0 is the
+evidence-only Phase Completion Framework: it assesses declared criteria from
+reproducible evidence and does not orchestrate work, operate repositories, or
+grant execution authority. It does not establish Engineering Intent
+persistence, migration, Runtime Providers, or execution.
+
+Bootstrap has also established the following as directions or conceptual
+boundaries, not implemented behavior: Engineering Intent lifecycle and durable
+local persistence; reconstruction and migration of bootstrap intents;
+Knowledge Reconciliation; Runtime Provider abstraction and derived Runtime
+Prompts; Mission Runtime; and Architecture Stewardship. Repair reports exist
+as evidence references; a separate `Repair Engineering` capability has not
+been established by this capture.
+
+### Target state
+
+Self Engineering can mature through independently bounded capabilities that
+persist and validate Intent, reconcile knowledge, derive runtime-specific
+representations from canonical Intent, and assess evidence against declared
+outcomes. It preserves Prompt Artifact compatibility until Runtime Providers
+are separately implemented and governed.
+
+### Rationale
+
+The direction makes Forge progressively able to engineer itself while keeping
+Intent canonical, runtime prompts derived and temporary, and human governance
+outside execution.
+
+### Dependencies
+
+This phase depends on the completed Foundation, the Engineering Intent
+architecture, the Phase Completion Framework, knowledge reconciliation,
+repository truth, explicit human approval, and separately qualified
+Capabilities.
+
+## Capability evolution
+
+### Context
+
+Forge grows through bounded Capabilities rather than through an undifferentiated
+product surface or an implicit runtime.
+
+### Current state
+
+Bootstrap defines a Capability as a declared, versioned, discoverable,
+composable, independently evolvable unit. Present declarations do not imply
+implementation, installation, approval, qualification, compatibility, or
+production trust.
+
+### Target state
+
+Over time, Capabilities can become discoverable, versioned, qualified,
+installable, and composable. Qualification remains evidence-first and
+Production remains a future governed operating state rather than a phase made
+real by documentation.
+
+### Rationale
+
+Capability evolution drives Forge evolution because it permits engineering
+responsibilities to become useful independently while preserving explicit
+dependencies, non-goals, and governance. It prevents names such as runtime or
+Studio from silently becoming a monolithic product commitment.
+
+### Dependencies
+
+It depends on repository-held knowledge, explicit declarations, qualification
+evidence, Governance, Workspace context, and compatible runtime and execution
+boundaries where a Capability needs them.
+
+```mermaid
+flowchart LR
+    K[Knowledge] --> C[Capabilities]
+    C --> E[Engineering]
+    E --> EV[Evolution]
+    EV -. assessed learning .-> K
+```
+
+## Knowledge evolution
+
+### Context
+
+Forge must preserve useful discoveries without allowing conversations,
+transcripts, generated output, or provider prompts to become product truth.
+
+### Current state
+
+Bootstrap establishes the path from conversations and working material through
+Knowledge Packages and reconciliation to repository knowledge. After review,
+the repository—not its originating conversation or package—is canonical.
+
+### Target state
+
+The long-term knowledge direction is:
+
+```text
+Conversations
+  ↓
+Knowledge Packages
+  ↓
+Repository Knowledge
+  ↓
+Architecture Handbook
+  ↓
+Engineering Intents
+  ↓
+Engineering
+```
+
+Knowledge Distillation may make candidate discoveries reusable, while
+Knowledge Reconciliation compares each candidate with Repository Context and
+Architecture Stewardship guides coherent handbook evolution. Neither is an
+automatic authority transfer or repository mutation.
+
+### Rationale
+
+Repository knowledge becomes canonical because it is reviewable against the
+existing architectural baseline, can retain provenance and rationale, and can
+be reconciled with repository reality. This makes the engineering loop durable
+across conversations, providers, and execution hosts.
+
+### Dependencies
+
+It depends on versioned, read-only knowledge sources; Knowledge Candidates;
+Repository Context; Architecture Review; Knowledge Packages; assessed evidence;
+and human architectural judgment.
+
+## Runtime evolution
+
+### Context
+
+Forge distinguishes the knowledge that defines engineering from the
+environment that executes it.
+
+### Current state
+
+Engineering Platform 1.5 is only the temporary Bootstrap Host. Forge already
+owns its conceptual engineering model, but it does not yet own a Runtime
+Provider, Forge Runtime, or independent Execution Host.
+
+### Target state
+
+The strategic runtime direction is:
+
+```text
+Engineering Platform
+  ↓
+Bootstrap Host
+  ↓
+Forge Runtime
+  ↓
+Independent Execution Host
+```
+
+Runtime Providers may translate an approved Engineering Intent into a
+provider-specific Runtime Prompt. An Execution Host may perform the bounded
+work. Neither owns the canonical Intent, repository knowledge, governance, or
+completion decision.
+
+### Rationale
+
+Separating engineering knowledge from execution lets Forge retain its meaning
+when providers and hosts change. It prevents temporary bootstrap transport and
+execution availability from becoming permanent architectural authority.
+
+### Dependencies
+
+Runtime evolution depends on durable Intent, Runtime Provider abstraction,
+human approval, repository truth, evidence capture, and separately governed
+Execution Host capabilities.
+
+## Studio evolution
+
+### Context
+
+Bootstrap records a future Studio boundary but explicitly establishes no UI,
+Studio, renderer, SaaS service, cloud runtime, or multi-user implementation.
+
+### Current state
+
+Studio remains deferred. `Electron Studio`, `Renderer Hosts`, and a
+workspace-centric UX have been discussed as possible terms, but no captured
+Forge architecture defines them as products, implementation details, or
+roadmap commitments.
+
+### Target state
+
+A future Studio direction, if separately reconciled and governed, can present
+Forge around Workspace context while remaining independent of a particular
+runtime or execution host. This roadmap does not select an implementation
+technology or host model.
+
+### Rationale
+
+A user experience must not collapse Workspace ownership, canonical knowledge,
+or governance into a provider-specific execution interface.
+
+### Dependencies
+
+Any Studio evolution depends on the Workspace model, runtime independence,
+Governance, knowledge and capability boundaries, and a separately authorized
+Capability. It has no established implementation dependency in bootstrap.
+
+## Future evolution boundaries
+
+### Context
+
+Bootstrap identified several long-term directions beyond the current
+Foundation without implementing or sequencing them.
+
+### Current state
+
+Forge Runtime, Knowledge Distillation, Architecture Handbook evolution,
+Execution Host independence, expanded governance profiles, product identity,
+and a Capability Marketplace direction appear as conceptual or deferred
+boundaries. A Mission Runtime, queue, Studio, API, cloud, and multi-user
+capabilities are explicitly deferred. No marketplace, multi-user governance
+mechanics, cloud product, or execution system is currently established.
+
+### Target state
+
+Future evolution can make these directions independently useful only through
+bounded, evidence-backed Capabilities. A Capability Marketplace could become a
+future discoverability and composition direction, but this capture establishes
+neither marketplace behavior nor installation mechanics. Multi-user governance
+remains a future profile and governance boundary, not roles, access control,
+or workflow implementation.
+
+### Rationale
+
+Recording strategic directions preserves bootstrap learning without converting
+it into backlog work, a product promise, or a runtime commitment.
+
+### Dependencies
+
+Every future direction depends on the Foundation, repository-first knowledge,
+explicit Capability boundaries, human governance, qualification evidence, and
+a separately authorized Engineering Intent.
+
+## Long-term vision
+
+### Context
+
+Forge's vision is an AI-native engineering platform that engineers products
+under human governance, rather than a prompt manager or code generator.
+
+### Current state
+
+Forge is repository-first and local-first. It has captured the conceptual
+model for knowledge, Capabilities, Intent, runtime independence, governance,
+and evidence, but it does not yet execute engineering through Forge-owned
+runtime capabilities.
+
+### Target state
+
+Forge ultimately aims to engineer itself; evolve through Capabilities;
+maintain its own Architecture Handbook; distill engineering knowledge;
+reconcile architecture continuously; and remain repository-first. The target
+preserves human authority, explicit approval, and evidence-based assessment
+rather than claiming autonomous self-authorization.
+
+### Rationale
+
+This destination closes the loop from durable knowledge to bounded engineering
+and assessed evidence, so Forge can improve its product model without losing
+architectural continuity as runtimes and execution hosts evolve.
+
+### Dependencies
+
+The destination depends on all preceding roadmap areas: the completed
+Foundation, governed Self Engineering, Capability qualification, knowledge
+reconciliation, runtime independence, repository truth, and human governance.
