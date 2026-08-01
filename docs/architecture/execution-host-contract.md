@@ -1,4 +1,4 @@
-# Execution Host Contract 2.1
+# Execution Host Contract 2.2
 
 ## Purpose
 
@@ -55,14 +55,28 @@ execution. Qualification is host-specific: a Host qualifies itself and returns
 qualification evidence. Forge consumes that evidence; it does not operate
 host qualification or execution telemetry.
 
+## Dispatch and evidence correlation
+
+The typed boundary consists of `ExecutionRequest`, `ExecutionDispatch`,
+`ExecutionHostEvidence`, and the `ExecutionHost` protocol. A request carries
+the requested host, Mission, Intent revision, Engineering Action, Runtime
+Prompt, workspace, repository, correlation identity, dispatch timestamp, and
+optional retry predecessor. Dispatch returns the immutable host run identifier.
+
+Every terminal evidence envelope and repository observation repeats the exact
+correlation identity and host run identity, plus Mission, Intent revision,
+Action, Runtime Prompt, repository, report, and retry relationship. Forge must
+reject evidence that does not match the exact dispatch. This makes stale,
+unrelated, generic-latest, and retry-predecessor evidence ineligible for
+Mission progression.
+
 ## Evidence and observability
 
-Every returned evidence envelope identifies the Host, execution, report,
-outcome, and a repository evidence observation. Repository evidence identifies
-the Action, Runtime Prompt, execution, repository, observed repository
-revision, report, and a SHA-256 content digest. This preserves provenance from
-the released Action to the observed repository state without granting a Host
-authority to interpret the result.
+Every returned evidence envelope identifies the Host, correlation, host run,
+report, outcome, and repository observation. Repository evidence identifies
+the Mission, Intent revision, Action, Runtime Prompt, correlation, host run,
+repository, observed repository revision, report, and a SHA-256 content digest.
+This preserves provenance without granting a Host authority to interpret it.
 
 Hosts own logs, reports, runtime diagnostics, and execution metrics. The
 envelope carries references to these host-owned artifacts. Forge consumes the
@@ -93,10 +107,10 @@ become a Mission Planner, an Architecture authority, or a Repository actor.
 
 ## Reference implementation and future hosts
 
-Engineering Platform 1.5 is the first reference implementation of this
-contract during Forge bootstrap. Its inbox/report adapter demonstrates a
-narrow transport boundary; Forge has no runtime dependency on its
-implementation. Forge is therefore not coupled to Engineering Platform.
+Engineering Platform 1.5 is the first replaceable reference implementation of
+this contract during Forge bootstrap. Its Bootstrap adapter is the sole place
+where Inbox, report, polling, local status, and retry transport details may
+exist. Scheduler core has no runtime dependency on that implementation.
 
 Future replaceable hosts may include Engineering Platform, Forge Local Host,
 Forge Cloud Host, GitHub Actions Host, and Enterprise Host. They are examples

@@ -1,40 +1,60 @@
-# Bootstrap Mission Scheduler 2.0
+# Bootstrap Mission Scheduler 2.1
 
-## Purpose
+## Boundary
 
-The Bootstrap Mission Scheduler deterministically plans, sequences, monitors, and advances Engineering Actions within an approved Mission. It does not plan with AI and does not perform engineering. Engineering Platform 1.5 remains the temporary external Execution Host during bootstrap.
+The Bootstrap Mission Scheduler depends only on the canonical Execution Host
+Contract. It releases a single Engineering Action through an `ExecutionHost`,
+then reconciles only terminal `ExecutionHostEvidence`. It has no dependency on
+Engineering Platform, DJConnect, iCloud, local paths, transport, watcher,
+dashboard, report, or status representation.
 
 ```text
 Mission → Engineering Intent → Engineering Action → Runtime Prompt
-  → Engineering Platform Inbox → Engineering Platform Report
-  → Repository Evidence → Mission Scheduler
+  → Execution Host Contract → Bootstrap Execution Host Adapter
+  → Engineering Platform 1.5 → run-bound Execution Evidence → Scheduler
 ```
 
-Mission owns its objective, boundaries, progress, dynamic Intent provenance, and completion state. An Intent owns tactical rationale and one or more Actions. An Action is the executable planning unit: each released Action produces exactly one Runtime Prompt. The Scheduler never releases an Intent.
+Engineering Actions, never Engineering Intents, are the executable scheduling
+unit. The first `READY` Action in ascending order whose Action dependencies are
+`COMPLETE` is the only eligible Action. Bootstrap v1 permits exactly one
+`ACTIVE` or `WAITING_FOR_RESULT` Action and has no parallel execution, AI
+replanning, daemon, repository mutation, implicit skip, or automatic retry.
 
-## Deterministic scheduling
+## Dispatch and evidence correlation
 
-Actions have a stable, consecutive `order`, stable identity, parent Intent revision, bounded objective, declared dependencies, and expected evidence. Selection considers Actions by ascending order. The first `READY` Action whose declared predecessors are all `COMPLETE` is the only selectable Action. Unknown dependencies, duplicate identities, non-consecutive order, and a second `ACTIVE` or `WAITING_FOR_RESULT` Action are invalid Mission state.
+`ExecutionRequest` binds one host request to its Mission, Intent and revision,
+Action, Runtime Prompt, workspace, repository, correlation identity, dispatch
+time, and optional retry predecessor. A host returns `ExecutionDispatch`, which
+binds that exact request to one host run identifier.
 
-The Scheduler state is the declared Actions plus an evidence-derived progress snapshot: current Intent, current Action, execution state, repository evidence, and completed-action count. It does not infer progress from an Intent status or from an assumed successful execution.
+Terminal `ExecutionHostEvidence` and its repository observation must match the
+dispatched host, correlation, host run, retry relationship, Mission, Intent
+revision, Action, Runtime Prompt, and repository. A latest report, unrelated
+commit, old retry, mismatched report, unknown outcome, or contradictory identity
+is rejected. This is intentionally fail-closed.
 
-| State | Permitted next state | Meaning |
-| --- | --- | --- |
-| `READY` | `ACTIVE` | Deterministically selected after dependencies complete. |
-| `ACTIVE` | `WAITING_FOR_RESULT` | Its single Runtime Prompt was delivered. |
-| `WAITING_FOR_RESULT` | `COMPLETE` | Matching Engineering Platform report and repository evidence confirm it. |
-| `WAITING_FOR_RESULT` | `BLOCKED`, `FAILED` | Terminal external result stops the Mission. |
-| `COMPLETE` | — | A dependent Action may now be selected. |
-| `BLOCKED`, `FAILED` | — | No implicit retry, skip, or successor release. |
+## Terminal states
 
-Repository evidence must name the completed Action and the Engineering Platform report that asserted its successful outcome. A successful report without matching repository evidence cannot advance the Mission.
+| Host terminal evidence | Scheduler result |
+| --- | --- |
+| `COMPLETE` with exact correlation | Complete exactly the waiting Action; its eligible successor may be selected. |
+| `BLOCKED` | Block the waiting Action and halt the Mission; explicit recovery/retry is required. |
+| `FAILED` | Fail the waiting Action and halt the Mission; explicit recovery/retry is required. |
+| Unknown or malformed | Reject evidence and do not advance. |
 
-## Bootstrap Adapter
+Intent completion is derived only when all of that Intent's Actions are
+complete. Mission completion is derived only when all Actions and therefore all
+Intents are complete.
 
-The adapter has two injected interfaces only: an Engineering Platform Inbox for submitting a Runtime Prompt, and an Engineering Platform Report supplied back to Forge. It translates neither prompt content nor reports and makes no network call, queue, repository mutation, provider invocation, or background service. It moves the one active Action to `WAITING_FOR_RESULT` only after delivery, and reconciles `COMPLETE`, `BLOCKED`, or `FAILED` only through the Scheduler.
+## Bootstrap adapter
 
-Future Forge Execution Hosts may implement the same narrow inbox/report boundary. They do not become the Mission Planner and cannot change Mission, Intent, Action, or evidence semantics.
+`BootstrapExecutionHostAdapter` is the sole Engineering Platform 1.5 boundary.
+It translates canonical requests into the Bootstrap Inbox payload, receives the
+host run identifier, retrieves Bootstrap reports, and maps their terminal state
+and repository observation back into canonical evidence. Inbox transport,
+`Retry-Of`, prompt-file handling, run identifiers, report/status locations,
+polling, and local configuration belong there, never in scheduler core.
 
-## Non-goals
-
-This increment implements no AI Mission Planning, autonomous engineering, Forge Runtime, Execution Host, queue daemon, background service, provider, Studio, repository operation, or Engineering Platform modification.
+Engineering Platform 1.5 remains a replaceable reference Execution Host. This
+increment does not implement a Mission Runner, background loop, real prompt
+delivery, host daemon, execution, or repository operation.

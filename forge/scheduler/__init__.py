@@ -1,9 +1,7 @@
-"""Deterministic Bootstrap Mission Scheduler contracts and adapter."""
+"""Deterministic, provider-neutral Bootstrap Mission Scheduler contracts."""
 
-from .adapter import BootstrapAdapter, EngineeringPlatformReport, ReportOutcome
-from .scheduler import BootstrapMissionScheduler, MissionProgress, RepositoryEvidence
+from .scheduler import BootstrapMissionScheduler, IntentProgress, MissionProgress
 
 __all__ = [
-    "BootstrapAdapter", "BootstrapMissionScheduler", "EngineeringPlatformReport",
-    "MissionProgress", "ReportOutcome", "RepositoryEvidence",
+    "BootstrapMissionScheduler", "IntentProgress", "MissionProgress",
 ]

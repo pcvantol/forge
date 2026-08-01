@@ -139,10 +139,12 @@ provider-specific Runtime Prompts. This reconciliation adds no scheduler,
 Runtime, provider, prompt generator, or execution implementation.
 
 Phase B — Increment 2.0 adds the deterministic [Bootstrap Mission
-Scheduler](docs/architecture/bootstrap-mission-scheduler.md). It releases one
-evidence-gated Engineering Action at a time through the existing Engineering
-Platform inbox/report boundary, without implementing a Runtime, Execution Host,
-queue, provider, background service, or autonomous planning.
+Scheduler](docs/architecture/bootstrap-mission-scheduler.md). The subsequent
+2.1 contract reconciliation makes it release one evidence-gated Engineering
+Action at a time only through the canonical Execution Host Contract. Engineering
+Platform 1.5 remains a replaceable bootstrap reference host behind its adapter;
+Forge implements no Runtime, host, queue, provider, background service, or
+autonomous planning.
 
 Phase B — Increment 2.1 adds the canonical
 [Execution Host Contract](docs/architecture/execution-host-contract.md).
@@ -228,10 +230,10 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is the Bootstrap Mission Scheduler, which must
-release Engineering Actions rather than Engineering Intents. Forge still does
-not provide a concrete Runtime Provider, Runtime, queue, Studio, repository
-operations, or execution.
+With the scheduler now reconciled to the Execution Host Contract, the
+recommended next increment may be a minimal Mission Runner that preserves the
+one-Action, explicit-recovery boundary. Forge still does not provide a concrete
+Runtime Provider, Runtime, queue, Studio, repository operations, or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),

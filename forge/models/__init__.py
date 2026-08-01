@@ -160,6 +160,7 @@ from .action import (
 )
 from .execution_host import (
     EXECUTION_HOST_CONTRACT_SCHEMA_VERSION,
+    ExecutionDispatch,
     ExecutionEvidenceOutcome,
     ExecutionHostContract,
     ExecutionHostEvidence,
@@ -167,6 +168,8 @@ from .execution_host import (
     ExecutionHostLifecycleStage,
     ExecutionHostResponsibility,
     ExecutionRepositoryEvidence,
+    ExecutionRequest,
+    ExecutionHost,
 )
 from .mission import (
     ENGINEERING_MISSION_SCHEMA_VERSION,
@@ -315,13 +318,16 @@ __all__ = [
     "EngineeringAction",
     "EngineeringActionStatus",
     "EXECUTION_HOST_CONTRACT_SCHEMA_VERSION",
+    "ExecutionDispatch",
     "ExecutionEvidenceOutcome",
+    "ExecutionHost",
     "ExecutionHostContract",
     "ExecutionHostEvidence",
     "ExecutionHostForbiddenResponsibility",
     "ExecutionHostLifecycleStage",
     "ExecutionHostResponsibility",
     "ExecutionRepositoryEvidence",
+    "ExecutionRequest",
     "ENGINEERING_MISSION_SCHEMA_VERSION",
     "EngineeringMission",
     "MissionCompletion",

@@ -1,24 +1,23 @@
-"""Immutable, non-executing contracts for replaceable Execution Hosts.
+"""Provider-neutral, immutable contracts for replaceable Execution Hosts.
 
-Forge owns the engineering reasoning that produces a Runtime Prompt.  An
-Execution Host owns the operational work around delivery to an execution
-runtime and returns evidence for Forge to interpret.  These declarations do
-not implement a host, transport, runtime, repository operation, or telemetry
-service.
+Forge owns Mission scheduling and engineering reasoning.  An Execution Host
+owns delivery, runtime execution, operational retries, and evidence return.
+Nothing in this module describes a particular host transport or report format.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Protocol
+
+from .runtime_prompt import RuntimePrompt
 
 
-EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "2.1"
+EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "2.2"
 
 
 class ExecutionHostResponsibility(str, Enum):
-    """Operational responsibilities owned by every conforming host."""
-
     EXECUTION = "execution"
     PROMPT_DELIVERY = "prompt_delivery"
     RUNTIME_INVOCATION = "runtime_invocation"
@@ -33,8 +32,6 @@ class ExecutionHostResponsibility(str, Enum):
 
 
 class ExecutionHostForbiddenResponsibility(str, Enum):
-    """Concerns a host must never own or interpret."""
-
     ARCHITECTURE = "architecture"
     ENGINEERING_KNOWLEDGE = "engineering_knowledge"
     ENGINEERING_INTENT = "engineering_intent"
@@ -44,8 +41,6 @@ class ExecutionHostForbiddenResponsibility(str, Enum):
 
 
 class ExecutionHostLifecycleStage(str, Enum):
-    """The host-owned operational lifecycle, independent of its transport."""
-
     QUALIFIED = "qualified"
     PROMPT_RECEIVED = "prompt_received"
     PROMPT_DELIVERED = "prompt_delivered"
@@ -57,8 +52,6 @@ class ExecutionHostLifecycleStage(str, Enum):
 
 
 class ExecutionEvidenceOutcome(str, Enum):
-    """Host-reported operational outcome; Forge determines its meaning."""
-
     COMPLETE = "complete"
     BLOCKED = "blocked"
     FAILED = "failed"
@@ -66,7 +59,7 @@ class ExecutionEvidenceOutcome(str, Enum):
 
 @dataclass(frozen=True)
 class ExecutionHostContract:
-    """A self-declared, complete host contract without a host implementation."""
+    """A complete host declaration without a host implementation."""
 
     host_id: str
     version: str
@@ -92,23 +85,66 @@ class ExecutionHostContract:
 
 
 @dataclass(frozen=True)
-class ExecutionRepositoryEvidence:
-    """The repository observation a host returns; it never interprets it."""
+class ExecutionRequest:
+    """One exact Forge-to-host dispatch request and its correlation identity."""
 
+    host_id: str
+    mission_id: str
+    intent_id: str
+    intent_revision: str
+    action_id: str
+    runtime_prompt: RuntimePrompt
+    workspace_id: str
+    repository_id: str
+    correlation_id: str
+    dispatched_at: str
+    retry_of_correlation_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not all((self.host_id, self.mission_id, self.intent_id, self.intent_revision,
+                    self.action_id, self.workspace_id, self.repository_id,
+                    self.correlation_id, self.dispatched_at)):
+            raise ValueError("execution request identity, context, correlation, and dispatch time are required")
+        if (self.runtime_prompt.source_intent_id, self.runtime_prompt.source_intent_revision,
+                self.runtime_prompt.source_action_id) != (self.intent_id, self.intent_revision, self.action_id):
+            raise ValueError("execution request Runtime Prompt must match its Intent and Action")
+        if self.retry_of_correlation_id == self.correlation_id:
+            raise ValueError("execution request cannot retry its own correlation")
+
+
+@dataclass(frozen=True)
+class ExecutionDispatch:
+    """The host acknowledgement binding a request to one immutable host run."""
+
+    request: ExecutionRequest
+    host_run_id: str
+
+    def __post_init__(self) -> None:
+        if not self.host_run_id:
+            raise ValueError("execution dispatch host run identity is required")
+
+
+@dataclass(frozen=True)
+class ExecutionRepositoryEvidence:
+    """Repository observation bound to one request correlation and host run."""
+
+    mission_id: str
+    intent_id: str
+    intent_revision: str
     action_id: str
     runtime_prompt_id: str
-    execution_id: str
+    correlation_id: str
+    host_run_id: str
     repository_id: str
     repository_revision: str
     report_id: str
     content_digest: str
 
     def __post_init__(self) -> None:
-        if not all((
-            self.action_id, self.runtime_prompt_id, self.execution_id,
-            self.repository_id, self.repository_revision, self.report_id,
-            self.content_digest,
-        )):
+        if not all((self.mission_id, self.intent_id, self.intent_revision, self.action_id,
+                    self.runtime_prompt_id, self.correlation_id, self.host_run_id,
+                    self.repository_id, self.repository_revision, self.report_id,
+                    self.content_digest)):
             raise ValueError("repository evidence identity, provenance, revision, report, and digest are required")
         digest = self.content_digest.removeprefix("sha256:")
         if not self.content_digest.startswith("sha256:") or len(digest) != 64:
@@ -117,31 +153,36 @@ class ExecutionRepositoryEvidence:
 
 @dataclass(frozen=True)
 class ExecutionHostEvidence:
-    """A host-owned report envelope returned to Forge for interpretation."""
+    """Terminal host evidence; all identity must match the exact dispatched run."""
 
     host_id: str
-    execution_id: str
+    correlation_id: str
+    host_run_id: str
     report_id: str
     outcome: ExecutionEvidenceOutcome
     repository_evidence: ExecutionRepositoryEvidence
-    log_references: tuple[str, ...]
-    diagnostic_references: tuple[str, ...]
-    metric_references: tuple[str, ...]
+    log_references: tuple[str, ...] = ()
+    diagnostic_references: tuple[str, ...] = ()
+    metric_references: tuple[str, ...] = ()
+    retry_of_correlation_id: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.host_id or not self.execution_id or not self.report_id:
+        if not all((self.host_id, self.correlation_id, self.host_run_id, self.report_id)):
             raise ValueError("execution host evidence identity and report are required")
-        if self.repository_evidence.execution_id != self.execution_id:
-            raise ValueError("execution host evidence must match its repository evidence execution")
-        if self.repository_evidence.report_id != self.report_id:
-            raise ValueError("execution host evidence must match its repository evidence report")
-        for references, label in (
-            (self.log_references, "log"),
-            (self.diagnostic_references, "diagnostic"),
-            (self.metric_references, "metric"),
+        repository = self.repository_evidence
+        if (repository.correlation_id, repository.host_run_id, repository.report_id) != (
+            self.correlation_id, self.host_run_id, self.report_id,
         ):
+            raise ValueError("execution host evidence must match its repository evidence run and report")
+        for references, label in ((self.log_references, "log"), (self.diagnostic_references, "diagnostic"), (self.metric_references, "metric")):
             if any(not reference for reference in references) or len(references) != len(set(references)):
                 raise ValueError(f"execution host evidence {label} references must be unique and non-empty")
-        object.__setattr__(self, "log_references", tuple(sorted(self.log_references)))
-        object.__setattr__(self, "diagnostic_references", tuple(sorted(self.diagnostic_references)))
-        object.__setattr__(self, "metric_references", tuple(sorted(self.metric_references)))
+            object.__setattr__(self, f"{label}_references", tuple(sorted(references)))
+
+
+class ExecutionHost(Protocol):
+    """The sole provider-neutral operational boundary used by the scheduler."""
+
+    def dispatch(self, request: ExecutionRequest) -> ExecutionDispatch: ...
+
+    def retrieve_evidence(self, dispatch: ExecutionDispatch) -> ExecutionHostEvidence | None: ...
