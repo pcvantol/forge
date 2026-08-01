@@ -10,6 +10,8 @@ local callers without adding a framework dependency.
 | Workspace | Represents a software product and selected operating profiles. | Repository execution. |
 | Repository | Identifies one repository and its local locator. | Workspace role or authority. |
 | Engineering Intent | Is the canonical, model-independent statement of bounded engineering work and its required context, goal, decisions, scope, constraints, deliverables, validation, and expected evidence. | Provider-specific prompting, persistence, execution, or approval. |
+| Workspace Readiness | Assesses whether a Workspace is prepared for a declared execution profile. | Completing a phase or executing work. |
+| Product Identity | Defines a separately governed public product identity. | Making runtime names architectural concepts. |
 | Runtime Prompt | Is a temporary, provider-specific execution representation derived from an Engineering Intent. | Defining canonical engineering work or measuring repository drift. |
 | Prompt Artifact | Is the versioned, provider-neutral transitional execution representation retained from bootstrap. | Replacing Engineering Intent or serving as input to a Runtime Prompt. |
 | Repository Catalog | Assigns repository roles and enforces one canonical entry. | Git operations. |
@@ -24,6 +26,11 @@ human-readable. It has no database, network, or runtime-execution dependency.
 
 Engineering Intent is an architectural concept in 0.8 only; it is not yet a
 stored Forge contract. See [Engineering Intent Architecture 0.8](engineering-intent.md).
+
+The permanent authority boundaries are defined once in [Architecture
+Principles](architecture-principles.md). Workspace Readiness is a generic,
+future capability with initial Genesis and Managed profiles; see [Workspace
+Readiness](workspace-readiness.md).
 
 The canonical engineering chain is:
 

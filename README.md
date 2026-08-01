@@ -13,7 +13,7 @@ Loader, Engineering Proposal Generator, and Engineering Prompt Artifact
 foundation. The closure record is the
 [Bootstrap Milestone A Report](docs/reports/bootstrap-milestone-a.md).
 
-## Version 0.8 scope
+## Current scope
 
 Forge 0.2 defines a versioned Foundation Model. It includes:
 
@@ -64,6 +64,11 @@ representations derived from an intent; they are not the canonical source of
 truth. This increment is documentation-only: it adds no intent storage,
 prompt generator, runtime provider, or execution pipeline. See
 [Engineering Intent Architecture 0.8](docs/architecture/engineering-intent.md).
+
+Phase B — Increment 1.0 adds the evidence-only [Phase Completion
+Framework](docs/architecture/phase-completion-framework.md). It assesses a
+declared phase from reproducible references and does not orchestrate work,
+operate repositories, or grant execution authority.
 
 The canonical engineering chain is:
 
@@ -133,15 +138,15 @@ references; all processing remains local and deterministic. See
 [Engineering Planning Foundation 0.5](docs/architecture/engineering-planning.md)
 and [the example](examples/planning.example.json).
 
-## Phase B direction
+## Architecture and next direction
 
-Forge Phase B — Increment 1.0 adds the evidence-only [Phase Completion
-Framework](docs/architecture/phase-completion-framework.md). It determines
-whether a declared phase is not started, in progress, ready, or complete from
-reproducible references without runtime orchestration or automation.
+[Architecture Principles](docs/architecture/architecture-principles.md) is the
+canonical authority for Forge's permanent engineering principles. It is
+supplemented by [Workspace Readiness](docs/architecture/workspace-readiness.md)
+and the [Bootstrap Knowledge Capture Report](docs/reports/bootstrap-knowledge-capture-milestone-001.md).
 
-The next increment may define durable Engineering Intent contracts if current
-foundation evidence supports it. Forge still does not provide intent
+The recommended next increment is a durable local Engineering Intent contract
+and deterministic validation boundary. Forge still does not provide intent
 persistence, a Runtime Provider, a Mission Runtime, a queue, Studio,
 repository operations, or execution.
 
