@@ -12,7 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 class EngineeringActionArchitectureTests(unittest.TestCase):
     def test_canonical_chain_places_action_between_intent_and_runtime_prompt(self) -> None:
         document = (ROOT / "docs/architecture/engineering-action.md").read_text()
-        self.assertIn("Mission\n  ↓ contains\nEngineering Intent\n  ↓ contains\nEngineering Action", document)
+        self.assertIn(
+            "Mission\n  ↓ governs\nMission Planner\n  ↓ creates and reconciles\n"
+            "Engineering Intent\n  ↓ contains\nEngineering Action",
+            document,
+        )
         self.assertIn("Engineering Action\n  ↓ produces\nRuntime Prompt", document)
 
     def test_mission_contains_engineering_intents(self) -> None:

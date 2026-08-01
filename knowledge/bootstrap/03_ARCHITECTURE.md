@@ -48,8 +48,8 @@ artifacts and opinions from becoming the account of engineering reality.
 authoritative evidence for repository reality.
 
 **Relationships.** Repository evidence assesses the outcome expected by an
-Engineering Intent and contributes to readiness, phase completion, and
-Architecture Drift assessment.
+Engineering Intent, contributes to readiness, phase completion, and
+Architecture Drift assessment, and continuously informs the Mission Planner.
 
 **Constraints.** Repository evidence cannot silently rewrite the Intent it
 assesses. Prompt history, reviewer observations, and runtime output do not
@@ -113,9 +113,10 @@ answerable to product direction, architecture, and declared scope.
 **Responsibility.** Human governance defines Vision, Architecture, approval
 boundaries, and progression rules; Forge makes those boundaries operational.
 
-**Relationships.** Approval authorizes progression of Engineering Intent into
-runtime translation. Governance Profiles and Execution Modes establish the
-context in which readiness and completion are assessed.
+**Relationships.** Humans approve Missions and remain responsible for
+governance. Mission Planner creates dynamic Intents within that approval;
+Governance Profiles and Execution Modes establish the context in which
+readiness and completion are assessed.
 
 **Constraints.** Approval does not alter an Intent, and runtime availability
 does not constitute approval. AI output remains bounded by explicit authority.
@@ -136,14 +137,15 @@ layer.
 flowchart TD
     W[Workspace] --> A[Architecture]
     A --> R[Roadmap]
-    R --> B[Backlog]
-    B --> P[Proposal]
-    P --> I[Engineering Intent]
-    I --> AP[Approval]
-    AP --> RP[Runtime Provider]
-    RP --> RT[Runtime Prompt]
-    RT --> EX[Execution]
-    EX --> EV[Evidence]
+    R --> M[Mission]
+    M --> MP[Mission Planner]
+    MP --> I[Engineering Intent]
+    I --> AC[Engineering Action]
+    AC --> RT[Runtime Prompt]
+    RT --> EH[Execution Host]
+    EH --> RE[Repository]
+    RE --> EV[Evidence]
+    EV -. informs .-> MP
     EV --> KE[Knowledge Evolution]
     KE -. informs .-> A
 ```
@@ -153,20 +155,20 @@ flowchart TD
 | Workspace | Establishes product boundary, identity, and operating context. |
 | Architecture | Records durable structure, principles, boundaries, and relationships. |
 | Roadmap | Frames product direction and sequencing. |
-| Backlog | Holds candidate bounded work. |
-| Proposal | Scopes and justifies a candidate increment. |
-| Engineering Intent | Is the model-independent statement of context, goal, decisions, scope, constraints, validation, deliverables, and expected evidence. |
-| Approval | Applies human authority to progression without changing Intent content. |
-| Runtime Provider | Translates approved Intent into a provider-specific execution representation. |
+| Mission | Is the Architect-approved contract for objective, architectural boundaries, success criteria, and constitutional constraints. |
+| Mission Planner | Iteratively plans, sequences, manages dependencies, evaluates progress, and creates dynamic Intents from evidence. |
+| Engineering Intent | Is the model-independent dynamic planning statement of context, goal, decisions, scope, constraints, validation, deliverables, and expected evidence. |
+| Engineering Action | Is the smallest intentional executable unit and produces a Runtime Prompt. |
 | Runtime Prompt | Is the derived, transient instruction for a particular execution. |
-| Execution | Performs work through an Execution Host. |
-| Evidence | Connects observable outcomes to declared Intent and repository reality. |
+| Execution Host | Performs work using the Runtime Prompt. |
+| Repository | Holds implementation reality. |
+| Evidence | Connects observable repository outcomes to declared Intent and future planning. |
 | Knowledge Evolution | Captures assessed discoveries for future engineering. |
 
-**Relationships.** The lifecycle flows from durable product knowledge toward
-execution and returns assessed learning to knowledge. Engineering Intent is the
-canonical bridge between planning and runtime translation; Runtime Prompt is
-not.
+**Relationships.** The lifecycle flows from durable product knowledge through
+an approved Mission and iterative planning toward execution. Evidence returns
+from the Repository to Mission Planner. Engineering Action is the bridge from
+Intent to runtime translation; Runtime Prompt is not canonical knowledge.
 
 **Constraints.** Layers do not silently replace one another. Roadmap and
 Backlog do not approve work, Approval does not redefine Intent, and Execution
@@ -233,26 +235,29 @@ may be introduced independently from runtime execution.
 environment must not own the meaning of the work it performs.
 
 **Responsibility.** Forge owns Engineering Intent and related knowledge.
-Execution Hosts own execution. Runtime Providers translate approved
-Engineering Intent into Runtime Prompts for a chosen execution context.
+Mission Planner owns iterative planning. Execution Hosts own execution.
+Engineering Actions produce Runtime Prompts for a chosen execution context.
 
 ```mermaid
 flowchart TD
-    EI[Approved Engineering Intent] --> RP[Runtime Provider]
-    RP --> RPr[Runtime Prompt]
+    M[Approved Mission] --> MP[Mission Planner]
+    MP --> EI[Engineering Intent]
+    EI --> AC[Engineering Action]
+    AC --> RPr[Runtime Prompt]
     RPr --> EH[Execution Host]
     EH --> EX[Execution]
-    EX --> EV[Evidence]
-    EV --> RR[Repository Reality]
+    EX --> RR[Repository]
+    RR --> EV[Evidence]
+    EV -. informs .-> MP
 ```
 
-**Relationships.** A Runtime Provider is the translation boundary between
-Forge-owned meaning and host-specific execution. An Execution Host may use
+**Relationships.** An Engineering Action is the translation boundary between
+Forge-owned planning and host-specific execution. An Execution Host may use
 tools such as Git, CI, or deployment systems, but those remain external to
 Forge's ownership.
 
 **Constraints.** Runtime Prompts are derived and transient. Execution Hosts do
-not own Engineering Intent or Forge knowledge, and replacing a host must not
+not own Missions, Engineering Intents, or Forge knowledge, and replacing a host must not
 require changing engineering meaning.
 
 **Future evolution.** Runtime Provider contracts, prompt derivation, and

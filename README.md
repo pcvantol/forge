@@ -120,11 +120,11 @@ Runtime Prompt from an approved Engineering Intent and complete versioned
 context. It defines the provider-neutral section structure and provenance only;
 it implements no provider-specific template or runtime execution.
 
-Phase B — Increment 1.10 adds the [Engineering Mission Model](docs/architecture/engineering-mission.md):
-an immutable, local, non-executing grouping record for coherent long-running
-engineering objectives. Missions own boundaries, ordered Intent memberships,
-derived progress, dependencies, aggregate evidence, and completion without
-replacing Engineering Intent as the canonical bounded increment.
+Phase B — Increment 1.10 adds the [Engineering Mission Model](docs/architecture/engineering-mission.md).
+Phase B — Architecture Transition now reconciles that model around
+mission-driven engineering: the Mission is the Architect-approved engineering
+contract, while Engineering Intents are dynamic planning artifacts created and
+reconciled during Mission execution.
 
 Phase B — Architecture Correction adds [Engineering Action](docs/architecture/engineering-action.md):
 the smallest intentional executable engineering unit. Missions are strategic
@@ -132,11 +132,12 @@ and contain Intents; Intents are tactical and contain Actions; Actions produce
 provider-specific Runtime Prompts. This reconciliation adds no scheduler,
 Runtime, provider, prompt generator, or execution implementation.
 
-The canonical Engineering Mission chain is:
+The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text
-Vision → Architecture → Roadmap → Engineering Mission → Engineering Intent →
-Engineering Action → Runtime Prompt → Execution → Evidence
+Vision → Architecture → Roadmap → Mission → Mission Planner → Engineering Intent →
+Engineering Action → Runtime Prompt → Execution Host → Repository → Evidence →
+Mission Planner
 ```
 
 Prompt Artifact is retained as the compatible transitional execution

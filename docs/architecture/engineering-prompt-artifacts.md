@@ -16,8 +16,8 @@ canonical engineering instruction. The canonical, model-independent source of
 truth is Engineering Intent. The 0.7 artifact is the retained transitional
 execution representation from bootstrap: it remains compatible until Runtime
 Providers are implemented, but it neither replaces an intent nor determines
-Repository Drift. A future Runtime Prompt is derived from Engineering Intent,
-not from a Prompt Artifact.
+Repository Drift. A future Runtime Prompt is derived from an Engineering
+Action, not from a Prompt Artifact or directly from an Engineering Intent.
 
 `EngineeringPromptArtifactGenerator` is local and deterministic: all variable
 content, including the creation timestamp, is supplied explicitly. It verifies
@@ -35,6 +35,6 @@ behavior.
 
 Forge retains versioned instructions for bootstrap compatibility. Once Runtime
 Providers exist, they consume provider-specific Runtime Prompts derived from
-Engineering Intent under separately governed human approval. That provider
+Engineering Actions within Mission Planner-created Intents. That provider
 boundary must not reinterpret the intent, bypass approval, or change a
 repository merely by reading a transitional Prompt Artifact.

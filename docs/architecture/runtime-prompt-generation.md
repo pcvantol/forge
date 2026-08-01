@@ -58,7 +58,8 @@ execution artifact: derived and transient, it may be regenerated from its
 recorded inputs and is not a
 durable source of engineering meaning. Provider definitions own only the
 rendering identity and version. Future Runtime Providers may consume a Runtime
-Prompt, but cannot alter its source Intent or grant approval.
+Prompt, but cannot alter its source Action or Intent provenance or grant
+approval.
 
 ```text
 Engineering Intent (tactical, human-governed)

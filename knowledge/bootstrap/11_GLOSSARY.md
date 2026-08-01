@@ -18,8 +18,9 @@ commitment.
 | **Knowledge Package** | A bounded collection of bootstrap or domain knowledge that informs capture and reconciliation; it is not itself the final canonical repository record. |
 | **Knowledge Distillation** | The future conceptual boundary that identifies reusable Knowledge Candidates from working material while retaining source and uncertainty. |
 | **Knowledge Reconciliation** | The future conceptual boundary that compares a Knowledge Candidate with Repository Context and architectural constraints before a human-governed repository knowledge decision. |
-| **Engineering Mission** | The strategic record that owns an engineering objective, scope, progress, and Engineering Intent memberships; it is not executable. |
-| **Engineering Intent** | The canonical tactical record that owns engineering rationale, boundaries, validation, evidence, and architectural traceability and contains Engineering Actions; it is not directly executable. |
+| **Mission** | The Architect-approved engineering contract for objective, architectural boundaries, success criteria, and constitutional constraints; it does not prescribe individual Intents. |
+| **Mission Planner** | The future Forge-owned iterative planning responsibility that evaluates repository evidence and creates, sequences, reprioritises, supersedes, merges, splits, or retires active Engineering Intents. |
+| **Engineering Intent** | The canonical tactical dynamic planning record created by the Mission Planner; it owns rationale, boundaries, validation, evidence, and traceability and contains Engineering Actions; it is not directly executable. |
 | **Engineering Action** | The smallest intentional executable engineering unit contained by an Engineering Intent; it produces a Runtime Prompt. |
 | **Proposal** | A bounded recommendation that scopes and justifies possible engineering work before it becomes an approved Engineering Intent. |
 | **Runtime Provider** | A replaceable future consumer of a provider-specific Runtime Prompt without owning the Action, Intent, or approval. |

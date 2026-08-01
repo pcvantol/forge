@@ -9,8 +9,9 @@ and pure validation only. It does not create or migrate an Intent, persist a
 record, retrieve evidence, grant approval, invoke a Runtime Provider, execute
 work, operate a repository, or implement a queue or Studio.
 
-An Engineering Intent remains the canonical, model-independent statement of
-one bounded engineering increment. It is governed by the
+An Engineering Intent remains the canonical, model-independent dynamic planning
+artifact for one bounded engineering increment. The Mission Planner creates it
+within an Architect-approved Mission. It is governed by the
 [Constitution](../../knowledge/bootstrap/01_CONSTITUTION.md), interpreted by
 the [Founding Architecture Handbook](FORGE_FOUNDING_ARCHITECTURE_HANDBOOK.md),
 and assessed against repository reality rather than a Runtime Prompt.
@@ -47,9 +48,13 @@ may move to `SUPERSEDED` only when the complete local Intent set proves the
 reciprocal replacement relation described below. There are no skipped normal
 transitions and no transitions from terminal states.
 
-Humans create an Intent, humans approve it, and repository evidence closes it.
-Neither a status label, generated artifact, provider availability, nor
-execution output is an approval or verification decision.
+The mission-driven architecture supersedes the historical assumption that
+humans approve every Intent: humans approve Missions and remain responsible for
+governance, while Forge's future Mission Planner creates and reconciles active
+Intents from repository evidence. This existing lifecycle contract preserves
+historical record semantics until a separately authorized migration. Neither a
+status label, generated artifact, provider availability, nor execution output
+is an approval or verification decision.
 
 ## Relationships and supersession
 
@@ -62,7 +67,9 @@ Supersession is deliberately two-sided. The successor declares
 `supersedes → predecessor`; the predecessor in `SUPERSEDED` declares
 `replaces → successor`. The relationship validator requires both records and
 both links. This prevents an Intent from silently becoming superseded merely
-because its status was changed.
+because its status was changed. Active planning may also merge, split, or
+retire an Intent; those operations must preserve immutable historical records
+and their evidence and are not implemented by this lifecycle contract.
 
 ## Evidence and traceability
 
@@ -77,7 +84,7 @@ Every Intent has an `IntentTraceability` declaration with versioned references
 for each stage of the required chain:
 
 ```text
-Vision → Architecture → Roadmap → Proposal → Engineering Intent → Repository → Evidence
+Vision → Architecture → Roadmap → Mission → Mission Planner → Engineering Intent → Engineering Action → Runtime Prompt → Execution Host → Repository → Evidence → Mission Planner
 ```
 
 The lifecycle model requires the first five source stages. Evidence is added as
@@ -108,8 +115,8 @@ human-governed, evidence-first, and capability-bound principles. Constitutional
 Validation can assess declared architectural content, but it does not create,
 approve, transition, or verify an Intent. Phase Completion can consume
 reproducible evidence, but its completion status does not alter this lifecycle.
-Runtime Providers may later derive a transient prompt from an approved Intent;
-they never own its lifecycle or canonical meaning.
+Engineering Actions may later derive a transient prompt from an Intent; they
+never own its lifecycle or canonical meaning.
 
 ## Next boundary
 

@@ -2,9 +2,10 @@
 
 ## Canonical engineering instruction
 
-An **Engineering Intent** is Forge's canonical, model-independent engineering
-artefact. It is the durable statement of what bounded engineering work means,
-before any execution runtime represents that work in its own format.
+An **Engineering Intent** is Forge's canonical, model-independent dynamic
+planning artefact. The Mission Planner creates it during an Architect-approved
+Mission to state what coherent bounded engineering work means before any
+execution runtime represents that work in its own format.
 
 Every Engineering Intent describes these required concerns:
 
@@ -20,7 +21,9 @@ Every Engineering Intent describes these required concerns:
 An Intent contains one or more Engineering Actions. The Intent is tactical: it
 owns the rationale, boundaries, validation, evidence, and architectural
 traceability for that coherent work. It is not directly executable, and it
-does not generate a Runtime Prompt directly.
+does not generate a Runtime Prompt directly. Active Intents may be created,
+superseded, merged, split, or disappear as repository evidence changes the
+Mission Planner's plan; historical Intents remain immutable.
 
 This is an architectural domain definition, not a storage contract or a
 runtime capability. Forge 0.8 introduced no parser, generator, persistence
@@ -33,6 +36,8 @@ provider integration, or execution pipeline.
 
 | Concept | Relationship to Engineering Intent | Authority boundary |
 | --- | --- | --- |
+| Mission | Supplies the Architect-approved objective, boundaries, success criteria, and constitutional constraints. | Mission does not prescribe individual Intents. |
+| Mission Planner | Creates and reconciles dynamic Intents from repository evidence. | It does not replace human governance or execute work. |
 | Vision | Informs the enduring product outcome that an intent serves. | Vision does not execute or replace a bounded intent. |
 | Roadmap | Sequences and frames the intended direction that can lead to an intent. | A roadmap does not itself authorize work. |
 | Backlog | Prioritizes candidate work from which an intent may be formed. | Backlog priority is not an engineering instruction or approval. |

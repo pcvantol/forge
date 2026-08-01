@@ -9,9 +9,10 @@ local callers without adding a framework dependency.
 | --- | --- | --- |
 | Workspace | Represents a software product and selected operating profiles. | Repository execution. |
 | Repository | Identifies one repository and its local locator. | Workspace role or authority. |
-| Engineering Intent | Is the tactical, model-independent record of rationale, boundaries, validation, evidence, and architectural traceability for coherent work; it contains Engineering Actions. | Provider-specific prompting, direct execution, persistence, or approval. |
+| Mission | Is the Architect-approved engineering contract for an objective, architectural boundaries, success criteria, and constitutional constraints. | Predeclare or directly execute Engineering Intents. |
+| Mission Planner | Is Forge's future iterative planning owner for Mission sequencing, dependencies, evidence evaluation, and dynamic Intent creation. | Replace human governance or execute work. |
+| Engineering Intent | Is a dynamic, model-independent planning artifact created by the Mission Planner; it preserves tactical rationale, boundaries, validation, evidence, and architectural traceability and contains Engineering Actions. | Provider-specific prompting, direct execution, persistence, or Architect approval. |
 | Engineering Action | Is the smallest intentional executable engineering unit within an Intent and produces a Runtime Prompt. | Expanding its Intent, provider execution, persistence, or approval. |
-| Engineering Mission | Is the strategic grouping artifact for a coherent objective, scope, ordered Engineering Intent memberships, progress, evidence, and completion. | Becoming executable, replacing an Intent, scheduling, persistence, Runtime operation, or execution. |
 | Workspace Readiness | Assesses whether a Workspace is prepared for a declared execution profile. | Completing a phase or executing work. |
 | Product Identity | Defines a separately governed public product identity. | Making runtime names architectural concepts. |
 | Runtime Prompt | Is a temporary, provider-specific execution representation produced from an Engineering Action. | Defining canonical engineering work or measuring repository drift. |
@@ -37,7 +38,7 @@ Readiness](workspace-readiness.md).
 The canonical engineering chain is:
 
 ```text
-Vision → Architecture → Roadmap → Engineering Mission → Engineering Intent → Engineering Action → Runtime Prompt → Execution → Evidence
+Vision → Architecture → Roadmap → Mission → Mission Planner → Engineering Intent → Engineering Action → Runtime Prompt → Execution Host → Repository → Evidence → Mission Planner
 ```
 
 Runtime Prompt Generation 1.9 is the existing local derivation contract. The

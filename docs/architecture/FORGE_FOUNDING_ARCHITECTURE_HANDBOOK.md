@@ -52,9 +52,10 @@ constitution makes that aim durable by fixing the sources of truth and the
 boundaries between product meaning, execution, and assessment. The resulting
 architecture is neither prompt-centred nor host-centred: repository evidence is
 authoritative for repository reality, the Workspace is the product boundary,
-Engineering Intent is the canonical tactical statement of coherent work;
-Engineering Action is its smallest intentional executable unit, and humans
-retain authority to approve progression.
+Mission is the Architect-approved engineering contract; Mission Planner owns
+iterative planning; Engineering Intent is the canonical tactical dynamic
+planning artifact; Engineering Action is its smallest intentional executable
+unit; and humans retain responsibility for Mission governance.
 
 The twelve constitutional articles operate as one system. Repository-first
 engineering and evidence-first assessment make results observable. The
@@ -88,9 +89,10 @@ The following invariants are architectural guardrails, not optional guidance.
   and assumptions when assessing repository reality.
 - A Workspace models a product; a Repository models an engineering asset. A
   Workspace may have many repositories but exactly one canonical catalog entry.
-- Engineering Intent records tactical rationale, boundaries, validation,
-  evidence, and architectural traceability; contained Engineering Actions
-  state the smallest executable units. A Runtime Prompt does not.
+- Missions record the approved objective, boundaries, success criteria, and
+  constitutional constraints. Mission Planner creates dynamic Engineering
+  Intents from repository evidence; contained Actions state the smallest
+  executable units. A Runtime Prompt does not.
 - Forge owns engineering knowledge; Engineering Actions produce Runtime Prompts
   while Execution Hosts perform work. Neither owns the meaning of the
   work or its completion decision.
@@ -140,20 +142,20 @@ silently replace the authority of an earlier one.
 
 ```mermaid
 flowchart LR
-    W[Workspace] --> A[Architecture] --> R[Roadmap] --> B[Backlog]
-    B --> P[Proposal] --> I[Engineering Intent] --> AC[Engineering Action]
-    AC --> PR[Runtime Prompt] --> X[Execution]
-    X --> E[Evidence] --> KE[Knowledge Evolution]
+    W[Workspace] --> A[Architecture] --> R[Roadmap] --> M[Mission]
+    M --> MP[Mission Planner] --> I[Engineering Intent] --> AC[Engineering Action]
+    AC --> PR[Runtime Prompt] --> H[Execution Host] --> RE[Repository]
+    RE --> E[Evidence] --> KE[Knowledge Evolution]
+    E -. informs .-> MP
     KE -. informs .-> A
 ```
 
-Vision gives stable direction; Architecture gives structure; Roadmap and
-Backlog make opportunities visible; a Proposal scopes and justifies a candidate
-increment; Intent retains tactical meaning; Approval authorizes progression;
-an Engineering Action makes one unit executable and produces a provider-specific
-context; Evidence assesses the result; Knowledge Evolution returns assessed
-learning to future direction. The sequence is conceptual, not a currently
-implemented runtime workflow.
+Vision gives stable direction; Architecture gives structure; Roadmap frames
+strategic movement; a Mission is the approved contract; Mission Planner owns
+iterative planning; Intent retains tactical meaning; an Engineering Action
+makes one unit executable and produces a provider-specific context; Repository
+evidence assesses the result and informs subsequent planning. The sequence is
+conceptual, not a currently implemented runtime workflow.
 
 Bootstrap intentionally began by engineering Forge through bounded local work.
 This revealed the important distinctions captured here, but bootstrap history
@@ -175,13 +177,15 @@ translation, execution, evidence, and learning. Its primary layers are:
 | --- | --- | --- |
 | Workspace | Own product identity and operating context. | Become a repository or operate repositories. |
 | Architecture | State enduring structure, boundaries, and invariants. | Become implementation or a runtime instruction. |
-| Roadmap and Backlog | Frame strategic direction and candidate work. | Authorize execution. |
-| Proposal | Scope and justify a candidate increment. | Become an Intent, approval, or execution. |
-| Engineering Intent | Preserve tactical rationale, boundaries, validation, evidence, and architectural traceability. | Generate a Runtime Prompt directly or execute itself. |
+| Roadmap | Frames strategic direction. | Authorize execution. |
+| Mission | Is the Architect-approved engineering contract. | Predeclare Intents or authorize execution. |
+| Mission Planner | Owns iterative planning and dynamic Intent creation from repository evidence. | Replace human governance or execute work. |
+| Engineering Intent | Preserves tactical rationale, boundaries, validation, evidence, and traceability as a dynamic planning artifact. | Generate a Runtime Prompt directly or execute itself. |
 | Engineering Action | State the smallest intentional executable unit within an Intent. | Expand its Intent, replace governance, or own architecture. |
 | Approval | Apply human authority to progression. | Change Intent content or invoke a provider. |
 | Runtime Prompt | Carry the provider-specific artifact produced by an Action. | Own, reinterpret, or approve the Intent. |
 | Execution Host | Perform bounded work and yield observable outcomes. | Own Forge knowledge, governance, or completion. |
+| Repository | Holds implementation reality. | Authorize or plan work. |
 | Evidence and Knowledge Evolution | Assess outcomes and inform reviewed future knowledge. | Silently rewrite architecture or expand scope. |
 
 This separation creates a stable seam between Forge-owned meaning and
@@ -191,21 +195,24 @@ particular Intent declares.
 
 ## 6. Execution architecture
 
-The runtime boundary is intentionally narrow. Forge owns knowledge, Intent,
-and Action; an Engineering Action produces a temporary Runtime Prompt; an Execution Host uses
-that prompt to perform bounded work; observable results contribute Evidence;
-repository evidence establishes Repository Reality where relevant. The host can
+The runtime boundary is intentionally narrow. Forge owns Mission planning,
+Intent, and Action; an Engineering Action produces a temporary Runtime Prompt;
+an Execution Host uses that prompt to perform bounded work; the Repository holds
+the outcome; and repository evidence informs Mission Planner where relevant. The host can
 use Git, CI, deployment systems, or adjacent tools without making Forge their
 replacement.
 
 ```mermaid
 flowchart TD
-    I[Engineering Intent] --> A[Engineering Action]
+    M[Mission] --> MP[Mission Planner]
+    MP --> I[Engineering Intent]
+    I --> A[Engineering Action]
     A --> RP[Derived Runtime Prompt]
     RP --> H[Execution Host]
     H --> X[Bounded execution]
-    X --> E[Evidence]
-    E --> RR[Repository Reality]
+    X --> RR[Repository]
+    RR --> E[Evidence]
+    E -. informs .-> MP
     E --> KE[Knowledge Evolution]
     G[Human governance] --> I
 ```

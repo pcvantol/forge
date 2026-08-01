@@ -3,8 +3,9 @@
 ## Purpose and boundary
 
 This document is the canonical authoring contract for future Forge Engineering
-Intents. It establishes how repository-held knowledge becomes a bounded,
-provider-independent Intent. It does not author an Intent, reconstruct a
+Intents. It establishes how repository-held knowledge enables the Mission
+Planner to create a bounded, provider-independent dynamic Intent. It does not
+author an Intent, reconstruct a
 bootstrap Intent, generate a runtime prompt, invoke a Runtime Provider,
 perform AI reasoning, operate a repository, or execute work.
 
@@ -20,6 +21,8 @@ Architecture Reasoning
   ↓
 Engineering Proposal
   ↓
+Mission Planner
+  ↓
 Engineering Intent
 ```
 
@@ -30,7 +33,8 @@ the human decision that an opportunity is eligible for proposal generation.
 The resulting Engineering Proposal remains governed input to this authoring
 context. Roadmap direction and Engineering History remain required source
 classes; neither grants authority. Together these inputs prepare a candidate
-Engineering Intent; they do not approve or execute it.
+Engineering Intent for Mission Planner reconciliation; they do not approve or
+execute it.
 
 ## Required authoring context
 
@@ -75,17 +79,17 @@ continue to govern the Intent after it is authored.
 ```text
 Engineering Intent
   ↓
-Runtime Provider
+Engineering Action
   ↓
 Runtime Prompt
   ↓
-Execution
+Execution Host
 ```
 
-Engineering Intent remains Forge-owned and provider-independent. A future
-Runtime Provider owns prompt generation only: it renders a transient,
-provider-specific Runtime Prompt from an eligible Intent. The provider neither
-authors, reinterprets, approves, nor changes canonical Intent meaning.
+Engineering Intent remains Forge-owned and provider-independent. An Engineering
+Action, not an Intent, produces a transient provider-specific Runtime Prompt.
+The provider neither authors, reinterprets, approves, nor changes canonical
+Intent meaning.
 Execution remains outside this authoring model.
 
 ## Future evolution already established

@@ -15,19 +15,23 @@ flowchart TD
     V[Vision] --> A[Architecture]
     A --> R[Roadmap]
     R --> M[Mission]
-    M --> I[Engineering Intent]
+    M --> MP[Mission Planner]
+    MP --> I[Engineering Intent]
     I --> AC[Engineering Action]
     AC --> PR[Runtime Prompt]
-    PR --> EX[Execution]
-    EX --> EV[Evidence]
+    PR --> EH[Execution Host]
+    EH --> RE[Repository]
+    RE --> EV[Evidence]
+    EV -. informs .-> MP
     EV --> KE[Knowledge Evolution]
     KE -. informs future direction .-> V
     KE -. refines .-> A
     KE -. informs .-> R
 ```
 
-The lifecycle distinguishes enduring product direction from strategic Mission,
-tactical Intent, executable Action, replaceable execution, and observable
+The lifecycle distinguishes enduring product direction from the
+Architect-approved Mission, Forge-owned iterative planning, dynamic tactical
+Intent, executable Action, replaceable execution, and observable
 assessment. Each stage exists so that a later stage cannot silently assume the
 authority of an earlier one: planning is not execution, an Intent is not an
 Action, and a runtime representation is not engineering knowledge.
@@ -88,20 +92,32 @@ plan, approval, or Runtime Prompt.
 
 ## Mission
 
-**Context.** A strategic engineering objective may require more than one
-tactical Intent.
+**Context.** A strategic engineering objective needs a durable human-approved
+contract without assuming that tactical work is known in advance.
 
-**Responsibility.** Mission owns engineering objective, scope, progress, and
-Engineering Intent memberships.
+**Responsibility.** Mission defines the engineering objective, architectural
+boundaries, success criteria, and constitutional constraints.
 
 **Rationale.** Strategic coordination must remain separate from executable
 work so Mission progress does not turn a broad objective into one runtime
 instruction.
 
-**Relationships.** Mission contains Engineering Intents and is informed by
-Roadmap.
+**Relationships.** Mission is informed by Roadmap and constrains the Mission
+Planner. It does not contain a predeclared Intent list.
 
 **Constraints.** Mission is strategic and not executable.
+
+## Mission Planner
+
+**Responsibility.** Mission Planner owns engineering planning, sequencing,
+dependency management, progress evaluation, dynamic Intent creation, and
+reprioritisation within an approved Mission.
+
+**Relationships.** Repository Evidence continuously returns to the Planner.
+The Planner may create, supersede, merge, split, or retire active Intents.
+
+**Constraints.** Mission Planner is Forge-owned future planning, not human
+governance, a scheduler, an Execution Host, or autonomous execution.
 
 **Future evolution.** As evidence and knowledge mature, Roadmap may be refined through governance without allowing implementation convenience alone to define product direction.
 
@@ -137,19 +153,23 @@ Roadmap.
 
 **Context.** Bootstrap established that a prompt cannot be the durable meaning of engineering work because it varies with the runtime that receives it.
 
-**Responsibility.** Engineering Intent is the canonical tactical engineering
-artifact. It owns engineering rationale, boundaries, validation, evidence, and
-architectural traceability for coherent work and contains Engineering Actions.
+**Responsibility.** Engineering Intent is the canonical tactical dynamic
+planning artifact created by the Mission Planner. It owns engineering rationale,
+boundaries, validation, evidence, and architectural traceability for coherent
+work and contains Engineering Actions.
 
 **Rationale.** A canonical intent preserves engineering meaning across providers and permits repository reality to be assessed against stable criteria rather than prompt wording.
 
-**Relationships.** An Intent belongs to a Mission and is constrained by Vision,
-Architecture, and Roadmap. It contains Actions; Evidence evaluates whether its
-declared outcome is met.
+**Relationships.** An Intent is created within a Mission and constrained by
+Vision, Architecture, and Roadmap. It contains Actions; Evidence evaluates its
+declared outcome and informs future planning.
 
 **Constraints.** Intent neither grants approval nor executes work and does not
 generate a Runtime Prompt directly. It is not redefined by a Runtime Prompt,
 execution output, reviewer observation, or repository content.
+
+Active Intents may be created, superseded, merged, split, or disappear as
+planning evolves. Historical Intents remain immutable.
 
 **Future evolution.** Durable intent contracts, validation, migration, and lifecycle behavior require separately bounded and governed capabilities. This model does not implement them.
 
@@ -228,7 +248,10 @@ is consumed by an Execution Host or future Runtime Provider.
 
 **Rationale.** Replaceable execution keeps operational infrastructure from becoming an owner of engineering knowledge.
 
-**Relationships.** An Execution Host consumes a Runtime Prompt and produces observable outcomes and Evidence. During bootstrap, Engineering Platform 1.5 is the temporary Bootstrap Execution Host; future Forge Runtime can relate to an Execution Host without collapsing their ownership boundaries.
+**Relationships.** An Execution Host consumes a Runtime Prompt and changes a
+Repository, whose observable reality provides Evidence. During bootstrap,
+Engineering Platform 1.5 is the temporary Bootstrap Execution Host; future
+Forge Runtime can relate to an Execution Host without collapsing boundaries.
 
 **Constraints.** Execution is replaceable and never owns engineering knowledge. It cannot approve itself, redefine Intent, or make completion claims authoritative.
 
@@ -242,7 +265,10 @@ is consumed by an Execution Host or future Runtime Provider.
 
 **Rationale.** Evidence-first assessment makes completion reproducible and keeps success grounded in what the repository demonstrably contains.
 
-**Relationships.** Execution produces evidence; Evidence is assessed against Engineering Intent and informs Phase Completion, Architecture Drift, and Knowledge Evolution. Reviewer observations remain advisory.
+**Relationships.** Repository reality provides evidence; Evidence is assessed
+against Engineering Intent and informs the Mission Planner, Phase Completion,
+Architecture Drift, and Knowledge Evolution. Reviewer observations remain
+advisory.
 
 **Constraints.** Evidence does not grant approval, execute work, or silently rewrite the Intent. A review observation, prompt, or runtime claim cannot override conflicting repository evidence.
 
