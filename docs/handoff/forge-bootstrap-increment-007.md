@@ -21,6 +21,13 @@ requirements. The only lifecycle transition is explicit `DRAFT` to `READY`.
 
 ## Limitations
 
+## Repair validation
+
+The repair verifies deterministic Markdown rendering, mandatory evidence,
+complete scope, traceability, invalid source-proposal rejection, and the
+`DRAFT` to `READY` lifecycle boundary. `git diff --check` is required before
+acceptance.
+
 - No runtime provider, queue, repository operation, API, approval workflow, or
   artifact persistence is included.
 - Artifact input is supplied by the caller; this increment does not derive or

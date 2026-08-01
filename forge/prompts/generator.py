@@ -43,6 +43,10 @@ class EngineeringPromptArtifactGenerator:
             raise ValueError("prompt artifact source proposal must be approved")
         if proposal.creation_metadata.workspace_id != workspace.id:
             raise ValueError("prompt artifact proposal and workspace must share an identity")
+        if not proposal.evidence_references:
+            raise ValueError("prompt artifact source proposal must contain evidence")
+        if not all((proposal.scope.included_work, proposal.scope.excluded_work, proposal.scope.affected_capabilities)):
+            raise ValueError("prompt artifact source proposal must contain a complete scope")
         return EngineeringPromptArtifact(
             id=artifact_id,
             version=artifact_version,

@@ -11,7 +11,7 @@
     "source_proposal": {"$ref": "#/$defs/reference"},
     "context": {"type": "object", "additionalProperties": false, "required": ["workspace_id", "repository_id", "repository_reference", "engineering_mode", "governance_profile", "capability_references"], "properties": {"workspace_id": {"$ref": "common.schema.json#/$defs/id"}, "repository_id": {"$ref": "common.schema.json#/$defs/id"}, "repository_reference": {"type": "string", "minLength": 1}, "engineering_mode": {"$ref": "engineering-mode.schema.json"}, "governance_profile": {"$ref": "governance-profile.schema.json"}, "capability_references": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/id"}}}},
     "objective": {"$ref": "#/$defs/objective"}, "scope": {"$ref": "#/$defs/scope"},
-    "evidence_references": {"type": "array", "items": {"$ref": "evidence-reference-0.5.schema.json"}},
+    "evidence_references": {"type": "array", "minItems": 1, "items": {"$ref": "evidence-reference-0.5.schema.json"}},
     "execution_instructions": {"$ref": "#/$defs/execution_instructions"}, "validation_requirements": {"$ref": "#/$defs/validation_requirements"},
     "status": {"type": "string", "enum": ["DRAFT", "READY"]}
   },
@@ -19,7 +19,7 @@
     "reference": {"type": "object", "additionalProperties": false, "required": ["id", "version"], "properties": {"id": {"$ref": "common.schema.json#/$defs/id"}, "version": {"type": "string", "minLength": 1}}},
     "strings": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
     "objective": {"type": "object", "additionalProperties": false, "required": ["engineering_goal", "expected_outcome", "success_criteria"], "properties": {"engineering_goal": {"type": "string", "minLength": 1}, "expected_outcome": {"type": "string", "minLength": 1}, "success_criteria": {"$ref": "#/$defs/strings"}}},
-    "scope": {"type": "object", "additionalProperties": false, "required": ["included_changes", "excluded_changes", "affected_areas"], "properties": {"included_changes": {"$ref": "#/$defs/strings"}, "excluded_changes": {"type": "array", "items": {"type": "string", "minLength": 1}}, "affected_areas": {"$ref": "#/$defs/strings"}}},
+    "scope": {"type": "object", "additionalProperties": false, "required": ["included_changes", "excluded_changes", "affected_areas"], "properties": {"included_changes": {"$ref": "#/$defs/strings"}, "excluded_changes": {"$ref": "#/$defs/strings"}, "affected_areas": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}},
     "execution_instructions": {"type": "object", "additionalProperties": false, "required": ["engineering_task_description", "validation_expectations", "constraints"], "properties": {"engineering_task_description": {"type": "string", "minLength": 1}, "validation_expectations": {"type": "array", "items": {"type": "string", "minLength": 1}}, "constraints": {"type": "array", "items": {"type": "string", "minLength": 1}}}},
     "validation_requirements": {"type": "object", "additionalProperties": false, "required": ["required_checks", "expected_evidence", "completion_criteria"], "properties": {"required_checks": {"$ref": "#/$defs/strings"}, "expected_evidence": {"$ref": "#/$defs/strings"}, "completion_criteria": {"$ref": "#/$defs/strings"}}}
   }

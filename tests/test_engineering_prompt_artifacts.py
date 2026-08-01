@@ -1,5 +1,6 @@
 import json
 import unittest
+from copy import copy
 from pathlib import Path
 
 from forge.foundation import FoundationDocumentLoader
@@ -40,6 +41,9 @@ class EngineeringPromptArtifactTests(unittest.TestCase):
         self.assertEqual(artifact.context.repository_reference, "example/forge")
         self.assertEqual(artifact.to_dict(), json.loads((ROOT / "examples" / "engineering-prompt-artifact.example.json").read_text()))
         self.assertEqual(transition_prompt_artifact(artifact, PromptArtifactStatus.READY).status, PromptArtifactStatus.READY)
+        self.assertEqual(artifact.to_markdown(), artifact.to_markdown())
+        self.assertIn("Source Proposal: planning-contracts-proposal (v0.6)", artifact.to_markdown())
+        self.assertIn("## Validation", artifact.to_markdown())
 
     def test_generator_requires_an_approved_proposal(self) -> None:
         draft = EngineeringProposalGenerator().generate(
@@ -52,6 +56,17 @@ class EngineeringPromptArtifactTests(unittest.TestCase):
                 workspace=self.foundation.workspace, repository=self.foundation.repositories[0], success_criteria=("criterion",),
                 engineering_task_description="task", validation_expectations=(), constraints=(), required_checks=("check",),
                 expected_evidence=("evidence",), completion_criteria=("complete",),
+            )
+
+    def test_generator_rejects_an_approved_proposal_without_evidence(self) -> None:
+        invalid = copy(self.proposal)
+        object.__setattr__(invalid, "evidence_references", ())
+        with self.assertRaisesRegex(ValueError, "evidence"):
+            EngineeringPromptArtifactGenerator().generate(
+                artifact_id="invalid-prompt", artifact_version="1", created_at="2026-07-31T00:00:00Z",
+                proposal=invalid, workspace=self.foundation.workspace, repository=self.foundation.repositories[0],
+                success_criteria=("criterion",), engineering_task_description="task", validation_expectations=(),
+                constraints=(), required_checks=("check",), expected_evidence=("evidence",), completion_criteria=("complete",),
             )
 
 

@@ -79,8 +79,12 @@ class PromptArtifactScope:
     affected_areas: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if not self.included_changes or not self.affected_areas:
-            raise ValueError("prompt artifact scope must include changes and affected areas")
+        if not self.included_changes or not self.excluded_changes or not self.affected_areas:
+            raise ValueError("prompt artifact scope must include included, excluded, and affected changes")
+        if any(not item for item in (*self.included_changes, *self.excluded_changes, *self.affected_areas)):
+            raise ValueError("prompt artifact scope entries must not be empty")
+        if len(self.affected_areas) != len(set(self.affected_areas)):
+            raise ValueError("prompt artifact affected areas must be unique")
 
     def to_dict(self) -> dict[str, Any]:
         return {"included_changes": list(self.included_changes), "excluded_changes": list(self.excluded_changes), "affected_areas": list(self.affected_areas)}
@@ -136,6 +140,8 @@ class EngineeringPromptArtifact:
             raise ValueError("prompt artifact identity, version, and creation timestamp are required")
         if self.schema_version != PROMPT_ARTIFACT_SCHEMA_VERSION:
             raise ValueError("prompt artifact schema version is unsupported")
+        if not self.evidence_references:
+            raise ValueError("prompt artifact evidence references are required")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -152,6 +158,70 @@ class EngineeringPromptArtifact:
             "validation_requirements": self.validation_requirements.to_dict(),
             "status": self.status.value,
         }
+
+    def to_markdown(self) -> str:
+        """Render the complete provider-neutral artifact in a stable human form."""
+        lines = [
+            "# Engineering Prompt",
+            "",
+            f"ID: {self.id}",
+            f"Version: {self.version}",
+            f"Created: {self.created_at}",
+            f"Status: {self.status.value}",
+            f"Source Proposal: {self.source_proposal.id} (v{self.source_proposal.version})",
+            "",
+            "## Context",
+            "",
+            f"Workspace: {self.context.workspace_id}",
+            f"Repository: {self.context.repository_id} ({self.context.repository_reference})",
+            f"Engineering Mode: {self.context.engineering_mode}",
+            f"Governance Profile: {self.context.governance_profile}",
+            "Capabilities:",
+            *[f"- {capability}" for capability in self.context.capability_references],
+            "",
+            "## Objective",
+            "",
+            self.objective.engineering_goal,
+            "",
+            f"Expected outcome: {self.objective.expected_outcome}",
+            "Success criteria:",
+            *[f"- {criterion}" for criterion in self.objective.success_criteria],
+            "",
+            "## Scope",
+            "",
+            "Included changes:",
+            *[f"- {change}" for change in self.scope.included_changes],
+            "Excluded changes:",
+            *[f"- {change}" for change in self.scope.excluded_changes],
+            "Affected areas:",
+            *[f"- {area}" for area in self.scope.affected_areas],
+            "",
+            "## Evidence",
+            "",
+            *[
+                f"- {reference.kind.value}: {reference.source_id}@{reference.source_version} "
+                f"— {reference.reference} ({reference.location})"
+                for reference in self.evidence_references
+            ],
+            "",
+            "## Execution Instructions",
+            "",
+            self.execution_instructions.engineering_task_description,
+            "Validation expectations:",
+            *[f"- {expectation}" for expectation in self.execution_instructions.validation_expectations],
+            "Constraints:",
+            *[f"- {constraint}" for constraint in self.execution_instructions.constraints],
+            "",
+            "## Validation",
+            "",
+            "Required checks:",
+            *[f"- {check}" for check in self.validation_requirements.required_checks],
+            "Expected evidence:",
+            *[f"- {evidence}" for evidence in self.validation_requirements.expected_evidence],
+            "Completion criteria:",
+            *[f"- {criterion}" for criterion in self.validation_requirements.completion_criteria],
+        ]
+        return "\n".join(lines)
 
 
 def transition_prompt_artifact(artifact: EngineeringPromptArtifact, status: PromptArtifactStatus) -> EngineeringPromptArtifact:
