@@ -146,6 +146,16 @@ from .action import (
     EngineeringAction,
     EngineeringActionStatus,
 )
+from .execution_host import (
+    EXECUTION_HOST_CONTRACT_SCHEMA_VERSION,
+    ExecutionEvidenceOutcome,
+    ExecutionHostContract,
+    ExecutionHostEvidence,
+    ExecutionHostForbiddenResponsibility,
+    ExecutionHostLifecycleStage,
+    ExecutionHostResponsibility,
+    ExecutionRepositoryEvidence,
+)
 from .mission import (
     ENGINEERING_MISSION_SCHEMA_VERSION,
     EngineeringMission,
@@ -282,6 +292,14 @@ __all__ = [
     "ENGINEERING_ACTION_SCHEMA_VERSION",
     "EngineeringAction",
     "EngineeringActionStatus",
+    "EXECUTION_HOST_CONTRACT_SCHEMA_VERSION",
+    "ExecutionEvidenceOutcome",
+    "ExecutionHostContract",
+    "ExecutionHostEvidence",
+    "ExecutionHostForbiddenResponsibility",
+    "ExecutionHostLifecycleStage",
+    "ExecutionHostResponsibility",
+    "ExecutionRepositoryEvidence",
     "ENGINEERING_MISSION_SCHEMA_VERSION",
     "EngineeringMission",
     "MissionCompletion",

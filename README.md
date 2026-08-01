@@ -138,6 +138,13 @@ evidence-gated Engineering Action at a time through the existing Engineering
 Platform inbox/report boundary, without implementing a Runtime, Execution Host,
 queue, provider, background service, or autonomous planning.
 
+Phase B — Increment 2.1 adds the canonical
+[Execution Host Contract](docs/architecture/execution-host-contract.md).
+Execution Hosts own operational execution, transport, observability,
+qualification, and evidence return; Forge owns engineering reasoning and
+evidence interpretation. Engineering Platform 1.5 is the reference
+implementation during bootstrap, while Forge remains decoupled from it.
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text
