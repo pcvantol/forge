@@ -1,9 +1,10 @@
 """Immutable, local, non-executing Engineering Mission contracts.
 
 An Engineering Mission is Forge's highest operational grouping artifact.  It
-groups ordered, independently executable Engineering Intents; it neither
-redefines their canonical meaning nor executes, persists, plans, or schedules
-them.
+groups ordered, independently executable Engineering Intents; this immutable
+contract neither redefines their canonical meaning nor executes, plans, or
+schedules them.  Durable execution state is separately owned by the versioned
+Mission State Store.
 """
 
 from __future__ import annotations

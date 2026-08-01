@@ -1,0 +1,312 @@
+"""Versioned, transactional persistence for canonical Mission execution state.
+
+This module deliberately stores value snapshots and evidence references rather
+than host objects.  It has no dependency on a Scheduler implementation,
+Execution Host implementation, Engineering Platform, network, or process
+memory.  SQLite supplies atomic commits and crash-safe recovery.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, is_dataclass
+from enum import Enum
+import json
+from pathlib import Path
+import sqlite3
+from typing import Any, Mapping, Sequence
+
+
+MISSION_STATE_SCHEMA_VERSION = "1.0"
+
+
+class MissionExecutionStatus(str, Enum):
+    """The runtime lifecycle owned by the Mission State Store.
+
+    This is intentionally distinct from ``forge.models.mission.MissionStatus``:
+    that immutable contract expresses governed Mission meaning, while this enum
+    records durable operational execution state.
+    """
+
+    CREATED = "CREATED"
+    READY = "READY"
+    ACTIVE = "ACTIVE"
+    WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
+    WAITING_FOR_EVIDENCE = "WAITING_FOR_EVIDENCE"
+    BLOCKED = "BLOCKED"
+    FAILED = "FAILED"
+    COMPLETED = "COMPLETED"
+    ARCHIVED = "ARCHIVED"
+
+
+class MissionStateStoreError(ValueError):
+    """Raised when a durable Mission state operation violates its contract."""
+
+
+@dataclass(frozen=True)
+class MissionStateHistoryEntry:
+    """An append-only, immutable record of one persisted state transition."""
+
+    sequence: int
+    from_status: MissionExecutionStatus | None
+    to_status: MissionExecutionStatus
+    occurred_at: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class MissionExecutionState:
+    """The complete restart-safe snapshot for one Mission execution."""
+
+    mission_id: str
+    mission: Mapping[str, Any]
+    intents: tuple[Mapping[str, Any], ...]
+    actions: tuple[Mapping[str, Any], ...]
+    status: MissionExecutionStatus
+    progress: Mapping[str, Any]
+    resume: Mapping[str, Any]
+    execution_correlation: Mapping[str, Any] | None
+    execution_evidence: Mapping[str, Any] | None
+    revision: int
+    schema_version: str = MISSION_STATE_SCHEMA_VERSION
+
+
+_ALLOWED_TRANSITIONS: dict[MissionExecutionStatus, frozenset[MissionExecutionStatus]] = {
+    MissionExecutionStatus.CREATED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ARCHIVED)),
+    MissionExecutionStatus.READY: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED)),
+    MissionExecutionStatus.ACTIVE: frozenset((MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
+    MissionExecutionStatus.WAITING_FOR_EXECUTION: frozenset((MissionExecutionStatus.WAITING_FOR_EVIDENCE, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
+    MissionExecutionStatus.WAITING_FOR_EVIDENCE: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
+    MissionExecutionStatus.BLOCKED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE, MissionExecutionStatus.ARCHIVED)),
+    MissionExecutionStatus.FAILED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE, MissionExecutionStatus.ARCHIVED)),
+    MissionExecutionStatus.COMPLETED: frozenset((MissionExecutionStatus.ARCHIVED,)),
+    MissionExecutionStatus.ARCHIVED: frozenset(),
+}
+
+
+def _snapshot(value: Any) -> Any:
+    """Convert Forge's immutable values into deterministic JSON-compatible data."""
+    if isinstance(value, Enum):
+        return value.value
+    if hasattr(value, "to_dict"):
+        return _snapshot(value.to_dict())
+    if is_dataclass(value):
+        return _snapshot(asdict(value))
+    if isinstance(value, Mapping):
+        return {str(key): _snapshot(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_snapshot(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise MissionStateStoreError(f"mission state cannot persist {type(value).__name__}")
+
+
+def _document(value: Any, label: str) -> dict[str, Any]:
+    snapshot = _snapshot(value)
+    if not isinstance(snapshot, dict):
+        raise MissionStateStoreError(f"{label} must be a mapping or Forge value object")
+    return snapshot
+
+
+def _documents(values: Sequence[Any], label: str) -> tuple[dict[str, Any], ...]:
+    return tuple(_document(value, label) for value in values)
+
+
+def _derive_progress(actions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    total = len(actions)
+    complete = sum(action.get("status") == "COMPLETE" for action in actions)
+    return {
+        "total_actions": total,
+        "completed_actions": complete,
+        "remaining_action_ids": [str(action.get("id", "")) for action in actions if action.get("status") != "COMPLETE"],
+        "percent_complete": 0 if not total else (complete * 100) // total,
+    }
+
+
+class MissionStateStore:
+    """A local SQLite store with atomic snapshots and append-only history."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._connection = sqlite3.connect(self.path)
+        self._connection.row_factory = sqlite3.Row
+        self._connection.execute("PRAGMA journal_mode=WAL")
+        self._connection.execute("PRAGMA synchronous=FULL")
+        self._connection.execute("PRAGMA foreign_keys=ON")
+        self._connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS mission_state (
+                mission_id TEXT PRIMARY KEY,
+                schema_version TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                document TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS mission_state_history (
+                mission_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL,
+                from_status TEXT,
+                to_status TEXT NOT NULL,
+                occurred_at TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                PRIMARY KEY (mission_id, sequence),
+                FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+            );
+            CREATE TRIGGER IF NOT EXISTS mission_state_history_no_update
+            BEFORE UPDATE ON mission_state_history
+            BEGIN SELECT RAISE(ABORT, 'mission state history is append-only'); END;
+            CREATE TRIGGER IF NOT EXISTS mission_state_history_no_delete
+            BEFORE DELETE ON mission_state_history
+            BEGIN SELECT RAISE(ABORT, 'mission state history is append-only'); END;
+            """
+        )
+        self._connection.commit()
+
+    def close(self) -> None:
+        self._connection.close()
+
+    def __enter__(self) -> "MissionStateStore":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    def create(
+        self,
+        mission: Any,
+        intents: Sequence[Any],
+        actions: Sequence[Any],
+        *,
+        occurred_at: str,
+        resume: Mapping[str, Any] | None = None,
+    ) -> MissionExecutionState:
+        mission_document = _document(mission, "mission")
+        mission_id = mission_document.get("id")
+        if not isinstance(mission_id, str) or not mission_id:
+            raise MissionStateStoreError("mission snapshot requires a non-empty id")
+        if not intents or not actions or not occurred_at:
+            raise MissionStateStoreError("mission state requires intents, actions, and creation time")
+        document = {
+            "schema_version": MISSION_STATE_SCHEMA_VERSION,
+            "mission_id": mission_id,
+            "mission": mission_document,
+            "intents": list(_documents(intents, "intent")),
+            "actions": list(_documents(actions, "action")),
+            "status": MissionExecutionStatus.CREATED.value,
+            "progress": _derive_progress(_documents(actions, "action")),
+            "resume": _document(resume or {}, "resume"),
+            "execution_correlation": None,
+            "execution_evidence": None,
+            "revision": 1,
+        }
+        try:
+            with self._connection:
+                self._connection.execute(
+                    "INSERT INTO mission_state VALUES (?, ?, ?, ?, ?)",
+                    (mission_id, MISSION_STATE_SCHEMA_VERSION, 1, MissionExecutionStatus.CREATED.value, self._encode(document)),
+                )
+                self._append_history(mission_id, 1, None, MissionExecutionStatus.CREATED, occurred_at, "created")
+        except sqlite3.IntegrityError as error:
+            raise MissionStateStoreError(f"mission state already exists: {mission_id}") from error
+        return self.get(mission_id)
+
+    def get(self, mission_id: str) -> MissionExecutionState:
+        row = self._connection.execute("SELECT document FROM mission_state WHERE mission_id = ?", (mission_id,)).fetchone()
+        if row is None:
+            raise MissionStateStoreError(f"unknown mission state: {mission_id}")
+        return self._decode(row["document"])
+
+    def transition(
+        self,
+        mission_id: str,
+        status: MissionExecutionStatus,
+        *,
+        occurred_at: str,
+        reason: str,
+        actions: Sequence[Any] | None = None,
+        execution_correlation: Any | None = None,
+        execution_evidence: Any | None = None,
+        resume: Mapping[str, Any] | None = None,
+    ) -> MissionExecutionState:
+        if not occurred_at or not reason:
+            raise MissionStateStoreError("transition time and reason are required")
+        current = self.get(mission_id)
+        if status not in _ALLOWED_TRANSITIONS[current.status]:
+            raise MissionStateStoreError(f"mission state transition {current.status.value} -> {status.value} is not permitted")
+        next_actions = _documents(actions, "action") if actions is not None else current.actions
+        document = self._as_document(current)
+        document.update({
+            "status": status.value,
+            "actions": list(next_actions),
+            "progress": _derive_progress(next_actions),
+            "resume": _document(resume, "resume") if resume is not None else document["resume"],
+            "execution_correlation": _document(execution_correlation, "execution correlation") if execution_correlation is not None else document["execution_correlation"],
+            "execution_evidence": _document(execution_evidence, "execution evidence") if execution_evidence is not None else document["execution_evidence"],
+            "revision": current.revision + 1,
+        })
+        if status is MissionExecutionStatus.COMPLETED:
+            if not document["execution_evidence"]:
+                raise MissionStateStoreError("completed mission state requires execution evidence")
+            if document["progress"]["percent_complete"] != 100:
+                raise MissionStateStoreError("completed mission state requires every action to be complete")
+        with self._connection:
+            self._connection.execute(
+                "UPDATE mission_state SET revision = ?, status = ?, document = ? WHERE mission_id = ?",
+                (document["revision"], status.value, self._encode(document), mission_id),
+            )
+            self._append_history(mission_id, document["revision"], current.status, status, occurred_at, reason)
+        return self.get(mission_id)
+
+    def history(self, mission_id: str) -> tuple[MissionStateHistoryEntry, ...]:
+        self.get(mission_id)
+        rows = self._connection.execute(
+            "SELECT sequence, from_status, to_status, occurred_at, reason FROM mission_state_history WHERE mission_id = ? ORDER BY sequence",
+            (mission_id,),
+        ).fetchall()
+        return tuple(
+            MissionStateHistoryEntry(
+                row["sequence"],
+                None if row["from_status"] is None else MissionExecutionStatus(row["from_status"]),
+                MissionExecutionStatus(row["to_status"]), row["occurred_at"], row["reason"],
+            ) for row in rows
+        )
+
+    def resumable(self) -> tuple[MissionExecutionState, ...]:
+        rows = self._connection.execute(
+            "SELECT document FROM mission_state WHERE status NOT IN (?, ?) ORDER BY mission_id",
+            (MissionExecutionStatus.COMPLETED.value, MissionExecutionStatus.ARCHIVED.value),
+        ).fetchall()
+        return tuple(self._decode(row["document"]) for row in rows)
+
+    def _append_history(self, mission_id: str, sequence: int, from_status: MissionExecutionStatus | None, to_status: MissionExecutionStatus, occurred_at: str, reason: str) -> None:
+        self._connection.execute(
+            "INSERT INTO mission_state_history VALUES (?, ?, ?, ?, ?, ?)",
+            (mission_id, sequence, None if from_status is None else from_status.value, to_status.value, occurred_at, reason),
+        )
+
+    @staticmethod
+    def _encode(document: Mapping[str, Any]) -> str:
+        return json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    @staticmethod
+    def _as_document(state: MissionExecutionState) -> dict[str, Any]:
+        return {
+            "schema_version": state.schema_version, "mission_id": state.mission_id, "mission": dict(state.mission),
+            "intents": [dict(item) for item in state.intents], "actions": [dict(item) for item in state.actions],
+            "status": state.status.value, "progress": dict(state.progress), "resume": dict(state.resume),
+            "execution_correlation": None if state.execution_correlation is None else dict(state.execution_correlation),
+            "execution_evidence": None if state.execution_evidence is None else dict(state.execution_evidence), "revision": state.revision,
+        }
+
+    @staticmethod
+    def _decode(serialized: str) -> MissionExecutionState:
+        document = json.loads(serialized)
+        if document.get("schema_version") != MISSION_STATE_SCHEMA_VERSION:
+            raise MissionStateStoreError("mission state schema version is unsupported")
+        return MissionExecutionState(
+            mission_id=document["mission_id"], mission=document["mission"], intents=tuple(document["intents"]),
+            actions=tuple(document["actions"]), status=MissionExecutionStatus(document["status"]),
+            progress=document["progress"], resume=document["resume"],
+            execution_correlation=document["execution_correlation"], execution_evidence=document["execution_evidence"],
+            revision=document["revision"], schema_version=document["schema_version"],
+        )

@@ -153,6 +153,13 @@ qualification, and evidence return; Forge owns engineering reasoning and
 evidence interpretation. Engineering Platform 1.5 is the reference
 implementation during bootstrap, while Forge remains decoupled from it.
 
+Phase B — Increment 2.2 adds the durable, versioned
+[Mission State Store](docs/architecture/mission-state-store.md). It owns
+restart-safe Mission execution state, atomic transitions, progress,
+correlation, evidence references, resume data, and immutable history. It adds
+no Mission Runner, daemon, Execution Host, queue, AI planning, Studio, or
+repository operation.
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text
