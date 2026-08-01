@@ -96,6 +96,12 @@ traceable handoff into the existing Engineering Proposal process. It performs
 no AI reasoning, autonomous planning, proposal or Intent creation, Runtime,
 or execution.
 
+Phase B — Increment 1.6 adds the provider-independent [AI Architect Provider
+Contract](docs/architecture/ai-architect-provider.md): Forge supplies complete,
+versioned repository context and providers return evidence-linked reasoning
+candidates only. It implements no concrete provider, Runtime Provider, prompt
+generation, lifecycle execution, or engineering execution.
+
 The canonical engineering chain is:
 
 ```text
@@ -173,8 +179,8 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is Forge Phase B — Increment 1.6 — AI Architect
-Provider Abstraction. Forge still does not provide an AI Architect Provider, a
+The recommended next increment is Forge Phase B — Increment 1.7 — OpenAI AI
+Architect Provider. Forge still does not provide an AI Architect Provider, a
 Runtime Provider, a Mission Runtime, a queue, Studio, repository operations,
 or execution.
 

@@ -102,6 +102,18 @@ from .architecture_reasoning import (
     accept_for_proposal,
     hand_off_to_proposal,
 )
+from .ai_architect_provider import (
+    AI_ARCHITECT_PROVIDER_SCHEMA_VERSION,
+    AIArchitectConfidence,
+    AIArchitectFindingCandidate,
+    AIArchitectInput,
+    AIArchitectInputKind,
+    AIArchitectOpportunityCandidate,
+    AIArchitectRequest,
+    AIArchitectResult,
+    EngineeringIntentDraftCandidate,
+    EngineeringProposalDraftCandidate,
+)
 
 __all__ = [
     "Capability",
@@ -188,4 +200,14 @@ __all__ = [
     "RoadmapImpact",
     "accept_for_proposal",
     "hand_off_to_proposal",
+    "AI_ARCHITECT_PROVIDER_SCHEMA_VERSION",
+    "AIArchitectConfidence",
+    "AIArchitectFindingCandidate",
+    "AIArchitectInput",
+    "AIArchitectInputKind",
+    "AIArchitectOpportunityCandidate",
+    "AIArchitectRequest",
+    "AIArchitectResult",
+    "EngineeringIntentDraftCandidate",
+    "EngineeringProposalDraftCandidate",
 ]
