@@ -114,17 +114,22 @@ a selected provider declaration, repository snapshot, and advisory output.
 Its lifecycle is human-governed and non-executing; it neither invokes a
 provider nor approves architectural decisions or Engineering Intents.
 
+Phase B — Increment 1.9 adds [Runtime Prompt Generation](docs/architecture/runtime-prompt-generation.md):
+an immutable, deterministic derivation of a transient, provider-specific
+Runtime Prompt from an approved Engineering Intent and complete versioned
+context. It defines the provider-neutral section structure and provenance only;
+it implements no provider-specific template or runtime execution.
+
 The canonical engineering chain is:
 
 ```text
 Repository Knowledge → Architecture Reasoning → Engineering Proposal →
-Engineering Intent → Runtime Provider → Runtime Prompt → Execution → Evidence
+Engineering Intent → Prompt Generator → Runtime Prompt → Runtime Provider → Execution → Evidence
 ```
 
 Prompt Artifact is retained as the compatible transitional execution
 representation introduced during bootstrap. Runtime Prompts are instead
-provider-specific artifacts derived from Engineering Intent once Runtime
-Providers are implemented.
+provider-specific artifacts derived from an approved Engineering Intent.
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote
@@ -191,10 +196,10 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is Forge Phase B — Increment 1.9 — First
-Concrete AI Architect Provider. Forge still does not provide an AI Architect Provider, a
-Runtime Provider, a Mission Runtime, a queue, Studio, repository operations,
-or execution.
+The recommended next increment is Forge Phase B — Increment 1.10 — First
+Concrete Runtime Prompt Generator for Codex CLI. Forge still does not provide
+a concrete Runtime Provider, a Mission Runtime, a queue, Studio, repository
+operations, or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),

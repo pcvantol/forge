@@ -132,6 +132,15 @@ from .ai_architect_session import (
     RepositorySnapshot,
     transition_ai_architect_session,
 )
+from .runtime_prompt import (
+    RUNTIME_PROMPT_SCHEMA_VERSION,
+    ProviderPromptDefinition,
+    RuntimePrompt,
+    RuntimePromptGenerationContext,
+    RuntimePromptGenerationRequest,
+    RuntimePromptSection,
+    RuntimePromptSectionKind,
+)
 
 __all__ = [
     "Capability",
@@ -242,4 +251,11 @@ __all__ = [
     "AIArchitectSessionStatus",
     "RepositorySnapshot",
     "transition_ai_architect_session",
+    "RUNTIME_PROMPT_SCHEMA_VERSION",
+    "ProviderPromptDefinition",
+    "RuntimePrompt",
+    "RuntimePromptGenerationContext",
+    "RuntimePromptGenerationRequest",
+    "RuntimePromptSection",
+    "RuntimePromptSectionKind",
 ]

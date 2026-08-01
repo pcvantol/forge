@@ -35,9 +35,10 @@ Readiness](workspace-readiness.md).
 The canonical engineering chain is:
 
 ```text
-Knowledge → Planning → Proposal → Engineering Intent → Runtime Provider → Runtime Prompt → Execution → Evidence
+Knowledge → Planning → Proposal → Engineering Intent → Prompt Generator → Runtime Prompt → Runtime Provider → Execution → Evidence
 ```
 
-Runtime Providers and Runtime Prompts are future capabilities. Prompt Artifact
-remains compatible as the transitional bootstrap representation until those
-capabilities are implemented.
+Runtime Prompt Generation 1.9 is the implemented local derivation contract.
+Concrete Prompt Generators and Runtime Providers remain future capabilities.
+Prompt Artifact remains compatible as the transitional bootstrap
+representation and is not an input to a Runtime Prompt.

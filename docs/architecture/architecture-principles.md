@@ -36,12 +36,12 @@ canonical record. See [Engineering Intent](engineering-intent.md).
 
 ### Runtime prompts are derived and transient
 
-Runtime Providers translate Engineering Intent into runtime-specific prompts
-for systems such as Codex CLI, Claude Code, and Gemini CLI. A Runtime Provider
-consumes the intent-derived representation; it never owns or redefines the
-intent. Runtime Prompts are transient execution artifacts, not canonical
-engineering records. The retained Prompt Artifact is transitional bootstrap
-compatibility, not an alternative authority.
+Prompt Generators derive runtime-specific prompts from approved Engineering
+Intents for systems such as Codex CLI, Claude Code, and Gemini CLI. A Runtime
+Provider consumes the intent-derived representation; it never owns or
+redefines the intent. Runtime Prompts are transient execution artifacts, not
+canonical engineering records. The retained Prompt Artifact is transitional
+bootstrap compatibility, not an alternative authority.
 
 ### Human governance is explicit
 
