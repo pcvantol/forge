@@ -59,6 +59,8 @@ class EngineeringPlatformReport:
 class EngineeringPlatformInbox(Protocol):
     def submit(self, request: EngineeringPlatformInboxRequest) -> EngineeringPlatformInboxReceipt: ...
 
+    def receipt_for(self, correlation_id: str) -> EngineeringPlatformInboxReceipt | None: ...
+
 
 class EngineeringPlatformReportSource(Protocol):
     def report_for(self, run_id: str) -> EngineeringPlatformReport | None: ...
@@ -70,23 +72,27 @@ class BootstrapExecutionHostAdapter:
     def __init__(self, inbox: EngineeringPlatformInbox, reports: EngineeringPlatformReportSource) -> None:
         self._inbox = inbox
         self._reports = reports
-        self._dispatches: dict[str, ExecutionRequest] = {}
 
     def dispatch(self, request: ExecutionRequest) -> ExecutionDispatch:
+        recovered = self.recover_dispatch(request)
+        if recovered is not None:
+            return recovered
         receipt = self._inbox.submit(EngineeringPlatformInboxRequest(
             prompt=request.runtime_prompt,
             correlation_id=request.correlation_id,
             retry_of_correlation_id=request.retry_of_correlation_id,
         ))
-        if receipt.run_id in self._dispatches:
-            raise ValueError("Engineering Platform run identity was already dispatched")
-        self._dispatches[receipt.run_id] = request
+        return ExecutionDispatch(request=request, host_run_id=receipt.run_id)
+
+    def recover_dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None:
+        """Recover a receipt from durable host state, never adapter memory."""
+        receipt = self._inbox.receipt_for(request.correlation_id)
+        if receipt is None:
+            return None
         return ExecutionDispatch(request=request, host_run_id=receipt.run_id)
 
     def retrieve_evidence(self, dispatch: ExecutionDispatch) -> ExecutionHostEvidence | None:
-        request = self._dispatches.get(dispatch.host_run_id)
-        if request != dispatch.request:
-            raise ValueError("unknown Bootstrap Engineering Platform dispatch")
+        request = dispatch.request
         report = self._reports.report_for(dispatch.host_run_id)
         if report is None:
             return None

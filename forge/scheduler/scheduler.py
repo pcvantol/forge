@@ -95,7 +95,17 @@ class BootstrapMissionScheduler:
         dispatch = host.dispatch(request)
         if dispatch.request != request:
             raise ValueError("execution host must acknowledge the exact dispatch request")
-        return self._replace(actions, action.id, EngineeringActionStatus.WAITING_FOR_RESULT), dispatch
+        return self.acknowledge(actions, dispatch), dispatch
+
+    def acknowledge(self, actions: tuple[EngineeringAction, ...], dispatch: ExecutionDispatch) -> tuple[EngineeringAction, ...]:
+        """Persist the host acknowledgement after a Runner-owned safe dispatch."""
+        request = dispatch.request
+        action = self._by_id(actions, request.action_id)
+        if action.status is not EngineeringActionStatus.ACTIVE:
+            raise ValueError("only the active Engineering Action can acknowledge dispatch")
+        if (action.intent_id, action.intent_revision) != (request.intent_id, request.intent_revision):
+            raise ValueError("execution request Intent provenance does not match its active Action")
+        return self._replace(actions, action.id, EngineeringActionStatus.WAITING_FOR_RESULT)
 
     def reconcile_from_host(self, actions: tuple[EngineeringAction, ...], dispatch: ExecutionDispatch, host: ExecutionHost) -> tuple[EngineeringAction, ...]:
         evidence = host.retrieve_evidence(dispatch)

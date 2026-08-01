@@ -1,4 +1,4 @@
-# Execution Host Contract 2.2
+# Execution Host Contract 2.3
 
 ## Purpose
 
@@ -63,6 +63,12 @@ the requested host, Mission, Intent revision, Engineering Action, Runtime
 Prompt, workspace, repository, correlation identity, dispatch timestamp, and
 optional retry predecessor. Dispatch returns the immutable host run identifier.
 
+Dispatch is correlation-idempotent. `recover_dispatch(request)` returns the
+original immutable acknowledgement for an accepted request correlation, or
+`None` when the host has not accepted it. This allows the Bootstrap Mission
+Runner to persist a request before dispatch and resume after a crash without
+reconstructing state from a report or relying on host-adapter process memory.
+
 Every terminal evidence envelope and repository observation repeats the exact
 correlation identity and host run identity, plus Mission, Intent revision,
 Action, Runtime Prompt, repository, report, and retry relationship. Forge must
@@ -124,5 +130,6 @@ repository mutation, telemetry collection, or qualification.
 
 ## Out of scope
 
-No Engineering Platform, Forge Runtime, Codex, Claude, Gemini, Execution,
-Queue, Studio, or concrete Host is implemented here.
+No Engineering Platform, Codex, Claude, Gemini, Execution, Queue, Studio, or
+concrete Host is implemented here. The Bootstrap Mission Runner consumes this
+contract separately; it does not alter Host ownership.

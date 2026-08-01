@@ -55,6 +55,7 @@ and repository observation back into canonical evidence. Inbox transport,
 `Retry-Of`, prompt-file handling, run identifiers, report/status locations,
 polling, and local configuration belong there, never in scheduler core.
 
-Engineering Platform 1.5 remains a replaceable reference Execution Host. This
-increment does not implement a Mission Runner, background loop, real prompt
-delivery, host daemon, execution, or repository operation.
+Engineering Platform 1.5 remains a replaceable reference Execution Host. The
+separate Bootstrap Mission Runner 3.0 coordinates this scheduler through the
+canonical contract; scheduler core still implements no host daemon, execution,
+or repository operation.

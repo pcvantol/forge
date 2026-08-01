@@ -105,4 +105,6 @@ Intent. Earlier direct-Intent wording is historical architecture only.
 
 This increment implements no OpenAI, Claude, Gemini, or Local LLM provider;
 no concrete prompt template; no prompt execution; no queue; no Studio; no
-Execution Host replacement; and no Engineering Platform replacement.
+Execution Host replacement; and no Engineering Platform replacement. Bootstrap
+Mission Runner 3.0 may consume an injected generated prompt, but it adds no
+provider-specific prompt generation.

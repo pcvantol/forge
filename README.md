@@ -160,6 +160,13 @@ correlation, evidence references, resume data, and immutable history. It adds
 no Mission Runner, daemon, Execution Host, queue, AI planning, Studio, or
 repository operation.
 
+Phase C — Increment 3.0 adds the deterministic
+[Bootstrap Mission Runner](docs/architecture/bootstrap-mission-runner.md). It
+coordinates one persisted Mission through the Scheduler, injected Runtime
+Prompt derivation, and canonical Execution Host Contract. It adds no AI
+planning, Execution Host implementation, parallelism, background service, or
+repository operation.
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text

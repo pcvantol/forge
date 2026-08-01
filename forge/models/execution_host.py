@@ -14,7 +14,7 @@ from typing import Protocol
 from .runtime_prompt import RuntimePrompt
 
 
-EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "2.2"
+EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "2.3"
 
 
 class ExecutionHostResponsibility(str, Enum):
@@ -181,8 +181,16 @@ class ExecutionHostEvidence:
 
 
 class ExecutionHost(Protocol):
-    """The sole provider-neutral operational boundary used by the scheduler."""
+    """The sole provider-neutral operational boundary used by the runtime.
+
+    ``dispatch`` is idempotent for an exact request correlation.  A host must
+    retain sufficient operational state for ``recover_dispatch`` to return the
+    original acknowledgement after a Runner restart.  This lets Forge persist
+    a request before dispatching it without treating process memory as state.
+    """
 
     def dispatch(self, request: ExecutionRequest) -> ExecutionDispatch: ...
+
+    def recover_dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None: ...
 
     def retrieve_evidence(self, dispatch: ExecutionDispatch) -> ExecutionHostEvidence | None: ...

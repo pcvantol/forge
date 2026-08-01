@@ -25,6 +25,11 @@ class Inbox:
         self.requests.append(item)
         return EngineeringPlatformInboxReceipt("ep-run-1")
 
+    def receipt_for(self, correlation_id: str) -> EngineeringPlatformInboxReceipt | None:
+        if correlation_id != "correlation-1" or not self.requests:
+            return None
+        return EngineeringPlatformInboxReceipt("ep-run-1")
+
 
 class Reports:
     def report_for(self, run_id: str) -> EngineeringPlatformReport | None:
@@ -44,6 +49,12 @@ class BootstrapAdapterTests(unittest.TestCase):
         assert evidence is not None
         self.assertEqual(evidence.host_run_id, "ep-run-1")
         self.assertEqual(evidence.repository_evidence.action_id, "action-1")
+
+    def test_adapter_recovers_a_dispatch_without_process_memory(self) -> None:
+        inbox = Inbox()
+        first = BootstrapExecutionHostAdapter(inbox, Reports()).dispatch(request())
+        resumed = BootstrapExecutionHostAdapter(inbox, Reports()).recover_dispatch(request())
+        self.assertEqual(resumed, first)
 
 
 if __name__ == "__main__":
