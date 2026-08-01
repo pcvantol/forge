@@ -10,7 +10,7 @@ closed lifecycle, and completion requirements.
 
 ## Boundaries
 
-Engineering Intent remains the canonical artifact for one bounded increment
+Engineering Intent remains the canonical tactical artifact for coherent work
 under Constitution Article 3. A Mission groups Intents but does not revise,
 approve, execute, persist, or schedule them. Runtime Prompt Generation stays
 per-Intent, and Runtime Providers remain future consumers only. No Mission
@@ -25,6 +25,6 @@ compliance evidence. The model does not retrieve or assess evidence itself.
 
 ## Recommended next increment
 
-Forge Phase B — Increment 1.11 — Mission Planning should establish only
-declarative Mission planning and sequencing assessment. It must preserve the
-Mission Model's immutable, local, non-executing boundary.
+This historical handoff is reconciled by Engineering Action Architecture 1.11:
+the next increment is the Bootstrap Mission Scheduler, which releases Actions
+rather than treating Intents as executable units.

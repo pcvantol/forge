@@ -126,17 +126,22 @@ engineering objectives. Missions own boundaries, ordered Intent memberships,
 derived progress, dependencies, aggregate evidence, and completion without
 replacing Engineering Intent as the canonical bounded increment.
 
+Phase B — Architecture Correction adds [Engineering Action](docs/architecture/engineering-action.md):
+the smallest intentional executable engineering unit. Missions are strategic
+and contain Intents; Intents are tactical and contain Actions; Actions produce
+provider-specific Runtime Prompts. This reconciliation adds no scheduler,
+Runtime, provider, prompt generator, or execution implementation.
+
 The canonical Engineering Mission chain is:
 
 ```text
-Repository Knowledge → Architecture Reasoning → Engineering Proposal →
-Engineering Mission → Engineering Intent → Prompt Generator → Runtime Prompt →
-Runtime Provider → Execution → Evidence
+Vision → Architecture → Roadmap → Engineering Mission → Engineering Intent →
+Engineering Action → Runtime Prompt → Execution → Evidence
 ```
 
 Prompt Artifact is retained as the compatible transitional execution
 representation introduced during bootstrap. Runtime Prompts are instead
-provider-specific artifacts derived from an approved Engineering Intent.
+provider-specific artifacts produced from an Engineering Action.
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote
@@ -203,9 +208,10 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is Forge Phase B — Increment 1.11 — Mission
-Planning. Forge still does not provide a concrete Runtime Provider, a Mission
-Runtime, a queue, Studio, repository operations, or execution.
+The recommended next increment is the Bootstrap Mission Scheduler, which must
+release Engineering Actions rather than Engineering Intents. Forge still does
+not provide a concrete Runtime Provider, Runtime, queue, Studio, repository
+operations, or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),

@@ -18,10 +18,12 @@ commitment.
 | **Knowledge Package** | A bounded collection of bootstrap or domain knowledge that informs capture and reconciliation; it is not itself the final canonical repository record. |
 | **Knowledge Distillation** | The future conceptual boundary that identifies reusable Knowledge Candidates from working material while retaining source and uncertainty. |
 | **Knowledge Reconciliation** | The future conceptual boundary that compares a Knowledge Candidate with Repository Context and architectural constraints before a human-governed repository knowledge decision. |
-| **Engineering Intent** | The canonical, model-independent record of one bounded engineering objective, rationale, scope, constraints, validation, and expected evidence. |
+| **Engineering Mission** | The strategic record that owns an engineering objective, scope, progress, and Engineering Intent memberships; it is not executable. |
+| **Engineering Intent** | The canonical tactical record that owns engineering rationale, boundaries, validation, evidence, and architectural traceability and contains Engineering Actions; it is not directly executable. |
+| **Engineering Action** | The smallest intentional executable engineering unit contained by an Engineering Intent; it produces a Runtime Prompt. |
 | **Proposal** | A bounded recommendation that scopes and justifies possible engineering work before it becomes an approved Engineering Intent. |
-| **Runtime Provider** | A replaceable boundary that may translate an approved Engineering Intent into a runtime-specific representation without owning the intent or approval. |
-| **Runtime Prompt** | A temporary, provider-specific execution artifact derived from Engineering Intent; it is never the canonical definition of work. |
+| **Runtime Provider** | A replaceable future consumer of a provider-specific Runtime Prompt without owning the Action, Intent, or approval. |
+| **Runtime Prompt** | A temporary, provider-specific execution artifact produced from an Engineering Action; it is never the canonical definition of work. |
 | **Execution Host** | A replaceable environment that may perform bounded work but does not own engineering knowledge, governance, or completion decisions. |
 | **Execution Mode** | The declared manner in which a Workspace approaches execution; it provides context and does not itself authorize work. |
 | **Governance Profile** | The Workspace-selected declaration of human authority, review, and approval expectations for an execution context. |

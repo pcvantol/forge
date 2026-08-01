@@ -2,21 +2,24 @@
 
 ## Purpose
 
-Runtime Prompt Generation derives a transient, provider-specific execution
-artifact from one approved Engineering Intent and complete versioned context.
-It establishes prompt generation only. It does not invoke a Runtime Provider,
-execute a prompt, operate a repository, queue work, or replace an Execution
-Host.
+The canonical model requires Runtime Prompt Generation to derive a transient,
+provider-specific execution artifact from one released Engineering Action and
+complete versioned context. This reconciliation changes no implementation: the
+existing 1.9 local contract continues to preserve its Intent provenance until
+a separately authorized migration introduces Action provenance. It does not
+invoke a Runtime Provider, execute a prompt, operate a repository, queue work,
+or replace an Execution Host.
 
-Engineering Intent remains the canonical, model-independent record of bounded
-engineering work. A Runtime Prompt is derived representation, never canonical
+Engineering Intent remains the tactical, model-independent record of coherent
+engineering work. Engineering Action is its smallest intentional executable
+unit. A Runtime Prompt is a derived representation, never canonical
 engineering knowledge and never an input for Engineering Intent authoring,
 approval, or repository-drift assessment.
 
 ## Transformation
 
 ```text
-Approved Engineering Intent + Repository Context + Architecture Handbook
+Released Engineering Action + Repository Context + Architecture Handbook
 + Constitution + Workspace Context + Capability Context
                          ↓
                   Prompt Generator
@@ -24,12 +27,12 @@ Approved Engineering Intent + Repository Context + Architecture Handbook
                   Runtime Prompt
 ```
 
-The generation request is immutable. It records the approved source Intent,
-the Provider Prompt Definition identity and version, each versioned context
-reference, and declared constraints, validation, and deliverables. The output
-retains the source Intent id/revision and a stable digest of that complete
-request. Identical requests therefore produce identical abstract Runtime
-Prompts.
+The future generation request is immutable. It records the released source
+Action and its containing Intent provenance, the Provider Prompt Definition
+identity and version, each versioned context reference, and declared
+constraints, validation, and deliverables. The output retains that provenance
+and a stable digest of the complete request. Identical requests therefore
+produce identical abstract Runtime Prompts.
 
 ## Canonical structure
 
@@ -49,15 +52,17 @@ is prescribed by this increment.
 
 ## Lifecycle and ownership
 
-Forge owns the source Intent, the generation request, its provenance, and the
-abstract generation contract. A Runtime Prompt is derived, provider-specific,
-and transient: it may be regenerated from its recorded inputs and is not a
+Forge owns the source Action and Intent provenance, the future generation
+request, and the abstract generation contract. A Runtime Prompt is a provider-specific
+execution artifact: derived and transient, it may be regenerated from its
+recorded inputs and is not a
 durable source of engineering meaning. Provider definitions own only the
 rendering identity and version. Future Runtime Providers may consume a Runtime
 Prompt, but cannot alter its source Intent or grant approval.
 
 ```text
-Engineering Intent (canonical, human-approved)
+Engineering Intent (tactical, human-governed)
+  → Engineering Action (smallest intentional executable unit)
   → Runtime Prompt Generation (Forge-owned derivation)
   → Runtime Prompt (provider-specific, transient)
   → Runtime Provider (future consumer)
@@ -71,7 +76,7 @@ Forge bootstrap. This contract neither imports nor replaces it.
 
 ## Provider independence
 
-The same approved Engineering Intent and declared context should eventually
+The same released Engineering Action and declared context should eventually
 produce a Codex Prompt, Claude Prompt, Gemini Prompt, or Local LLM Prompt.
 Only the selected Prompt Generator and its Provider Prompt Definition change;
 the Engineering Intent and canonical section semantics stay identical.
@@ -93,7 +98,9 @@ provider implementation or template is present.
 `EngineeringPromptArtifact` remains a compatibility-only bootstrap artifact
 derived from an approved Engineering Proposal. It is provider-neutral and
 does not become a Runtime Prompt input, source, or alias. Runtime Prompt
-Generation instead derives from an approved Engineering Intent.
+The existing 1.9 local contract remains a historical direct-Intent derivation
+and is not migrated by this architecture correction. The canonical successor
+derives from a released Engineering Action within an approved Intent.
 
 ## Out of scope
 

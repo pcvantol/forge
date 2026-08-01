@@ -32,7 +32,8 @@ completion evidence.
 
 ## Recommended next increment
 
-Forge Phase B — Increment 1.11 — Mission Planning should define declarative
-planning and sequencing assessment for an established Mission. It must not
-introduce a scheduler, queue, AI planning, Runtime, Studio, persistence, or
-execution.
+This historical recommendation is superseded by the Engineering Action
+architecture reconciliation. The next increment is the Bootstrap Mission
+Scheduler, which must release Engineering Actions rather than Engineering
+Intents and must not introduce Runtime execution, providers, or autonomous
+approval.

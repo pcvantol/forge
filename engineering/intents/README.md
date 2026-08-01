@@ -14,3 +14,8 @@ templates/
 ```
 
 No Intent artifact is created or migrated by this increment.
+
+The canonical future layout is reconciled by
+[Engineering Action Architecture 1.11](../../docs/architecture/engineering-action.md):
+each Intent contains one or more Engineering Actions, while this directory
+remains reserved only for Intent records. No Action storage is created here.

@@ -52,7 +52,8 @@ constitution makes that aim durable by fixing the sources of truth and the
 boundaries between product meaning, execution, and assessment. The resulting
 architecture is neither prompt-centred nor host-centred: repository evidence is
 authoritative for repository reality, the Workspace is the product boundary,
-Engineering Intent is the canonical statement of bounded work, and humans
+Engineering Intent is the canonical tactical statement of coherent work;
+Engineering Action is its smallest intentional executable unit, and humans
 retain authority to approve progression.
 
 The twelve constitutional articles operate as one system. Repository-first
@@ -87,11 +88,11 @@ The following invariants are architectural guardrails, not optional guidance.
   and assumptions when assessing repository reality.
 - A Workspace models a product; a Repository models an engineering asset. A
   Workspace may have many repositories but exactly one canonical catalog entry.
-- Engineering Intent records the model-independent objective, rationale,
-  scope, constraints, validation, deliverables, and expected evidence of one
-  bounded increment. A Runtime Prompt does not.
-- Forge owns engineering knowledge; Runtime Providers translate approved
-  Intent, while Execution Hosts perform work. Neither owns the meaning of the
+- Engineering Intent records tactical rationale, boundaries, validation,
+  evidence, and architectural traceability; contained Engineering Actions
+  state the smallest executable units. A Runtime Prompt does not.
+- Forge owns engineering knowledge; Engineering Actions produce Runtime Prompts
+  while Execution Hosts perform work. Neither owns the meaning of the
   work or its completion decision.
 - AI can analyse, plan, propose, and execute only within explicit human
   authority. Generated artifacts and lifecycle labels do not approve work.
@@ -140,16 +141,16 @@ silently replace the authority of an earlier one.
 ```mermaid
 flowchart LR
     W[Workspace] --> A[Architecture] --> R[Roadmap] --> B[Backlog]
-    B --> P[Proposal] --> I[Engineering Intent] --> AP[Approval]
-    AP --> RP[Runtime Provider] --> PR[Runtime Prompt] --> X[Execution]
+    B --> P[Proposal] --> I[Engineering Intent] --> AC[Engineering Action]
+    AC --> PR[Runtime Prompt] --> X[Execution]
     X --> E[Evidence] --> KE[Knowledge Evolution]
     KE -. informs .-> A
 ```
 
 Vision gives stable direction; Architecture gives structure; Roadmap and
 Backlog make opportunities visible; a Proposal scopes and justifies a candidate
-increment; Intent makes the bounded work canonical; Approval authorizes
-progression; a Runtime Provider and Prompt make it executable in a chosen
+increment; Intent retains tactical meaning; Approval authorizes progression;
+an Engineering Action makes one unit executable and produces a provider-specific
 context; Evidence assesses the result; Knowledge Evolution returns assessed
 learning to future direction. The sequence is conceptual, not a currently
 implemented runtime workflow.
@@ -176,9 +177,10 @@ translation, execution, evidence, and learning. Its primary layers are:
 | Architecture | State enduring structure, boundaries, and invariants. | Become implementation or a runtime instruction. |
 | Roadmap and Backlog | Frame strategic direction and candidate work. | Authorize execution. |
 | Proposal | Scope and justify a candidate increment. | Become an Intent, approval, or execution. |
-| Engineering Intent | Preserve canonical, model-independent bounded work. | Grant approval or execute itself. |
+| Engineering Intent | Preserve tactical rationale, boundaries, validation, evidence, and architectural traceability. | Generate a Runtime Prompt directly or execute itself. |
+| Engineering Action | State the smallest intentional executable unit within an Intent. | Expand its Intent, replace governance, or own architecture. |
 | Approval | Apply human authority to progression. | Change Intent content or invoke a provider. |
-| Runtime Provider | Translate approved Intent into a provider-specific prompt. | Own, reinterpret, or approve the Intent. |
+| Runtime Prompt | Carry the provider-specific artifact produced by an Action. | Own, reinterpret, or approve the Intent. |
 | Execution Host | Perform bounded work and yield observable outcomes. | Own Forge knowledge, governance, or completion. |
 | Evidence and Knowledge Evolution | Assess outcomes and inform reviewed future knowledge. | Silently rewrite architecture or expand scope. |
 
@@ -189,8 +191,8 @@ particular Intent declares.
 
 ## 6. Execution architecture
 
-The runtime boundary is intentionally narrow. Forge owns knowledge and Intent;
-a Runtime Provider derives a temporary Runtime Prompt; an Execution Host uses
+The runtime boundary is intentionally narrow. Forge owns knowledge, Intent,
+and Action; an Engineering Action produces a temporary Runtime Prompt; an Execution Host uses
 that prompt to perform bounded work; observable results contribute Evidence;
 repository evidence establishes Repository Reality where relevant. The host can
 use Git, CI, deployment systems, or adjacent tools without making Forge their
@@ -198,8 +200,8 @@ replacement.
 
 ```mermaid
 flowchart TD
-    I[Approved Engineering Intent] --> P[Runtime Provider]
-    P --> RP[Derived Runtime Prompt]
+    I[Engineering Intent] --> A[Engineering Action]
+    A --> RP[Derived Runtime Prompt]
     RP --> H[Execution Host]
     H --> X[Bounded execution]
     X --> E[Evidence]
@@ -296,21 +298,21 @@ expresses capability-oriented strategic movement. Backlog records opportunities
 without authorizing them. Proposal makes a candidate increment reviewable by
 stating rationale, scope, dependencies, risk, and motivating evidence.
 
-Engineering Intent is the critical architectural bridge. It is formed from a
-Proposal within Vision and Architecture constraints and records one bounded
-objective in a model-independent form. It remains canonical when providers,
-prompts, hosts, or implementation details change. Approval is separate human
-authority: it authorizes progression but does not modify the Intent or select a
-runtime.
+Engineering Intent is the critical tactical bridge. It is formed from a
+Proposal within Vision and Architecture constraints and records rationale,
+boundaries, validation, evidence, and traceability. It remains canonical when
+providers, prompts, hosts, or implementation details change. Engineering
+Action is the smallest intentional unit contained by that Intent and is the
+executable bridge to a Runtime Prompt. Approval is separate human authority:
+it authorizes progression but does not modify the Intent or select a runtime.
 
 ## 12. Intent, prompt, execution, and evidence
 
 ```mermaid
 flowchart LR
     P[Proposal] --> I[Engineering Intent]
-    I --> A[Explicit human approval]
-    A --> RP[Runtime Provider]
-    RP --> PR[Runtime Prompt: transient]
+    I --> A[Engineering Action]
+    A --> PR[Runtime Prompt: transient]
     PR --> EH[Execution Host]
     EH --> E[Evidence]
     E --> RR[Repository Reality]
@@ -318,8 +320,9 @@ flowchart LR
     O[Reviewer observation] -. advisory .-> E
 ```
 
-The previous conceptual shortcut—Proposal directly to Prompt to Execution—is
-rejected because prompt wording varies by provider and host. A Runtime Prompt
+The previous conceptual shortcut—Intent directly to Prompt to Execution—is
+rejected because an Intent may include several Actions and prompt wording
+varies by provider and host. A Runtime Prompt
 is disposable provider-specific instruction, never canonical engineering
 knowledge, evidence, approval, or the basis of Architecture Drift. Execution
 does not approve itself, redefine Intent, or make a completion claim
@@ -599,7 +602,8 @@ separately authorized Engineering Intent.
 | Capability | Explicit, versioned, bounded unit through which Forge may add engineering behavior. |
 | Capability Qualification | Capability-specific assessment of declared criteria and evidence; not self-approval. |
 | Canonical Repository | Exactly one primary product source-of-truth entry in a Repository Catalog. |
-| Engineering Intent | Canonical, model-independent record of one bounded engineering objective and its evidence expectations. |
+| Engineering Intent | Canonical tactical record of coherent work, containing Engineering Actions. |
+| Engineering Action | Smallest intentional executable unit, which produces a Runtime Prompt. |
 | Execution Host | Replaceable environment that performs work without owning knowledge, governance, or completion. |
 | Execution Mode | Declared manner of approaching execution; context, not authority. |
 | Evidence | Reproducible, assessable references used to evaluate declared outcomes. |
@@ -612,8 +616,8 @@ separately authorized Engineering Intent.
 | Knowledge Source | Versioned, read-only external evidence provider. |
 | Repository Catalog | Workspace-owned declarative mapping of repository identities to roles. |
 | Repository Reality / Truth | Observable repository state established by authoritative repository evidence. |
-| Runtime Prompt | Temporary, provider-specific execution artifact derived from Intent. |
-| Runtime Provider | Replaceable translation boundary from approved Intent to Runtime Prompt. |
+| Runtime Prompt | Temporary, provider-specific execution artifact produced from an Action. |
+| Runtime Provider | Replaceable future consumer of a provider-specific Runtime Prompt. |
 | Workspace | Highest product boundary, owning identity, architecture, roadmap, capabilities, governance, and engineering context. |
 | Workspace Readiness | Evidence-based assessment of prerequisites for an execution profile, distinct from Phase Completion. |
 

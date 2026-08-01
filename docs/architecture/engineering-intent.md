@@ -17,6 +17,11 @@ Every Engineering Intent describes these required concerns:
 - validation; and
 - expected evidence.
 
+An Intent contains one or more Engineering Actions. The Intent is tactical: it
+owns the rationale, boundaries, validation, evidence, and architectural
+traceability for that coherent work. It is not directly executable, and it
+does not generate a Runtime Prompt directly.
+
 This is an architectural domain definition, not a storage contract or a
 runtime capability. Forge 0.8 introduced no parser, generator, persistence
 model, execution pipeline, or provider integration. The separately bounded
@@ -36,11 +41,12 @@ provider integration, or execution pipeline.
 | Repository | Provides the target repository and its observable reality. | Repository reality is used to evaluate the intent; a repository does not redefine the intent. |
 | Runtime Provider | May consume a derived Runtime Prompt to perform work. | A provider is an execution consumer, never the source of truth for the intent. |
 | Evidence | Validates whether the repository reality and outcomes satisfy the intent. | Evidence supports verification; it neither rewrites intent nor grants approval. |
+| Engineering Action | Is the smallest intentional engineering unit contained by the Intent. | An Action cannot expand or replace its Intent. |
 
 ## Runtime Prompt and drift
 
 A **Runtime Prompt** is a temporary, provider-specific execution artefact
-derived from an Engineering Intent. Examples include representations for Codex
+produced by an Engineering Action. Examples include representations for Codex
 CLI, Claude Code, Gemini CLI, and future Runtime Providers. A Runtime Prompt
 is not a canonical source of truth and must not be used to determine what the
 engineering work means.
@@ -57,3 +63,8 @@ separately bounded bootstrap capability may reconstruct and migrate them. Forge
 0.8 performs no such migration and does not change bootstrap functionality.
 Lifecycle 1.2 also performs no migration; its successor migration capability
 must preserve this distinction.
+
+The later Engineering Action reconciliation corrects the historical
+Intent-to-prompt shortcut without changing those delivered records: an Action
+now provides the canonical handoff from Intent to Runtime Prompt. See
+[Engineering Action Architecture 1.11](engineering-action.md).

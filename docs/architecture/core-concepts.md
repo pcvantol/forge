@@ -9,11 +9,12 @@ local callers without adding a framework dependency.
 | --- | --- | --- |
 | Workspace | Represents a software product and selected operating profiles. | Repository execution. |
 | Repository | Identifies one repository and its local locator. | Workspace role or authority. |
-| Engineering Intent | Is the canonical, model-independent statement of bounded engineering work and its required context, goal, decisions, scope, constraints, deliverables, validation, and expected evidence. | Provider-specific prompting, persistence, execution, or approval. |
-| Engineering Mission | Is the highest operational grouping artifact for a coherent objective, ordered Engineering Intent memberships, progress, evidence, and completion. | Replacing an Intent, planning, scheduling, persistence, Runtime operation, or execution. |
+| Engineering Intent | Is the tactical, model-independent record of rationale, boundaries, validation, evidence, and architectural traceability for coherent work; it contains Engineering Actions. | Provider-specific prompting, direct execution, persistence, or approval. |
+| Engineering Action | Is the smallest intentional executable engineering unit within an Intent and produces a Runtime Prompt. | Expanding its Intent, provider execution, persistence, or approval. |
+| Engineering Mission | Is the strategic grouping artifact for a coherent objective, scope, ordered Engineering Intent memberships, progress, evidence, and completion. | Becoming executable, replacing an Intent, scheduling, persistence, Runtime operation, or execution. |
 | Workspace Readiness | Assesses whether a Workspace is prepared for a declared execution profile. | Completing a phase or executing work. |
 | Product Identity | Defines a separately governed public product identity. | Making runtime names architectural concepts. |
-| Runtime Prompt | Is a temporary, provider-specific execution representation derived from an Engineering Intent. | Defining canonical engineering work or measuring repository drift. |
+| Runtime Prompt | Is a temporary, provider-specific execution representation produced from an Engineering Action. | Defining canonical engineering work or measuring repository drift. |
 | Prompt Artifact | Is the versioned, provider-neutral transitional execution representation retained from bootstrap. | Replacing Engineering Intent or serving as input to a Runtime Prompt. |
 | Repository Catalog | Assigns repository roles and enforces one canonical entry. | Git operations. |
 | Knowledge Source | Declares a versioned, read-only external evidence provider and its authority/lifecycle metadata. | Editing, synchronizing, extracting, or authoring that source. |
@@ -36,10 +37,12 @@ Readiness](workspace-readiness.md).
 The canonical engineering chain is:
 
 ```text
-Knowledge → Planning → Proposal → Engineering Mission → Engineering Intent → Prompt Generator → Runtime Prompt → Runtime Provider → Execution → Evidence
+Vision → Architecture → Roadmap → Engineering Mission → Engineering Intent → Engineering Action → Runtime Prompt → Execution → Evidence
 ```
 
-Runtime Prompt Generation 1.9 is the implemented local derivation contract.
-Concrete Prompt Generators and Runtime Providers remain future capabilities.
+Runtime Prompt Generation 1.9 is the existing local derivation contract. The
+Engineering Action architecture defines the canonical future source boundary;
+any contract migration remains a future capability. Concrete Prompt Generators
+and Runtime Providers remain future capabilities.
 Prompt Artifact remains compatible as the transitional bootstrap
 representation and is not an input to a Runtime Prompt.

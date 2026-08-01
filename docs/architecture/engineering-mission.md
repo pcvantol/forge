@@ -4,7 +4,7 @@
 
 An Engineering Mission is Forge's highest operational grouping artifact. It is
 owned by a Workspace and groups a coherent, long-running engineering objective
-into ordered, individually executable Engineering Intents. A Mission records
+into ordered Engineering Intents. A Mission records
 objective, explicit boundaries, sequencing, declarative progress,
 dependencies, aggregate evidence, and completion. It does not replace the
 canonical bounded Intent described by Constitution Article 3.
@@ -17,9 +17,9 @@ execution capability. A future Mission Runtime remains separate and deferred.
 ## Ownership and relationships
 
 Workspace ownership remains above the Mission. Forge owns the durable Mission
-record and its aggregate meaning; an Engineering Intent owns one bounded
-increment and remains independently governed and executable. Runtime Prompt
-Generation derives a transient prompt from an approved Intent. A future Runtime
+record and its aggregate meaning; an Engineering Intent owns one tactical body
+of work and contains its bounded Engineering Actions. An Action, rather than
+an Intent, is executable and produces a Runtime Prompt. A future Runtime
 Provider may render or consume that prompt, while an external Execution Host
 executes it and returns evidence. Neither a Mission nor a Runtime Provider
 approves, alters, or executes an Intent.
@@ -29,8 +29,10 @@ Workspace
   ↓ owns
 Engineering Mission (objective, scope, ordered membership, progress, completion)
   ↓ groups
-Engineering Intent (canonical bounded increment)
-  ↓ derives
+Engineering Intent (tactical rationale, boundaries, validation, evidence, traceability)
+  ↓ contains
+Engineering Action (smallest intentional executable unit)
+  ↓ produces
 Runtime Prompt
   ↓ future consumer
 Runtime Provider
@@ -87,14 +89,14 @@ and provides no execution authority.
 ## Runtime Provider boundary
 
 Missions do not produce or execute Runtime Prompts. Runtime Prompt Generation
-remains a per-Intent derivation, and future Runtime Providers stay consumers of
+is a per-Action derivation, and future Runtime Providers stay consumers of
 provider-specific transient prompts. A Runtime Provider cannot infer Mission
 membership, advance Mission status, or treat Mission completion as permission
 to execute.
 
 ## Next boundary
 
-Forge Phase B — Increment 1.11 — Mission Planning should define declarative
-Mission planning inputs and sequencing assessment while retaining this model's
-local, immutable, non-executing boundary. It must not introduce a Mission
-Runtime, scheduler, queue, AI planning, persistence, or execution.
+The next increment should implement the Bootstrap Mission Scheduler using
+Engineering Actions as released executable units. It must preserve this
+Mission's strategic, local boundary and must not introduce Runtime execution,
+providers, repository operations, or autonomous approval.

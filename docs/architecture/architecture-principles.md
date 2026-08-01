@@ -28,17 +28,25 @@ the intent itself. See [Repository Model](repository-model.md).
 
 ### Engineering Intent is canonical
 
-Engineering Intent is the canonical, model-independent artifact for bounded
-engineering work. It records the objective, architecture decisions, rationale,
-scope, constraints, validation, and expected evidence. Governance may approve
-progression, but approval does not turn a provider instruction into the
-canonical record. See [Engineering Intent](engineering-intent.md).
+Engineering Intent is the canonical, model-independent tactical record for
+coherent engineering work. It owns rationale, boundaries, validation,
+evidence, architectural traceability, and its contained Engineering Actions.
+It is not directly executable. Governance may approve progression, but
+approval does not turn a provider instruction into the canonical record. See
+[Engineering Intent](engineering-intent.md).
+
+### Engineering Action is the executable unit
+
+Engineering Action is the smallest intentional engineering unit. It is
+contained by an Intent and produces a Runtime Prompt without replacing the
+Intent's tactical authority. A future scheduler releases Actions, not Intents.
+See [Engineering Action](engineering-action.md).
 
 ### Runtime prompts are derived and transient
 
-Prompt Generators derive runtime-specific prompts from approved Engineering
-Intents for systems such as Codex CLI, Claude Code, and Gemini CLI. A Runtime
-Provider consumes the intent-derived representation; it never owns or
+Prompt Generators derive runtime-specific prompts from released Engineering
+Actions for systems such as Codex CLI, Claude Code, and Gemini CLI. A Runtime
+Provider consumes the Action-derived representation; it never owns or
 redefines the intent. Runtime Prompts are transient execution artifacts, not
 canonical engineering records. The retained Prompt Artifact is transitional
 bootstrap compatibility, not an alternative authority.

@@ -14,12 +14,10 @@ Forge's canonical lifecycle is:
 flowchart TD
     V[Vision] --> A[Architecture]
     A --> R[Roadmap]
-    R --> B[Backlog]
-    B --> P[Proposal]
-    P --> I[Engineering Intent]
-    I --> AP[Approval]
-    AP --> RP[Runtime Provider]
-    RP --> PR[Runtime Prompt]
+    R --> M[Mission]
+    M --> I[Engineering Intent]
+    I --> AC[Engineering Action]
+    AC --> PR[Runtime Prompt]
     PR --> EX[Execution]
     EX --> EV[Evidence]
     EV --> KE[Knowledge Evolution]
@@ -28,7 +26,11 @@ flowchart TD
     KE -. informs .-> R
 ```
 
-The lifecycle distinguishes enduring product direction from bounded work, human authorization, replaceable execution, and observable assessment. Each stage exists so that a later stage cannot silently assume the authority of an earlier one: planning is not execution, approval is not implementation, and a runtime representation is not engineering knowledge.
+The lifecycle distinguishes enduring product direction from strategic Mission,
+tactical Intent, executable Action, replaceable execution, and observable
+assessment. Each stage exists so that a later stage cannot silently assume the
+authority of an earlier one: planning is not execution, an Intent is not an
+Action, and a runtime representation is not engineering knowledge.
 
 **Context.** Forge needs one conceptual path from long-term direction through bounded work to assessed learning.
 
@@ -78,9 +80,28 @@ The lifecycle distinguishes enduring product direction from bounded work, human 
 
 **Rationale.** Capability orientation retains the connection to Vision and Architecture while leaving bounded engineering choices to later stages.
 
-**Relationships.** Roadmap is informed by Architecture and Vision, and it provides a strategic source for Backlog opportunities.
+**Relationships.** Roadmap is informed by Architecture and Vision, and it
+provides strategic direction for Missions.
 
-**Constraints.** Roadmap is not implementation planning, an execution plan, an approval, or a Runtime Prompt.
+**Constraints.** Roadmap is not a Mission, implementation plan, execution
+plan, approval, or Runtime Prompt.
+
+## Mission
+
+**Context.** A strategic engineering objective may require more than one
+tactical Intent.
+
+**Responsibility.** Mission owns engineering objective, scope, progress, and
+Engineering Intent memberships.
+
+**Rationale.** Strategic coordination must remain separate from executable
+work so Mission progress does not turn a broad objective into one runtime
+instruction.
+
+**Relationships.** Mission contains Engineering Intents and is informed by
+Roadmap.
+
+**Constraints.** Mission is strategic and not executable.
 
 **Future evolution.** As evidence and knowledge mature, Roadmap may be refined through governance without allowing implementation convenience alone to define product direction.
 
@@ -116,15 +137,39 @@ The lifecycle distinguishes enduring product direction from bounded work, human 
 
 **Context.** Bootstrap established that a prompt cannot be the durable meaning of engineering work because it varies with the runtime that receives it.
 
-**Responsibility.** Engineering Intent replaces prompts as the canonical engineering artifact. It records the objective, rationale, constraints, validation, and expected evidence for a bounded increment. It is model-independent.
+**Responsibility.** Engineering Intent is the canonical tactical engineering
+artifact. It owns engineering rationale, boundaries, validation, evidence, and
+architectural traceability for coherent work and contains Engineering Actions.
 
 **Rationale.** A canonical intent preserves engineering meaning across providers and permits repository reality to be assessed against stable criteria rather than prompt wording.
 
-**Relationships.** An Intent is formed from a Proposal within Vision and Architecture constraints. Approval governs its progression; Runtime Providers translate it; Evidence evaluates whether its declared outcome is met.
+**Relationships.** An Intent belongs to a Mission and is constrained by Vision,
+Architecture, and Roadmap. It contains Actions; Evidence evaluates whether its
+declared outcome is met.
 
-**Constraints.** Intent neither grants approval nor executes work. It is not redefined by a Runtime Prompt, a Runtime Provider, execution output, reviewer observation, or repository content.
+**Constraints.** Intent neither grants approval nor executes work and does not
+generate a Runtime Prompt directly. It is not redefined by a Runtime Prompt,
+execution output, reviewer observation, or repository content.
 
 **Future evolution.** Durable intent contracts, validation, migration, and lifecycle behavior require separately bounded and governed capabilities. This model does not implement them.
+
+## Engineering Action
+
+**Context.** A tactical Intent can include more work than one safe execution
+prompt.
+
+**Responsibility.** Engineering Action is the smallest intentional, executable
+engineering unit. It produces a Runtime Prompt for one bounded change,
+documentation update, repair, qualification step, or prompt production.
+
+**Rationale.** The Action boundary prevents a coherent Intent from being
+mistaken for a one-to-one execution instruction.
+
+**Relationships.** An Action is contained by an Intent and produces a
+provider-specific Runtime Prompt.
+
+**Constraints.** An Action cannot expand its Intent, replace human governance,
+or redefine architecture.
 
 ## Approval
 
@@ -134,7 +179,8 @@ The lifecycle distinguishes enduring product direction from bounded work, human 
 
 **Rationale.** Separating authority from representation preserves human control and stops a proposed or generated artifact from becoming self-authorizing.
 
-**Relationships.** Approval evaluates an Engineering Intent and permits its translation for execution. It is independent from Runtime Provider selection.
+**Relationships.** Approval evaluates an Engineering Intent and permits its
+Actions to progress. It is independent from provider selection.
 
 **Constraints.** Approval does not alter the Intent, generate a prompt, invoke a provider, or execute engineering. A provider cannot infer approval.
 
@@ -144,11 +190,14 @@ The lifecycle distinguishes enduring product direction from bounded work, human 
 
 **Context.** Different runtimes need different execution instructions while the engineering meaning must remain stable.
 
-**Responsibility.** Runtime Providers translate approved Engineering Intent into runtime-specific prompts. Codex CLI, Claude Code, Gemini, and future providers are examples.
+**Responsibility.** Runtime Providers are future consumers of
+Action-produced, runtime-specific prompts. Codex CLI, Claude Code, Gemini,
+and future providers are examples.
 
 **Rationale.** Translation at the provider boundary enables runtime choice without moving engineering knowledge into a provider-specific format.
 
-**Relationships.** A Runtime Provider consumes approved Intent and produces a Runtime Prompt for an Execution Host. Forge retains ownership of engineering knowledge; providers own prompt generation, not engineering intent.
+**Relationships.** A Runtime Provider consumes an Action-produced Runtime
+Prompt for an Execution Host. Forge retains ownership of engineering knowledge.
 
 **Constraints.** A Provider does not own, reinterpret, approve, or make canonical the engineering work. It does not execute merely by generating a prompt.
 
@@ -156,13 +205,16 @@ The lifecycle distinguishes enduring product direction from bounded work, human 
 
 ## Runtime Prompt
 
-**Context.** An execution runtime needs an instruction expressed in its own syntax, conventions, and operational context.
+**Context.** An execution runtime needs an instruction expressed in its own
+syntax, conventions, and operational context.
 
-**Responsibility.** A Runtime Prompt carries the provider-specific, execution-specific representation derived by a Runtime Provider.
+**Responsibility.** A Runtime Prompt carries the provider-specific,
+execution-specific representation produced by an Engineering Action.
 
 **Rationale.** Treating this representation as disposable protects the canonical engineering model from runtime changes and prompt-format drift.
 
-**Relationships.** Runtime Prompt is derived from approved Engineering Intent through a Runtime Provider and is consumed by an Execution Host.
+**Relationships.** Runtime Prompt is produced from an Engineering Action and
+is consumed by an Execution Host or future Runtime Provider.
 
 **Constraints.** Runtime Prompts are transient, provider-specific, and disposable. They are never canonical engineering knowledge, evidence, approval, or the basis for Architecture Drift.
 
@@ -230,10 +282,9 @@ The old model made Prompt the direct bridge from Proposal to Execution. That mad
 
 ```mermaid
 flowchart TD
-    P[Proposal] --> I[Engineering Intent]
-    I --> A[Explicit Approval]
-    A --> RP[Runtime Provider]
-    RP --> PR[Runtime Prompt: transient]
+    M[Mission] --> I[Engineering Intent]
+    I --> A[Engineering Action]
+    A --> PR[Runtime Prompt: transient]
     PR --> EH[Execution Host]
     EH --> E[Evidence]
     E --> RR[Repository Reality]
