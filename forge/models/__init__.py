@@ -58,6 +58,14 @@ from .phase_completion import (
     PhaseAssessment,
     ReproducibleEvidenceReference,
 )
+from .constitutional_validation import (
+    CONSTITUTIONAL_VALIDATION_SCHEMA_VERSION,
+    ConstitutionalAssessment,
+    ConstitutionalAssessmentStatus,
+    ConstitutionalFinding,
+    ConstitutionalFindingSeverity,
+    ConstitutionalRule,
+)
 
 __all__ = [
     "Capability",
@@ -108,4 +116,10 @@ __all__ = [
     "PHASE_COMPLETION_SCHEMA_VERSION",
     "PhaseAssessment",
     "ReproducibleEvidenceReference",
+    "CONSTITUTIONAL_VALIDATION_SCHEMA_VERSION",
+    "ConstitutionalAssessment",
+    "ConstitutionalAssessmentStatus",
+    "ConstitutionalFinding",
+    "ConstitutionalFindingSeverity",
+    "ConstitutionalRule",
 ]

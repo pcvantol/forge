@@ -70,6 +70,12 @@ Framework](docs/architecture/phase-completion-framework.md). It assesses a
 declared phase from reproducible references and does not orchestrate work,
 operate repositories, or grant execution authority.
 
+Phase B — Increment 1.1 adds the local [Constitutional Validation
+Framework](docs/architecture/constitutional-validation-framework.md). It
+assesses declared architecture against applicable constitutional articles with
+deterministic findings, but does not retrieve repository knowledge, enforce a
+result, or perform runtime work.
+
 The canonical engineering chain is:
 
 ```text
@@ -147,9 +153,9 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
 The recommended next increment is a durable local Engineering Intent contract
-and deterministic validation boundary. Forge still does not provide intent
-persistence, a Runtime Provider, a Mission Runtime, a queue, Studio,
-repository operations, or execution.
+that can explicitly reference applicable constitutional articles. Forge still
+does not provide intent persistence, a Runtime Provider, a Mission Runtime, a
+queue, Studio, repository operations, or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),
