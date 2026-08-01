@@ -20,6 +20,7 @@ SCHEMAS = (
     "planning-document-0.5.schema.json",
     "engineering-proposal-0.6.schema.json",
     "engineering-prompt-artifact-0.7.schema.json",
+    "phase-completion-1.0.schema.json",
 )
 
 
@@ -28,7 +29,7 @@ class SchemaContractTests(unittest.TestCase):
         for name in SCHEMAS:
             document = json.loads((ROOT / "schemas" / name).read_text())
             self.assertIn("$id", document)
-            self.assertTrue(any(version in document["$id"] for version in ("0.2", "0.3", "0.5", "0.6", "0.7")))
+            self.assertTrue(any(version in document["$id"] for version in ("0.2", "0.3", "0.5", "0.6", "0.7", "1.0")))
 
     def test_foundation_document_has_a_versioned_composite_envelope(self) -> None:
         document = json.loads((ROOT / "schemas" / "foundation-document.schema.json").read_text())
@@ -71,6 +72,12 @@ class SchemaContractTests(unittest.TestCase):
         self.assertEqual(artifact["properties"]["schema_version"]["const"], "0.7")
         self.assertEqual(artifact["properties"]["status"]["enum"], ["DRAFT", "READY"])
         self.assertNotIn("provider", artifact["properties"]["execution_instructions"])
+
+    def test_phase_completion_schema_requires_reproducible_evidence(self) -> None:
+        document = json.loads((ROOT / "schemas" / "phase-completion-1.0.schema.json").read_text())
+        self.assertEqual(document["properties"]["schema_version"]["const"], "1.0")
+        self.assertEqual(document["$defs"]["evidence"]["properties"]["outcome"]["enum"], ["PASS", "FAIL"])
+        self.assertEqual(document["$defs"]["reference"]["required"], ["kind", "source_id", "source_version", "locator", "content_digest"])
 
 
 if __name__ == "__main__":

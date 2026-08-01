@@ -1,0 +1,20 @@
+{
+  "document_type": "forge.phase_completion",
+  "schema_version": "1.0",
+  "phase": {
+    "id": "bootstrap-foundations",
+    "name": "Bootstrap Foundations",
+    "objective": "Establish the declared Forge foundation.",
+    "criteria": [
+      {"id": "contracts", "description": "Versioned contracts exist.", "required": true},
+      {"id": "tests", "description": "Focused tests pass.", "required": true}
+    ],
+    "completion_declaration": {
+      "reference": {"kind": "documentation", "source_id": "forge-phase-b-handoff", "source_version": "1.0", "locator": "docs/handoff/forge-phase-b-increment-1.0.md", "content_digest": "sha256:2ee11ab897531737116daa3b5525380b29fe84f3a89fdd6a3545b8aacac805eb"}
+    }
+  },
+  "evidence": [
+    {"criterion_id": "contracts", "outcome": "PASS", "reference": {"kind": "engineering_artifact", "source_id": "phase-completion-model", "source_version": "1.0", "locator": "forge/models/phase_completion.py", "content_digest": "sha256:1dd6314c5de8bfa19cd2126f2b224c9370520be8a659405ad63cdfe6bb0ed7c5"}},
+    {"criterion_id": "tests", "outcome": "PASS", "reference": {"kind": "test", "source_id": "phase-completion-tests", "source_version": "1.0", "locator": "tests/test_phase_completion.py", "content_digest": "sha256:fea8bc5907d3a15e8bee30d543ec97c8f847537f22a442546443c5a18dd7cfdb"}}
+  ]
+}

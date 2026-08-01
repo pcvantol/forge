@@ -135,11 +135,15 @@ and [the example](examples/planning.example.json).
 
 ## Phase B direction
 
-The next engineering work is **Forge Phase B — Self Engineering**, starting at
-**Forge Phase B — Increment 1.0**. It may define durable Engineering Intent
-contracts and then the governed Runtime Provider boundary. It does not yet
-provide intent persistence, a Runtime Provider, a Mission Runtime, a queue,
-Studio, repository operations, or execution.
+Forge Phase B — Increment 1.0 adds the evidence-only [Phase Completion
+Framework](docs/architecture/phase-completion-framework.md). It determines
+whether a declared phase is not started, in progress, ready, or complete from
+reproducible references without runtime orchestration or automation.
+
+The next increment may define durable Engineering Intent contracts if current
+foundation evidence supports it. Forge still does not provide intent
+persistence, a Runtime Provider, a Mission Runtime, a queue, Studio,
+repository operations, or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),

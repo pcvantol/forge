@@ -45,6 +45,19 @@ from .prompt_artifact import (
     ValidationRequirements,
     transition_prompt_artifact,
 )
+from .phase_completion import (
+    AssessmentFinding,
+    AssessmentStatus,
+    CompletionCriterion,
+    CompletionDeclaration,
+    CompletionEvidence,
+    CriterionOutcome,
+    EngineeringPhase,
+    EvidenceKind as CompletionEvidenceKind,
+    PHASE_COMPLETION_SCHEMA_VERSION,
+    PhaseAssessment,
+    ReproducibleEvidenceReference,
+)
 
 __all__ = [
     "Capability",
@@ -84,4 +97,15 @@ __all__ = [
     "SourceProposalReference",
     "ValidationRequirements",
     "transition_prompt_artifact",
+    "AssessmentFinding",
+    "AssessmentStatus",
+    "CompletionCriterion",
+    "CompletionDeclaration",
+    "CompletionEvidence",
+    "CompletionEvidenceKind",
+    "CriterionOutcome",
+    "EngineeringPhase",
+    "PHASE_COMPLETION_SCHEMA_VERSION",
+    "PhaseAssessment",
+    "ReproducibleEvidenceReference",
 ]
