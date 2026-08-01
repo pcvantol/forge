@@ -62,10 +62,68 @@ class ValidationReport:
     document_version: str | None
     issues: tuple[ValidationIssue, ...]
     document: FoundationDocument | None = None
+    document_path: str | None = None
 
     @property
     def valid(self) -> bool:
         return not self.issues and self.document is not None
+
+    def to_text(self) -> str:
+        """Render a deterministic, human-readable local validation result."""
+        document = self.document_path or "<in-memory document>"
+        schema = f"v{self.document_version}" if self.document_version else "unresolved"
+        models = "Workspace, RepositoryCatalog, KnowledgeSource, Capability" if self.document else "None"
+        lines = [
+            "Forge Foundation Validation",
+            "",
+            f"Status: {'PASS' if self.valid else 'FAIL'}",
+            "",
+            f"Document: {document}",
+            f"Schema: {schema}",
+            f"Models: {models}",
+            f"Errors: {len(self.issues)}",
+            "Warnings: 0",
+        ]
+        if self.issues:
+            lines.extend(["", "Errors:"])
+            for issue in self.issues:
+                lines.extend(
+                    [
+                        f"- Field: {issue.path}",
+                        f"  Violated rule: {issue.message}",
+                        f"  Suggested correction: {self._suggestion(issue)}",
+                    ]
+                )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _suggestion(issue: ValidationIssue) -> str:
+        suggestions = {
+            "read": "Provide a readable local Foundation Document path.",
+            "invalid_json": "Correct the JSON syntax and try again.",
+            "root_type": "Use a JSON object as the Foundation Document root.",
+            "document_type": "Set document_type to forge.foundation_document.",
+            "missing_version": "Add a supported schema_version field.",
+            "unsupported_version": "Use a schema version supported by this Forge installation.",
+            "required": "Add the required property identified above.",
+            "additional_property": "Remove the unsupported property.",
+            "type": "Use the type required by the local schema.",
+            "const": "Use the value required by the local schema.",
+            "enum": "Choose one of the values declared by the local schema.",
+            "pattern": "Use a value that matches the required format.",
+            "min_length": "Lengthen the value to the minimum allowed length.",
+            "max_length": "Shorten the value to the maximum allowed length.",
+            "min_items": "Add enough items to satisfy the schema.",
+            "max_items": "Remove items until the schema limit is met.",
+            "unique_items": "Remove or change duplicate items.",
+            "duplicate_id": "Give each declared component a unique id.",
+            "catalog_reference": "Set repository_catalog_id to the declared repository catalog id.",
+            "repository_reference": "Reference a repository id declared in repositories.",
+            "duplicate_repository_role": "Assign each repository to only one catalog role.",
+            "component_version": "Use component schema version 0.2.",
+            "construction": "Correct the reported validation problem and try again.",
+        }
+        return suggestions.get(issue.code, "Correct the value to satisfy the local Foundation contract.")
 
 
 class _LocalSchemaValidator:
@@ -220,10 +278,16 @@ class FoundationDocumentLoader:
 
     def load_path(self, path: str | Path) -> ValidationReport:
         """Read a local JSON file and pass it through the same pipeline."""
+        document_path = str(Path(path))
         try:
-            return self.load(Path(path).read_text(encoding="utf-8"))
+            report = self.load(Path(path).read_text(encoding="utf-8"))
         except OSError:
-            return ValidationReport(None, (ValidationIssue("parse", "read", "$", "cannot read Foundation Document"),))
+            return ValidationReport(
+                None,
+                (ValidationIssue("parse", "read", "$", "cannot read Foundation Document"),),
+                document_path=document_path,
+            )
+        return ValidationReport(report.document_version, report.issues, report.document, document_path)
 
     @staticmethod
     def _parse(source: str | bytes | Mapping[str, Any]) -> tuple[Mapping[str, Any] | None, tuple[ValidationIssue, ...]]:

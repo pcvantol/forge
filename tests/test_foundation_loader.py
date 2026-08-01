@@ -1,6 +1,7 @@
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from forge.foundation import FoundationDocumentLoader
 
@@ -63,6 +64,37 @@ class FoundationDocumentLoaderTests(unittest.TestCase):
         report = self.loader.load(document)
         self.assertFalse(report.valid)
         self.assertEqual(report.issues[0].code, "additional_property")
+
+    def test_invalid_document_never_reaches_model_construction(self) -> None:
+        document = dict(self.example)
+        document["workspace"] = {"schema_version": "0.2"}
+        with patch.object(self.loader, "_construct", wraps=self.loader._construct) as construct:
+            report = self.loader.load(document)
+        self.assertFalse(report.valid)
+        construct.assert_not_called()
+
+    def test_validation_report_is_human_readable_and_deterministic(self) -> None:
+        example_path = ROOT / "examples" / "foundation.example.json"
+        report = self.loader.load_path(example_path)
+        self.assertEqual(
+            report.to_text(),
+            "\n".join(
+                [
+                    "Forge Foundation Validation",
+                    "",
+                    "Status: PASS",
+                    "",
+                    f"Document: {example_path}",
+                    "Schema: v0.3",
+                    "Models: Workspace, RepositoryCatalog, KnowledgeSource, Capability",
+                    "Errors: 0",
+                    "Warnings: 0",
+                ]
+            ),
+        )
+        invalid = self.loader.load_path(ROOT / "missing.foundation.json")
+        self.assertIn(f"Document: {ROOT / 'missing.foundation.json'}", invalid.to_text())
+        self.assertIn("Suggested correction: Provide a readable local Foundation Document path.", invalid.to_text())
 
 
 if __name__ == "__main__":
