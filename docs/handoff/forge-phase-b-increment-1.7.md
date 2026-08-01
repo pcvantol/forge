@@ -13,6 +13,7 @@ selection returns a declaration only.
 
 ## Recommended next increment
 
-Forge Phase B — Increment 1.8 — OpenAI AI Architect Provider should implement
-the first concrete provider against the fixed Provider Contract and Provider
-Registry, subject to separate qualification evidence.
+Forge Phase B — Increment 1.8 — AI Architect Session establishes the bounded
+session, lifecycle, snapshot, and review record required before a concrete
+provider can be implemented. The former direct-provider recommendation is
+superseded by this prerequisite boundary.

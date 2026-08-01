@@ -26,6 +26,8 @@ completion evidence.
 
 ## Recommended next increment
 
-Forge Phase B — Increment 1.8 — OpenAI AI Architect Provider may implement
-the first concrete adapter, using the Provider Contract and registry without
-altering Forge's ownership or governance boundaries.
+Forge Phase B — Increment 1.8 — AI Architect Session must establish the
+bounded session, lifecycle, snapshot, and review record before a concrete
+provider. A later provider adapter will use the Provider Contract, Provider
+Registry, and Session Contract without altering Forge's ownership or
+governance boundaries.

@@ -108,6 +108,12 @@ provider declarations, repository-owned qualification, and deterministic
 selection. It selects a declaration only; it does not implement, load, or
 invoke a provider.
 
+Phase B — Increment 1.8 adds the [AI Architect Session](docs/architecture/ai-architect-session.md):
+an immutable, bounded reasoning record that composes complete request context,
+a selected provider declaration, repository snapshot, and advisory output.
+Its lifecycle is human-governed and non-executing; it neither invokes a
+provider nor approves architectural decisions or Engineering Intents.
+
 The canonical engineering chain is:
 
 ```text
@@ -185,8 +191,8 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is Forge Phase B — Increment 1.8 — OpenAI AI
-Architect Provider. Forge still does not provide an AI Architect Provider, a
+The recommended next increment is Forge Phase B — Increment 1.9 — First
+Concrete AI Architect Provider. Forge still does not provide an AI Architect Provider, a
 Runtime Provider, a Mission Runtime, a queue, Studio, repository operations,
 or execution.
 

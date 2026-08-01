@@ -125,6 +125,13 @@ from .ai_provider_registry import (
     ProviderStatus,
     WorkspaceProviderConfiguration,
 )
+from .ai_architect_session import (
+    AI_ARCHITECT_SESSION_SCHEMA_VERSION,
+    AIArchitectSession,
+    AIArchitectSessionStatus,
+    RepositorySnapshot,
+    transition_ai_architect_session,
+)
 
 __all__ = [
     "Capability",
@@ -230,4 +237,9 @@ __all__ = [
     "ProviderSelectionRequest",
     "ProviderStatus",
     "WorkspaceProviderConfiguration",
+    "AI_ARCHITECT_SESSION_SCHEMA_VERSION",
+    "AIArchitectSession",
+    "AIArchitectSessionStatus",
+    "RepositorySnapshot",
+    "transition_ai_architect_session",
 ]
