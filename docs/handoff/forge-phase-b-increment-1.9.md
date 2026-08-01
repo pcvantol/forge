@@ -22,6 +22,7 @@ Declared locations are `forge/prompts/generators/`,
 
 ## Recommended next increment
 
-Forge Phase B — Increment 1.10 — First Concrete Runtime Prompt Generator for
-Codex CLI should render this abstract structure using a versioned Codex Prompt
-Definition. It remains non-executing and must not replace Engineering Platform.
+Forge Phase B — Increment 1.10 — Engineering Mission Model should establish
+the highest operational grouping artifact while preserving Engineering Intent
+as the canonical bounded increment. Concrete Runtime Prompt rendering remains
+a later separately governed capability.

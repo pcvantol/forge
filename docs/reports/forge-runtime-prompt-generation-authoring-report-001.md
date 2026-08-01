@@ -31,7 +31,8 @@ the local Genesis completion evidence.
 
 ## Recommended next increment
 
-Implement the first concrete Runtime Prompt Generator for Codex CLI as Phase B
-— Increment 1.10. It should render the established abstract structure through
-a versioned Codex Prompt Definition, remain transient and non-executing, and
-must not replace Engineering Platform or introduce provider execution.
+Phase B — Increment 1.10 establishes the Engineering Mission Model as the
+highest operational grouping artifact. A concrete Runtime Prompt Generator
+remains a later separately governed capability; it must remain transient and
+non-executing and must not replace Engineering Platform or introduce provider
+execution.

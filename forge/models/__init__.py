@@ -141,6 +141,22 @@ from .runtime_prompt import (
     RuntimePromptSection,
     RuntimePromptSectionKind,
 )
+from .mission import (
+    ENGINEERING_MISSION_SCHEMA_VERSION,
+    EngineeringMission,
+    MissionCompletion,
+    MissionDependencies,
+    MissionDependency,
+    MissionEvidence,
+    MissionEvidenceKind,
+    MissionIntentCompletion,
+    MissionIntentMembership,
+    MissionProgress,
+    MissionScope,
+    MissionStatus,
+    derive_mission_progress,
+    transition_mission,
+)
 
 __all__ = [
     "Capability",
@@ -258,4 +274,18 @@ __all__ = [
     "RuntimePromptGenerationRequest",
     "RuntimePromptSection",
     "RuntimePromptSectionKind",
+    "ENGINEERING_MISSION_SCHEMA_VERSION",
+    "EngineeringMission",
+    "MissionCompletion",
+    "MissionDependencies",
+    "MissionDependency",
+    "MissionEvidence",
+    "MissionEvidenceKind",
+    "MissionIntentCompletion",
+    "MissionIntentMembership",
+    "MissionProgress",
+    "MissionScope",
+    "MissionStatus",
+    "derive_mission_progress",
+    "transition_mission",
 ]

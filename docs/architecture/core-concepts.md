@@ -10,6 +10,7 @@ local callers without adding a framework dependency.
 | Workspace | Represents a software product and selected operating profiles. | Repository execution. |
 | Repository | Identifies one repository and its local locator. | Workspace role or authority. |
 | Engineering Intent | Is the canonical, model-independent statement of bounded engineering work and its required context, goal, decisions, scope, constraints, deliverables, validation, and expected evidence. | Provider-specific prompting, persistence, execution, or approval. |
+| Engineering Mission | Is the highest operational grouping artifact for a coherent objective, ordered Engineering Intent memberships, progress, evidence, and completion. | Replacing an Intent, planning, scheduling, persistence, Runtime operation, or execution. |
 | Workspace Readiness | Assesses whether a Workspace is prepared for a declared execution profile. | Completing a phase or executing work. |
 | Product Identity | Defines a separately governed public product identity. | Making runtime names architectural concepts. |
 | Runtime Prompt | Is a temporary, provider-specific execution representation derived from an Engineering Intent. | Defining canonical engineering work or measuring repository drift. |
@@ -35,7 +36,7 @@ Readiness](workspace-readiness.md).
 The canonical engineering chain is:
 
 ```text
-Knowledge → Planning → Proposal → Engineering Intent → Prompt Generator → Runtime Prompt → Runtime Provider → Execution → Evidence
+Knowledge → Planning → Proposal → Engineering Mission → Engineering Intent → Prompt Generator → Runtime Prompt → Runtime Provider → Execution → Evidence
 ```
 
 Runtime Prompt Generation 1.9 is the implemented local derivation contract.

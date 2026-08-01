@@ -120,11 +120,18 @@ Runtime Prompt from an approved Engineering Intent and complete versioned
 context. It defines the provider-neutral section structure and provenance only;
 it implements no provider-specific template or runtime execution.
 
-The canonical engineering chain is:
+Phase B — Increment 1.10 adds the [Engineering Mission Model](docs/architecture/engineering-mission.md):
+an immutable, local, non-executing grouping record for coherent long-running
+engineering objectives. Missions own boundaries, ordered Intent memberships,
+derived progress, dependencies, aggregate evidence, and completion without
+replacing Engineering Intent as the canonical bounded increment.
+
+The canonical Engineering Mission chain is:
 
 ```text
 Repository Knowledge → Architecture Reasoning → Engineering Proposal →
-Engineering Intent → Prompt Generator → Runtime Prompt → Runtime Provider → Execution → Evidence
+Engineering Mission → Engineering Intent → Prompt Generator → Runtime Prompt →
+Runtime Provider → Execution → Evidence
 ```
 
 Prompt Artifact is retained as the compatible transitional execution
@@ -196,10 +203,9 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is Forge Phase B — Increment 1.10 — First
-Concrete Runtime Prompt Generator for Codex CLI. Forge still does not provide
-a concrete Runtime Provider, a Mission Runtime, a queue, Studio, repository
-operations, or execution.
+The recommended next increment is Forge Phase B — Increment 1.11 — Mission
+Planning. Forge still does not provide a concrete Runtime Provider, a Mission
+Runtime, a queue, Studio, repository operations, or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),
