@@ -140,10 +140,11 @@ and [the example](examples/planning.example.json).
 
 ## Architecture and next direction
 
-[Architecture Principles](docs/architecture/architecture-principles.md) is the
+The [Forge Constitution](knowledge/bootstrap/01_CONSTITUTION.md) is the
 canonical authority for Forge's permanent engineering principles. It is
-supplemented by [Workspace Readiness](docs/architecture/workspace-readiness.md)
-and the [Bootstrap Knowledge Capture Report](docs/reports/bootstrap-knowledge-capture-milestone-001.md).
+elaborated by [Architecture Principles](docs/architecture/architecture-principles.md),
+[Workspace Readiness](docs/architecture/workspace-readiness.md), and the
+[Bootstrap Knowledge Capture Reports](docs/reports/).
 
 The recommended next increment is a durable local Engineering Intent contract
 and deterministic validation boundary. Forge still does not provide intent

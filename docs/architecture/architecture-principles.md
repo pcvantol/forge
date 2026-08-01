@@ -2,10 +2,11 @@
 
 ## Purpose and authority
 
-This document is the single canonical statement of Forge's permanent
-engineering principles. More detailed architecture documents define the
-individual concepts linked below; they must remain consistent with these
-principles.
+The [Forge Constitution](../../knowledge/bootstrap/01_CONSTITUTION.md) is the
+canonical constitutional statement of Forge's permanent engineering
+principles. This document elaborates those principles through architecture
+concepts; it and other detailed architecture documents must remain consistent
+with the Constitution.
 
 ## Principles
 
