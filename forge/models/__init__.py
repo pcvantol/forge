@@ -114,6 +114,17 @@ from .ai_architect_provider import (
     EngineeringIntentDraftCandidate,
     EngineeringProposalDraftCandidate,
 )
+from .ai_provider_registry import (
+    AI_PROVIDER_REGISTRY_SCHEMA_VERSION,
+    AIProviderMetadata,
+    ProviderCapability,
+    ProviderQualification,
+    ProviderQualificationState,
+    ProviderSelection,
+    ProviderSelectionRequest,
+    ProviderStatus,
+    WorkspaceProviderConfiguration,
+)
 
 __all__ = [
     "Capability",
@@ -210,4 +221,13 @@ __all__ = [
     "AIArchitectResult",
     "EngineeringIntentDraftCandidate",
     "EngineeringProposalDraftCandidate",
+    "AI_PROVIDER_REGISTRY_SCHEMA_VERSION",
+    "AIProviderMetadata",
+    "ProviderCapability",
+    "ProviderQualification",
+    "ProviderQualificationState",
+    "ProviderSelection",
+    "ProviderSelectionRequest",
+    "ProviderStatus",
+    "WorkspaceProviderConfiguration",
 ]

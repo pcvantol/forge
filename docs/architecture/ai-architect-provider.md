@@ -53,16 +53,16 @@ Runtime Providers are a different future boundary. They translate approved
 Engineering Intent into provider-specific runtime prompts; AI Architect
 Providers supply pre-governance architectural reasoning only.
 
-## Provider lifecycle (documented only)
+## Provider lifecycle
 
-Future provider management follows seven stages: Registration, Qualification,
-Selection, Invocation, Result, Evidence, and Retirement. Registration records
-an adapter identity and contract version. Qualification establishes whether an
-adapter can be selected. Selection is a Forge and governance decision.
+Provider management follows seven stages: Registration, Qualification,
+Selection, Invocation, Result, Evidence, and Retirement. The Provider Registry
+1.7 now owns the first three as local declaration and selection contracts.
 Invocation supplies a complete immutable request. Result records advisory
 output and its traceability. Evidence records reproducible qualification and
 use evidence. Retirement removes an adapter from future selection while
-preserving historic evidence. This increment implements none of those stages.
+preserving historic evidence. Invocation, Result handling, Evidence capture,
+and Retirement actions remain future work.
 
 ## Qualification principles
 
@@ -73,5 +73,7 @@ from a provider's confidence statement and never grants execution authority.
 
 ## Repository structure
 
-Future adapters belong in `forge/ai_architect/providers/`. The folder is a
-documented reservation, not an implementation or registration mechanism.
+Future adapters belong in `forge/ai_architect/providers/`. Registration,
+qualification, and selection are specified in
+[AI Provider Registry 1.7](ai-provider-registry.md); no adapter is implemented
+by that registry.

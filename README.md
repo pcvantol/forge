@@ -102,6 +102,12 @@ versioned repository context and providers return evidence-linked reasoning
 candidates only. It implements no concrete provider, Runtime Provider, prompt
 generation, lifecycle execution, or engineering execution.
 
+Phase B — Increment 1.7 adds the
+[AI Provider Registry](docs/architecture/ai-provider-registry.md): immutable
+provider declarations, repository-owned qualification, and deterministic
+selection. It selects a declaration only; it does not implement, load, or
+invoke a provider.
+
 The canonical engineering chain is:
 
 ```text
@@ -179,7 +185,7 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is Forge Phase B — Increment 1.7 — OpenAI AI
+The recommended next increment is Forge Phase B — Increment 1.8 — OpenAI AI
 Architect Provider. Forge still does not provide an AI Architect Provider, a
 Runtime Provider, a Mission Runtime, a queue, Studio, repository operations,
 or execution.

@@ -14,4 +14,4 @@ the existing human-governed Proposal and Intent processes act on it.
 
 ## Recommended next increment
 
-Forge Phase B — Increment 1.7 — OpenAI AI Architect Provider.
+Forge Phase B — Increment 1.7 — AI Provider Registry.

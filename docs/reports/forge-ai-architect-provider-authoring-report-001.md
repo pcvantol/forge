@@ -27,6 +27,6 @@ completion evidence for this Genesis transaction.
 
 ## Recommended next increment
 
-Forge Phase B — Increment 1.7 — OpenAI AI Architect Provider should implement
-the first qualified concrete adapter against this fixed contract, without
-altering Forge's ownership or governance boundaries.
+Forge Phase B — Increment 1.7 — AI Provider Registry should define provider
+registration, repository-owned qualification, and deterministic selection
+before any concrete adapter is introduced.

@@ -8,6 +8,7 @@ advisory `forge.models.AIArchitectResult`. They may not duplicate Forge
 knowledge, mutate source material, create governed Proposals or Intents, make
 approval decisions, invoke Runtime Providers, or execute engineering.
 
-Provider registration, qualification, selection, invocation, evidence capture,
-and retirement are documented in
+Registration, qualification, and deterministic selection are documented in
+[`docs/architecture/ai-provider-registry.md`](../../../docs/architecture/ai-provider-registry.md).
+The Provider Contract continues to define the adapter boundary in
 [`docs/architecture/ai-architect-provider.md`](../../../docs/architecture/ai-architect-provider.md).
