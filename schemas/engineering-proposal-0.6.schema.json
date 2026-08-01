@@ -28,7 +28,7 @@
       "required": ["included_work", "excluded_work", "affected_capabilities"],
       "properties": {
         "included_work": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-        "excluded_work": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "excluded_work": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "affected_capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
       }
     },
@@ -59,7 +59,7 @@
         "scope_risk": {"$ref": "#/$defs/risk_assessment"}
       }
     },
-    "evidence_references": {"type": "array", "items": {"$ref": "evidence-reference-0.5.schema.json"}},
+    "evidence_references": {"type": "array", "minItems": 1, "items": {"$ref": "evidence-reference-0.5.schema.json"}},
     "status": {"type": "string", "enum": ["DRAFT", "PROPOSED", "APPROVED", "EXECUTED"]}
   },
   "$defs": {

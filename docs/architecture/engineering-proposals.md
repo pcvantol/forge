@@ -12,8 +12,17 @@ increment is ordered by the plan and linked to a goal in the same workspace. Its
 output preserves source identities in creation metadata and carries all input
 evidence without reading any referenced source.
 
-Generation always returns `DRAFT`. Lifecycle transitions are explicit pure
-operations in this order: `DRAFT`, `PROPOSED`, `APPROVED`, `EXECUTED`. A
-transition records no approval decision, performs no repository operation, and
-executes no work. Approval and execution behavior remain future separately
+Generation always returns `DRAFT` and requires at least one evidence
+reference. Proposal scope must name included work, excluded work, and unique
+affected capabilities. Lifecycle transitions are explicit pure operations in
+this order: `DRAFT`, `PROPOSED`, `APPROVED`, `EXECUTED`; these are declarative
+states, not runtime actions. The 0.6 generator actively creates only `DRAFT`
+artifacts and can advance only through deliberate local calls. A transition
+records no approval decision, performs no repository operation, and executes
+no work.
+
+An eventual Architect Provider may propose a draft by supplying the same
+validated planning inputs, but it must remain behind this deterministic model
+boundary and human governance. It cannot use a proposal transition to approve
+or execute work. Approval and execution behavior remain future, separately
 governed capabilities.

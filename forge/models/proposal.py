@@ -45,6 +45,10 @@ class ProposalScope:
     def __post_init__(self) -> None:
         if not self.included_work or not self.affected_capabilities:
             raise ValueError("proposal scope must include work and affected capabilities")
+        if any(not item for item in (*self.included_work, *self.excluded_work, *self.affected_capabilities)):
+            raise ValueError("proposal scope entries must not be empty")
+        if len(self.affected_capabilities) != len(set(self.affected_capabilities)):
+            raise ValueError("proposal affected capabilities must be unique")
 
 
 @dataclass(frozen=True)
@@ -104,6 +108,8 @@ class EngineeringProposal:
             raise ValueError("proposal identity, title, objective, and expected outcome are required")
         if self.schema_version != PROPOSAL_SCHEMA_VERSION:
             raise ValueError("proposal schema version is unsupported")
+        if not self.evidence_references:
+            raise ValueError("proposal evidence references are required")
 
     def to_dict(self) -> dict[str, Any]:
         document = asdict(self)

@@ -58,6 +58,8 @@ class EngineeringProposalGenerator:
         evidence = self._unique_evidence(
             (*goal.evidence_references, *increment.evidence_references, *plan.evidence_references, *tuple(knowledge_references))
         )
+        if not evidence:
+            raise ValueError("proposal evidence is required")
         return EngineeringProposal(
             id=proposal_id,
             title=f"Engineering proposal: {increment.id}",
