@@ -5,6 +5,14 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
+## Bootstrap Phase A — complete
+
+Bootstrap Phase A is complete. Forge currently provides a deterministic,
+local-only foundation through 0.8, including the repaired Foundation Document
+Loader, Engineering Proposal Generator, and Engineering Prompt Artifact
+foundation. The closure record is the
+[Bootstrap Milestone A Report](docs/reports/bootstrap-milestone-a.md).
+
 ## Version 0.8 scope
 
 Forge 0.2 defines a versioned Foundation Model. It includes:
@@ -56,6 +64,17 @@ representations derived from an intent; they are not the canonical source of
 truth. This increment is documentation-only: it adds no intent storage,
 prompt generator, runtime provider, or execution pipeline. See
 [Engineering Intent Architecture 0.8](docs/architecture/engineering-intent.md).
+
+The canonical engineering chain is:
+
+```text
+Knowledge → Planning → Proposal → Engineering Intent → Runtime Provider → Runtime Prompt → Execution → Evidence
+```
+
+Prompt Artifact is retained as the compatible transitional execution
+representation introduced during bootstrap. Runtime Prompts are instead
+provider-specific artifacts derived from Engineering Intent once Runtime
+Providers are implemented.
 
 It intentionally does not include a UI, SaaS service, cloud runtime,
 multi-user model, agent runtime, repository mutation engine, or remote
@@ -114,12 +133,13 @@ references; all processing remains local and deterministic. See
 [Engineering Planning Foundation 0.5](docs/architecture/engineering-planning.md)
 and [the example](examples/planning.example.json).
 
-## Roadmap direction
+## Phase B direction
 
-Future increments may define durable intent contracts, migration from bootstrap
-prompts, or a governed Runtime Provider boundary, each through a separate
-bounded decision. They must not add runtime execution, remote APIs, cloud
-services, or repository write access without explicit authorization.
+The next engineering work is **Forge Phase B — Self Engineering**, starting at
+**Forge Phase B — Increment 1.0**. It may define durable Engineering Intent
+contracts and then the governed Runtime Provider boundary. It does not yet
+provide intent persistence, a Runtime Provider, a Mission Runtime, a queue,
+Studio, repository operations, or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),
