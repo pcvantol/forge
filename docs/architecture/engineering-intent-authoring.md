@@ -16,21 +16,21 @@ not required authoring input and cannot originate an Engineering Intent.
 ```text
 Repository Knowledge
   ↓
-Architecture Context
+Architecture Reasoning
   ↓
-Roadmap Context
-  ↓
-Engineering History
+Engineering Proposal
   ↓
 Engineering Intent
 ```
 
-Repository Knowledge supplies the reviewed baseline. Architecture Context
-interprets it against the Constitution and Founding Architecture Handbook.
-Roadmap Context establishes the relevant direction without granting authority.
-Engineering History prevents duplicate, contradictory, or superseded work.
-Together these inputs prepare a candidate Engineering Intent; they do not
-approve or execute it.
+Repository Knowledge supplies the reviewed baseline. [Architecture
+Reasoning](architecture-reasoning.md) assesses it against the Constitution and
+Founding Architecture Handbook, records findings and opportunities, and makes
+the human decision that an opportunity is eligible for proposal generation.
+The resulting Engineering Proposal remains governed input to this authoring
+context. Roadmap direction and Engineering History remain required source
+classes; neither grants authority. Together these inputs prepare a candidate
+Engineering Intent; they do not approve or execute it.
 
 ## Required authoring context
 
@@ -90,14 +90,15 @@ Execution remains outside this authoring model.
 
 ## Future evolution already established
 
-Architecture Steward, Knowledge Distillation, Knowledge Reconciliation, and
-Capability Evolution may later supply reviewed repository knowledge or assess
-its evolution. They do not bypass this authoring path, become runtime prompt
-generation, or make an Intent self-authorizing. Their existing conceptual
+Architecture Steward, Knowledge Distillation, Knowledge Reconciliation,
+Capability Evolution, and a future AI Architect Provider may later supply
+reviewed repository knowledge or prepare declared reasoning candidates. They
+do not bypass this authoring path, become runtime prompt generation, accept an
+opportunity, or make an Intent self-authorizing. Their existing conceptual
 boundaries remain unchanged.
 
 ## Next boundary
 
-The next increment should define Runtime Provider contracts: provider inputs,
-derived Runtime Prompt outputs, determinism and traceability boundaries, while
-preserving the authoring model and excluding execution.
+The next increment should define the AI Architect Provider abstraction for
+preparing Architecture Reasoning candidates while preserving human decision,
+determinism, traceability, and the exclusion of Runtime execution.

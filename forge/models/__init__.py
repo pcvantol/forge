@@ -87,6 +87,21 @@ from .intent_authoring import (
     AuthoringSourceKind,
     EngineeringIntentAuthoringContext,
 )
+from .architecture_reasoning import (
+    ARCHITECTURE_REASONING_SCHEMA_VERSION,
+    ArchitecturalEvaluation,
+    ArchitecturalEvaluationCriterion,
+    ArchitecturalFinding,
+    ArchitecturalFindingCategory,
+    ArchitecturalOpportunity,
+    ArchitecturalOpportunityStatus,
+    CapabilityImpact,
+    EngineeringProposalHandoff,
+    RepositoryAssessment,
+    RoadmapImpact,
+    accept_for_proposal,
+    hand_off_to_proposal,
+)
 
 __all__ = [
     "Capability",
@@ -160,4 +175,17 @@ __all__ = [
     "AuthoringSource",
     "AuthoringSourceKind",
     "EngineeringIntentAuthoringContext",
+    "ARCHITECTURE_REASONING_SCHEMA_VERSION",
+    "ArchitecturalEvaluation",
+    "ArchitecturalEvaluationCriterion",
+    "ArchitecturalFinding",
+    "ArchitecturalFindingCategory",
+    "ArchitecturalOpportunity",
+    "ArchitecturalOpportunityStatus",
+    "CapabilityImpact",
+    "EngineeringProposalHandoff",
+    "RepositoryAssessment",
+    "RoadmapImpact",
+    "accept_for_proposal",
+    "hand_off_to_proposal",
 ]

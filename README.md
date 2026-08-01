@@ -89,11 +89,18 @@ Repository Evidence, Capability Catalogue, and Knowledge Model. It authorizes
 neither an Intent nor runtime activity, and it implements no prompt generation
 or execution.
 
+Phase B — Increment 1.5 adds [Architecture Reasoning](docs/architecture/architecture-reasoning.md):
+an immutable, human-governed pre-authoring model from repository knowledge to
+assessment, findings, opportunities, capability and roadmap impact, and a
+traceable handoff into the existing Engineering Proposal process. It performs
+no AI reasoning, autonomous planning, proposal or Intent creation, Runtime,
+or execution.
+
 The canonical engineering chain is:
 
 ```text
-Repository Knowledge → Architecture Context → Roadmap Context → Engineering History
-→ Engineering Intent → Runtime Provider → Runtime Prompt → Execution → Evidence
+Repository Knowledge → Architecture Reasoning → Engineering Proposal →
+Engineering Intent → Runtime Provider → Runtime Prompt → Execution → Evidence
 ```
 
 Prompt Artifact is retained as the compatible transitional execution
@@ -166,9 +173,10 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is Forge Phase B — Increment 1.5 — Runtime
-Provider Contracts. Forge still does not provide a Runtime Provider, a Mission
-Runtime, a queue, Studio, repository operations, or execution.
+The recommended next increment is Forge Phase B — Increment 1.6 — AI Architect
+Provider Abstraction. Forge still does not provide an AI Architect Provider, a
+Runtime Provider, a Mission Runtime, a queue, Studio, repository operations,
+or execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),
