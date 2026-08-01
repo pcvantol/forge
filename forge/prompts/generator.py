@@ -99,6 +99,7 @@ class RuntimePromptGenerator:
             id=prompt_id,
             source_intent_id=request.intent.id,
             source_intent_revision=request.intent.revision,
+            source_action_id=request.action.id,
             provider_definition=request.provider_definition,
             generation_request_digest=request.digest(),
             sections=sections,

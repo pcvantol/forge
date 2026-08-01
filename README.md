@@ -132,6 +132,12 @@ and contain Intents; Intents are tactical and contain Actions; Actions produce
 provider-specific Runtime Prompts. This reconciliation adds no scheduler,
 Runtime, provider, prompt generator, or execution implementation.
 
+Phase B — Increment 2.0 adds the deterministic [Bootstrap Mission
+Scheduler](docs/architecture/bootstrap-mission-scheduler.md). It releases one
+evidence-gated Engineering Action at a time through the existing Engineering
+Platform inbox/report boundary, without implementing a Runtime, Execution Host,
+queue, provider, background service, or autonomous planning.
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text

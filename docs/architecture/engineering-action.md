@@ -7,9 +7,10 @@ the executable unit for one bounded change, documentation update, repair,
 qualification step, or Runtime Prompt production. It is contained by one
 dynamic Engineering Intent; an Intent may contain one or more Actions.
 
-This is an architectural reconciliation only. It adds no Action storage,
-authoring workflow, scheduler, prompt generator, Runtime, provider, Execution
-Host, or execution implementation.
+Bootstrap Mission Scheduler 2.0 implements the local Action contract,
+deterministic scheduling, and Action provenance in Runtime Prompt generation.
+It still adds no Action storage, authoring workflow, Runtime, provider,
+Execution Host, or execution implementation.
 
 ## Canonical hierarchy
 
@@ -65,7 +66,7 @@ Evidence
 Mission Planner
 ```
 
-The future Bootstrap Mission Scheduler coordinates released Engineering Actions,
+The Bootstrap Mission Scheduler coordinates released Engineering Actions,
 not Engineering Intents. Releasing an Action is the only scheduling operation
 implied here; it does not approve an Intent, generate a prompt, operate a
 provider, execute a repository change, or assess evidence.
@@ -76,6 +77,6 @@ Earlier direct Intent-to-prompt wording is historical architecture and must not
 be extended as the canonical future path. A future migration, if needed,
 requires a separately authorized capability.
 
-The recommended next increment is the Bootstrap Mission Scheduler. It should
-model Action release and Mission/Intent context while preserving this
-document's non-executing boundary.
+The recommended next increment is the first AI-assisted Mission Planner. It
+may propose new Engineering Intents from repository evidence within explicit
+human-governed Mission boundaries, without executing work.

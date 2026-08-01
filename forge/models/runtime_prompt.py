@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from .action import EngineeringAction, EngineeringActionStatus
 from .intent import EngineeringIntent, IntentReference, IntentStatus
 
 
@@ -89,9 +90,10 @@ class RuntimePromptGenerationContext:
 
 @dataclass(frozen=True)
 class RuntimePromptGenerationRequest:
-    """An immutable, eligible Intent and all declared generation inputs."""
+    """An immutable released Action, its Intent provenance, and generation inputs."""
 
     intent: EngineeringIntent
+    action: EngineeringAction
     provider_definition: ProviderPromptDefinition
     context: RuntimePromptGenerationContext
     constraints: tuple[str, ...]
@@ -104,6 +106,10 @@ class RuntimePromptGenerationRequest:
             raise ValueError("runtime prompt generation schema version is unsupported")
         if self.intent.status is not IntentStatus.APPROVED:
             raise ValueError("runtime prompt source intent must be approved")
+        if (self.action.intent_id, self.action.intent_revision) != (self.intent.id, self.intent.revision):
+            raise ValueError("runtime prompt action must belong to the source intent revision")
+        if self.action.status is not EngineeringActionStatus.ACTIVE:
+            raise ValueError("runtime prompt source action must be active")
         for values, label in (
             (self.constraints, "constraint"),
             (self.validation, "validation"),
@@ -119,6 +125,7 @@ class RuntimePromptGenerationRequest:
         return {
             "schema_version": self.schema_version,
             "intent": self.intent.to_dict(),
+            "action": self.action.to_dict(),
             "provider_definition": self.provider_definition.to_dict(),
             "context": self.context.to_dict(),
             "constraints": list(self.constraints),
@@ -166,6 +173,7 @@ class RuntimePrompt:
     id: str
     source_intent_id: str
     source_intent_revision: str
+    source_action_id: str
     provider_definition: ProviderPromptDefinition
     generation_request_digest: str
     sections: tuple[RuntimePromptSection, ...]
@@ -174,7 +182,7 @@ class RuntimePrompt:
     def __post_init__(self) -> None:
         if self.schema_version != RUNTIME_PROMPT_SCHEMA_VERSION:
             raise ValueError("runtime prompt schema version is unsupported")
-        if not all((self.id, self.source_intent_id, self.source_intent_revision, self.generation_request_digest)):
+        if not all((self.id, self.source_intent_id, self.source_intent_revision, self.source_action_id, self.generation_request_digest)):
             raise ValueError("runtime prompt identity and provenance are required")
         if not self.generation_request_digest.startswith("sha256:"):
             raise ValueError("runtime prompt provenance digest must be a sha256 digest")
@@ -192,6 +200,7 @@ class RuntimePrompt:
             "schema_version": self.schema_version,
             "id": self.id,
             "source_intent": {"id": self.source_intent_id, "revision": self.source_intent_revision},
+            "source_action": {"id": self.source_action_id},
             "provider_definition": self.provider_definition.to_dict(),
             "generation_request_digest": self.generation_request_digest,
             "derived": True,

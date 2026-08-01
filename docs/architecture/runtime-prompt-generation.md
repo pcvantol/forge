@@ -4,9 +4,8 @@
 
 The canonical model requires Runtime Prompt Generation to derive a transient,
 provider-specific execution artifact from one released Engineering Action and
-complete versioned context. This reconciliation changes no implementation: the
-existing 1.9 local contract continues to preserve its Intent provenance until
-a separately authorized migration introduces Action provenance. It does not
+complete versioned context. Bootstrap Mission Scheduler 2.0 records both
+Action and Intent provenance in the local generation contract. It does not
 invoke a Runtime Provider, execute a prompt, operate a repository, queue work,
 or replace an Execution Host.
 
@@ -99,9 +98,8 @@ provider implementation or template is present.
 `EngineeringPromptArtifact` remains a compatibility-only bootstrap artifact
 derived from an approved Engineering Proposal. It is provider-neutral and
 does not become a Runtime Prompt input, source, or alias. Runtime Prompt
-The existing 1.9 local contract remains a historical direct-Intent derivation
-and is not migrated by this architecture correction. The canonical successor
-derives from a released Engineering Action within an approved Intent.
+generation derives from a released Engineering Action within an approved
+Intent. Earlier direct-Intent wording is historical architecture only.
 
 ## Out of scope
 

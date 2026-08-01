@@ -141,6 +141,11 @@ from .runtime_prompt import (
     RuntimePromptSection,
     RuntimePromptSectionKind,
 )
+from .action import (
+    ENGINEERING_ACTION_SCHEMA_VERSION,
+    EngineeringAction,
+    EngineeringActionStatus,
+)
 from .mission import (
     ENGINEERING_MISSION_SCHEMA_VERSION,
     EngineeringMission,
@@ -274,6 +279,9 @@ __all__ = [
     "RuntimePromptGenerationRequest",
     "RuntimePromptSection",
     "RuntimePromptSectionKind",
+    "ENGINEERING_ACTION_SCHEMA_VERSION",
+    "EngineeringAction",
+    "EngineeringActionStatus",
     "ENGINEERING_MISSION_SCHEMA_VERSION",
     "EngineeringMission",
     "MissionCompletion",

@@ -3,6 +3,8 @@ from dataclasses import FrozenInstanceError, replace
 
 from forge.models import (
     EngineeringIntent,
+    EngineeringAction,
+    EngineeringActionStatus,
     IntentApproval,
     IntentCategory,
     IntentReference,
@@ -42,6 +44,11 @@ def approved_intent() -> EngineeringIntent:
 def request(**overrides: object) -> RuntimePromptGenerationRequest:
     values: dict[str, object] = {
         "intent": approved_intent(),
+        "action": EngineeringAction(
+            1, "runtime-prompt-action", "runtime-prompt-intent", "1.0",
+            "Derive a Runtime Prompt.", ("Prompt provenance",),
+            status=EngineeringActionStatus.ACTIVE,
+        ),
         "provider_definition": ProviderPromptDefinition("provider-definition", "1.0"),
         "context": RuntimePromptGenerationContext(
             repository=(reference("forge-repository"),),
@@ -62,6 +69,7 @@ class RuntimePromptGenerationTests(unittest.TestCase):
     def test_approved_engineering_intent_produces_a_transient_runtime_prompt(self) -> None:
         prompt = RuntimePromptGenerator().generate(prompt_id="runtime-prompt-1", request=request())
         self.assertEqual(prompt.source_intent_id, "runtime-prompt-intent")
+        self.assertEqual(prompt.source_action_id, "runtime-prompt-action")
         self.assertTrue(prompt.to_dict()["derived"])
         self.assertTrue(prompt.to_dict()["transient"])
         self.assertEqual(prompt.provider_definition.id, "provider-definition")
@@ -108,6 +116,8 @@ class RuntimePromptGenerationTests(unittest.TestCase):
     def test_generation_requires_an_approved_intent_and_complete_sections(self) -> None:
         with self.assertRaisesRegex(ValueError, "approved"):
             request(intent=replace(approved_intent(), status=IntentStatus.PROPOSED))
+        with self.assertRaisesRegex(ValueError, "active"):
+            request(action=replace(request().action, status=EngineeringActionStatus.READY))
         with self.assertRaisesRegex(ValueError, "deliverable"):
             request(deliverables=())
         with self.assertRaisesRegex(ValueError, "constitution"):
