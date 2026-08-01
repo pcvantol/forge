@@ -18,8 +18,11 @@ Every Engineering Intent describes these required concerns:
 - expected evidence.
 
 This is an architectural domain definition, not a storage contract or a
-runtime capability. Forge 0.8 introduces no parser, generator, persistence
-model, execution pipeline, or provider integration.
+runtime capability. Forge 0.8 introduced no parser, generator, persistence
+model, execution pipeline, or provider integration. The separately bounded
+[Engineering Intent Lifecycle 1.2](engineering-intent-lifecycle.md) now adds
+immutable local lifecycle contracts, but still introduces no persistence,
+provider integration, or execution pipeline.
 
 ## Relationships and authority
 
@@ -52,3 +55,5 @@ provider rendering conventions change.
 Existing bootstrap prompts are predecessors of Engineering Intents. A later,
 separately bounded bootstrap capability may reconstruct and migrate them. Forge
 0.8 performs no such migration and does not change bootstrap functionality.
+Lifecycle 1.2 also performs no migration; its successor migration capability
+must preserve this distinction.

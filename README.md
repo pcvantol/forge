@@ -76,6 +76,12 @@ assesses declared architecture against applicable constitutional articles with
 deterministic findings, but does not retrieve repository knowledge, enforce a
 result, or perform runtime work.
 
+Phase B — Increment 1.2 adds the immutable, local [Engineering Intent
+Lifecycle](docs/architecture/engineering-intent-lifecycle.md). It defines
+versioned statuses, typed relationships, reproducible evidence, mandatory
+traceability, and pure lifecycle validation. It neither migrates historical
+work nor implements a provider, execution, queue, or Studio.
+
 The canonical engineering chain is:
 
 ```text
@@ -152,10 +158,10 @@ elaborated by [Architecture Principles](docs/architecture/architecture-principle
 [Workspace Readiness](docs/architecture/workspace-readiness.md), and the
 [Bootstrap Knowledge Capture Reports](docs/reports/).
 
-The recommended next increment is a durable local Engineering Intent contract
-that can explicitly reference applicable constitutional articles. Forge still
-does not provide intent persistence, a Runtime Provider, a Mission Runtime, a
-queue, Studio, repository operations, or execution.
+The recommended next increment is Forge Phase B — Increment 1.3 — Bootstrap
+Intent Migration. Forge still does not provide intent persistence, a Runtime
+Provider, a Mission Runtime, a queue, Studio, repository operations, or
+execution.
 
 See [docs/architecture/core-concepts.md](docs/architecture/core-concepts.md),
 [docs/architecture/workspace-foundation.md](docs/architecture/workspace-foundation.md),

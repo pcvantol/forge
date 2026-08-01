@@ -66,6 +66,21 @@ from .constitutional_validation import (
     ConstitutionalFindingSeverity,
     ConstitutionalRule,
 )
+from .intent import (
+    ENGINEERING_INTENT_SCHEMA_VERSION,
+    EngineeringIntent,
+    IntentApproval,
+    IntentCategory,
+    IntentEvidence,
+    IntentEvidenceKind,
+    IntentReference,
+    IntentRelationship,
+    IntentRelationshipKind,
+    IntentStatus,
+    IntentTraceability,
+    transition_intent,
+    validate_intent_relationships,
+)
 
 __all__ = [
     "Capability",
@@ -122,4 +137,17 @@ __all__ = [
     "ConstitutionalFinding",
     "ConstitutionalFindingSeverity",
     "ConstitutionalRule",
+    "ENGINEERING_INTENT_SCHEMA_VERSION",
+    "EngineeringIntent",
+    "IntentApproval",
+    "IntentCategory",
+    "IntentEvidence",
+    "IntentEvidenceKind",
+    "IntentReference",
+    "IntentRelationship",
+    "IntentRelationshipKind",
+    "IntentStatus",
+    "IntentTraceability",
+    "transition_intent",
+    "validate_intent_relationships",
 ]
