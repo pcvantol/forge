@@ -7,7 +7,7 @@ from hashlib import sha256
 
 from forge.models import (
     ArchitectureReviewInput, MaturityArea, MaturityClassification, PressureLevel,
-    RecommendationKind, ReviewConfidence, ReviewEvidence, ReviewInputKind,
+    ReviewConfidence, ReviewEvidence, ReviewInputKind,
     ReviewSignal, ReviewSignalKind,
 )
 from forge.review import ArchitectureReviewEngine
@@ -44,12 +44,12 @@ class ArchitectureReviewEngineTests(unittest.TestCase):
         self.assertNotIn("conversation", {kind.value for kind in ReviewInputKind})
         self.assertNotIn("runtime_prompt", {kind.value for kind in ReviewInputKind})
 
-    def test_insufficient_evidence_generates_qualification_recommendation(self) -> None:
+    def test_insufficient_evidence_is_an_assessment_not_a_recommendation(self) -> None:
         review = self.engine.review(ArchitectureReviewInput("mission-1", (evidence(ReviewInputKind.MISSION_DOCUMENT, "mission"),)))
         self.assertEqual(review.confidence, ReviewConfidence.INSUFFICIENT)
-        self.assertEqual(review.recommendations[0].kind, RecommendationKind.QUALIFICATION)
+        self.assertFalse(hasattr(review, "recommendations"))
 
-    def test_recommendations_are_deterministic_for_input_order(self) -> None:
+    def test_reviews_are_deterministic_for_input_order(self) -> None:
         signal = ReviewSignal(ReviewSignalKind.CAPABILITY_GAP, "gap-1", "Gap.", self.truth)
         first = self.complete_input((signal,))
         second = ArchitectureReviewInput(first.mission_id, tuple(reversed(first.evidence)), tuple(reversed(first.signals)), first.portfolio_item_ids)
@@ -59,19 +59,10 @@ class ArchitectureReviewEngineTests(unittest.TestCase):
         architecture = ReviewSignal(ReviewSignalKind.ARCHITECTURAL_INCONSISTENCY, "architecture-1", "Mismatch.", self.truth)
         no_need = self.engine.review(self.complete_input((architecture,)))
         self.assertEqual(no_need.pressure.architecture, PressureLevel.NONE)
-        self.assertFalse(any(item.title == "Consider architectural reconciliation" for item in no_need.recommendations))
         implementation = ReviewSignal(ReviewSignalKind.IMPLEMENTATION_FAILURE, "implementation-1", "Failure.", self.execution)
         needed = self.engine.review(self.complete_input((architecture, implementation)))
         self.assertEqual(needed.pressure.implementation, PressureLevel.HIGH)
         self.assertEqual(needed.pressure.architecture, PressureLevel.HIGH)
-        self.assertTrue(any(item.title == "Consider architectural reconciliation" for item in needed.recommendations))
-
-    def test_portfolio_recommendation_is_advisory(self) -> None:
-        gap = ReviewSignal(ReviewSignalKind.CAPABILITY_GAP, "gap-1", "Gap.", self.truth)
-        review = self.engine.review(self.complete_input((gap,)))
-        recommendation = next(item for item in review.recommendations if item.kind is RecommendationKind.NEW_CAPABILITY)
-        self.assertTrue(recommendation.advisory)
-        self.assertEqual(recommendation.review_id, review.id)
 
 
 if __name__ == "__main__":

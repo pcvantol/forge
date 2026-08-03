@@ -18,6 +18,9 @@ Mission Recommendations return to the Portfolio after Architecture Review of
 Repository Truth and Execution Evidence. Recommendations are advisory inputs
 to future Portfolio decisions. Neither a candidate nor a recommendation can
 create, alter, or execute a Mission automatically.
+The [Mission Recommendation Engine](mission-recommendation-engine.md) is the
+only Forge component that derives these immutable advisory artefacts; the
+future Business Workspace owns every human decision about them.
 
 ## Governance boundary
 

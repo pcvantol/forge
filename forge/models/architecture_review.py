@@ -1,4 +1,4 @@
-"""Immutable, deterministic contracts for Architecture Review Engine 3.6.
+"""Immutable, deterministic contracts for Architecture Review Engine 3.7.
 
 The review model is repository-evidence-only.  It records advisory learning
 after a completed Mission and deliberately contains no mission, approval,
@@ -14,7 +14,7 @@ import json
 from typing import Any
 
 
-ARCHITECTURE_REVIEW_SCHEMA_VERSION = "3.6"
+ARCHITECTURE_REVIEW_SCHEMA_VERSION = "3.7"
 
 
 class ReviewInputKind(str, Enum):
@@ -70,15 +70,6 @@ class ReviewSignalKind(str, Enum):
     IMPLEMENTATION_FAILURE = "implementation_failure"
     REPOSITORY_GROWTH = "repository_growth"
     OPERATIONAL_FAILURE = "operational_failure"
-
-
-class RecommendationKind(str, Enum):
-    NEW_CAPABILITY = "new_capability"
-    RECONCILIATION = "reconciliation"
-    QUALIFICATION = "qualification"
-    DOCUMENTATION = "documentation"
-    RUNTIME_IMPROVEMENT = "runtime_improvement"
-    GOVERNANCE_IMPROVEMENT = "governance_improvement"
 
 
 class ReviewConfidence(str, Enum):
@@ -188,37 +179,9 @@ class ArchitecturePressure:
                 "repository_growth": self.repository_growth.value, "operational": self.operational.value}
 
 
-@dataclass(frozen=True, order=True)
-class MissionRecommendation:
-    """An immutable Portfolio artefact with no approval or execution authority."""
-
-    id: str
-    review_id: str
-    kind: RecommendationKind
-    title: str
-    rationale: str
-    confidence: ReviewConfidence
-    source_signal_ids: tuple[str, ...]
-    advisory: bool = True
-
-    def __post_init__(self) -> None:
-        if not all((self.id, self.review_id, self.title, self.rationale)):
-            raise ValueError("mission recommendation identity, title, and rationale are required")
-        if not self.advisory:
-            raise ValueError("mission recommendations must remain advisory")
-        if len(self.source_signal_ids) != len(set(self.source_signal_ids)):
-            raise ValueError("mission recommendation source signals must be unique")
-        object.__setattr__(self, "source_signal_ids", tuple(sorted(self.source_signal_ids)))
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "review_id": self.review_id, "kind": self.kind.value, "title": self.title,
-                "rationale": self.rationale, "confidence": self.confidence.value,
-                "source_signal_ids": list(self.source_signal_ids), "advisory": self.advisory}
-
-
 @dataclass(frozen=True)
 class ArchitectureReview:
-    """Immutable output of Architecture Review Engine; it never creates a Mission."""
+    """Immutable Repository Truth assessment; it never creates a recommendation or Mission."""
 
     id: str
     mission_id: str
@@ -232,7 +195,7 @@ class ArchitectureReview:
     detected_duplication: tuple[str, ...]
     capability_gaps: tuple[str, ...]
     recommended_mission_candidates: tuple[str, ...]
-    recommendations: tuple[MissionRecommendation, ...]
+    portfolio_item_ids: tuple[str, ...]
     rationale: str
     confidence: ReviewConfidence
     input_digest: str
@@ -243,11 +206,8 @@ class ArchitectureReview:
             raise ValueError("architecture review identity, rationale, digest, and supported schema are required")
         if len(self.repository_maturity) != len(MaturityArea) or {item.area for item in self.repository_maturity} != set(MaturityArea):
             raise ValueError("architecture review must assess every maturity area")
-        if any(item.review_id != self.id for item in self.recommendations):
-            raise ValueError("mission recommendations must belong to their architecture review")
         object.__setattr__(self, "repository_maturity", tuple(sorted(self.repository_maturity, key=lambda item: item.area.value)))
-        object.__setattr__(self, "recommendations", tuple(sorted(self.recommendations, key=lambda item: item.id)))
-        for field_name in ("architectural_observations", "implementation_observations", "repository_strengths", "repository_weaknesses", "detected_inconsistencies", "detected_duplication", "capability_gaps", "recommended_mission_candidates"):
+        for field_name in ("architectural_observations", "implementation_observations", "repository_strengths", "repository_weaknesses", "detected_inconsistencies", "detected_duplication", "capability_gaps", "recommended_mission_candidates", "portfolio_item_ids"):
             object.__setattr__(self, field_name, tuple(sorted(getattr(self, field_name))))
 
     def to_dict(self) -> dict[str, Any]:
@@ -258,6 +218,5 @@ class ArchitectureReview:
                 "repository_strengths": list(self.repository_strengths), "repository_weaknesses": list(self.repository_weaknesses),
                 "pressure": self.pressure.to_dict(), "detected_inconsistencies": list(self.detected_inconsistencies),
                 "detected_duplication": list(self.detected_duplication), "capability_gaps": list(self.capability_gaps),
-                "recommended_mission_candidates": list(self.recommended_mission_candidates),
-                "recommendations": [item.to_dict() for item in self.recommendations], "rationale": self.rationale,
+                "recommended_mission_candidates": list(self.recommended_mission_candidates), "portfolio_item_ids": list(self.portfolio_item_ids), "rationale": self.rationale,
                 "confidence": self.confidence.value, "input_digest": self.input_digest}

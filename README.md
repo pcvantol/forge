@@ -179,6 +179,13 @@ It is the only Engineering Platform 1.5-aware component: it admits and
 translates a rendered Runtime Prompt into an Inbox transaction, then returns
 canonical evidence. It neither plans nor executes engineering.
 
+Phase C — Increment 3.7 adds the deterministic, evidence-only
+[Mission Recommendation Engine](docs/architecture/mission-recommendation-engine.md).
+It turns Architecture Reviews into immutable advisory Portfolio artefacts with
+confidence, dependencies and explicit missing-discipline detection. It does
+not approve, prioritise, create or execute a Mission; Business approval remains
+mandatory.
+
 Phase C — Increment 3.5 adds the deterministic [End-to-End Bootstrap Mission
 Canary](docs/architecture/bootstrap-mission-canary.md). It qualifies one
 approved Mission through Mission Intake, State, Intent, Action, prompt,
@@ -187,8 +194,9 @@ adapter, Engineering Platform 1.5 admission, evidence, and completion.
 Phase C — Increment 3.6 adds the deterministic
 [Architecture Review Engine](docs/architecture/architecture-review-engine.md).
 It evaluates completed work using allow-listed Repository Truth and Execution
-Evidence only, producing immutable Architecture Reviews and advisory Portfolio
-Mission Recommendations. It neither creates nor approves executable Missions.
+Evidence only, producing immutable Architecture Reviews. The separate Mission
+Recommendation Engine produces advisory Portfolio Mission Recommendations. It
+neither creates nor approves executable Missions.
 
 Forge also has a deterministic, provider-independent [Agent Role and Model
 Selection Policy](docs/architecture/agent-role-model-selection-policy.md). It
