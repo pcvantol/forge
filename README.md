@@ -227,6 +227,13 @@ records the distinct approval for engineering. It does not implement Mission
 planning, execution, runtime controls, providers, repository mutation, or a
 UI framework.
 
+Phase D — Increment 4.2 adds the deterministic, repository-only
+[AI Mission Planner](docs/architecture/ai-mission-planner.md). It turns an
+engineering-approved Architecture Mission and digest-pinned evidence into
+bounded Engineering Intents and Actions, then continuously replans after
+Mission State and Execution Evidence updates. It neither changes Mission or
+Architecture authority nor performs Runtime or Execution Host work.
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text
