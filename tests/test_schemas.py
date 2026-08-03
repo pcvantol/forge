@@ -21,6 +21,7 @@ SCHEMAS = (
     "engineering-proposal-0.6.schema.json",
     "engineering-prompt-artifact-0.7.schema.json",
     "phase-completion-1.0.schema.json",
+    "mission-candidate-1.0.schema.json",
 )
 
 

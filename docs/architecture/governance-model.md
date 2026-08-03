@@ -21,8 +21,8 @@ when declared; it cannot omit a lifecycle stage or an auditable approval.
 
 ## Profile definition
 
-A future versioned declarative Governance Profile Definition must resolve a
-Workspace selection into:
+The versioned declarative Governance Profile Definition resolves a Workspace
+selection into:
 
 - participating roles and their assignments;
 - an approval matrix for Mission Candidates, Architecture, Engineering,
@@ -65,15 +65,15 @@ workflow remain intact; no Mission migration is required. This avoids distinct
 "single-user" and "enterprise" implementations while allowing governance to
 become more specific as an organization grows.
 
-## Existing bootstrap catalog
+## Compatibility and resolved profiles
 
 The 0.2 persisted `governance_profile` schema remains a bootstrap compatibility
-catalog (`solo`, `two_person`, `team`, `enterprise`). It is not yet the
-versioned Governance Profile Definition described here. The next implementation
-increment must introduce the canonical `solo`, `duo`, `startup`, and
-`enterprise` definition vocabulary with an explicit read-compatibility and
-migration strategy for existing persisted values; it must not silently
-reinterpret stored data.
+catalog (`solo`, `two_person`, `team`, `enterprise`). The Business Workspace
+implements the versioned resolved Governance Profile contract with canonical
+`solo`, `duo`, `startup`, and `enterprise` vocabulary. Existing `two_person`
+and `team` values are accepted only with an explicit compatibility note that
+records their resolution to Duo and Startup; stored data is not silently
+rewritten or reinterpreted.
 
 Engineering Mode and Governance Profile remain independent: an Engineering
 Mode describes execution context, while a Governance Profile describes who may
@@ -87,7 +87,9 @@ The [Product Model](product-model.md) owns the invariant lifecycle. The
 [Mission architecture](engineering-mission.md), and [Forge Studio model](forge-studio.md)
 apply this profile boundary in their domains.
 
-The recommended next increment is a versioned, declarative Governance Profile
-Definition contract with profile resolution and compatibility handling only.
-It must not implement authentication, RBAC, workflow automation, user
-interfaces, or separate operating modes.
+The [Business Workspace](business-workspace.md) consumes the resolved profile
+for business-facing governance while preserving this model's invariant. The
+recommended next increment is **Architecture Workspace**. It receives only
+Business-approved Mission Candidates and prepares them for the distinct
+Architecture approval before engineering. It must not implement authentication,
+RBAC, workflow automation, or separate operating modes.

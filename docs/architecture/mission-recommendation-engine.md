@@ -2,7 +2,7 @@
 
 ## Boundary
 
-The Mission Recommendation Engine is the deterministic, advisory boundary between an Architecture Review and the future Business Workspace. It converts declared Repository Truth, Execution Evidence, an Architecture Review and its declared Portfolio references into immutable Mission Recommendation artefacts. It never retrieves a repository, invokes an AI provider, changes Portfolio state, approves work, prioritises work, creates a Mission Candidate, creates a Mission, schedules work or invokes the Mission Planner.
+The Mission Recommendation Engine is the deterministic, advisory boundary between an Architecture Review and the Business Workspace. It converts declared Repository Truth, Execution Evidence, an Architecture Review and its declared Portfolio references into immutable Mission Recommendation artefacts. It never retrieves a repository, invokes an AI provider, changes Portfolio state, approves work, prioritises work, creates a Mission Candidate, creates a Mission, schedules work or invokes the Mission Planner.
 
 Architecture Review remains assessment-only. Its output records Repository Truth, maturity, pressure and candidate signals. The separate Recommendation Engine alone derives Portfolio-facing opportunities from that assessment.
 
@@ -16,7 +16,7 @@ Completed Mission -> Execution Evidence -> Repository Truth -> Architecture Revi
   -> Business Approval -> Architecture Approval -> Mission
 ```
 
-The Business Workspace owns approval, rejection, refinement and prioritisation. A recommendation is only an artefact available to that workspace; it is not a state transition and has no approval field. A later Mission Candidate and Mission must retain their own explicit governance.
+The Business Workspace owns approval, rejection, refinement and prioritisation. A recommendation is only an artefact available to that workspace; it is not a state transition and has no approval field. A later Mission Candidate and Mission retain their own explicit governance.
 
 ## Categories, dependencies and disciplines
 

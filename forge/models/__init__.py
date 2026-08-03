@@ -140,6 +140,12 @@ from .mission_recommendation import (
     RecommendationRepositoryContext,
     RequiredDiscipline,
 )
+from .mission_candidate import (
+    MISSION_CANDIDATE_SCHEMA_VERSION,
+    MissionCandidate,
+    MissionCandidateMaturity,
+    MissionCandidateStatus,
+)
 from .ai_architect_provider import (
     AI_ARCHITECT_PROVIDER_SCHEMA_VERSION,
     AIArchitectConfidence,
@@ -249,6 +255,10 @@ __all__ = [
     "RepositoryCatalog",
     "RepositoryRole",
     "Workspace",
+    "MISSION_CANDIDATE_SCHEMA_VERSION",
+    "MissionCandidate",
+    "MissionCandidateMaturity",
+    "MissionCandidateStatus",
     "EngineeringGoal",
     "EngineeringIncrementProposal",
     "EngineeringPlan",

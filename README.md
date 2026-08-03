@@ -211,6 +211,14 @@ approval authority, workspace visibility, advisor availability, execution
 permissions, and explicit shortcuts only. It adds no workflow engine, identity
 system, RBAC, UI, or profile-specific operating mode.
 
+Phase D — Increment 4.0 adds the local, business-only
+[Business Workspace](docs/architecture/business-workspace.md). It persists and
+lists Mission Candidates, renders advisory Mission Recommendations, supports
+business refinement and auditable approval/rejection/archive decisions, and
+resolves canonical Governance Profiles with legacy read compatibility. It does
+not perform architecture, create a Mission, start engineering, operate a
+repository, or implement a Runtime or UI framework.
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text

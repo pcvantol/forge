@@ -117,9 +117,11 @@ becomes a Mission automatically and has no execution authority.
 
 ## Current implementation boundary
 
-This is architectural knowledge only. Existing Forge runtime components remain
-unchanged. The next implementation increment should be a versioned,
-declarative Governance Profile Definition contract that resolves role
-assignments, approval matrix, workspace visibility, advisor availability,
-execution permissions, and explicit shortcuts without adding workflow
-automation or user interfaces.
+The [Business Workspace](business-workspace.md) now implements the business
+governance boundary: persistent Mission Candidates, advisory Recommendation
+rendering, business-only refinement and approval/rejection/archive transitions,
+and resolved Governance Profile policy. Existing Forge runtime components
+remain unchanged. The next implementation increment is **Architecture
+Workspace**, which may receive only Business-approved Candidates and must
+prepare them for the separate Architecture approval before a Mission enters
+engineering.

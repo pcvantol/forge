@@ -20,7 +20,8 @@ to future Portfolio decisions. Neither a candidate nor a recommendation can
 create, alter, or execute a Mission automatically.
 The [Mission Recommendation Engine](mission-recommendation-engine.md) is the
 only Forge component that derives these immutable advisory artefacts; the
-future Business Workspace owns every human decision about them.
+[Business Workspace](business-workspace.md) owns every human decision about
+them.
 
 ## Governance boundary
 
