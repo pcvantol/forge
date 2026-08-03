@@ -184,6 +184,12 @@ Canary](docs/architecture/bootstrap-mission-canary.md). It qualifies one
 approved Mission through Mission Intake, State, Intent, Action, prompt,
 adapter, Engineering Platform 1.5 admission, evidence, and completion.
 
+Phase C — Increment 3.6 adds the deterministic
+[Architecture Review Engine](docs/architecture/architecture-review-engine.md).
+It evaluates completed work using allow-listed Repository Truth and Execution
+Evidence only, producing immutable Architecture Reviews and advisory Portfolio
+Mission Recommendations. It neither creates nor approves executable Missions.
+
 Phase C — Architecture Reconciliation adds the canonical
 [Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
 Startup, and Enterprise scale the same lifecycle by changing role assignments,
@@ -196,7 +202,7 @@ The canonical engineering hierarchy and iterative feedback loop are:
 ```text
 Vision → Architecture → Roadmap → Mission → Mission Planner → Engineering Intent →
 Engineering Action → Runtime Prompt → Execution Host → Repository → Evidence →
-Mission Planner
+Architecture Review → Mission Recommendation → Portfolio
 ```
 
 Prompt Artifact is retained as the compatible transitional execution

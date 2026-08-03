@@ -169,9 +169,7 @@ End-to-End Bootstrap Mission Canary
   ↓
 Architecture Review Engine
   ↓
-Mission Recommendation Engine
+AI Mission Planner
   ↓
-Forge Runtime Service
-  ↓
-Forge Studio
+Forge Runtime Service → Forge Studio
 ```
