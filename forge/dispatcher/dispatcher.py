@@ -174,3 +174,20 @@ class MissionDispatcher:
         if self._recommendations:
             self._recommendations(mission_id)
         return self.dispatch()
+
+    def hold(self, mission_id: str, status: MissionExecutionStatus) -> MissionDispatchRecord:
+        """Reflect a loop-owned deterministic pause without advancing the queue."""
+        if status not in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}:
+            raise MissionDispatcherError("dispatcher hold requires blocked or failed Mission State")
+        state = self._states.get(mission_id)
+        if state.status is not status:
+            raise MissionDispatcherError("dispatcher hold requires matching durable Mission State")
+        dispatch_status = DispatcherStatus.BLOCKED if status is MissionExecutionStatus.BLOCKED else DispatcherStatus.FAILED
+        return self._store.transition(mission_id, dispatch_status, occurred_at=self._clock())
+
+    def recover(self, mission_id: str) -> MissionDispatchRecord:
+        """Reactivate an explicitly recovered Mission; it does not plan or execute it."""
+        state = self._states.get(mission_id)
+        if state.status not in {MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE}:
+            raise MissionDispatcherError("dispatcher recovery requires a recovered Mission State")
+        return self._store.activate(mission_id, occurred_at=self._clock())

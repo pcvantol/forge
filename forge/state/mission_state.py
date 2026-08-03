@@ -16,7 +16,7 @@ import sqlite3
 from typing import Any, Mapping, Sequence
 
 
-MISSION_STATE_SCHEMA_VERSION = "1.0"
+MISSION_STATE_SCHEMA_VERSION = "1.1"
 
 
 class MissionExecutionStatus(str, Enum):
@@ -67,6 +67,12 @@ class MissionExecutionState:
     execution_correlation: Mapping[str, Any] | None
     execution_evidence: Mapping[str, Any] | None
     revision: int
+    current_engineering_intent: Mapping[str, Any] | None = None
+    current_engineering_action: Mapping[str, Any] | None = None
+    execution_history: tuple[Mapping[str, Any], ...] = ()
+    waiting_reason: str | None = None
+    repository_truth: Mapping[str, Any] | None = None
+    completion: Mapping[str, Any] | None = None
     schema_version: str = MISSION_STATE_SCHEMA_VERSION
 
 
@@ -120,6 +126,14 @@ def _derive_progress(actions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "remaining_action_ids": [str(action.get("id", "")) for action in actions if action.get("status") != "COMPLETE"],
         "percent_complete": 0 if not total else (complete * 100) // total,
     }
+
+
+def _current_work(actions: Sequence[Mapping[str, Any]], intents: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    action = next((item for item in actions if item.get("status") in {"ACTIVE", "WAITING_FOR_RESULT", "BLOCKED", "FAILED"}), None)
+    if action is None:
+        return None, None
+    intent = next((item for item in intents if item.get("id") == action.get("intent_id") and item.get("revision") == action.get("intent_revision")), None)
+    return (None if intent is None else dict(intent), dict(action))
 
 
 class MissionStateStore:
@@ -197,6 +211,9 @@ class MissionStateStore:
             "resume": _document(resume or {}, "resume"),
             "execution_correlation": None,
             "execution_evidence": None,
+            "current_engineering_intent": None, "current_engineering_action": None,
+            "execution_history": [], "waiting_reason": None, "repository_truth": None,
+            "completion": None,
             "revision": 1,
         }
         try:
@@ -225,7 +242,9 @@ class MissionStateStore:
             "mission": mission_document, "intents": [], "actions": [],
             "status": MissionExecutionStatus.CREATED.value, "progress": _derive_progress(()),
             "resume": _document(resume or {}, "resume"), "execution_correlation": None,
-            "execution_evidence": None, "revision": 1,
+            "execution_evidence": None, "current_engineering_intent": None,
+            "current_engineering_action": None, "execution_history": [], "waiting_reason": None,
+            "repository_truth": None, "completion": None, "revision": 1,
         }
         try:
             with self._connection:
@@ -252,9 +271,12 @@ class MissionStateStore:
         occurred_at: str,
         reason: str,
         actions: Sequence[Any] | None = None,
+        intents: Sequence[Any] | None = None,
         execution_correlation: Any | None = None,
         execution_evidence: Any | None = None,
         resume: Mapping[str, Any] | None = None,
+        repository_truth: Mapping[str, Any] | None = None,
+        completion: Mapping[str, Any] | None = None,
     ) -> MissionExecutionState:
         if not occurred_at or not reason:
             raise MissionStateStoreError("transition time and reason are required")
@@ -262,14 +284,26 @@ class MissionStateStore:
         if status not in _ALLOWED_TRANSITIONS[current.status]:
             raise MissionStateStoreError(f"mission state transition {current.status.value} -> {status.value} is not permitted")
         next_actions = _documents(actions, "action") if actions is not None else current.actions
+        next_intents = _documents(intents, "intent") if intents is not None else current.intents
+        current_intent, current_action = _current_work(next_actions, next_intents)
         document = self._as_document(current)
+        history = list(document["execution_history"])
+        if execution_evidence is not None:
+            history.append(_document(execution_evidence, "execution evidence"))
         document.update({
             "status": status.value,
             "actions": list(next_actions),
+            "intents": list(next_intents),
             "progress": _derive_progress(next_actions),
             "resume": _document(resume, "resume") if resume is not None else document["resume"],
             "execution_correlation": _document(execution_correlation, "execution correlation") if execution_correlation is not None else document["execution_correlation"],
             "execution_evidence": _document(execution_evidence, "execution evidence") if execution_evidence is not None else document["execution_evidence"],
+            "current_engineering_intent": current_intent,
+            "current_engineering_action": current_action,
+            "execution_history": history,
+            "waiting_reason": reason if status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.WAITING_FOR_EVIDENCE} else None,
+            "repository_truth": _document(repository_truth, "repository truth") if repository_truth is not None else document["repository_truth"],
+            "completion": _document(completion, "completion") if completion is not None else document["completion"],
             "revision": current.revision + 1,
         })
         if status is MissionExecutionStatus.COMPLETED:
@@ -323,18 +357,28 @@ class MissionStateStore:
             "intents": [dict(item) for item in state.intents], "actions": [dict(item) for item in state.actions],
             "status": state.status.value, "progress": dict(state.progress), "resume": dict(state.resume),
             "execution_correlation": None if state.execution_correlation is None else dict(state.execution_correlation),
-            "execution_evidence": None if state.execution_evidence is None else dict(state.execution_evidence), "revision": state.revision,
+            "execution_evidence": None if state.execution_evidence is None else dict(state.execution_evidence),
+            "current_engineering_intent": None if state.current_engineering_intent is None else dict(state.current_engineering_intent),
+            "current_engineering_action": None if state.current_engineering_action is None else dict(state.current_engineering_action),
+            "execution_history": [dict(item) for item in state.execution_history],
+            "waiting_reason": state.waiting_reason,
+            "repository_truth": None if state.repository_truth is None else dict(state.repository_truth),
+            "completion": None if state.completion is None else dict(state.completion), "revision": state.revision,
         }
 
     @staticmethod
     def _decode(serialized: str) -> MissionExecutionState:
         document = json.loads(serialized)
-        if document.get("schema_version") != MISSION_STATE_SCHEMA_VERSION:
+        if document.get("schema_version") not in {"1.0", MISSION_STATE_SCHEMA_VERSION}:
             raise MissionStateStoreError("mission state schema version is unsupported")
         return MissionExecutionState(
             mission_id=document["mission_id"], mission=document["mission"], intents=tuple(document["intents"]),
             actions=tuple(document["actions"]), status=MissionExecutionStatus(document["status"]),
             progress=document["progress"], resume=document["resume"],
             execution_correlation=document["execution_correlation"], execution_evidence=document["execution_evidence"],
-            revision=document["revision"], schema_version=document["schema_version"],
+            revision=document["revision"], current_engineering_intent=document.get("current_engineering_intent"),
+            current_engineering_action=document.get("current_engineering_action"),
+            execution_history=tuple(document.get("execution_history", ())), waiting_reason=document.get("waiting_reason"),
+            repository_truth=document.get("repository_truth"), completion=document.get("completion"),
+            schema_version=document["schema_version"],
         )

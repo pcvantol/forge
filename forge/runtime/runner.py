@@ -12,6 +12,7 @@ from forge.models.execution_host import (
     ExecutionDispatch,
     ExecutionEvidenceOutcome,
     ExecutionHost,
+    ExecutionHostEvidence,
     ExecutionRequest,
 )
 from forge.models.runtime_prompt import (
@@ -36,6 +37,18 @@ class RuntimePromptFactory(Protocol):
     """The injected derivation boundary; the Runner performs no prompt reasoning."""
 
     def __call__(self, intent: Mapping[str, Any], action: EngineeringAction) -> RuntimePrompt: ...
+
+
+class CompletionContextFactory(Protocol):
+    """Resolve the final Repository Truth required by a Mission completion."""
+
+    def __call__(self, state: MissionExecutionState, evidence: ExecutionHostEvidence) -> tuple[Mapping[str, Any], Mapping[str, Any]]: ...
+
+
+class ReplanAfterEvidence(Protocol):
+    """Validate the remaining bounded work after one completed Action."""
+
+    def __call__(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...], evidence: ExecutionHostEvidence) -> None: ...
 
 
 def _document(value: Any) -> dict[str, Any]:
@@ -165,6 +178,8 @@ class BootstrapMissionRunner:
         repository_id: str,
         clock: Callable[[], str] | None = None,
         correlation_id_factory: Callable[[], str],
+        completion_context: CompletionContextFactory | None = None,
+        replan_after_evidence: ReplanAfterEvidence | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise MissionRunnerError("runtime host, workspace, and repository identities are required")
@@ -177,6 +192,8 @@ class BootstrapMissionRunner:
         self._repository_id = repository_id
         self._clock = clock or (lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"))
         self._correlation_id_factory = correlation_id_factory
+        self._completion_context = completion_context
+        self._replan_after_evidence = replan_after_evidence
 
     def start(self, mission: Any, intents: Sequence[Any], actions: Sequence[Any]) -> MissionExecutionState:
         """Persist the one permitted Mission and make it available to the Runtime."""
@@ -265,7 +282,12 @@ class BootstrapMissionRunner:
         if evidence.outcome is ExecutionEvidenceOutcome.FAILED:
             return self._store.transition(state.mission_id, MissionExecutionStatus.FAILED, occurred_at=self._now(), reason="execution_failed", actions=actions, execution_evidence=evidence_document)
         if self._scheduler.progress(actions).is_complete:
-            return self._store.transition(state.mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self._now(), reason="mission_completed", actions=actions, execution_evidence=evidence_document)
+            repository_truth = completion = None
+            if self._completion_context is not None:
+                repository_truth, completion = self._completion_context(state, evidence)
+            return self._store.transition(state.mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self._now(), reason="mission_completed", actions=actions, execution_evidence=evidence_document, repository_truth=repository_truth, completion=completion)
+        if self._replan_after_evidence is not None:
+            self._replan_after_evidence(state, actions, evidence)
         return self._store.transition(state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(), reason="execution_completed", actions=actions, execution_evidence=evidence_document)
 
     def _host_failure(self, state: MissionExecutionState, reference: str, _error: Exception) -> MissionExecutionState:

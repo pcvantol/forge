@@ -239,6 +239,14 @@ It activates exactly one Architecture-approved Mission from a persistent,
 deterministic FIFO queue, resumes it safely, and re-evaluates the queue only
 after independently verified completion. It does not plan or execute work.
 
+Phase D — Increment 4.4 adds the deterministic
+[Autonomous Mission Execution Loop](docs/architecture/autonomous-mission-execution-loop.md).
+It composes one active approved Mission through planning, single-Action Host
+execution, evidence processing, durable Mission State, explicit recovery and
+completion notifications. Business and Architecture governance remain outside
+the loop; the Execution Host remains independent. See the
+[Execution Loop Report](docs/reports/forge-autonomous-mission-execution-loop-report-001.md).
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text
