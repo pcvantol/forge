@@ -167,6 +167,12 @@ Prompt derivation, and canonical Execution Host Contract. It adds no AI
 planning, Execution Host implementation, parallelism, background service, or
 repository operation.
 
+Phase C — Increment 3.3 adds the deterministic, immutable
+[Codex CLI Runtime Prompt Renderer](docs/architecture/codex-cli-runtime-prompt-renderer.md).
+It renders one Mission-pinned active Engineering Action into a Codex CLI
+execution artifact with explicit compatibility and correlation metadata. It
+does not plan, invoke Codex, communicate with a host, or execute engineering.
+
 Phase C — Architecture Reconciliation adds the canonical
 [Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
 Startup, and Enterprise scale the same lifecycle by changing role assignments,

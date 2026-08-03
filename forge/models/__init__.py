@@ -158,6 +158,14 @@ from .action import (
     EngineeringAction,
     EngineeringActionStatus,
 )
+from .codex_runtime_prompt import (
+    CODEX_CLI_RENDERER_VERSION,
+    CODEX_CLI_RUNTIME_PROMPT_SCHEMA_VERSION,
+    CodexCliRuntimePrompt,
+    CodexCliRuntimePromptRequest,
+    ExecutionHostCompatibility,
+    RepositoryState,
+)
 from .execution_host import (
     EXECUTION_HOST_CONTRACT_SCHEMA_VERSION,
     ExecutionDispatch,
@@ -317,6 +325,12 @@ __all__ = [
     "ENGINEERING_ACTION_SCHEMA_VERSION",
     "EngineeringAction",
     "EngineeringActionStatus",
+    "CODEX_CLI_RENDERER_VERSION",
+    "CODEX_CLI_RUNTIME_PROMPT_SCHEMA_VERSION",
+    "CodexCliRuntimePrompt",
+    "CodexCliRuntimePromptRequest",
+    "ExecutionHostCompatibility",
+    "RepositoryState",
     "EXECUTION_HOST_CONTRACT_SCHEMA_VERSION",
     "ExecutionDispatch",
     "ExecutionEvidenceOutcome",
