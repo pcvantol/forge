@@ -78,6 +78,12 @@ Architecture Workspace, Execution Workspace, and Analytics. Studio owns
 interaction, visualization, and governance workflows; it orchestrates the
 Runtime but never owns execution.
 
+The workspaces retain the product-model boundaries: Business owns Mission
+Candidates and Portfolio decisions; Architecture refines and approves Missions
+for engineering; Forge owns engineering only within an approved Mission; and
+Execution Hosts own execution evidence. Studio does not collapse these
+responsibilities or introduce automatic approval.
+
 ## Bootstrap execution boundary
 
 Engineering Platform 1.5 remains the temporary reference Execution Host. Forge
@@ -111,14 +117,18 @@ Forge Runtime Service
   ↓
 Mission Recommendation
   ↓
-Business Approval
+Business Review
   ↓
-Architecture Approval
+Architecture Review
   ↓
 Mission
 ```
 
 Forge never creates executable Missions autonomously.
+
+The full lifecycle and its two approval decisions are canonical in the
+[Product Model](product-model.md). This roadmap's implementation order does
+not itself authorize any lifecycle transition.
 
 ## Portfolio relationship
 

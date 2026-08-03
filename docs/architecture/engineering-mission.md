@@ -12,6 +12,16 @@ This is an architecture reconciliation only. It introduces no Mission Planner
 implementation, scheduler, storage migration, Runtime, provider, Execution
 Host, Studio, repository operation, or autonomous execution.
 
+## Admission from the product lifecycle
+
+A Mission is not an opportunity, a roadmap item, or a Mission Candidate. The
+Business Workspace owns the latter together with portfolio prioritisation,
+value, and strategic alignment. A Mission Candidate reaches Architecture
+Review only after explicit Business Owner approval. The Platform Architect may
+then create and approve the Mission for Engineering. Only that approved Mission
+may enter Forge. Candidate maturity, Business Review, and Architecture Review
+are defined in the [Product Model](product-model.md).
+
 ## Canonical hierarchy and feedback loop
 
 ```text
@@ -76,8 +86,8 @@ Intents while preserving the Mission contract.
 
 The Mission Planner is not a scheduler, does not execute Actions, does not
 operate a repository, does not approve Missions, and does not weaken human
-governance. This document defines the responsibility only; implementation is
-explicitly deferred.
+governance. It also never changes a Mission objective. This document defines
+the responsibility only; implementation is explicitly deferred.
 
 ## Dynamic Engineering Intents
 

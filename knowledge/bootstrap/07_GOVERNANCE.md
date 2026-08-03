@@ -77,6 +77,16 @@ approve its own proposal, or infer authority from a selected profile.
 more explicit while keeping the human decision boundary independent from
 execution.
 
+### Portfolio-driven approval stages
+
+The Business Owner explicitly approves a Mission Candidate for Architecture.
+The Platform Architect then explicitly approves a Mission for Engineering.
+Forge may act only after both decisions and only within the approved Mission;
+it cannot infer, bypass, or replace either approval, nor change the Mission
+objective. AI Business and Architecture Advisors may analyse and recommend but
+never approve or perform engineering. The canonical cross-workspace lifecycle
+is captured in [Product Model](../../docs/architecture/product-model.md).
+
 ## Governance profiles
 
 **Context.** Different workspaces need to describe how human decision

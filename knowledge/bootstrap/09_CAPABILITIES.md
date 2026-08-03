@@ -632,6 +632,27 @@ through separately governed, evidenced work.
 
 ## Product Capabilities
 
+### Portfolio and Mission Candidate (future)
+
+**Context.** Product opportunities need a governed home before they can enter
+architecture or engineering.
+
+**Responsibility.** The future Portfolio and Mission Candidate capabilities
+model business-owned opportunities, their maturity (`IDEA`, `RESEARCH`,
+`FEASIBILITY`, `PROPOSAL`, `READY_FOR_ARCHITECTURE`), prioritisation, value,
+strategic alignment, and advisory Mission Recommendations.
+
+**Constraints.** A Mission Candidate is never executable. Maturity does not
+approve work or create a Mission. Mission Recommendations are advisory and
+never become Missions automatically. These capabilities do not implement a
+workflow, user interface, approval engine, or engineering runtime.
+
+**Relationships.** Business Owner approval admits a candidate to Architecture
+Review; Platform Architect approval admits a Mission to Forge Engineering.
+Repository Truth and Execution Evidence can inform an Architecture Review that
+returns a Mission Recommendation to the Portfolio. The [Product Model](../../docs/architecture/product-model.md)
+is canonical for these boundaries.
+
 ### Product Identity
 
 **Context.** A Workspace needs a stable product identity independent of

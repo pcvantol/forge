@@ -56,6 +56,17 @@ The next engineering activity should **not** extend the Bootstrap Knowledge
 Package. Author the **Forge Founding Architecture Handbook** from the
 canonical Bootstrap Knowledge Package.
 
+## Phase C architecture reconciliation
+
+The later Phase C reconciliation preserves this completion record while making
+the broader product model explicit: Forge is an AI-native Product Development
+Platform, and Engineering is one bounded lifecycle stage. The Business
+Workspace owns Portfolio and Mission Candidates; the Architecture Workspace
+refines and approves Missions; Forge engineers only inside approved Missions;
+and Architecture Review may return advisory Mission Recommendations to the
+Portfolio. This reconciliation adds no runtime behavior or workflow. See the
+[Product Model](../architecture/product-model.md).
+
 ## Validation
 
 - The index links every completed package chapter.

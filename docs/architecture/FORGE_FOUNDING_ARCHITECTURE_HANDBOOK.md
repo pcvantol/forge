@@ -124,8 +124,8 @@ of affected records; routine work cannot change the Constitution implicitly.
 Forge exists because code generation is not, by itself, engineering. A product
 also needs enduring product context, architecture, accountable approvals,
 bounded work, observable execution, and evidence that the intended outcome was
-actually achieved. Forge is therefore an AI-native engineering platform whose
-purpose is to engineer products under human governance.
+actually achieved. Forge is therefore an AI-native Product Development
+Platform whose Engineering capability operates under human governance.
 
 That purpose explains its scope: Workspace management, architecture,
 capabilities, knowledge, engineering planning and execution, governance, and
@@ -142,20 +142,23 @@ silently replace the authority of an earlier one.
 
 ```mermaid
 flowchart LR
-    W[Workspace] --> A[Architecture] --> R[Roadmap] --> M[Mission]
+    V[Vision] --> P[Portfolio] --> MC[Mission Candidate] --> BR[Business Review]
+    BR --> AA[Approved for Architecture] --> AR[Architecture Review]
+    AR --> AE[Approved for Engineering] --> M[Mission]
     M --> MP[Mission Planner] --> I[Engineering Intent] --> AC[Engineering Action]
     AC --> PR[Runtime Prompt] --> H[Execution Host] --> RE[Repository]
-    RE --> E[Evidence] --> KE[Knowledge Evolution]
-    E -. informs .-> MP
-    KE -. informs .-> A
+    RE --> E[Evidence] --> AR2[Architecture Review]
+    AR2 --> MR[Mission Recommendation] --> P
 ```
 
-Vision gives stable direction; Architecture gives structure; Roadmap frames
-strategic movement; a Mission is the approved contract; Mission Planner owns
-iterative planning; Intent retains tactical meaning; an Engineering Action
-makes one unit executable and produces a provider-specific context; Repository
-evidence assesses the result and informs subsequent planning. The sequence is
-conceptual, not a currently implemented runtime workflow.
+Vision gives stable direction. The Business Workspace owns Portfolio and
+Mission Candidates; it does not own engineering. Business Review admits a
+candidate to Architecture Review, where the Platform Architect refines scope,
+feasibility, boundaries, and constraints before approving a Mission for
+Engineering. Forge then owns planning and execution only inside that approved
+Mission. Repository evidence is reviewed architecturally and may yield an
+advisory Mission Recommendation for the Portfolio. The sequence is conceptual,
+not a currently implemented runtime workflow.
 
 Bootstrap intentionally began by engineering Forge through bounded local work.
 This revealed the important distinctions captured here, but bootstrap history
@@ -299,6 +302,14 @@ inspect or mutate repositories, migrate a Workspace, or add catalog roles.
 
 ## 11. From direction to bounded work
 
+The product lifecycle precedes the engineering model: `Vision → Portfolio →
+Mission Candidate → Business Review → Approved for Architecture → Architecture
+Review → Approved for Engineering → Mission`. A Mission Candidate may mature
+through `IDEA → RESEARCH → FEASIBILITY → PROPOSAL → READY_FOR_ARCHITECTURE`,
+but maturity grants neither approval nor execution authority. Forge begins
+only after the Business Owner and Platform Architect have made their respective
+explicit approvals.
+
 The engineering model gives each stage in the lifecycle a stable role. Vision
 sets long-lived purpose. Architecture constrains product structure. Roadmap
 expresses capability-oriented strategic movement. Backlog records opportunities
@@ -413,11 +424,21 @@ current vocabulary and labels future and unresolved terms as such.
 ## 17. Human authority in an AI-native platform
 
 Human governance is the architectural control plane. Humans define Vision,
-Architecture, Constitution, Governance, and Approvals. Forge and AI may
+Architecture, Constitution, Governance, and Approvals. The Business Owner
+approves a Mission Candidate for Architecture; the Platform Architect approves
+a Mission for Engineering. Forge and AI may
 analyse, plan, propose, and execute within explicit delegated authority,
 declared scope, constraints, validation, and expected evidence. A delegation
 is bounded: it cannot alter the enduring records, broaden itself, or turn a
 runtime's availability into approval.
+
+The AI Business Advisor may refine candidates, identify missing business
+information and non-engineering disciplines, assess business risk, and assess
+value; it cannot approve work or perform engineering. The Architecture Advisor
+may assist the Platform Architect with evidence-grounded review; it cannot
+approve work or execute it. Mission Recommendations are advisory outputs of
+Repository Truth, Execution Evidence, Architecture Review, and Portfolio
+context, and never become Missions automatically.
 
 ```mermaid
 flowchart TD

@@ -30,9 +30,11 @@ entire available-value catalog.
 
 ## Portfolio relationship
 
-The future Portfolio is a Workspace-level governance and learning view. Mission
-Candidates enter through the Business Workspace; only an approved Mission may
-enter Mission Intake and the Forge CLI. Engineering outcomes can produce
+The future Portfolio is the Business Workspace's governance and learning view.
+It owns Mission Candidates, prioritisation, business value, and strategic
+alignment; it does not own engineering. Only a Mission approved by the
+Platform Architect after Business Review and Architecture Review may enter
+Mission Intake and the Forge CLI. Engineering outcomes can produce advisory
 Mission Recommendations for the Portfolio, but neither the Portfolio nor a
 Workspace creates executable Missions autonomously. The canonical flow is in
-the [Runtime Evolution Roadmap](runtime-evolution-roadmap.md).
+the [Product Model](product-model.md).

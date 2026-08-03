@@ -19,9 +19,10 @@ observable execution, and evidence that the intended result was achieved.
 
 ### Vision
 
-Forge exists to become an AI-native engineering platform capable of
-engineering software products under human governance. Its purpose is to
-engineer products, rather than simply to generate code.
+Forge exists to become an AI-native Product Development Platform capable of
+engineering software products under human governance. Engineering is one
+bounded stage of its broader capability lifecycle; it does not own product
+opportunity selection or architectural approval.
 
 ### Rationale
 
@@ -39,7 +40,7 @@ verifiable outcomes.
 - Future behavior must preserve human governance and evidence as integral
   parts of engineering.
 
-## The engineering lifecycle
+## The product capability lifecycle
 
 ### Context
 
@@ -49,53 +50,58 @@ responsibilities.
 
 ### Vision
 
-Forge's intended engineering lifecycle is:
+Forge's intended product capability lifecycle is:
 
 ```text
-Workspace
+Vision
   ↓
-Architecture
+Portfolio
   ↓
-Roadmap
+Mission Candidate
   ↓
-Backlog
+Business Review
   ↓
-Proposal
+Approved for Architecture
   ↓
-Engineering Intent
+Architecture Review
   ↓
-Approval
+Approved for Engineering
   ↓
-Runtime Provider
+Mission
   ↓
-Runtime Prompt
+Engineering
   ↓
 Execution
   ↓
 Evidence
   ↓
-Knowledge Evolution
+Architecture Review
+  ↓
+Mission Recommendation
+  ↓
+Portfolio
 ```
 
 ### Rationale
 
 The lifecycle separates concerns that otherwise become conflated in a prompt
-or a runtime: a Workspace holds product context; Architecture records durable
-structure; Roadmap and Backlog frame and prioritize candidate work; a Proposal
-scopes and justifies it; Engineering Intent preserves its canonical,
-model-independent meaning; and Approval authorizes progression. A Runtime
-Provider then derives a temporary Runtime Prompt for Execution. Evidence
-assesses the result, and the resulting discoveries can evolve the knowledge
-held by Forge without rewriting the authority of the completed intent.
+or runtime. The Business Workspace owns opportunities, value, prioritisation,
+and strategic alignment. The Architecture Workspace turns a business-approved
+candidate into an architect-approved Mission with explicit boundaries. Forge
+then owns only the engineering chain inside that Mission. Architecture Review
+interprets evidence and may produce an advisory Mission Recommendation for the
+Portfolio; it never creates a new Mission automatically.
 
 ### Consequences
 
 - No lifecycle stage silently replaces the authority of another stage.
-- Runtime Prompts remain derived execution artifacts, not the canonical
-  definition of engineering work.
-- Evidence connects outcomes to declared intent and repository reality.
-- Knowledge Evolution is informed by assessed outcomes rather than transient
-  conversations or provider-specific prompt text.
+- Mission Candidates are opportunities, never executable work or implicit
+  Missions.
+- A Mission exists only after Business and Platform Architect approvals.
+- Forge remains autonomous only within an approved Mission and never changes
+  its objective.
+- Evidence connects outcomes to declared engineering intent and repository
+  reality; recommendations return to the Portfolio through human governance.
 
 ## Human governance
 

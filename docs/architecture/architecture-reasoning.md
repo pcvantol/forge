@@ -40,6 +40,17 @@ Reasoning owns engineering decisions. Runtime owns execution. Neither a
 runtime, provider, proposal lifecycle label, nor an Intent lifecycle label
 authorizes work without the human governance required by the Constitution.
 
+## Architecture Workspace review boundary
+
+Architecture Review has two distinct product-model roles. Before engineering,
+the Platform Architect refines a Business-approved Mission Candidate's scope,
+technical feasibility, architectural boundaries, and engineering constraints,
+then explicitly approves a resulting Mission for Engineering. After execution,
+Architecture Review assesses Repository Truth and Execution Evidence and may
+create an advisory Mission Recommendation for the Portfolio. Neither review
+creates a Mission automatically. The Architecture Advisor may assist with
+evidence-grounded analysis but neither approves work nor performs engineering.
+
 ## Findings and opportunities
 
 `ArchitecturalFindingCategory` is deliberately closed to: missing

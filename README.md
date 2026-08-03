@@ -238,6 +238,12 @@ and [the example](examples/planning.example.json).
 
 ## Architecture and next direction
 
+The canonical [Product Model](docs/architecture/product-model.md) places Forge
+Engineering within a portfolio-driven capability lifecycle. Mission Candidates
+belong to the Business Workspace, Missions require explicit Business Owner and
+Platform Architect approval, and Forge remains autonomous only within an
+approved Mission.
+
 The [Forge Constitution](knowledge/bootstrap/01_CONSTITUTION.md) is the
 canonical authority for Forge's permanent engineering principles. It is
 elaborated by [Architecture Principles](docs/architecture/architecture-principles.md),

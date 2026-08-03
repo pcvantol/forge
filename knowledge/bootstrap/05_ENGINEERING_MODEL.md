@@ -8,13 +8,17 @@ This capture describes established engineering knowledge. It does not create an 
 
 ## Engineering lifecycle
 
-Forge's canonical lifecycle is:
+Forge's canonical product capability lifecycle is:
 
 ```mermaid
 flowchart TD
-    V[Vision] --> A[Architecture]
-    A --> R[Roadmap]
-    R --> M[Mission]
+    V[Vision] --> P[Portfolio]
+    P --> MC[Mission Candidate]
+    MC --> BR[Business Review]
+    BR --> AA[Approved for Architecture]
+    AA --> AR[Architecture Review]
+    AR --> AE[Approved for Engineering]
+    AE --> M[Mission]
     M --> MP[Mission Planner]
     MP --> I[Engineering Intent]
     I --> AC[Engineering Action]
@@ -22,19 +26,18 @@ flowchart TD
     PR --> EH[Execution Host]
     EH --> RE[Repository]
     RE --> EV[Evidence]
-    EV -. informs .-> MP
-    EV --> KE[Knowledge Evolution]
-    KE -. informs future direction .-> V
-    KE -. refines .-> A
-    KE -. informs .-> R
+    EV --> AR2[Architecture Review]
+    AR2 --> MR[Mission Recommendation]
+    MR --> P
 ```
 
-The lifecycle distinguishes enduring product direction from the
+The lifecycle distinguishes portfolio-owned opportunity from the
 Architect-approved Mission, Forge-owned iterative planning, dynamic tactical
-Intent, executable Action, replaceable execution, and observable
-assessment. Each stage exists so that a later stage cannot silently assume the
-authority of an earlier one: planning is not execution, an Intent is not an
-Action, and a runtime representation is not engineering knowledge.
+Intent, executable Action, replaceable execution, and observable assessment.
+Each stage exists so that a later stage cannot silently assume the authority of
+an earlier one: a candidate is not a Mission, planning is not execution, an
+Intent is not an Action, and a runtime representation is not engineering
+knowledge.
 
 **Context.** Forge needs one conceptual path from long-term direction through bounded work to assessed learning.
 
@@ -42,9 +45,15 @@ Action, and a runtime representation is not engineering knowledge.
 
 **Rationale.** Explicit stages preserve the authority boundary of each engineering concern and make the transition from knowledge to execution assessable.
 
-**Relationships.** Vision begins the directional chain; Knowledge Evolution feeds assessed learning back into future direction, structure, and opportunity.
+**Relationships.** Vision begins the directional chain. Portfolio and Business
+Review own opportunity selection; Architecture Review approves Missions for
+engineering and later produces advisory Mission Recommendations from
+Repository Truth, Execution Evidence, Architecture Review, and Portfolio
+context.
 
-**Constraints.** The lifecycle does not implement state transitions, select work, grant authority, invoke a runtime, or determine completion without Evidence.
+**Constraints.** The lifecycle does not implement state transitions, select
+work, grant authority, invoke a runtime, or determine completion without
+Evidence. A Mission Recommendation never becomes a Mission automatically.
 
 **Future evolution.** Future planning, governance, provider, execution, evidence, and knowledge capabilities may realize individual boundaries without collapsing their distinct responsibilities.
 
