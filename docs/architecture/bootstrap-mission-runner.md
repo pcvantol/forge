@@ -18,6 +18,14 @@ The Runner does not import or know the Bootstrap Adapter, Engineering Platform,
 Inbox, iCloud, watcher, dashboard, launchd, operating-system services, or a
 repository transport. Those are host-side concerns.
 
+## CLI-first placement
+
+The Bootstrap Mission Runner is invoked by the deterministic Forge CLI as part
+of its first executable workflow. A future Runtime Service may continuously
+invoke the same qualified CLI behavior, but must not introduce different
+engineering semantics. The [Runtime Evolution Roadmap](runtime-evolution-roadmap.md)
+defines that operational evolution.
+
 ## Lifecycle
 
 The persisted lifecycle is `CREATED → READY → ACTIVE →

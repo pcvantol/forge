@@ -284,27 +284,32 @@ environment that executes it.
 ### Current state
 
 Engineering Platform 1.5 is only the temporary Bootstrap Host. Forge already
-owns its conceptual engineering model, but it does not yet own a Runtime
-Provider, Forge Runtime, or independent Execution Host.
+owns its conceptual engineering model, but its first operational runtime is a
+future deterministic Forge CLI, not a Forge Runtime Service.
 
 ### Target state
 
-The strategic runtime direction is:
+The canonical implementation direction is CLI-first:
 
 ```text
-Engineering Platform
+Mission Document
   ↓
-Bootstrap Host
+Mission Intake
   ↓
-Forge Runtime
+Forge CLI
   ↓
-Independent Execution Host
+Mission qualification and canary
+  ↓
+Forge Runtime Service
+  ↓
+Forge Studio
 ```
 
-Runtime Providers may translate an approved Engineering Intent into a
-provider-specific Runtime Prompt. An Execution Host may perform the bounded
-work. Neither owns the canonical Intent, repository knowledge, governance, or
-completion decision.
+The Runtime Service is an operational evolution of the validated CLI: it adds
+continuous operation, supervision, automatic resume, evidence polling, and
+scheduling without changing engineering behavior. Execution remains owned by
+the Execution Host, and Engineering Platform 1.5 is reached only through the
+Execution Host Contract and Bootstrap Execution Host Adapter.
 
 ### Rationale
 
@@ -314,9 +319,9 @@ execution availability from becoming permanent architectural authority.
 
 ### Dependencies
 
-Runtime evolution depends on durable Intent, Runtime Provider abstraction,
-human approval, repository truth, evidence capture, and separately governed
-Execution Host capabilities.
+Runtime evolution depends on the CLI, Mission Intake, a Runtime Prompt Renderer,
+the Bootstrap Execution Host Adapter, mission qualification, human approval,
+repository truth, and evidence capture.
 
 ## Studio evolution
 
@@ -334,10 +339,10 @@ roadmap commitments.
 
 ### Target state
 
-A future Studio direction, if separately reconciled and governed, can present
-Forge around Workspace context while remaining independent of a particular
-runtime or execution host. This roadmap does not select an implementation
-technology or host model.
+A future Studio direction, if separately reconciled and governed, is the
+primary user interface for the Business Workspace, Architecture Workspace,
+Execution Workspace, and Analytics. It orchestrates the Runtime while
+remaining independent of an execution host and never owning execution.
 
 ### Rationale
 

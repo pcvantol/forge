@@ -53,6 +53,18 @@ operates within that contract. Evidence never broadens a Mission's objective,
 boundaries, success criteria, or constitutional constraints without further
 human governance.
 
+## Mission Intake
+
+**Mission Intake** is the CLI-owned admission step for an approved Mission
+Document. It validates the approved contract and transforms it into Mission
+State for deterministic execution. It is not Mission Planner: Mission Planner
+remains the future Forge planning responsibility for dynamic Intents within an
+approved Mission. Intake neither creates executable Missions nor grants
+Business or Architecture Approval.
+
+The operational placement and later autonomous recommendation loop are
+canonical in the [Runtime Evolution Roadmap](runtime-evolution-roadmap.md).
+
 ## Mission Planner
 
 The **Mission Planner** is Forge's future planning responsibility between an

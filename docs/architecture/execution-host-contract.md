@@ -12,6 +12,14 @@ This contract establishes an abstraction only. It does not implement an
 Execution Host, Forge Runtime, Runtime Provider, queue, transport, Studio, or
 repository operation.
 
+## Runtime evolution boundary
+
+The Forge CLI is the first executable Forge runtime and consumes this contract
+through the Bootstrap Execution Host Adapter. The later Runtime Service
+automates that qualified CLI workflow; it does not become a different execution
+engine or change Host ownership. Execution remains owned by the Execution Host.
+The canonical sequence is the [Runtime Evolution Roadmap](runtime-evolution-roadmap.md).
+
 ## Canonical execution contract
 
 ```text

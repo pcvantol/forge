@@ -582,12 +582,14 @@ Prompt Artifact compatibility until Runtime Providers are separately governed.
 
 The future knowledge direction is reviewed Repository Knowledge to Architecture
 Handbook to Engineering Intent to Engineering, with Evidence contributing
-through Knowledge Evolution. The runtime direction is Bootstrap Host to a
-future Forge Runtime to independent Execution Hosts, always preserving
-Intent, knowledge, governance, and completion boundaries. Studio, renderer,
-SaaS, cloud, marketplace, API, Mission Runtime, and multi-user mechanisms are
-deferred; no implementation technology, storage model, or execution contract
-has been selected.
+through Knowledge Evolution. The canonical runtime implementation direction is
+Mission Intake to Forge CLI to qualification to Forge Runtime Service to Forge
+Studio. The Runtime Service evolves only from validated CLI behavior; it
+automates operation without changing engineering semantics. Studio orchestrates
+the Runtime and never owns execution. Engineering Platform 1.5 remains the
+temporary reference Execution Host behind the Execution Host Contract and
+Bootstrap Execution Host Adapter. The detailed sequence is the
+[Runtime Evolution Roadmap](runtime-evolution-roadmap.md).
 
 Self Hosting is not established as a Forge phase, capability, runtime
 commitment, or architectural definition. Production is a future governed

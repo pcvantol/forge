@@ -27,3 +27,12 @@ catalog role distinct.
 
 Bootstrap selects `prototype` and `solo`. Those are active values, not the
 entire available-value catalog.
+
+## Portfolio relationship
+
+The future Portfolio is a Workspace-level governance and learning view. Mission
+Candidates enter through the Business Workspace; only an approved Mission may
+enter Mission Intake and the Forge CLI. Engineering outcomes can produce
+Mission Recommendations for the Portfolio, but neither the Portfolio nor a
+Workspace creates executable Missions autonomously. The canonical flow is in
+the [Runtime Evolution Roadmap](runtime-evolution-roadmap.md).
