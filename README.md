@@ -179,6 +179,11 @@ It is the only Engineering Platform 1.5-aware component: it admits and
 translates a rendered Runtime Prompt into an Inbox transaction, then returns
 canonical evidence. It neither plans nor executes engineering.
 
+Phase C — Increment 3.5 adds the deterministic [End-to-End Bootstrap Mission
+Canary](docs/architecture/bootstrap-mission-canary.md). It qualifies one
+approved Mission through Mission Intake, State, Intent, Action, prompt,
+adapter, Engineering Platform 1.5 admission, evidence, and completion.
+
 Phase C — Architecture Reconciliation adds the canonical
 [Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
 Startup, and Enterprise scale the same lifecycle by changing role assignments,

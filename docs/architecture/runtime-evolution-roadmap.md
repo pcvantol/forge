@@ -163,11 +163,9 @@ Codex Runtime Prompt Renderer
   ↓
 Bootstrap Execution Host Adapter
   ↓
-End-to-End Bootstrap Mission Canary
-  ↓
-Forge CLI
-  ↓
 Mission Intake
+  ↓
+End-to-End Bootstrap Mission Canary
   ↓
 Architecture Review Engine
   ↓

@@ -7,12 +7,14 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from forge.models import (
-    EngineeringAction, EngineeringIntent, EngineeringActionStatus, ExecutionDispatch,
+    EngineeringAction, EngineeringIntent, EngineeringActionStatus, ExecutionDispatch, ExecutionRequest,
     ExecutionEvidenceOutcome, ExecutionHostEvidence, ExecutionRepositoryEvidence,
-    IntentCategory, IntentReference, IntentTraceability, ProviderPromptDefinition,
+    IntentApproval, IntentCategory, IntentReference, IntentStatus, IntentTraceability, ProviderPromptDefinition,
     RuntimePrompt, RuntimePromptSection, RuntimePromptSectionKind,
 )
 from forge.models.mission import EngineeringMission, MissionIntentMembership, MissionScope
+from forge.models.codex_runtime_prompt import CodexCliRuntimePromptRequest, ExecutionHostCompatibility, RepositoryState
+from forge.prompts import CodexCliRuntimePromptRenderer
 from forge.runtime import BootstrapMissionRunner, MissionRunnerError
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state import MissionExecutionStatus, MissionStateStore
@@ -157,6 +159,25 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         source = (Path(__file__).parents[1] / "forge" / "runtime" / "runner.py").read_text()
         for forbidden in ("scheduler.adapter", "EngineeringPlatform", "Inbox", "iCloud", "launchd"):
             self.assertNotIn(forbidden, source)
+
+    def test_persisted_codex_prompt_restores_its_type_and_retry_lineage(self) -> None:
+        approved = EngineeringIntent(
+            "one", "1", "one", "Complete one.", IntentCategory.IMPLEMENTATION, intent("one").traceability,
+            approval=IntentApproval("architect", "now", IntentReference("approval", "1", "local://approval")),
+            status=IntentStatus.APPROVED,
+        )
+        active = EngineeringAction(1, "one", "one", "1", "Run one.", ("repository evidence",), status=EngineeringActionStatus.ACTIVE)
+        rendered = CodexCliRuntimePromptRenderer().render(CodexCliRuntimePromptRequest(
+            EngineeringMission("mission-1", "1", "Mission", "Complete actions.", MissionScope(("runner",), ("planner",)), (MissionIntentMembership(1, "one", "1"),)),
+            approved, active, RepositoryState("forge", "abc", "sha256:" + "a" * 64, "now"), ("bounded",), ("test",),
+            ExecutionHostCompatibility("2.3", "GENESIS", ("codex_cli",), "platform>=1.5"),
+        ))
+        from forge.runtime.runner import _request, _request_document
+        request = ExecutionRequest(
+            "host", "mission-1", "one", "1", "one", rendered, "workspace", "forge", "retry-2", "now", "retry-1", "retry-1")
+        restored = _request(_request_document(request))
+        self.assertIsInstance(restored.runtime_prompt, type(rendered))
+        self.assertEqual(restored.original_correlation_id, "retry-1")
 
 
 if __name__ == "__main__":

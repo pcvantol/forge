@@ -20,6 +20,9 @@ from forge.models.runtime_prompt import (
     RuntimePromptSection,
     RuntimePromptSectionKind,
 )
+from forge.models.codex_runtime_prompt import (
+    CodexCliRuntimePrompt, ExecutionHostCompatibility, RepositoryState,
+)
 from forge.models.intent import IntentReference
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
@@ -66,7 +69,30 @@ def _action(document: Mapping[str, Any]) -> EngineeringAction:
     )
 
 
-def _prompt(document: Mapping[str, Any]) -> RuntimePrompt:
+def _prompt(document: Mapping[str, Any]) -> RuntimePrompt | CodexCliRuntimePrompt:
+    """Restore the exact persisted prompt type; never downgrade a rendered prompt."""
+    if "renderer_version" in document and "repository_state" in document:
+        mission = document["mission"]
+        intent = document["intent"]
+        action = document["action"]
+        repository = document["repository_state"]
+        compatibility = document["compatibility"]
+        return CodexCliRuntimePrompt(
+            id=str(document["id"]), correlation_id=str(document["correlation_id"]),
+            renderer_version=str(document["renderer_version"]), schema_version=str(document["schema_version"]),
+            generated_at=str(document["generated_at"]), mission_id=str(mission["id"]),
+            mission_revision=str(mission["revision"]), intent_id=str(intent["id"]),
+            intent_revision=str(intent["revision"]), action_id=str(action["id"]),
+            repository_state=RepositoryState(str(repository["repository_id"]), str(repository["revision"]),
+                                             str(repository["state_digest"]), str(repository["captured_at"])),
+            compatibility=ExecutionHostCompatibility(
+                str(compatibility["execution_host_contract_version"]), str(compatibility["execution_mode"]),
+                tuple(compatibility["required_capabilities"]), str(compatibility["minimum_supported_runtime"]),
+            ),
+            objective=str(document["objective"]), expected_repository_evidence=tuple(document["expected_repository_evidence"]),
+            constraints=tuple(document["constraints"]), validation=tuple(document["validation"]),
+            source_digest=str(document["source_digest"]), rendered_text=str(document["rendered_text"]),
+        )
     source_intent = document["source_intent"]
     source_action = document["source_action"]
     provider = document["provider_definition"]
@@ -94,6 +120,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
         workspace_id=str(document["workspace_id"]), repository_id=str(document["repository_id"]),
         correlation_id=str(document["correlation_id"]), dispatched_at=str(document["dispatched_at"]),
         retry_of_correlation_id=document.get("retry_of_correlation_id"),
+        original_correlation_id=document.get("original_correlation_id"),
     )
 
 
@@ -111,6 +138,7 @@ def _request_document(request: ExecutionRequest) -> dict[str, Any]:
         "correlation_id": request.correlation_id,
         "dispatched_at": request.dispatched_at,
         "retry_of_correlation_id": request.retry_of_correlation_id,
+        "original_correlation_id": request.original_correlation_id,
     }
 
 
