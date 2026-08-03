@@ -25,8 +25,21 @@ contract. The 0.2 Workspace references a catalog by stable ID rather than
 embedding repositories. This keeps product identity, repository identity, and
 catalog role distinct.
 
-Bootstrap selects `prototype` and `solo`. Those are active values, not the
-entire available-value catalog.
+Bootstrap selects `prototype` and the legacy persisted `solo` catalog value.
+Those values are not the canonical Governance Profile Definition. The
+[Governance Profile Model](governance-model.md) defines the canonical Solo,
+Duo, Startup, and Enterprise scaling vocabulary and the required compatibility
+path for a later versioned contract.
+
+## Governance Profile consumption
+
+The selected Governance Profile is resolved by future Workspace capabilities
+as declarative context: role assignments, approval authority, workspace
+visibility, advisor availability, execution permissions, and explicit
+shortcuts. Business, Architecture, Execution, and Analytics Workspaces remain
+canonical regardless of profile. A Workspace consumer must render or enforce
+the resolved policy without changing the product lifecycle, creating a
+profile-specific workflow, or inferring approval from the profile selection.
 
 ## Portfolio relationship
 
@@ -37,4 +50,6 @@ Platform Architect after Business Review and Architecture Review may enter
 Mission Intake and the Forge CLI. Engineering outcomes can produce advisory
 Mission Recommendations for the Portfolio, but neither the Portfolio nor a
 Workspace creates executable Missions autonomously. The canonical flow is in
-the [Product Model](product-model.md).
+the [Product Model](product-model.md). Changing from Solo to Duo, Startup, or
+Enterprise changes assignments only; it preserves Workspace identity, Mission
+records, and the canonical workflow.

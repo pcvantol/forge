@@ -19,8 +19,8 @@ Forge 0.2 defines a versioned Foundation Model. It includes:
 
 - separate Workspace, Repository, Repository Catalog, Knowledge Source, and
   Capability contracts;
-- full Engineering Mode and Governance Profile value catalogs;
-- bootstrap activation of `prototype` and `solo` only;
+- a legacy bootstrap Engineering Mode and Governance Profile value catalog;
+- bootstrap activation of `prototype` and the persisted `solo` legacy value;
 - deterministic, human-readable local JSON persistence; and
 - versioned JSON Schemas, an example, architecture records, and tests.
 
@@ -166,6 +166,13 @@ coordinates one persisted Mission through the Scheduler, injected Runtime
 Prompt derivation, and canonical Execution Host Contract. It adds no AI
 planning, Execution Host implementation, parallelism, background service, or
 repository operation.
+
+Phase C — Architecture Reconciliation adds the canonical
+[Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
+Startup, and Enterprise scale the same lifecycle by changing role assignments,
+approval authority, workspace visibility, advisor availability, execution
+permissions, and explicit shortcuts only. It adds no workflow engine, identity
+system, RBAC, UI, or profile-specific operating mode.
 
 The canonical engineering hierarchy and iterative feedback loop are:
 

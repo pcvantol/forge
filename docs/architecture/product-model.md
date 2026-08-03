@@ -10,7 +10,8 @@ system, or automatic progression.
 
 The [Founding Architecture Handbook](FORGE_FOUNDING_ARCHITECTURE_HANDBOOK.md),
 [Governance Model](governance-model.md), [Mission architecture](engineering-mission.md),
-and [Portfolio Model](portfolio-model.md) apply this model in their respective
+[Portfolio Model](portfolio-model.md), [Workspace Model](workspace-foundation.md),
+and [Forge Studio model](forge-studio.md) apply this model in their respective
 domains.
 
 ## Canonical capability lifecycle
@@ -48,6 +49,8 @@ Portfolio
 Engineering is one bounded stage of this larger lifecycle. It operates only
 after an approved Mission exists, and it returns assessed learning through an
 advisory recommendation rather than changing the product direction itself.
+Governance Profiles determine who performs or approves each stage, never which
+stages exist or their order.
 
 ## Workspaces and responsibility boundaries
 
@@ -60,6 +63,11 @@ advisory recommendation rather than changing the product direction itself.
 | Architecture Advisor | Evidence-grounded architectural analysis and review assistance. | Approval or engineering execution. |
 | Forge Engineering Workspace | Mission Planner, Engineering Intent, Engineering Action, Engineering, Execution coordination, and Evidence. | Changing Mission objectives, business priority, or either approval decision. |
 | Execution Workspace / Execution Host | Execution, reports, telemetry, diagnostics, preflight, and evidence. Engineering Platform 1.5 is the current reference Execution Host. | Product meaning, Mission approval, or engineering planning. |
+
+The canonical Business, Architecture, Execution, and Analytics Workspaces do
+not change by profile. A Governance Profile declares which are visible and
+which assigned roles and advisors participate in them; it does not create a
+profile-specific workspace topology.
 
 ## Mission Candidate maturity
 
@@ -89,6 +97,8 @@ Forge must never bypass, infer, or replace these approvals. An approved Mission
 is the immutable engineering contract for its objective, scope, success
 criteria, architectural boundaries, and constitutional constraints. Forge may
 adapt planning inside those bounds but must not change the Mission objective.
+Under the Solo profile, the same assigned identity makes both recorded
+approvals; this is responsibility composition, not an approval bypass.
 
 ## Evidence and Mission Recommendations
 
@@ -108,7 +118,8 @@ becomes a Mission automatically and has no execution authority.
 ## Current implementation boundary
 
 This is architectural knowledge only. Existing Forge runtime components remain
-unchanged. The next implementation increment should be a bounded, declarative
-Mission Candidate and Portfolio contract that captures the stated ownership,
-maturity, approval references, and recommendation provenance without adding
-workflow automation or user interfaces.
+unchanged. The next implementation increment should be a versioned,
+declarative Governance Profile Definition contract that resolves role
+assignments, approval matrix, workspace visibility, advisor availability,
+execution permissions, and explicit shortcuts without adding workflow
+automation or user interfaces.

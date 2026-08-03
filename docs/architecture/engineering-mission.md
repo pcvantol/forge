@@ -20,7 +20,9 @@ value, and strategic alignment. A Mission Candidate reaches Architecture
 Review only after explicit Business Owner approval. The Platform Architect may
 then create and approve the Mission for Engineering. Only that approved Mission
 may enter Forge. Candidate maturity, Business Review, and Architecture Review
-are defined in the [Product Model](product-model.md).
+are defined in the [Product Model](product-model.md). The [Governance Profile](governance-model.md)
+determines the assigned approvers and permitted execution authority, never
+Mission admission stages or the Mission contract.
 
 ## Canonical hierarchy and feedback loop
 
@@ -61,7 +63,10 @@ approve every Engineering Intent. The approved Mission is the stable human
 contract; Forge is responsible for the iterative engineering planning that
 operates within that contract. Evidence never broadens a Mission's objective,
 boundaries, success criteria, or constitutional constraints without further
-human governance.
+human governance. In the Solo profile, a shared Business Owner and Platform
+Architect identity still creates distinct auditable approval records before
+Engineering; migration to a profile with separate people needs no Mission
+migration.
 
 ## Mission Intake
 

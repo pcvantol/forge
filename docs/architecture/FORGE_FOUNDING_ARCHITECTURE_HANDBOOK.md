@@ -287,10 +287,13 @@ one product understanding.
 
 The established execution modes are `prototype`, `managed`, and `production`.
 Bootstrap activates `prototype` only; modes express context, not authority.
-The established Governance Profile catalog is `solo`, `two_person`, `team`,
-and `enterprise`, with `solo` active in bootstrap. Workspace Readiness is the
-evidence-based assessment that declared prerequisites for a chosen execution
-profile are satisfied. It is not Phase Completion and does not execute work.
+Governance Profiles are the canonical scaling mechanism: Solo, Duo, Startup,
+and Enterprise assign people and authority to one invariant lifecycle. The
+legacy 0.2 persisted catalog remains read-compatible bootstrap context until a
+versioned definition contract reconciles it explicitly. Workspace Readiness is
+the evidence-based assessment that declared prerequisites for a chosen
+execution profile are satisfied. It is not Phase Completion and does not
+execute work.
 
 Future Workspace Adoption, Repository Extraction, Workspace Templates, and
 Workspace Overlays are conceptual boundaries only. They do not currently
@@ -450,10 +453,15 @@ flowchart TD
     R --> PC[Completion assessment]
 ```
 
-Governance Profiles state the human-authority context. Execution Modes state
-the execution context. Neither is an approval mechanism, identity system,
-RBAC model, queue, or workflow. The selected profile informs expected human
-review and approval, but does not itself grant a Runtime Provider authority.
+Governance Profiles state the human-authority context. They resolve role
+assignment, approval authority, workspace visibility, advisor availability,
+execution permissions, and explicit approval shortcuts while preserving the
+one canonical lifecycle. Solo combines Business Owner and Platform Architect
+assignments in one identity; it still records both approvals and is not a
+separate operating mode. Execution Modes state the execution context. Neither
+selection is an approval mechanism, identity system, RBAC model, queue, or
+workflow. The selected profile informs expected human review and approval, but
+does not itself grant a Runtime Provider authority.
 
 ## 18. Readiness, evidence, and completion
 
@@ -606,11 +614,12 @@ Handbook to Engineering Intent to Engineering, with Evidence contributing
 through Knowledge Evolution. The canonical runtime implementation direction is
 Mission Intake to Forge CLI to qualification to Forge Runtime Service to Forge
 Studio. The Runtime Service evolves only from validated CLI behavior; it
-automates operation without changing engineering semantics. Studio orchestrates
-the Runtime and never owns execution. Engineering Platform 1.5 remains the
-temporary reference Execution Host behind the Execution Host Contract and
-Bootstrap Execution Host Adapter. The detailed sequence is the
-[Runtime Evolution Roadmap](runtime-evolution-roadmap.md).
+automates operation without changing engineering semantics. Studio consumes a
+resolved Governance Profile to present canonical workspaces and approvals; it
+does not own execution or create a profile-specific workflow. Engineering
+Platform 1.5 remains the temporary reference Execution Host behind the
+Execution Host Contract and Bootstrap Execution Host Adapter. The detailed
+sequence is the [Runtime Evolution Roadmap](runtime-evolution-roadmap.md).
 
 Self Hosting is not established as a Forge phase, capability, runtime
 commitment, or architectural definition. Production is a future governed
@@ -638,7 +647,7 @@ separately authorized Engineering Intent.
 | Execution Mode | Declared manner of approaching execution; context, not authority. |
 | Evidence | Reproducible, assessable references used to evaluate declared outcomes. |
 | Genesis | Bootstrap profile for bounded local transactions on the temporary host. |
-| Governance Profile | Workspace-selected declaration of human authority, review, and approval expectations. |
+| Governance Profile | Versioned declarative scaling policy for roles, assignments, approvals, workspace visibility, advisors, execution permissions, and explicit shortcuts; never a workflow definition. |
 | Knowledge Candidate | Potential reusable knowledge requiring comparison and review before repository adoption. |
 | Knowledge Distillation | Future boundary that identifies candidates from working material while retaining provenance and uncertainty. |
 | Knowledge Package | Bounded bootstrap or domain knowledge input; not the final canonical repository record. |

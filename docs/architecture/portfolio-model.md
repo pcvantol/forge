@@ -25,4 +25,8 @@ The Business Owner owns the decision to approve a Mission Candidate for
 architecture. The Platform Architect owns the decision to approve a Mission
 for engineering. Forge owns engineering only after the latter decision.
 Detailed lifecycle and workspace responsibilities are canonical in the
-[Product Model](product-model.md).
+[Product Model](product-model.md). The selected [Governance Profile](governance-model.md)
+assigns who may make each decision and which advisors may participate; it does
+not alter candidate maturity, approval stages, or the advisory nature of a
+Mission Recommendation. Under Solo, one identity may hold both roles, but the
+Business and Architecture approvals remain separate recorded decisions.

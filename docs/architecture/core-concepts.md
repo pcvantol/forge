@@ -21,7 +21,7 @@ local callers without adding a framework dependency.
 | Knowledge Source | Declares a versioned, read-only external evidence provider and its authority/lifecycle metadata. | Editing, synchronizing, extracting, or authoring that source. |
 | Capability | Declares a reusable engineering capability. | Implementing or running it. |
 | Engineering Mode | Catalogs maturity choices. | Activating a choice by itself. |
-| Governance Profile | Catalogs human authority shapes. | Replacing human approval. |
+| Governance Profile | Resolves human roles, assignments, approvals, workspace visibility, advisors, execution permissions, and explicit shortcuts for one canonical lifecycle. | Replacing human approval or defining a separate workflow. |
 
 `forge.core.JsonStore` is the initial persistence boundary: a local UTF-8 JSON
 file with sorted keys and indentation. It is deterministic, versionable, and

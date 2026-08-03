@@ -54,6 +54,8 @@ context.
 **Constraints.** The lifecycle does not implement state transitions, select
 work, grant authority, invoke a runtime, or determine completion without
 Evidence. A Mission Recommendation never becomes a Mission automatically.
+Governance Profiles determine the assigned participants and approval authority
+for the same stages; they never remove, reorder, or redefine those stages.
 
 **Future evolution.** Future planning, governance, provider, execution, evidence, and knowledge capabilities may realize individual boundaries without collapsing their distinct responsibilities.
 

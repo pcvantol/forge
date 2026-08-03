@@ -94,31 +94,41 @@ authority is organized without confusing that organization with engineering
 execution.
 
 **Responsibility.** A Governance Profile declares the human-governance context
-for a Workspace. The established catalog is `solo`, `two_person`, `team`, and
-`enterprise`; bootstrap activates `solo` only.
+for a Workspace. This bootstrap capture records the persisted compatibility
+catalog `solo`, `two_person`, `team`, and `enterprise`, with `solo` active
+during bootstrap. The canonical forward Governance Profile Model is Solo, Duo,
+Startup, and Enterprise; it assigns roles and authority to one invariant
+lifecycle rather than defining profile-specific workflows.
 
 **Rationale.** A catalog preserves a common vocabulary for growing governance
 needs while avoiding an implementation-specific authorization system.
 
 **Relationships.** A Workspace selects one Governance Profile independently
-of its Engineering Mode and execution profile. The selection informs the
-expected human approval model for an Engineering Intent; it grants no runtime
-authority.
+of its Engineering Mode and execution profile. The selection resolves the
+expected role assignment, approval matrix, workspace visibility, advisor
+availability, execution permissions, and any explicit shortcut; it grants no
+runtime authority and does not change lifecycle stages.
 
 **Constraints.** Profiles do not implement identities, RBAC, voting, queues,
 or approval mechanics. A profile value is not approval, and the inactive
-profiles do not imply a current organizational design.
+profiles do not imply a current organizational design. Solo combines Business
+Owner and Platform Architect in one identity but preserves separate recorded
+Business and Architecture approvals.
 
-**Future evolution.** A separately governed capability may qualify the
-profile catalog with explicit, evidence-backed decision practices without
-changing its independence from execution.
+**Future evolution.** A separately governed capability may introduce the
+versioned declarative profile definition and explicit compatibility handling
+without changing its independence from execution, the Mission model, the
+Portfolio model, or the canonical lifecycle.
 
 | Profile | Purpose | Human responsibility boundary | Expected approval model |
 | --- | --- | --- | --- |
-| Solo | One accountable human governs a Workspace. | The accountable human defines direction and approves delegated work. | Explicit human approval remains required; no system self-approval. |
-| Two Person | A Workspace needs human governance shared by two people. | Humans explicitly allocate decision and review responsibility for the bounded work. | Approval remains human and explicit; the allocation must be clear before execution. |
-| Team | A Workspace needs governance across a collaborating group. | The group maintains explicit ownership of direction, architecture, and approvals. | Approval follows the declared human ownership for the work; execution does not choose it. |
-| Enterprise | A Workspace needs governance compatible with an organizational context. | Accountable humans retain decisions within the organization's declared governance boundary. | Approval remains explicit and human-governed; this capture defines no enterprise process. |
+| Solo | One identity holds Business Owner and Platform Architect assignments. | The same identity records both approvals at their distinct lifecycle stages. | Explicit human approval remains required; no system self-approval. |
+| Duo | Business Owner and Platform Architect are separate assigned identities. | Responsibilities are separated while workflow remains unchanged. | Approval remains human and explicit. |
+| Startup | Business, Architecture, and Engineering Lead participate. | Optional additional responsibilities are declared as profile policy. | No added policy creates a new lifecycle stage. |
+| Enterprise | Portfolio, Business, Architecture, Security, Compliance, and Forge participate. | Authority and advisor availability are explicitly declared. | Execution remains unchanged and approval remains human-governed. |
+
+The canonical application and compatibility boundary are in the
+[Governance Profile Model](../../docs/architecture/governance-model.md).
 
 ## Execution modes and profiles
 
