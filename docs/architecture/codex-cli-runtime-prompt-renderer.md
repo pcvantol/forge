@@ -67,14 +67,14 @@ rendering inputs produce byte-identical prompts.
 - **Execution Host:** consumes the rendered artifact, not Mission documents;
   this prevents execution operations from interpreting or modifying planning
   authority.
-- **Bootstrap Adapter:** the next increment translates this artifact into an
+- **Bootstrap Execution Host Adapter:** translates this artifact into an
   Engineering Platform 1.5 Inbox transaction while preserving Forge's host
-  independence.
+  independence; see [its contract](bootstrap-execution-host-adapter.md).
 - **Capability Preflight:** consumes only the explicit compatibility metadata
   before delivery; it neither changes the prompt nor becomes a planner.
 
 ## Out of scope
 
-No Mission Intake, Mission Planner, Execution Host Adapter, Codex invocation,
+No Mission Intake, Mission Planner, Execution Host Adapter implementation, Codex invocation,
 Execution Host communication, repository operation, or engineering execution
 is implemented here.

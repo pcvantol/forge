@@ -173,6 +173,12 @@ It renders one Mission-pinned active Engineering Action into a Codex CLI
 execution artifact with explicit compatibility and correlation metadata. It
 does not plan, invoke Codex, communicate with a host, or execute engineering.
 
+Phase C — Increment 3.4 adds the deterministic, configuration-driven
+[Bootstrap Execution Host Adapter](docs/architecture/bootstrap-execution-host-adapter.md).
+It is the only Engineering Platform 1.5-aware component: it admits and
+translates a rendered Runtime Prompt into an Inbox transaction, then returns
+canonical evidence. It neither plans nor executes engineering.
+
 Phase C — Architecture Reconciliation adds the canonical
 [Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
 Startup, and Enterprise scale the same lifecycle by changing role assignments,

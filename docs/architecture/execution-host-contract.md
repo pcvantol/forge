@@ -122,7 +122,7 @@ become a Mission Planner, an Architecture authority, or a Repository actor.
 ## Reference implementation and future hosts
 
 Engineering Platform 1.5 is the first replaceable reference implementation of
-this contract during Forge bootstrap. Its Bootstrap adapter is the sole place
+this contract during Forge bootstrap. Its [Bootstrap Execution Host Adapter](bootstrap-execution-host-adapter.md) is the sole place
 where Inbox, report, polling, local status, and retry transport details may
 exist. Scheduler core has no runtime dependency on that implementation.
 

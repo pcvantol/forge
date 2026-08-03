@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
+from .codex_runtime_prompt import CodexCliRuntimePrompt
 from .runtime_prompt import RuntimePrompt
 
 
@@ -93,23 +94,38 @@ class ExecutionRequest:
     intent_id: str
     intent_revision: str
     action_id: str
-    runtime_prompt: RuntimePrompt
+    runtime_prompt: RuntimePrompt | CodexCliRuntimePrompt
     workspace_id: str
     repository_id: str
     correlation_id: str
     dispatched_at: str
     retry_of_correlation_id: str | None = None
+    original_correlation_id: str | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.mission_id, self.intent_id, self.intent_revision,
                     self.action_id, self.workspace_id, self.repository_id,
                     self.correlation_id, self.dispatched_at)):
             raise ValueError("execution request identity, context, correlation, and dispatch time are required")
-        if (self.runtime_prompt.source_intent_id, self.runtime_prompt.source_intent_revision,
-                self.runtime_prompt.source_action_id) != (self.intent_id, self.intent_revision, self.action_id):
+        prompt_identity = (
+            self.runtime_prompt.source_intent_id,
+            self.runtime_prompt.source_intent_revision,
+            self.runtime_prompt.source_action_id,
+        ) if isinstance(self.runtime_prompt, RuntimePrompt) else (
+            self.runtime_prompt.intent_id,
+            self.runtime_prompt.intent_revision,
+            self.runtime_prompt.action_id,
+        )
+        if prompt_identity != (self.intent_id, self.intent_revision, self.action_id):
             raise ValueError("execution request Runtime Prompt must match its Intent and Action")
         if self.retry_of_correlation_id == self.correlation_id:
             raise ValueError("execution request cannot retry its own correlation")
+        if self.original_correlation_id == self.correlation_id:
+            raise ValueError("execution request original correlation must precede a retry")
+        if self.retry_of_correlation_id and not self.original_correlation_id:
+            object.__setattr__(self, "original_correlation_id", self.retry_of_correlation_id)
+        if self.original_correlation_id and not self.retry_of_correlation_id:
+            raise ValueError("execution request original correlation requires a retry predecessor")
 
 
 @dataclass(frozen=True)
@@ -164,7 +180,11 @@ class ExecutionHostEvidence:
     log_references: tuple[str, ...] = ()
     diagnostic_references: tuple[str, ...] = ()
     metric_references: tuple[str, ...] = ()
+    validation_references: tuple[str, ...] = ()
     retry_of_correlation_id: str | None = None
+    original_correlation_id: str | None = None
+    execution_started_at: str | None = None
+    execution_completed_at: str | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.correlation_id, self.host_run_id, self.report_id)):
@@ -174,10 +194,14 @@ class ExecutionHostEvidence:
             self.correlation_id, self.host_run_id, self.report_id,
         ):
             raise ValueError("execution host evidence must match its repository evidence run and report")
-        for references, label in ((self.log_references, "log"), (self.diagnostic_references, "diagnostic"), (self.metric_references, "metric")):
+        for references, label in ((self.log_references, "log"), (self.diagnostic_references, "diagnostic"), (self.metric_references, "metric"), (self.validation_references, "validation")):
             if any(not reference for reference in references) or len(references) != len(set(references)):
                 raise ValueError(f"execution host evidence {label} references must be unique and non-empty")
             object.__setattr__(self, f"{label}_references", tuple(sorted(references)))
+        if self.retry_of_correlation_id and not self.original_correlation_id:
+            object.__setattr__(self, "original_correlation_id", self.retry_of_correlation_id)
+        if self.execution_completed_at and not self.execution_started_at:
+            raise ValueError("execution completion time requires an execution start time")
 
 
 class ExecutionHost(Protocol):

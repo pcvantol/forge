@@ -44,9 +44,9 @@ that predated normal Intent governance. An **Engineering Action**, contained by
 an Intent, is the smallest intentional executable unit.
 
 A **Runtime Prompt** is a transient provider-specific representation derived
-from a released Action. The **Runtime Prompt Renderer** is the future concrete
-provider rendering capability; Forge currently contains only the generic,
-deterministic `RuntimePromptGenerator` and no provider-specific renderer. The
+from a released Action. The **Runtime Prompt Renderer** is the concrete
+provider rendering capability; Forge contains both the generic deterministic
+`RuntimePromptGenerator` and the Codex CLI Runtime Prompt Renderer. The
 **Execution Host Contract** is the only interface through which Forge asks an
 external host to execute a request and receives correlated evidence.
 
@@ -115,10 +115,11 @@ The repository contains and tests these component-level runtime foundations:
   append-only transition history.
 - **Execution Host Contract:** versioned request, dispatch, recovery, and
   evidence boundary independent of a concrete host.
-- **Generic Runtime Prompt generator:** deterministic abstract prompt
-  construction and provenance. This is not a Codex Runtime Prompt Renderer.
-- **Bootstrap Execution Host Adapter:** a protocol-level Engineering Platform
-  translation boundary with component tests using inbox and report doubles.
+- **Runtime Prompt renderers:** deterministic generic construction plus a
+  Codex CLI provider-specific execution artifact.
+- **Bootstrap Execution Host Adapter:** configuration-driven, compatibility-
+  admitted Engineering Platform translation with deterministic fake transport
+  and evidence tests.
 
 These components demonstrate contracts and local orchestration behavior. They
 do not qualify a live host integration or establish an end-to-end executable
@@ -129,15 +130,11 @@ Forge runtime.
 The remaining work below is limited to repository-backed roadmap and component
 evidence:
 
-1. Implement the governed Codex Runtime Prompt Renderer; no provider-specific
-   generator or template is currently stored.
-2. Qualify the existing Bootstrap Execution Host Adapter against the reference
-   host rather than treating its component-test doubles as live-host evidence.
-3. Run an end-to-end Bootstrap Mission Canary to qualify the complete
+1. Run an end-to-end Bootstrap Mission Canary to qualify the complete
    Mission-to-evidence path.
-4. Implement the deterministic Forge CLI and its Mission Intake, execution,
+2. Implement the deterministic Forge CLI and its Mission Intake, execution,
    resume, and status workflow.
-5. Only after the CLI is qualified, evolve it into the Runtime Service; Forge
+3. Only after the CLI is qualified, evolve it into the Runtime Service; Forge
    Studio follows as the primary interface.
 
 The runtime roadmap still lists the adapter after the renderer, while the
