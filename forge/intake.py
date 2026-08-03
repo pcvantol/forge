@@ -8,6 +8,7 @@ from typing import Callable, Sequence
 from forge.models.action import EngineeringAction
 from forge.models.intent import EngineeringIntent, IntentStatus
 from forge.models.mission import EngineeringMission, MissionStatus
+from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.state import MissionExecutionState, MissionStateStore
 
 
@@ -45,3 +46,9 @@ class MissionIntake:
         if (action.intent_id, action.intent_revision) != (intent.id, intent.revision):
             raise MissionIntakeError("Mission Intake Action must belong to the admitted Intent")
         return self.store.create(mission, intents, actions, occurred_at=self.clock(), resume={"intake": "forge-cli-v1"})
+
+    def admit_approved_mission(self, mission: ArchitectureMission) -> MissionExecutionState:
+        """Admit the architecture-approved Mission without performing planning."""
+        if mission.status is not ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING:
+            raise MissionIntakeError("Mission Intake requires an engineering-approved Architecture Mission")
+        return self.store.create_pending(mission, occurred_at=self.clock(), resume={"intake": "approved-mission-dispatcher-v1"})

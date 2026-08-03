@@ -75,6 +75,22 @@ class ArchitectureWorkspace:
         rows = self._connection.execute(query, () if status is None else (status.value,)).fetchall()
         return tuple(ArchitectureMission.from_dict(json.loads(row["document"])) for row in rows)
 
+    def approved_for_engineering(self) -> tuple[ArchitectureMission, ...]:
+        """Return the governed queue source in deterministic approval order."""
+        rows = self._connection.execute(
+            """
+            SELECT mission.document
+            FROM architecture_mission AS mission
+            JOIN architecture_mission_history AS history
+              ON history.mission_id = mission.mission_id
+             AND history.event = 'approved_for_engineering'
+            WHERE mission.status = ?
+            ORDER BY history.occurred_at, mission.mission_id
+            """,
+            (ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING.value,),
+        ).fetchall()
+        return tuple(ArchitectureMission.from_dict(json.loads(row["document"])) for row in rows)
+
     def refine(self, mission_id: str, *, actor: str, occurred_at: str, rationale: str, **changes: object) -> ArchitectureMission:
         mission, revision = self._current(mission_id)
         if mission.status is not ArchitectureMissionStatus.ARCHITECTURE_REVIEW:

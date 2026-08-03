@@ -205,6 +205,12 @@ Mission Recommendations remain advisory.
 
 Only approved Missions become executable.
 
+The Approved Mission Dispatcher executes engineering-approved bootstrap
+Missions deterministically in this canonical order: `MISSION-0001` →
+`MISSION-0002` → `MISSION-0003` → `MISSION-0004` → `MISSION-0005`. A listed
+Mission still requires Business and Architecture approval before it enters the
+Approved Mission Queue; bootstrap recommendations never replace this sequence.
+
 ---
 
 # Relationship with Forge Runtime

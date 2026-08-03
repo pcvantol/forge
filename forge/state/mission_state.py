@@ -210,6 +210,34 @@ class MissionStateStore:
             raise MissionStateStoreError(f"mission state already exists: {mission_id}") from error
         return self.get(mission_id)
 
+    def create_pending(self, mission: Any, *, occurred_at: str, resume: Mapping[str, Any] | None = None) -> MissionExecutionState:
+        """Persist an approved Mission before planning creates Intents and Actions.
+
+        Dispatcher admission deliberately records no tactical work.  The AI
+        Mission Planner remains the only component that may populate it.
+        """
+        mission_document = _document(mission, "mission")
+        mission_id = mission_document.get("id")
+        if not isinstance(mission_id, str) or not mission_id or not occurred_at:
+            raise MissionStateStoreError("pending mission state requires identity and creation time")
+        document = {
+            "schema_version": MISSION_STATE_SCHEMA_VERSION, "mission_id": mission_id,
+            "mission": mission_document, "intents": [], "actions": [],
+            "status": MissionExecutionStatus.CREATED.value, "progress": _derive_progress(()),
+            "resume": _document(resume or {}, "resume"), "execution_correlation": None,
+            "execution_evidence": None, "revision": 1,
+        }
+        try:
+            with self._connection:
+                self._connection.execute(
+                    "INSERT INTO mission_state VALUES (?, ?, ?, ?, ?)",
+                    (mission_id, MISSION_STATE_SCHEMA_VERSION, 1, MissionExecutionStatus.CREATED.value, self._encode(document)),
+                )
+                self._append_history(mission_id, 1, None, MissionExecutionStatus.CREATED, occurred_at, "dispatcher_intake")
+        except sqlite3.IntegrityError as error:
+            raise MissionStateStoreError(f"mission state already exists: {mission_id}") from error
+        return self.get(mission_id)
+
     def get(self, mission_id: str) -> MissionExecutionState:
         row = self._connection.execute("SELECT document FROM mission_state WHERE mission_id = ?", (mission_id,)).fetchone()
         if row is None:
