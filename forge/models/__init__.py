@@ -13,6 +13,11 @@ from .foundation import (
     RepositoryRole,
     Workspace,
 )
+from .architecture_mission import (
+    ARCHITECTURE_MISSION_SCHEMA_VERSION,
+    ArchitectureMission,
+    ArchitectureMissionStatus,
+)
 from .planning import (
     EngineeringGoal,
     EngineeringIncrementProposal,
@@ -244,6 +249,9 @@ from .mission import (
 )
 
 __all__ = [
+    "ARCHITECTURE_MISSION_SCHEMA_VERSION",
+    "ArchitectureMission",
+    "ArchitectureMissionStatus",
     "Capability",
     "EngineeringMode",
     "GovernanceProfile",

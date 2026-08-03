@@ -117,11 +117,10 @@ becomes a Mission automatically and has no execution authority.
 
 ## Current implementation boundary
 
-The [Business Workspace](business-workspace.md) now implements the business
-governance boundary: persistent Mission Candidates, advisory Recommendation
-rendering, business-only refinement and approval/rejection/archive transitions,
-and resolved Governance Profile policy. Existing Forge runtime components
-remain unchanged. The next implementation increment is **Architecture
-Workspace**, which may receive only Business-approved Candidates and must
-prepare them for the separate Architecture approval before a Mission enters
-engineering.
+The [Business Workspace](business-workspace.md) implements the business
+governance boundary, and the [Architecture Workspace](architecture-workspace.md)
+implements the separate architecture boundary: it admits only Business-approved
+Candidates, refines engineering constraints, and records the independent
+Engineering approval. Existing Forge runtime components remain unchanged. The
+next implementation increment is **AI Mission Planner**, which may create
+Engineering Intents and Actions only within an approved Mission.

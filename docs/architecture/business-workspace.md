@@ -76,7 +76,7 @@ the Business Workspace's governed opportunity view. The
 [Forge Studio](forge-studio.md) may present this workspace but cannot own its
 approvals or bypass its boundaries.
 
-The next architectural increment is **Architecture Workspace**. It must accept
-only Business-approved Mission Candidates, prepare their architectural scope
-and constraints, and retain the separate approval required before a Mission
-can enter engineering.
+The [Architecture Workspace](architecture-workspace.md) receives only
+Business-approved Mission Candidates, prepares their architectural scope and
+constraints, and retains the separate approval required before a Mission can
+enter engineering.

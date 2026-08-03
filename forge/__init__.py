@@ -1,6 +1,7 @@
 """Forge's local-only Foundation Model, knowledge, and planning contracts."""
 
 from .models import (
+    ArchitectureMission,
     Capability,
     EngineeringMode,
     GovernanceProfile,
@@ -14,6 +15,7 @@ from .foundation import FoundationDocument, FoundationDocumentLoader, Validation
 from .planning import EngineeringPlanningDocument, PlanningDocumentLoader, PlanningRegistry, PlanningValidationReport
 
 __all__ = [
+    "ArchitectureMission",
     "Capability",
     "EngineeringMode",
     "GovernanceProfile",

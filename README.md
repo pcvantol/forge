@@ -219,6 +219,14 @@ resolves canonical Governance Profiles with legacy read compatibility. It does
 not perform architecture, create a Mission, start engineering, operate a
 repository, or implement a Runtime or UI framework.
 
+Phase D — Increment 4.1 adds the local, non-executing
+[Architecture Workspace](docs/architecture/architecture-workspace.md). It
+admits only Business-approved Mission Candidates, refines architecture-owned
+engineering constraints, provides immutable Architecture Advisor guidance, and
+records the distinct approval for engineering. It does not implement Mission
+planning, execution, runtime controls, providers, repository mutation, or a
+UI framework.
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text

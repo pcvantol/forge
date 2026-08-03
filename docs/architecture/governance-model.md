@@ -87,9 +87,9 @@ The [Product Model](product-model.md) owns the invariant lifecycle. The
 [Mission architecture](engineering-mission.md), and [Forge Studio model](forge-studio.md)
 apply this profile boundary in their domains.
 
-The [Business Workspace](business-workspace.md) consumes the resolved profile
-for business-facing governance while preserving this model's invariant. The
-recommended next increment is **Architecture Workspace**. It receives only
-Business-approved Mission Candidates and prepares them for the distinct
-Architecture approval before engineering. It must not implement authentication,
-RBAC, workflow automation, or separate operating modes.
+The [Business Workspace](business-workspace.md) and
+[Architecture Workspace](architecture-workspace.md) consume the resolved
+profile while preserving this model's invariant. Architecture Workspace
+receives only Business-approved Mission Candidates and prepares them for the
+distinct Architecture approval before engineering. It implements neither
+authentication, RBAC, workflow automation, nor separate operating modes.

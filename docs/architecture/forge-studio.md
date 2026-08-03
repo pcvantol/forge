@@ -33,3 +33,7 @@ single product model as organizations scale.
 The [Governance Profile Model](governance-model.md) is the canonical source for
 profile semantics. Studio implementation remains deferred until a versioned
 declarative Governance Profile Definition contract exists.
+
+The [Architecture Workspace](architecture-workspace.md) owns the Architecture
+Mission and its approval history; Studio may render that data but cannot refine
+or approve it independently.
