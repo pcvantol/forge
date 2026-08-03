@@ -16,6 +16,7 @@ from typing import Any
 from .action import EngineeringAction, EngineeringActionStatus
 from .intent import EngineeringIntent, IntentStatus
 from .mission import EngineeringMission
+from .agent_policy import AgentPolicySelection
 
 
 CODEX_CLI_RUNTIME_PROMPT_SCHEMA_VERSION = "3.3"
@@ -89,6 +90,7 @@ class CodexCliRuntimePromptRequest:
     constraints: tuple[str, ...]
     validation: tuple[str, ...]
     compatibility: ExecutionHostCompatibility
+    policy_selection: AgentPolicySelection | None = None
     renderer_version: str = CODEX_CLI_RENDERER_VERSION
     schema_version: str = CODEX_CLI_RUNTIME_PROMPT_SCHEMA_VERSION
 
@@ -107,6 +109,8 @@ class CodexCliRuntimePromptRequest:
             (membership.intent_id, membership.intent_revision) for membership in self.mission.intents
         }:
             raise ValueError("Codex CLI Runtime Prompt intent must be pinned by the source mission")
+        if self.policy_selection and (self.policy_selection.request.mission_id, self.policy_selection.request.action_id) != (self.mission.id, self.action.id):
+            raise ValueError("Codex CLI Runtime Prompt policy selection must match its Mission and Action")
         for values, label in ((self.constraints, "constraint"), (self.validation, "validation")):
             if not values or any(not item for item in values):
                 raise ValueError(f"Codex CLI Runtime Prompt {label} values are required")
@@ -125,6 +129,7 @@ class CodexCliRuntimePromptRequest:
             "constraints": list(self.constraints),
             "validation": list(self.validation),
             "compatibility": self.compatibility.to_dict(),
+            "policy_selection_digest": self.policy_selection.digest() if self.policy_selection else None,
         }
 
     def digest(self) -> str:
@@ -147,6 +152,9 @@ class CodexCliRuntimePrompt:
     action_id: str
     repository_state: RepositoryState
     compatibility: ExecutionHostCompatibility
+    policy_version: str | None
+    policy_digest: str | None
+    policy_execution_constraints: tuple[str, ...]
     objective: str
     expected_repository_evidence: tuple[str, ...]
     constraints: tuple[str, ...]
@@ -165,6 +173,13 @@ class CodexCliRuntimePrompt:
             raise ValueError("Codex CLI Runtime Prompt identity, provenance, and content are required")
         if not self.source_digest.startswith("sha256:"):
             raise ValueError("Codex CLI Runtime Prompt source digest must be a sha256 digest")
+        if (self.policy_version is None) != (self.policy_digest is None):
+            raise ValueError("Codex CLI Runtime Prompt policy version and digest must be paired")
+        if self.policy_digest and not self.policy_digest.startswith("sha256:"):
+            raise ValueError("Codex CLI Runtime Prompt policy digest must be a sha256 digest")
+        if self.policy_execution_constraints and any(not item for item in self.policy_execution_constraints):
+            raise ValueError("Codex CLI Runtime Prompt policy constraints must be non-empty")
+        object.__setattr__(self, "policy_execution_constraints", tuple(sorted(self.policy_execution_constraints)))
         for values, label in ((self.expected_repository_evidence, "expected repository evidence"),
                               (self.constraints, "constraint"), (self.validation, "validation")):
             if not values or any(not item for item in values) or len(values) != len(set(values)):
@@ -183,6 +198,11 @@ class CodexCliRuntimePrompt:
             "action": {"id": self.action_id},
             "repository_state": self.repository_state.to_dict(),
             "compatibility": self.compatibility.to_dict(),
+            "policy": None if self.policy_version is None else {
+                "version": self.policy_version,
+                "digest": self.policy_digest,
+                "execution_constraints": list(self.policy_execution_constraints),
+            },
             "objective": self.objective,
             "expected_repository_evidence": list(self.expected_repository_evidence),
             "constraints": list(self.constraints),

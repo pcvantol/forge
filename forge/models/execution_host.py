@@ -15,7 +15,7 @@ from .codex_runtime_prompt import CodexCliRuntimePrompt
 from .runtime_prompt import RuntimePrompt
 
 
-EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "2.3"
+EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "2.4"
 
 
 class ExecutionHostResponsibility(str, Enum):
@@ -39,6 +39,10 @@ class ExecutionHostForbiddenResponsibility(str, Enum):
     ROADMAP = "roadmap"
     CAPABILITY_EVOLUTION = "capability_evolution"
     GOVERNANCE = "governance"
+    AGENT_ROLE_SELECTION = "agent_role_selection"
+    MODEL_PROFILE_SELECTION = "model_profile_selection"
+    REASONING_PROFILE_SELECTION = "reasoning_profile_selection"
+    EXECUTION_HOST_SELECTION = "execution_host_selection"
 
 
 class ExecutionHostLifecycleStage(str, Enum):

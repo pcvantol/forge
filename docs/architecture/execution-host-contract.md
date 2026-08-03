@@ -1,4 +1,4 @@
-# Execution Host Contract 2.3
+# Execution Host Contract 2.4
 
 ## Purpose
 
@@ -42,7 +42,7 @@ the prompt as an execution artifact, rather than as architecture or authority.
 
 | Execution Host owns | Execution Host never owns |
 | --- | --- |
-| Execution; prompt delivery; runtime invocation; checkpoints; reports; logs; observability; retries; cleanup; qualification; execution evidence. | Architecture; engineering knowledge; Engineering Intent; roadmap; capability evolution; governance. |
+| Execution; prompt delivery; runtime invocation; checkpoints; reports; logs; observability; retries; cleanup; qualification; execution evidence. | Architecture; engineering knowledge; Engineering Intent; roadmap; capability evolution; governance; Agent Role selection; Model Profile selection; Reasoning Profile selection; Execution Host selection. |
 
 A Host may report execution outcomes and repository observations. It must not
 interpret evidence as architectural truth, change an Action or Intent, approve

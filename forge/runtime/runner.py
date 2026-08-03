@@ -77,6 +77,7 @@ def _prompt(document: Mapping[str, Any]) -> RuntimePrompt | CodexCliRuntimePromp
         action = document["action"]
         repository = document["repository_state"]
         compatibility = document["compatibility"]
+        policy = document.get("policy")
         return CodexCliRuntimePrompt(
             id=str(document["id"]), correlation_id=str(document["correlation_id"]),
             renderer_version=str(document["renderer_version"]), schema_version=str(document["schema_version"]),
@@ -89,6 +90,9 @@ def _prompt(document: Mapping[str, Any]) -> RuntimePrompt | CodexCliRuntimePromp
                 str(compatibility["execution_host_contract_version"]), str(compatibility["execution_mode"]),
                 tuple(compatibility["required_capabilities"]), str(compatibility["minimum_supported_runtime"]),
             ),
+            policy_version=None if policy is None else str(policy["version"]),
+            policy_digest=None if policy is None else str(policy["digest"]),
+            policy_execution_constraints=() if policy is None else tuple(policy["execution_constraints"]),
             objective=str(document["objective"]), expected_repository_evidence=tuple(document["expected_repository_evidence"]),
             constraints=tuple(document["constraints"]), validation=tuple(document["validation"]),
             source_digest=str(document["source_digest"]), rendered_text=str(document["rendered_text"]),

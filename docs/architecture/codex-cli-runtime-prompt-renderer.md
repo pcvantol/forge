@@ -40,6 +40,12 @@ constraints; expected validation; expected repository evidence; execution
 mode; renderer and schema versions; Runtime Prompt and correlation identities;
 and Execution Host compatibility metadata.
 
+When Forge has selected an Agent Role and model policy, the renderer projects
+only policy version, stable decision digest, and resulting execution
+constraints. It does not expose Agent Role, Model Profile, Reasoning Profile,
+or provider selection to the Execution Host. See the [Agent Role and Model
+Selection Policy](agent-role-model-selection-policy.md).
+
 Compatibility declares the Execution Host Contract version, execution mode,
 required capabilities, and minimum supported runtime. Capability Preflight
 consumes these declared fields before a host accepts delivery: it compares the

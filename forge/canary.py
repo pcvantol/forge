@@ -50,7 +50,7 @@ class CanaryQualificationReport:
 
 class _Configuration:
     def resolve(self, host_id: str) -> ExecutionHostConfiguration:
-        return ExecutionHostConfiguration(host_id, "2.3", ("GENESIS",), ("codex_cli", "local_git"),
+        return ExecutionHostConfiguration(host_id, "2.4", ("GENESIS",), ("codex_cli", "local_git"),
                                           "engineering-platform>=1.5.0", "canary://engineering-platform-1.5")
 
 
@@ -112,7 +112,7 @@ def run_bootstrap_mission_canary(state_path: Path) -> CanaryQualificationReport:
             return CodexCliRuntimePromptRenderer().render(CodexCliRuntimePromptRequest(
                 mission, intent, active, RepositoryState("forge", "canary-repository-revision", "sha256:" + "c" * 64, "2026-08-03T23:29:30Z"),
                 ("one action only",), ("bootstrap canary validation",),
-                ExecutionHostCompatibility("2.3", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0"),
+                ExecutionHostCompatibility("2.4", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0"),
             ))
         runner = BootstrapMissionRunner(store, BootstrapMissionScheduler(), adapter, render, host_id="engineering-platform-1.5",
             workspace_id="forge", repository_id="forge", clock=lambda: "2026-08-03T23:29:30Z",

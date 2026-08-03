@@ -58,6 +58,12 @@ class ExecutionHostContractTests(unittest.TestCase):
         self.assertEqual(set(contract.responsibilities), set(ExecutionHostResponsibility))
         with self.assertRaises(FrozenInstanceError):
             contract.host_id = "other"  # type: ignore[misc]
+        self.assertTrue({
+            ExecutionHostForbiddenResponsibility.AGENT_ROLE_SELECTION,
+            ExecutionHostForbiddenResponsibility.MODEL_PROFILE_SELECTION,
+            ExecutionHostForbiddenResponsibility.REASONING_PROFILE_SELECTION,
+            ExecutionHostForbiddenResponsibility.EXECUTION_HOST_SELECTION,
+        }.issubset(set(contract.forbidden_responsibilities)))
 
     def test_request_binds_mission_intent_action_prompt_and_retry_identity(self) -> None:
         self.assertEqual(request().runtime_prompt.source_action_id, "action-1")

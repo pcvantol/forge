@@ -40,7 +40,7 @@ def runtime_prompt():
         mission, intent, action,
         RepositoryState("forge", "abc123", "sha256:" + "a" * 64, "2026-08-03T12:00:00Z"),
         ("No execution.", "No prompt mutation."), ("Run focused tests.",),
-        ExecutionHostCompatibility("2.3", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0"),
+        ExecutionHostCompatibility("2.4", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0"),
     ))
 
 
@@ -61,7 +61,7 @@ class Resolver:
 
     def resolve(self, host_id: str) -> ExecutionHostConfiguration:
         self.host_ids.append(host_id)
-        return ExecutionHostConfiguration(host_id, "2.3", ("GENESIS",), ("codex_cli", "local_git"),
+        return ExecutionHostConfiguration(host_id, "2.4", ("GENESIS",), ("codex_cli", "local_git"),
                                           "engineering-platform>=1.5.0", "configured://inbox")
 
 

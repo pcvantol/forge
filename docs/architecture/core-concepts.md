@@ -13,6 +13,7 @@ local callers without adding a framework dependency.
 | Mission Planner | Is Forge's future iterative planning owner for Mission sequencing, dependencies, evidence evaluation, and dynamic Intent creation. | Replace human governance or execute work. |
 | Engineering Intent | Is a dynamic, model-independent planning artifact created by the Mission Planner; it preserves tactical rationale, boundaries, validation, evidence, and architectural traceability and contains Engineering Actions. | Provider-specific prompting, direct execution, persistence, or Architect approval. |
 | Engineering Action | Is the smallest intentional executable engineering unit within an Intent and produces a Runtime Prompt. | Expanding its Intent, provider execution, persistence, or approval. |
+| Agent Role and Model Selection Policy | Deterministically selects a Forge-owned role, provider-neutral model and reasoning profiles, and execution constraints for an Action. | Provider resolution, model invocation, execution, or host override. |
 | Workspace Readiness | Assesses whether a Workspace is prepared for a declared execution profile. | Completing a phase or executing work. |
 | Product Identity | Defines a separately governed public product identity. | Making runtime names architectural concepts. |
 | Runtime Prompt | Is a temporary, provider-specific execution representation produced from an Engineering Action. | Defining canonical engineering work or measuring repository drift. |

@@ -190,6 +190,12 @@ It evaluates completed work using allow-listed Repository Truth and Execution
 Evidence only, producing immutable Architecture Reviews and advisory Portfolio
 Mission Recommendations. It neither creates nor approves executable Missions.
 
+Forge also has a deterministic, provider-independent [Agent Role and Model
+Selection Policy](docs/architecture/agent-role-model-selection-policy.md). It
+selects Forge-owned role, model and reasoning profiles plus execution
+constraints before Runtime Prompt rendering. Execution Hosts receive only the
+rendered constraints and policy provenance; they never choose models.
+
 Phase C — Architecture Reconciliation adds the canonical
 [Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
 Startup, and Enterprise scale the same lifecycle by changing role assignments,

@@ -11,6 +11,10 @@ from forge.models import (
     EngineeringActionStatus,
     EngineeringIntent,
     ExecutionHostCompatibility,
+    AgentPolicySelectionRequest,
+    AgentRoleModelSelectionPolicy,
+    EngineeringWorkKind,
+    ReasoningDepth,
     IntentApproval,
     IntentCategory,
     IntentReference,
@@ -51,7 +55,12 @@ def request(**overrides: object) -> CodexCliRuntimePromptRequest:
         "repository_state": RepositoryState("forge", "abc123", "sha256:" + "a" * 64, "2026-08-03T12:00:00Z"),
         "constraints": ("No execution.", "No action mutation."),
         "validation": ("Run focused tests.",),
-        "compatibility": ExecutionHostCompatibility("2.3", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0"),
+        "compatibility": ExecutionHostCompatibility("2.4", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0"),
+        "policy_selection": AgentRoleModelSelectionPolicy().select(AgentPolicySelectionRequest(
+            "mission-1", "action-1", EngineeringWorkKind.ENGINEERING,
+            reasoning_depth=ReasoningDepth.STANDARD,
+            repository_context=("architecture", "repository_truth"), validation_required=True,
+        )),
     }
     values.update(overrides)
     return CodexCliRuntimePromptRequest(**values)  # type: ignore[arg-type]
@@ -84,6 +93,10 @@ class CodexCliRuntimePromptRendererTests(unittest.TestCase):
         self.assertEqual(document["compatibility"]["execution_mode"], "GENESIS")
         self.assertEqual(document["compatibility"]["required_capabilities"], ["codex_cli", "local_git"])
         self.assertTrue(document["immutable"])
+        self.assertEqual(document["policy"]["version"], "1.0.0")
+        self.assertNotIn("agent_role", document["policy"])
+        self.assertIn("Forge policy execution constraints", prompt.rendered_text)
+        self.assertNotIn("engineering_agent", prompt.rendered_text)
         with self.assertRaises(FrozenInstanceError):
             prompt.id = "changed"  # type: ignore[misc]
 

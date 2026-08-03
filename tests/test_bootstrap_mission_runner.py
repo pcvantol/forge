@@ -170,7 +170,7 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         rendered = CodexCliRuntimePromptRenderer().render(CodexCliRuntimePromptRequest(
             EngineeringMission("mission-1", "1", "Mission", "Complete actions.", MissionScope(("runner",), ("planner",)), (MissionIntentMembership(1, "one", "1"),)),
             approved, active, RepositoryState("forge", "abc", "sha256:" + "a" * 64, "now"), ("bounded",), ("test",),
-            ExecutionHostCompatibility("2.3", "GENESIS", ("codex_cli",), "platform>=1.5"),
+            ExecutionHostCompatibility("2.4", "GENESIS", ("codex_cli",), "platform>=1.5"),
         ))
         from forge.runtime.runner import _request, _request_document
         request = ExecutionRequest(
