@@ -76,20 +76,25 @@ class _Inbox:
 
     def submit(self, request: object) -> EngineeringPlatformInboxReceipt:
         self.request = request
-        return EngineeringPlatformInboxReceipt(CANARY_HOST_RUN_ID)
+        return EngineeringPlatformInboxReceipt(CANARY_HOST_RUN_ID, "forge-bootstrap-mission-canary-receipt", "engineering-platform-1.5", "2026-08-03T23:30:00Z")
 
     def receipt_for(self, correlation_id: str) -> EngineeringPlatformInboxReceipt | None:
-        return EngineeringPlatformInboxReceipt(CANARY_HOST_RUN_ID) if self.request and correlation_id == CANARY_CORRELATION_ID else None
+        return EngineeringPlatformInboxReceipt(CANARY_HOST_RUN_ID, "forge-bootstrap-mission-canary-receipt", "engineering-platform-1.5", "2026-08-03T23:30:00Z") if self.request and correlation_id == CANARY_CORRELATION_ID else None
 
 
 class _Reports:
+    def __init__(self, inbox: _Inbox) -> None: self._inbox = inbox
+
     def report_for(self, run_id: str) -> EngineeringPlatformReport | None:
-        if run_id != CANARY_HOST_RUN_ID:
+        request = self._inbox.request
+        if run_id != CANARY_HOST_RUN_ID or request is None:
             return None
         return EngineeringPlatformReport(CANARY_HOST_RUN_ID, "forge-bootstrap-mission-canary-report",
             EngineeringPlatformReportOutcome.COMPLETE, "canary-repository-revision", "sha256:" + "c" * 64,
             ("validation:bootstrap-mission-canary",), ("evidence:engineering-platform-1.5",),
-            "2026-08-03T23:30:00Z", "2026-08-03T23:31:00Z")
+            "2026-08-03T23:30:00Z", "2026-08-03T23:31:00Z", "forge-bootstrap-mission-canary-receipt",
+            request.execution_host_id, request.correlation_id, request.runtime_prompt_id, request.mission_id,
+            request.intent_id, request.intent_revision, request.action_id, execution_duration_ms=60_000)
 
 
 def run_bootstrap_mission_canary(state_path: Path) -> CanaryQualificationReport:
@@ -104,7 +109,7 @@ def run_bootstrap_mission_canary(state_path: Path) -> CanaryQualificationReport:
     action = EngineeringAction(1, CANARY_ACTION_ID, intent.id, intent.revision, "Execute the one qualified canary Action.",
         ("repository evidence",), status=EngineeringActionStatus.READY)
     preflight, inbox = _Preflight(), _Inbox()
-    adapter = BootstrapExecutionHostAdapter(_Configuration(), preflight, inbox, _Reports())
+    adapter = BootstrapExecutionHostAdapter(_Configuration(), preflight, inbox, _Reports(inbox))
     with MissionStateStore(state_path) as store:
         intake = MissionIntake(store, lambda: "2026-08-03T23:29:30Z")
         intake.admit(mission, (intent,), (action,))

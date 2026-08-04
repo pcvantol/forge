@@ -6,12 +6,12 @@ and the resulting five evidence sets under the caller-owned qualification root.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from hashlib import sha256
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Protocol
 
 from forge.architecture import ArchitectureWorkspace
 from forge.dispatcher import BOOTSTRAP_MISSION_SEQUENCE, ApprovedMissionQueue, MissionDispatcher, MissionDispatcherStore
@@ -76,37 +76,17 @@ class BootstrapQualificationInterrupted(BaseException):
     """A controlled crash boundary used to prove persisted-host recovery."""
 
 
-class EngineeringPlatformEvidenceProvider:
-    """Durable, host-owned receipt/report boundary for Genesis qualification.
+class EngineeringPlatformEvidenceSource(Protocol):
+    """Receipt/report boundary owned by Engineering Platform, never Forge.
 
-    The adapter sees only the Engineering Platform contracts.  Receipt and
-    report documents are persisted independently from Forge's SQLite state so
-    a restarted runner must recover the original host acknowledgement rather
-    than manufacture another action or completion.
+    Forge can submit a rendered prompt and retrieve the corresponding receipt
+    and report, but it cannot mint either artifact or infer a terminal result.
+    A production caller supplies the Engineering Platform 1.5 client.
     """
-    def __init__(self, path: Path, clock: _Clock, *, interrupt_after_submit: bool = False) -> None:
-        self.path, self.clock, self.interrupt_after_submit = path, clock, interrupt_after_submit
-        self._interrupted = False
-        if not path.exists(): path.write_text(json.dumps({"receipts": {}, "reports": {}}, sort_keys=True), encoding="utf-8")
-    def _read(self) -> dict[str, Any]: return json.loads(self.path.read_text(encoding="utf-8"))
-    def _write(self, value: dict[str, Any]) -> None: self.path.write_text(json.dumps(value, sort_keys=True, indent=2), encoding="utf-8")
-    def receipt_count(self) -> int: return len(self._read()["receipts"])
-    def submit(self, request: Any) -> EngineeringPlatformInboxReceipt:
-        data = self._read(); existing = data["receipts"].get(request.correlation_id)
-        if existing: return EngineeringPlatformInboxReceipt(existing)
-        run_id = "qualification-host-" + sha256(request.correlation_id.encode()).hexdigest()[:16]
-        data["receipts"][request.correlation_id] = run_id
-        data["reports"][run_id] = {"report_id": "qualification-report-" + run_id[-16:], "repository_revision": "qualification-revision", "content_digest": _digest({"mission": request.mission_id, "action": request.action_id}), "started": self.clock(), "completed": self.clock()}
-        self._write(data)
-        if self.interrupt_after_submit and not self._interrupted:
-            self._interrupted = True
-            raise BootstrapQualificationInterrupted("controlled interruption after persisted host dispatch")
-        return EngineeringPlatformInboxReceipt(run_id)
-    def receipt_for(self, correlation_id: str) -> EngineeringPlatformInboxReceipt | None:
-        run_id = self._read()["receipts"].get(correlation_id); return None if run_id is None else EngineeringPlatformInboxReceipt(run_id)
-    def report_for(self, run_id: str) -> EngineeringPlatformReport | None:
-        item = self._read()["reports"].get(run_id)
-        return None if item is None else EngineeringPlatformReport(run_id, item["report_id"], EngineeringPlatformReportOutcome.COMPLETE, item["repository_revision"], item["content_digest"], ("qualification:execution-host",), ("evidence:engineering-platform-1.5",), item["started"], item["completed"])
+
+    def submit(self, request: Any) -> EngineeringPlatformInboxReceipt: ...
+    def receipt_for(self, correlation_id: str) -> EngineeringPlatformInboxReceipt | None: ...
+    def report_for(self, run_id: str) -> EngineeringPlatformReport | None: ...
 
 
 @dataclass(frozen=True)
@@ -149,21 +129,53 @@ def _approve(workspace: ArchitectureWorkspace, mission: CanonicalBootstrapMissio
     workspace.approve_for_engineering(mission.identifier, actor="architect", occurred_at=clock(), rationale="Architecture-approved canonical bootstrap portfolio seed.")
 
 
-def run_bootstrap_sequence_qualification(root: Path, *, interrupt_after_host_dispatch: bool = False) -> BootstrapQualificationReport:
+def _validate_bundle(bundle: Mapping[str, Any]) -> None:
+    evidence = bundle.get("execution_evidence")
+    lineage = bundle.get("execution_lineage")
+    required = ("host_id", "receipt_id", "host_run_id", "correlation_id", "report_id", "outcome",
+                "execution_started_at", "execution_completed_at", "execution_duration_ms", "repository_evidence")
+    if not isinstance(evidence, dict) or any(not evidence.get(item) for item in required):
+        raise ValueError("bootstrap qualification evidence bundle lacks host-issued execution evidence")
+    repository = evidence["repository_evidence"]
+    if evidence["outcome"] != "complete" or not isinstance(repository, dict) or any(
+        evidence.get(item) != repository.get(item) for item in ("host_run_id", "correlation_id", "report_id")
+    ):
+        raise ValueError("bootstrap qualification evidence bundle has mismatched host provenance")
+    if not isinstance(lineage, list) or not any(item.get("receipt_id") == evidence["receipt_id"] for item in lineage if isinstance(item, dict)):
+        raise ValueError("bootstrap qualification evidence bundle lacks preserved receipt lineage")
+
+
+def _validated_completed_report(evidence_file: Path) -> BootstrapQualificationReport | None:
+    if not evidence_file.exists():
+        return None
+    persisted = json.loads(evidence_file.read_text(encoding="utf-8"))
+    missions = persisted.get("missions")
+    if persisted.get("mission_sequence") != list(BOOTSTRAP_MISSION_SEQUENCE) or persisted.get("dispatcher_status") != "IDLE" or not isinstance(missions, list) or len(missions) != len(BOOTSTRAP_MISSION_SEQUENCE):
+        return None
+    if [item.get("mission_id") for item in missions] != list(BOOTSTRAP_MISSION_SEQUENCE):
+        return None
+    for item in missions:
+        _validate_bundle(item)
+        if item.get("completion_outcome") != "COMPLETED":
+            return None
+    if len({item["execution_evidence"]["host_run_id"] for item in missions}) != len(missions) or len({item["execution_evidence"]["receipt_id"] for item in missions}) != len(missions):
+        raise ValueError("bootstrap qualification requires unique host runs and receipts")
+    return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(evidence_file), "Normal Business → Architecture → Mission lifecycle")
+
+
+def run_bootstrap_sequence_qualification(root: Path, evidence_source: EngineeringPlatformEvidenceSource, *, interrupt_after_host_dispatch: bool = False) -> BootstrapQualificationReport:
     """Execute/resume exactly MISSION-0001 through MISSION-0005 via production boundaries."""
     root.mkdir(parents=True, exist_ok=True); clock = _Clock(); evidence_file = root / "bootstrap-sequence-evidence.json"
     portfolio = load_canonical_bootstrap_portfolio(Path(__file__).resolve().parents[2])
-    if evidence_file.exists():
-        persisted = json.loads(evidence_file.read_text(encoding="utf-8"))
-        if persisted.get("mission_sequence") == list(BOOTSTRAP_MISSION_SEQUENCE) and len(persisted.get("missions", ())) == len(BOOTSTRAP_MISSION_SEQUENCE) and persisted.get("dispatcher_status") == "IDLE":
-            return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(evidence_file), "Portfolio Intelligence Foundation")
+    completed = _validated_completed_report(evidence_file)
+    if completed is not None:
+        return completed
     workspace = ArchitectureWorkspace(root / "architecture.sqlite"); states = MissionStateStore(root / "mission-state.sqlite"); dispatches = MissionDispatcherStore(root / "dispatcher.sqlite")
     try:
         for mission in portfolio:
             try: workspace.get(mission.identifier)
             except Exception: _approve(workspace, mission, clock)
-        host_source = EngineeringPlatformEvidenceProvider(root / "engineering-platform-evidence.json", clock, interrupt_after_submit=interrupt_after_host_dispatch)
-        host = BootstrapExecutionHostAdapter(_Configuration(), _Preflight(), host_source, host_source)
+        host = BootstrapExecutionHostAdapter(_Configuration(), _Preflight(), evidence_source, evidence_source)
         review_file = root / "bootstrap-review-recommendation-evidence.json"
         persisted_reviews = json.loads(review_file.read_text(encoding="utf-8")) if review_file.exists() else {"reviews": {}, "recommendations": {}}
         reviews: dict[str, Any] = dict(persisted_reviews["reviews"]); recommendations: dict[str, Any] = dict(persisted_reviews["recommendations"])
@@ -174,7 +186,14 @@ def run_bootstrap_sequence_qualification(root: Path, *, interrupt_after_host_dis
             recommendations[identifier] = [item.to_dict() for item in MissionRecommendationEngine().generate(MissionRecommendationInput(review, RecommendationRepositoryContext("forge", "qualification-revision", digest), clock(), (RequiredDiscipline.PLATFORM_ARCHITECTURE,), (), (), "bootstrap", "advisory"))]
             review_file.write_text(json.dumps({"reviews": reviews, "recommendations": recommendations}, sort_keys=True, indent=2), encoding="utf-8")
         dispatcher = MissionDispatcher(ApprovedMissionQueue(workspace), MissionIntake(states, clock), states, dispatches, clock=clock, architecture_review=completed, recommendations=lambda identifier: None)
-        counter = host_source.receipt_count()
+        counter = 0
+        for identifier in BOOTSTRAP_MISSION_SEQUENCE:
+            try:
+                correlation = (states.get(identifier).execution_correlation or {}).get("request", {}).get("correlation_id", "")
+                if isinstance(correlation, str) and correlation.startswith("bootstrap-sequence-"):
+                    counter = max(counter, int(correlation.rsplit("-", 1)[1]))
+            except Exception:
+                pass
         def correlation() -> str:
             nonlocal counter; counter += 1; return f"bootstrap-sequence-{counter}"
         def planning(state: Any) -> MissionPlannerInput:
@@ -187,7 +206,13 @@ def run_bootstrap_sequence_qualification(root: Path, *, interrupt_after_host_dis
             mission = EngineeringMission(action.intent_id.split(":intent:")[0], "1", "Bootstrap Mission", "Complete canonical mission.", MissionScope(("bootstrap",), ("portfolio reordering",)), (MissionIntentMembership(1, generated.id, generated.revision),), status=MissionStatus.ACTIVE)
             return CodexCliRuntimePromptRenderer().render(CodexCliRuntimePromptRequest(mission, generated, action, RepositoryState("forge", "qualification-revision", _digest({"mission": mission.id}), "2026-08-04T12:00:00Z"), ("canonical pipeline",), ("qualification validation",), ExecutionHostCompatibility("2.4", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0")))
         loop = ExecutionLoop(dispatcher, states, MissionPlanner(), host, planning, prompt, lambda state, evidence: {"source_id": "forge", "revision": "qualification-revision", "content_digest": _digest({"mission": state.mission_id, "evidence": None if evidence is None else evidence.report_id})}, host_id="engineering-platform-1.5", workspace_id="forge", repository_id="forge", clock=clock, correlation_id_factory=correlation)
+        interrupted = False
         while not dispatcher.is_idle:
+            if interrupt_after_host_dispatch and not interrupted and states.resumable():
+                active = states.resumable()[0]
+                if active.execution_correlation and active.execution_correlation.get("host_run_id"):
+                    interrupted = True
+                    raise BootstrapQualificationInterrupted("controlled interruption after host-issued receipt")
             result = loop.run()
             if result is None: break
             if result.status is not MissionExecutionStatus.COMPLETED: raise ValueError("bootstrap qualification requires complete host evidence")
@@ -195,8 +220,11 @@ def run_bootstrap_sequence_qualification(root: Path, *, interrupt_after_host_dis
         for identifier in BOOTSTRAP_MISSION_SEQUENCE:
             state = states.get(identifier); record = dispatches.get(identifier)
             if state.status is not MissionExecutionStatus.COMPLETED or record is None or identifier not in reviews: raise ValueError("bootstrap qualification did not produce five complete evidence sets")
-            records.append({"mission_id": identifier, "activation_timestamp": next(item.occurred_at for item in states.history(identifier) if item.to_status is MissionExecutionStatus.CREATED), "completion_timestamp": next(item.occurred_at for item in states.history(identifier) if item.to_status is MissionExecutionStatus.COMPLETED), "execution_lineage": state.execution_history, "execution_evidence": state.execution_evidence, "mission_state": {"status": state.status.value, "revision": state.revision}, "architecture_review": reviews[identifier], "mission_recommendations": recommendations[identifier], "completion_outcome": record.status.value})
+            records.append({"mission_id": identifier, "activation_timestamp": next(item.occurred_at for item in states.history(identifier) if item.to_status is MissionExecutionStatus.CREATED), "completion_timestamp": next(item.occurred_at for item in states.history(identifier) if item.to_status is MissionExecutionStatus.COMPLETED), "execution_lineage": state.execution_history, "execution_evidence": state.execution_evidence, "mission_state": {"status": state.status.value, "revision": state.revision}, "architecture_review": reviews[identifier], "mission_recommendations": recommendations[identifier], "dispatcher_transition": record.status.value, "completion_outcome": record.status.value})
         evidence_file.write_text(json.dumps({"mission_sequence": list(BOOTSTRAP_MISSION_SEQUENCE), "dispatcher_status": "IDLE" if dispatcher.is_idle else "ACTIVE", "missions": records}, sort_keys=True, indent=2), encoding="utf-8")
-        return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(evidence_file), "Portfolio Intelligence Foundation")
+        validated = _validated_completed_report(evidence_file)
+        if validated is None:
+            raise ValueError("bootstrap qualification did not produce a complete independently verifiable evidence bundle")
+        return validated
     finally:
         workspace.close(); states.close(); dispatches.close()

@@ -324,8 +324,21 @@ class MissionStateStore:
             "revision": current.revision + 1,
         })
         if status is MissionExecutionStatus.COMPLETED:
-            if not document["execution_evidence"]:
-                raise MissionStateStoreError("completed mission state requires execution evidence")
+            evidence = document["execution_evidence"]
+            required = ("host_id", "receipt_id", "host_run_id", "correlation_id", "report_id", "outcome",
+                        "repository_evidence", "execution_started_at", "execution_completed_at", "execution_duration_ms")
+            if not isinstance(evidence, dict) or any(not evidence.get(item) for item in required):
+                raise MissionStateStoreError("completed mission state requires complete host-issued execution evidence")
+            repository = evidence["repository_evidence"]
+            if not isinstance(repository, dict) or any(not repository.get(item) for item in (
+                "mission_id", "intent_id", "intent_revision", "action_id", "runtime_prompt_id",
+                "correlation_id", "host_run_id", "report_id",
+            )):
+                raise MissionStateStoreError("completed mission state requires complete execution lineage")
+            if evidence["outcome"] != "complete" or any(
+                evidence[item] != repository[item] for item in ("correlation_id", "host_run_id", "report_id")
+            ):
+                raise MissionStateStoreError("completed mission state requires correlated complete host evidence")
             if document["progress"]["percent_complete"] != 100:
                 raise MissionStateStoreError("completed mission state requires every action to be complete")
         with self._connection:

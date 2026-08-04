@@ -73,7 +73,7 @@ class ExecutionHostContractTests(unittest.TestCase):
             request(retry_of_correlation_id="correlation-1")
 
     def test_evidence_requires_exact_run_bound_repository_provenance(self) -> None:
-        evidence = ExecutionHostEvidence("host-1", "correlation-1", "run-1", "report-1", ExecutionEvidenceOutcome.COMPLETE, repository_evidence())
+        evidence = ExecutionHostEvidence("host-1", "correlation-1", "run-1", "report-1", ExecutionEvidenceOutcome.COMPLETE, repository_evidence(), execution_started_at="2026-08-04T10:00:00Z", execution_completed_at="2026-08-04T10:01:00Z", receipt_id="receipt-1", execution_duration_ms=60_000)
         self.assertEqual(evidence.repository_evidence.runtime_prompt_id, "prompt-1")
         with self.assertRaisesRegex(ValueError, "run and report"):
             replace(evidence, host_run_id="other")

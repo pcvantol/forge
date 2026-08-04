@@ -6,7 +6,7 @@ The bootstrap qualification is a composition-only boundary. It adds no Mission s
 
 ## Authoring result
 
-`forge.qualification.bootstrap_sequence` composes the Approved Mission Queue, Mission Dispatcher, Mission Intake, Mission State Store, Mission Planner, Runtime Prompt Renderer, Bootstrap Execution Host Adapter, Architecture Review Engine and Mission Recommendation Engine. It loads the immutable source definitions for the exact five canonical seed Missions rather than synthesising generic approved Missions. The adapter remains the sole Engineering Platform 1.5 boundary. A durable local evidence source supplies independent Genesis host receipts and reports, preserving host replacement independence.
+`forge.qualification.bootstrap_sequence` composes the Approved Mission Queue, Mission Dispatcher, Mission Intake, Mission State Store, Mission Planner, Runtime Prompt Renderer, Bootstrap Execution Host Adapter, Architecture Review Engine and Mission Recommendation Engine. It loads the immutable source definitions for the exact five canonical seed Missions rather than synthesising generic approved Missions. The adapter remains the sole Engineering Platform 1.5 boundary. The qualification accepts a host-owned receipt/report client; it no longer contains a receipt/report generator or default-complete source.
 
 ## Governance
 
@@ -14,4 +14,4 @@ The canonical five-Mission sequence is fixed. Review and recommendation outputs 
 
 ## Recovery
 
-The qualification uses the existing SQLite Mission State and Dispatcher stores plus durable host receipts. Completed qualification evidence is idempotent on rerun; an interrupted run resumes through persisted state and a receipt-count-continuing correlation sequence instead of creating duplicate Actions, completion records or reused host reports. Review and recommendation evidence are persisted at Mission completion before subsequent dispatcher activation.
+The qualification uses the existing SQLite Mission State and Dispatcher stores plus durable host receipts. Completed qualification evidence is idempotent on rerun only after revalidating all receipt and execution-lineage fields. An interrupted run resumes through persisted state and host receipt recovery instead of creating duplicate Actions, completion records or reused host reports. Review and recommendation evidence are persisted at Mission completion before subsequent dispatcher activation.

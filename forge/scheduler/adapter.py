@@ -86,11 +86,16 @@ class EngineeringPlatformInboxRequest:
 
 @dataclass(frozen=True)
 class EngineeringPlatformInboxReceipt:
+    """Immutable acknowledgement issued by the Engineering Platform host."""
+
     run_id: str
+    receipt_id: str
+    host_id: str
+    issued_at: str
 
     def __post_init__(self) -> None:
-        if not self.run_id:
-            raise ValueError("Engineering Platform Inbox receipt requires a run identity")
+        if not all((self.run_id, self.receipt_id, self.host_id, self.issued_at)):
+            raise ValueError("Engineering Platform Inbox receipt requires host, receipt, run, and issue time")
 
 
 @dataclass(frozen=True)
@@ -106,6 +111,15 @@ class EngineeringPlatformReport:
     diagnostic_references: tuple[str, ...] = ()
     execution_started_at: str | None = None
     execution_completed_at: str | None = None
+    receipt_id: str | None = None
+    host_id: str | None = None
+    correlation_id: str | None = None
+    runtime_prompt_id: str | None = None
+    mission_id: str | None = None
+    intent_id: str | None = None
+    intent_revision: str | None = None
+    action_id: str | None = None
+    execution_duration_ms: int | None = None
 
 
 class EngineeringPlatformInbox(Protocol):
@@ -188,6 +202,18 @@ class BootstrapExecutionHostAdapter:
         if report.run_id != dispatch.host_run_id:
             raise ValueError("Engineering Platform report does not match its dispatched run")
         request = dispatch.request
+        expected = {
+            "host_id": request.host_id,
+            "correlation_id": request.correlation_id,
+            "runtime_prompt_id": prompt.id,
+            "mission_id": request.mission_id,
+            "intent_id": request.intent_id,
+            "intent_revision": request.intent_revision,
+            "action_id": request.action_id,
+        }
+        observed = {name: getattr(report, name) for name in expected}
+        if not report.receipt_id or any(value != expected[name] for name, value in observed.items()):
+            raise ValueError("Engineering Platform report lacks exact host-issued execution provenance")
         repository = ExecutionRepositoryEvidence(
             mission_id=request.mission_id,
             intent_id=request.intent_id,
@@ -214,4 +240,6 @@ class BootstrapExecutionHostAdapter:
             original_correlation_id=request.original_correlation_id,
             execution_started_at=report.execution_started_at,
             execution_completed_at=report.execution_completed_at,
+            receipt_id=report.receipt_id,
+            execution_duration_ms=report.execution_duration_ms,
         )

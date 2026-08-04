@@ -32,7 +32,7 @@ def request(item: EngineeringAction, *, correlation: str = "correlation-1", retr
 def evidence(dispatch: ExecutionDispatch, outcome: ExecutionEvidenceOutcome = ExecutionEvidenceOutcome.COMPLETE) -> ExecutionHostEvidence:
     item = dispatch.request
     repository = ExecutionRepositoryEvidence(item.mission_id, item.intent_id, item.intent_revision, item.action_id, item.runtime_prompt.id, item.correlation_id, dispatch.host_run_id, item.repository_id, "abc123", "report-1", "sha256:" + "a" * 64)
-    return ExecutionHostEvidence(item.host_id, item.correlation_id, dispatch.host_run_id, "report-1", outcome, repository, retry_of_correlation_id=item.retry_of_correlation_id)
+    return ExecutionHostEvidence(item.host_id, item.correlation_id, dispatch.host_run_id, "report-1", outcome, repository, retry_of_correlation_id=item.retry_of_correlation_id, execution_started_at="2026-08-04T10:00:00Z", execution_completed_at="2026-08-04T10:01:00Z", receipt_id="receipt-1", execution_duration_ms=60_000)
 
 
 class FakeExecutionHost:

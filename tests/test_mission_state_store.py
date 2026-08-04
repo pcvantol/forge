@@ -116,12 +116,19 @@ class MissionStateStoreTests(unittest.TestCase):
 
     def test_completed_mission_requires_terminal_evidence_and_is_not_resumable(self) -> None:
         self.advance_to_waiting_evidence()
-        with self.assertRaisesRegex(MissionStateStoreError, "requires execution evidence"):
+        with self.assertRaisesRegex(MissionStateStoreError, "requires complete host-issued execution evidence"):
             self.store.transition("mission-1", MissionExecutionStatus.COMPLETED, occurred_at="2026-08-01T20:05:00Z", reason="unproven")
         completed_action = replace(action(), status=EngineeringActionStatus.COMPLETE)
         complete = self.store.transition(
             "mission-1", MissionExecutionStatus.COMPLETED, occurred_at="2026-08-01T20:05:00Z", reason="evidence verified",
-            actions=(completed_action,), execution_evidence={"report_id": "report-1", "outcome": "complete"},
+            actions=(completed_action,), execution_evidence={
+                "host_id": "host-1", "receipt_id": "receipt-1", "host_run_id": "run-1", "correlation_id": "correlation-1",
+                "report_id": "report-1", "outcome": "complete", "execution_started_at": "2026-08-01T20:04:00Z",
+                "execution_completed_at": "2026-08-01T20:05:00Z", "execution_duration_ms": 60_000, "repository_evidence": {
+                    "mission_id": "mission-1", "intent_id": "intent-1", "intent_revision": "1", "action_id": "action-1",
+                    "runtime_prompt_id": "prompt-1", "correlation_id": "correlation-1", "host_run_id": "run-1", "report_id": "report-1",
+                },
+            },
         )
         self.assertEqual(complete.progress["percent_complete"], 100)
         self.assertEqual(complete.execution_evidence["report_id"], "report-1")  # type: ignore[index]

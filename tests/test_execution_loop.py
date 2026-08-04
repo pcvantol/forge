@@ -89,7 +89,9 @@ class Host:
             request.action_id, request.runtime_prompt.id, request.correlation_id, dispatch.host_run_id,
             request.repository_id, "revision", f"report-{request.action_id}", digest("c"))
         return ExecutionHostEvidence(request.host_id, request.correlation_id, dispatch.host_run_id,
-                                     f"report-{request.action_id}", outcome, repository)
+                                     f"report-{request.action_id}", outcome, repository,
+                                     execution_started_at="2026-08-04T10:00:00Z", execution_completed_at="2026-08-04T10:01:00Z",
+                                     receipt_id=f"receipt-{request.action_id}", execution_duration_ms=60_000)
 
 
 class ExecutionLoopTests(unittest.TestCase):

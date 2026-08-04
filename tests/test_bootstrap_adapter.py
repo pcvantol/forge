@@ -82,12 +82,12 @@ class Inbox:
 
     def submit(self, item: object) -> EngineeringPlatformInboxReceipt:
         self.requests.append(item)
-        return EngineeringPlatformInboxReceipt("ep-run-1")
+        return EngineeringPlatformInboxReceipt("ep-run-1", "ep-receipt-1", "bootstrap-ep", "2026-08-03T12:01:00Z")
 
     def receipt_for(self, correlation_id: str) -> EngineeringPlatformInboxReceipt | None:
         if correlation_id != "correlation-1" or not self.requests:
             return None
-        return EngineeringPlatformInboxReceipt("ep-run-1")
+        return EngineeringPlatformInboxReceipt("ep-run-1", "ep-receipt-1", "bootstrap-ep", "2026-08-03T12:01:00Z")
 
 
 class Reports:
@@ -97,7 +97,8 @@ class Reports:
         return EngineeringPlatformReport(
             "ep-run-1", "ep-report-1", EngineeringPlatformReportOutcome.COMPLETE, "abc123",
             "sha256:" + "a" * 64, ("validation:focused",), ("diagnostic:none",),
-            "2026-08-03T12:01:01Z", "2026-08-03T12:02:01Z",
+            "2026-08-03T12:01:01Z", "2026-08-03T12:02:01Z", "ep-receipt-1", "bootstrap-ep",
+            "correlation-1", request().runtime_prompt.id, "mission-1", "intent-1", "1.0", "action-1",
         )
 
 
@@ -138,6 +139,7 @@ class BootstrapAdapterTests(unittest.TestCase):
         self.assertEqual(evidence.repository_evidence.runtime_prompt_id, request().runtime_prompt.id)
         self.assertEqual(evidence.validation_references, ("validation:focused",))
         self.assertEqual(evidence.execution_completed_at, "2026-08-03T12:02:01Z")
+        self.assertEqual(evidence.receipt_id, "ep-receipt-1")
         self.assertFalse(hasattr(evidence, "inbox_location"))
 
     def test_adapter_rejects_generic_prompts_and_core_has_no_platform_dependency(self) -> None:

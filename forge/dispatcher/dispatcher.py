@@ -168,6 +168,9 @@ class MissionDispatcher:
         state = self._states.get(mission_id)
         if state.status is not MissionExecutionStatus.COMPLETED:
             raise MissionDispatcherError("Mission completion requires verified completed Mission State")
+        evidence = getattr(state, "execution_evidence", None)
+        if evidence is not None and (not evidence.get("receipt_id") or evidence.get("outcome") != "complete"):
+            raise MissionDispatcherError("Mission completion requires host-issued complete execution evidence")
         self._store.transition(mission_id, DispatcherStatus.COMPLETED, occurred_at=self._clock())
         if self._architecture_review:
             self._architecture_review(mission_id)
