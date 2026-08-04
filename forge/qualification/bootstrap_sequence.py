@@ -7,6 +7,7 @@ and the resulting five evidence sets under the caller-owned qualification root.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import asdict
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -38,6 +39,7 @@ from forge.scheduler.adapter import (
     EngineeringPlatformReportOutcome, ExecutionHostConfiguration,
 )
 from forge.state import MissionExecutionStatus, MissionStateStore
+from forge.runtime import RuntimeDatabase
 
 
 def _digest(value: object) -> str:
@@ -166,9 +168,15 @@ def _validated_completed_report(evidence_file: Path) -> BootstrapQualificationRe
 def run_bootstrap_sequence_qualification(root: Path, evidence_source: EngineeringPlatformEvidenceSource, *, interrupt_after_host_dispatch: bool = False) -> BootstrapQualificationReport:
     """Execute/resume exactly MISSION-0001 through MISSION-0005 via production boundaries."""
     root.mkdir(parents=True, exist_ok=True); clock = _Clock(); evidence_file = root / "bootstrap-sequence-evidence.json"
+    runtime = RuntimeDatabase(root)
     portfolio = load_canonical_bootstrap_portfolio(Path(__file__).resolve().parents[2])
+    runtime_report = runtime.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)
+    if runtime_report["qualified"]:
+        runtime.close()
+        return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(runtime.path), "Normal Business → Architecture → Mission lifecycle")
     completed = _validated_completed_report(evidence_file)
     if completed is not None:
+        runtime.close()
         return completed
     workspace = ArchitectureWorkspace(root / "architecture.sqlite"); states = MissionStateStore(root / "mission-state.sqlite"); dispatches = MissionDispatcherStore(root / "dispatcher.sqlite")
     try:
@@ -220,11 +228,25 @@ def run_bootstrap_sequence_qualification(root: Path, evidence_source: Engineerin
         for identifier in BOOTSTRAP_MISSION_SEQUENCE:
             state = states.get(identifier); record = dispatches.get(identifier)
             if state.status is not MissionExecutionStatus.COMPLETED or record is None or identifier not in reviews: raise ValueError("bootstrap qualification did not produce five complete evidence sets")
+            state_document = asdict(state); state_document["status"] = state.status.value
+            runtime.save_mission_state(state_document)
+            runtime.record_architecture_review(reviews[identifier])
+            for recommendation in recommendations[identifier]:
+                runtime.record_mission_recommendation(recommendation, mission_id=identifier)
+            host_evidence = state.execution_evidence or {}
+            runtime.record_execution_reference(
+                reference_id=str(host_evidence["report_id"]), mission_id=identifier,
+                execution_host=str(host_evidence["host_id"]), execution_run_id=str(host_evidence["host_run_id"]),
+                correlation=str(host_evidence["correlation_id"]), executed_at=str(host_evidence["execution_completed_at"]),
+                outcome=str(host_evidence["outcome"]),
+            )
             records.append({"mission_id": identifier, "activation_timestamp": next(item.occurred_at for item in states.history(identifier) if item.to_status is MissionExecutionStatus.CREATED), "completion_timestamp": next(item.occurred_at for item in states.history(identifier) if item.to_status is MissionExecutionStatus.COMPLETED), "execution_lineage": state.execution_history, "execution_evidence": state.execution_evidence, "mission_state": {"status": state.status.value, "revision": state.revision}, "architecture_review": reviews[identifier], "mission_recommendations": recommendations[identifier], "dispatcher_transition": record.status.value, "completion_outcome": record.status.value})
         evidence_file.write_text(json.dumps({"mission_sequence": list(BOOTSTRAP_MISSION_SEQUENCE), "dispatcher_status": "IDLE" if dispatcher.is_idle else "ACTIVE", "missions": records}, sort_keys=True, indent=2), encoding="utf-8")
         validated = _validated_completed_report(evidence_file)
         if validated is None:
             raise ValueError("bootstrap qualification did not produce a complete independently verifiable evidence bundle")
-        return validated
+        if not runtime.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)["qualified"]:
+            raise ValueError("bootstrap qualification did not persist complete Runtime Database evidence")
+        return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(runtime.path), "Normal Business → Architecture → Mission lifecycle")
     finally:
-        workspace.close(); states.close(); dispatches.close()
+        workspace.close(); states.close(); dispatches.close(); runtime.close()

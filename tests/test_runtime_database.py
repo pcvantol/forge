@@ -36,7 +36,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
         recommendation = {"id": "recommendation-1", "architecture_review_id": "review-1", "confidence": {"score": 80}, "dependencies": {}, "required_disciplines": ["engineering"], "recommendation_timestamp": "2026-08-04T00:00:00Z"}
         self.database.record_mission_recommendation(recommendation, mission_id="mission-1")
         self.database.record_execution_reference(reference_id="execution-1", mission_id="mission-1", execution_host="engineering-platform", execution_run_id="run-1", correlation="correlation-1", executed_at="2026-08-04T00:00:00Z", outcome="complete")
-        decision = {"id": "decision-1", "decision_type": "mission_planning", "mission_context": {"artifact_id": "mission-1"}, "reasoning_summary": "bounded", "evidence_references": [], "alternatives_considered": [], "confidence": {"score": 80, "architecture_review": {"artifact_id": "review-1"}}, "execution_evidence_references": [{"artifact_id": "execution-1"}], "timestamp": "2026-08-04T00:00:00Z"}
+        decision = {"id": "decision-1", "decision_type": "mission_planning", "mission_context": {"artifact_id": "mission-1"}, "repository_context": {"artifact_id": "repository-truth-1"}, "reasoning_summary": "bounded", "evidence_references": [], "alternatives_considered": [], "confidence": {"score": 80, "architecture_review": {"artifact_id": "review-1"}, "mission_state": {"artifact_id": "mission-1"}}, "execution_evidence_references": [{"artifact_id": "execution-1"}], "timestamp": "2026-08-04T00:00:00Z"}
         self.database.record_decision_evidence(decision)
         self.assertEqual(self.database.get_document("mission_state", "mission-1")["status"], "READY")
         self.assertEqual(self.database.get_document("architecture_reviews", "review-1")["id"], "review-1")
@@ -62,8 +62,8 @@ class RuntimeDatabaseTests(unittest.TestCase):
     def test_decision_requires_a_persisted_execution_reference(self) -> None:
         self.database.save_mission_state(self._mission())
         self.database.record_architecture_review(self._review())
-        decision = {"id": "decision-1", "mission_context": {"artifact_id": "mission-1"},
-                    "confidence": {"architecture_review": {"artifact_id": "review-1"}},
+        decision = {"id": "decision-1", "mission_context": {"artifact_id": "mission-1"}, "repository_context": {"artifact_id": "repository-truth-1"},
+                    "confidence": {"architecture_review": {"artifact_id": "review-1"}, "mission_state": {"artifact_id": "mission-1"}},
                     "execution_evidence_references": [{"artifact_id": "missing"}]}
         with self.assertRaisesRegex(Exception, "execution reference"):
             self.database.record_decision_evidence(decision)

@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from forge.dispatcher import BOOTSTRAP_MISSION_SEQUENCE
+from forge.runtime import RuntimeDatabase
 from forge.qualification.bootstrap_sequence import (
     BootstrapQualificationInterrupted,
     load_canonical_bootstrap_portfolio,
@@ -48,13 +49,15 @@ class BootstrapSequenceQualificationTests(unittest.TestCase):
     def test_executes_the_complete_fifo_portfolio_and_persists_evidence(self) -> None:
         with TemporaryDirectory() as directory:
             report = run_bootstrap_sequence_qualification(Path(directory), HostIssuedEvidenceSource())
-            evidence = json.loads(Path(report.evidence_path).read_text(encoding="utf-8"))
+            database = RuntimeDatabase(root := Path(directory))
+            self.addCleanup(database.close)
+            evidence = database.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)
             self.assertEqual(report.answer, "YES")
             self.assertEqual(report.dispatcher_status, "IDLE")
             self.assertEqual(report.mission_ids, BOOTSTRAP_MISSION_SEQUENCE)
             self.assertEqual([item["mission_id"] for item in evidence["missions"]], list(BOOTSTRAP_MISSION_SEQUENCE))
-            self.assertTrue(all(item["completion_outcome"] == "COMPLETED" for item in evidence["missions"]))
-            self.assertTrue(all(item["execution_evidence"] and item["architecture_review"] for item in evidence["missions"]))
+            self.assertTrue(all(item["qualified"] for item in evidence["missions"]))
+            self.assertTrue(all(item["execution_references"] and item["architecture_reviews"] for item in evidence["missions"]))
 
     def test_resume_is_idempotent_after_complete_persisted_qualification(self) -> None:
         with TemporaryDirectory() as directory:
@@ -79,12 +82,13 @@ class BootstrapSequenceQualificationTests(unittest.TestCase):
                 run_bootstrap_sequence_qualification(root, source, interrupt_after_host_dispatch=True)
             self.assertEqual(len(source.receipts), 1)
             report = run_bootstrap_sequence_qualification(root, source)
-            evidence = json.loads(Path(report.evidence_path).read_text(encoding="utf-8"))
+            database = RuntimeDatabase(root)
+            self.addCleanup(database.close)
+            evidence = database.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)
             self.assertEqual(report.dispatcher_status, "IDLE")
             self.assertEqual([item["mission_id"] for item in evidence["missions"]], list(BOOTSTRAP_MISSION_SEQUENCE))
             self.assertEqual(len(source.receipts), 5)
-            self.assertEqual(len({item["execution_evidence"]["report_id"] for item in evidence["missions"]}), 5)
-            self.assertEqual(len({item["execution_evidence"]["receipt_id"] for item in evidence["missions"]}), 5)
+            self.assertEqual(len({item["execution_references"][0]["execution_run_id"] for item in evidence["missions"]}), 5)
 
     def test_fabricated_completed_state_without_host_receipt_is_rejected(self) -> None:
         with TemporaryDirectory() as directory:

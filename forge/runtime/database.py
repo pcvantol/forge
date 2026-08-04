@@ -269,8 +269,14 @@ class RuntimeDatabase:
         confidence = document.get("confidence", {})
         review = confidence.get("architecture_review", {}) if isinstance(confidence, dict) else {}
         review_id = review.get("artifact_id") if isinstance(review, dict) else None
-        if not isinstance(identifier, str) or not isinstance(mission_id, str):
-            raise RuntimeDatabaseError("decision evidence requires id and mission reference")
+        mission_state = confidence.get("mission_state", {}) if isinstance(confidence, dict) else {}
+        state_id = mission_state.get("artifact_id") if isinstance(mission_state, dict) else None
+        repository_truth = document.get("repository_context", {})
+        repository_truth_id = repository_truth.get("artifact_id") if isinstance(repository_truth, dict) else None
+        if not all(isinstance(item, str) and item for item in (identifier, mission_id, review_id, state_id, repository_truth_id)):
+            raise RuntimeDatabaseError("decision evidence requires mission state, architecture review, and repository truth references")
+        if state_id != mission_id:
+            raise RuntimeDatabaseError("decision evidence mission state must reference its mission")
         references = document.get("execution_evidence_references", [])
         for reference in references:
             reference_id = reference.get("artifact_id") if isinstance(reference, dict) else None
@@ -297,6 +303,11 @@ class RuntimeDatabase:
         if row is None:
             raise RuntimeDatabaseError(f"unknown {table} record: {identifier}")
         return json.loads(row[column])
+
+    def runtime_evidence(self) -> "RuntimeEvidence":
+        """Return the canonical query layer without exposing host evidence."""
+        from .evidence import RuntimeEvidence
+        return RuntimeEvidence(self)
 
     @staticmethod
     def _dump(value: Any) -> str:

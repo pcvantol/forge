@@ -10,9 +10,10 @@ from .database import (
     RuntimeDatabaseError,
     RuntimeIntegrityError,
 )
+from .evidence import RuntimeEvidence
 from .runner import BootstrapMissionRunner, MissionRunnerError, RuntimePromptFactory
 
 __all__ = [
     "BootstrapMissionRunner", "MissionRunnerError", "RuntimePromptFactory",
-    "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError",
+    "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError", "RuntimeEvidence",
 ]

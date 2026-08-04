@@ -216,6 +216,11 @@ planning, review, recommendation and Decision Evidence runtime state in
 `.forge/runtime.db`, while Repository Truth and Engineering Platform Execution
 Evidence remain independent authorities.
 
+Phase E — Increment 5.3 adds [Runtime Evidence](docs/architecture/runtime-evidence.md).
+Qualification, governance, and workspace runtime reports are now projections of
+the Runtime Database; Execution Host Evidence remains external and Repository
+Truth remains architectural authority.
+
 Phase C — Architecture Reconciliation adds the canonical
 [Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
 Startup, and Enterprise scale the same lifecycle by changing role assignments,
