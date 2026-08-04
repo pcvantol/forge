@@ -204,6 +204,12 @@ selects Forge-owned role, model and reasoning profiles plus execution
 constraints before Runtime Prompt rendering. Execution Hosts receive only the
 rendered constraints and policy provenance; they never choose models.
 
+Phase E — Increment 5.1 adds the immutable, local [Decision Evidence
+Framework](docs/architecture/decision-evidence-framework.md). It records why
+significant planning and governance decisions were made using Repository Truth
+references, explicit confidence provenance, alternatives, constraints and
+outcomes. It does not replace human approval or duplicate Execution Evidence.
+
 Phase C — Architecture Reconciliation adds the canonical
 [Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
 Startup, and Enterprise scale the same lifecycle by changing role assignments,

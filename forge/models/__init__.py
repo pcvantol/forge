@@ -157,6 +157,17 @@ from .mission_recommendation import (
     RecommendationRepositoryContext,
     RequiredDiscipline,
 )
+from .decision_evidence import (
+    DECISION_EVIDENCE_SCHEMA_VERSION,
+    ApprovalState,
+    DecisionAlternative,
+    DecisionConfidence,
+    DecisionEvidence,
+    DecisionOutcome,
+    DecisionReference,
+    DecisionReferenceKind,
+    DecisionType,
+)
 from .mission_candidate import (
     MISSION_CANDIDATE_SCHEMA_VERSION,
     MissionCandidate,

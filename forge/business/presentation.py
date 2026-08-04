@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from forge.models.mission_recommendation import MissionRecommendation
+from forge.models.decision_evidence import DecisionEvidence
 
 
 def render_mission_recommendation(recommendation: MissionRecommendation) -> dict[str, Any]:
@@ -22,3 +23,11 @@ def render_mission_recommendation(recommendation: MissionRecommendation) -> dict
         "architecture_review_reference": recommendation.architecture_review_id,
         "advisory": True,
     }
+
+
+def render_business_decision_evidence(evidence: DecisionEvidence) -> dict[str, Any]:
+    """Expose recommendation rationale without granting or automating approval."""
+    return {"id": evidence.id, "decision_type": evidence.decision_type.value, "decision": evidence.decision,
+            "reasoning_summary": evidence.reasoning_summary, "alternatives": [item.to_dict() for item in evidence.alternatives_considered],
+            "chosen_alternative": evidence.chosen_alternative, "confidence": evidence.confidence.to_dict(),
+            "approval_state": evidence.approval_state.value, "advisory": True}
