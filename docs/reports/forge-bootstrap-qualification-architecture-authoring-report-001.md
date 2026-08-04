@@ -20,6 +20,10 @@ timestamps, exactly one successful correlated Execution Reference, an
 Architecture Review, a Mission Recommendation and immutable Decision Evidence.
 The stored dispatcher sequence must be FIFO and end `IDLE`.
 
+This report describes the qualification capability, not a completed live
+bootstrap run. Generation 1 remains unqualified until independently issued
+Engineering Platform receipt/report evidence exists for every Mission.
+
 Business Workspace and Architecture Workspace consume Forge projections. The
 Execution Host retains receipts, reports, telemetry and evidence. Forge stores
 only the immutable reference identity required to correlate that host evidence.

@@ -77,13 +77,17 @@ class BootstrapSequenceQualificationTests(unittest.TestCase):
     def test_interruption_and_restart_preserve_completed_mission_evidence_and_fifo(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            source = HostIssuedEvidenceSource(interrupt_after_submit=True)
+            source = HostIssuedEvidenceSource()
             with self.assertRaises(BootstrapQualificationInterrupted):
                 run_bootstrap_sequence_qualification(root, source, interrupt_after_host_dispatch=True)
             self.assertEqual(len(source.receipts), 1)
-            report = run_bootstrap_sequence_qualification(root, source)
             database = RuntimeDatabase(root)
             self.addCleanup(database.close)
+            first = database.runtime_evidence().mission_qualification("MISSION-0001")
+            self.assertTrue(first["qualified"])
+            self.assertEqual(len(first["execution_receipts"]), 1)
+            self.assertTrue(first["decision_evidence"])
+            report = run_bootstrap_sequence_qualification(root, source)
             evidence = database.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)
             self.assertEqual(report.dispatcher_status, "IDLE")
             self.assertEqual([item["mission_id"] for item in evidence["missions"]], list(BOOTSTRAP_MISSION_SEQUENCE))

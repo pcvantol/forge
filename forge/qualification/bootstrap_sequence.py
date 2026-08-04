@@ -131,6 +131,33 @@ def _approve(workspace: ArchitectureWorkspace, mission: CanonicalBootstrapMissio
     workspace.approve_for_engineering(mission.identifier, actor="architect", occurred_at=clock(), rationale="Architecture-approved canonical bootstrap portfolio seed.")
 
 
+def _persist_runtime_progress(runtime: RuntimeDatabase, states: MissionStateStore,
+                              dispatches: MissionDispatcherStore) -> None:
+    """Checkpoint Forge-owned operational state; never reconstruct host evidence."""
+    for record in dispatches.records():
+        state = states.get(record.mission_id)
+        runtime.save_mission_state({**state.__dict__, "status": state.status.value,
+                                    "execution_policy": {"mode": "bootstrap_qualification"}})
+        for history in states.history(record.mission_id):
+            lifecycle = {MissionExecutionStatus.CREATED: "ACTIVATED",
+                         MissionExecutionStatus.COMPLETED: "COMPLETED"}.get(history.to_status)
+            if lifecycle and not runtime.has_mission_lifecycle(record.mission_id, lifecycle):
+                runtime.record_mission_lifecycle(record.mission_id, lifecycle, history.occurred_at)
+    active = dispatches.active()
+    runtime.save_dispatcher_state(
+        status="IDLE" if dispatches.active() is None and len(dispatches.records()) == len(BOOTSTRAP_MISSION_SEQUENCE) else "ACTIVE",
+        active_mission_id=None if active is None else active.mission_id,
+        mission_sequence=BOOTSTRAP_MISSION_SEQUENCE,
+    )
+    pending = [record.mission_id for record in dispatches.records() if record.status.value != "COMPLETED"]
+    runtime.save_planning_state({
+        "planner_version": "bootstrap-qualification-1", "current_queue": pending,
+        "pending_engineering_actions": pending, "blocked_engineering_actions": [],
+        "execution_policy": {"mode": "qualification"},
+        "planner_runtime_metadata": {"source": "bootstrap_sequence"},
+    })
+
+
 def run_bootstrap_sequence_qualification(root: Path, evidence_source: EngineeringPlatformEvidenceSource, *, interrupt_after_host_dispatch: bool = False) -> BootstrapQualificationReport:
     """Execute/resume exactly MISSION-0001 through MISSION-0005 via production boundaries."""
     root.mkdir(parents=True, exist_ok=True); clock = _Clock()
@@ -168,6 +195,31 @@ def run_bootstrap_sequence_qualification(root: Path, evidence_source: Engineerin
                     "recommendation_timestamp": clock(), "source_signal_ids": ["mission_completion"],
                     "portfolio_item_ids": [identifier], "advisory": True,
                 }]
+            # Completion is checkpointed before the dispatcher may activate the
+            # next Mission.  The host remains the evidence authority: Forge
+            # stores only the correlated immutable receipt reference.
+            _persist_runtime_progress(runtime, states, dispatches)
+            completion_timestamp = next(item.occurred_at for item in states.history(identifier)
+                                        if item.to_status is MissionExecutionStatus.COMPLETED)
+            runtime.record_architecture_review(reviews[identifier], timestamp=completion_timestamp)
+            for recommendation in recommendations[identifier]:
+                runtime.record_mission_recommendation(recommendation, mission_id=identifier)
+            host_evidence = state.execution_evidence or {}
+            receipt_id = str(host_evidence["report_id"])
+            runtime.record_execution_receipt(
+                receipt_id=receipt_id, mission_id=identifier,
+                execution_host=str(host_evidence["host_id"]), execution_run_id=str(host_evidence["host_run_id"]),
+                engineering_report_id=receipt_id, correlation_identity=str(host_evidence["correlation_id"]),
+                executed_at=str(host_evidence["execution_completed_at"]), outcome=str(host_evidence["outcome"]),
+            )
+            runtime.record_decision_evidence({
+                "id": f"{identifier}:bootstrap-completion", "decision_type": "bootstrap_continuation",
+                "mission_context": {"artifact_id": identifier}, "repository_context": {"artifact_id": "repository-truth:bootstrap"},
+                "reasoning_summary": "Mission completed with a reviewed successful Execution Receipt; bootstrap may continue.",
+                "evidence_references": [], "alternatives_considered": [],
+                "confidence": {"architecture_review": {"artifact_id": reviews[identifier]["id"]}, "mission_state": {"artifact_id": identifier}},
+                "execution_receipt_references": [{"artifact_id": receipt_id}], "timestamp": completion_timestamp,
+            })
         dispatcher = MissionDispatcher(ApprovedMissionQueue(workspace), MissionIntake(states, clock), states, dispatches, clock=clock, architecture_review=completed, recommendations=lambda identifier: None)
         counter = 0
         for identifier in BOOTSTRAP_MISSION_SEQUENCE:
@@ -191,44 +243,14 @@ def run_bootstrap_sequence_qualification(root: Path, evidence_source: Engineerin
         loop = ExecutionLoop(dispatcher, states, MissionPlanner(), host, planning, prompt, lambda state, evidence: {"source_id": "forge", "revision": "qualification-revision", "content_digest": _digest({"mission": state.mission_id, "evidence": None if evidence is None else evidence.report_id})}, host_id="engineering-platform-1.5", workspace_id="forge", repository_id="forge", clock=clock, correlation_id_factory=correlation)
         interrupted = False
         while not dispatcher.is_idle:
-            if interrupt_after_host_dispatch and not interrupted and states.resumable():
-                active = states.resumable()[0]
-                if active.execution_correlation and active.execution_correlation.get("host_run_id"):
-                    interrupted = True
-                    raise BootstrapQualificationInterrupted("controlled interruption after host-issued receipt")
             result = loop.run()
             if result is None: break
             if result.status is not MissionExecutionStatus.COMPLETED: raise ValueError("bootstrap qualification requires complete host evidence")
-        records = []
-        for identifier in BOOTSTRAP_MISSION_SEQUENCE:
-            state = states.get(identifier); record = dispatches.get(identifier)
-            if state.status is not MissionExecutionStatus.COMPLETED or record is None or identifier not in reviews: raise ValueError("bootstrap qualification did not produce five complete evidence sets")
-            state_document = {**state.__dict__, "status": state.status.value, "execution_policy": {"mode": "bootstrap_qualification"}}
-            runtime.save_mission_state(state_document)
-            activation_timestamp = next(item.occurred_at for item in states.history(identifier) if item.to_status is MissionExecutionStatus.CREATED)
-            completion_timestamp = next(item.occurred_at for item in states.history(identifier) if item.to_status is MissionExecutionStatus.COMPLETED)
-            runtime.record_mission_lifecycle(identifier, "ACTIVATED", activation_timestamp)
-            runtime.record_mission_lifecycle(identifier, "COMPLETED", completion_timestamp)
-            runtime.record_architecture_review(reviews[identifier], timestamp=completion_timestamp)
-            for recommendation in recommendations[identifier]:
-                runtime.record_mission_recommendation(recommendation, mission_id=identifier)
-            host_evidence = state.execution_evidence or {}
-            runtime.record_execution_receipt(
-                receipt_id=str(host_evidence["report_id"]), mission_id=identifier,
-                execution_host=str(host_evidence["host_id"]), execution_run_id=str(host_evidence["host_run_id"]),
-                engineering_report_id=str(host_evidence["report_id"]), correlation_identity=str(host_evidence["correlation_id"]), executed_at=str(host_evidence["execution_completed_at"]),
-                outcome=str(host_evidence["outcome"]),
-            )
-            runtime.record_decision_evidence({
-                "id": f"{identifier}:bootstrap-completion", "decision_type": "bootstrap_continuation",
-                "mission_context": {"artifact_id": identifier}, "repository_context": {"artifact_id": "repository-truth:bootstrap"},
-                "reasoning_summary": "Mission completed with a reviewed successful Execution Receipt; bootstrap may continue.",
-                "evidence_references": [], "alternatives_considered": [],
-                "confidence": {"architecture_review": {"artifact_id": reviews[identifier]["id"]}, "mission_state": {"artifact_id": identifier}},
-                "execution_receipt_references": [{"artifact_id": str(host_evidence["report_id"])}], "timestamp": completion_timestamp,
-            })
-        runtime.save_dispatcher_state(status="IDLE" if dispatcher.is_idle else "ACTIVE", mission_sequence=BOOTSTRAP_MISSION_SEQUENCE)
-        runtime.save_planning_state({"planner_version": "bootstrap-qualification-1", "current_queue": [], "pending_engineering_actions": [], "blocked_engineering_actions": [], "execution_policy": {"mode": "qualification"}, "planner_runtime_metadata": {"source": "bootstrap_sequence"}})
+            _persist_runtime_progress(runtime, states, dispatches)
+            if interrupt_after_host_dispatch and not interrupted:
+                interrupted = True
+                raise BootstrapQualificationInterrupted("controlled interruption after persisted host evidence")
+        _persist_runtime_progress(runtime, states, dispatches)
         if not runtime.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)["qualified"]:
             raise ValueError("bootstrap qualification did not persist complete Runtime Database evidence")
         return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(runtime.path), "Normal Business → Architecture → Mission lifecycle")

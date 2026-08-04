@@ -366,6 +366,31 @@ class RuntimeDatabase:
             ).fetchone()[0]
             self._connection.execute("INSERT INTO mission_lifecycle_events VALUES (?, ?, ?, ?)", (mission_id, sequence, lifecycle, occurred_at))
 
+    def has_mission_lifecycle(self, mission_id: str, lifecycle: str) -> bool:
+        """Return whether an immutable lifecycle event was already recorded."""
+        return self._connection.execute(
+            "SELECT 1 FROM mission_lifecycle_events WHERE mission_id = ? AND lifecycle = ?",
+            (mission_id, lifecycle),
+        ).fetchone() is not None
+
+    def has_document(self, table: str, identifier: str) -> bool:
+        """Check an owned document without exposing host evidence."""
+        lookup = {
+            "architecture_reviews": "review_id", "mission_recommendations": "recommendation_id",
+            "decision_evidence": "decision_id",
+        }
+        if table not in lookup:
+            raise RuntimeDatabaseError("table is not an immutable Forge document store")
+        return self._connection.execute(
+            f"SELECT 1 FROM {table} WHERE {lookup[table]} = ?", (identifier,)
+        ).fetchone() is not None
+
+    def has_execution_receipt(self, receipt_id: str) -> bool:
+        """Check an immutable Forge receipt reference by host-issued identity."""
+        return self._connection.execute(
+            "SELECT 1 FROM execution_receipts WHERE receipt_id = ?", (receipt_id,)
+        ).fetchone() is not None
+
     def save_dispatcher_state(self, *, status: str, mission_sequence: tuple[str, ...],
                               active_mission_id: str | None = None) -> None:
         """Persist dispatcher terminal/sequencing authority in the Runtime Database."""
