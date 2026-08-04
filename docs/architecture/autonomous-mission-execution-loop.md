@@ -14,6 +14,11 @@ Approved Mission Dispatcher → Mission State → AI Mission Planner
 → Mission State → Mission Planner → next Engineering Action
 ```
 
+When a required capability is unavailable internally, this path inserts the
+[Capability Delegation Framework](capability-delegation-framework.md) before
+host dispatch. Forge pauses the Mission and records a delegation rather than
+delegating Mission ownership.
+
 The loop executes exactly one Engineering Action at a time. The Planner owns
 the tactical plan; the Renderer owns prompt presentation; the Host owns
 operational execution and evidence return. The loop never alters Mission
@@ -69,6 +74,11 @@ Execution Policy adds a separate `AWAITING_APPROVAL` state after exact
 successful evidence. It is neither a failure nor recovery. The resolved policy,
 boundary, resume point, and approval provenance are durable; the Host is not
 aware of them. See [Execution Policy](execution-policy.md).
+
+Capability Delegation adds `WAITING_EXTERNAL_CAPABILITY`,
+`WAITING_EXTERNAL_APPROVAL`, `WAITING_EXTERNAL_RESULT` and
+`READY_TO_CONTINUE`. These durable states admit no later Action until the
+delegated result has been verified and planning continuity is restored.
 
 ## Governance relationships
 

@@ -15,7 +15,7 @@ import sqlite3
 from typing import Any, Mapping
 
 
-RUNTIME_SCHEMA_VERSION = 2
+RUNTIME_SCHEMA_VERSION = 3
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -24,6 +24,7 @@ _TABLES = frozenset((
     "mission_state", "architecture_reviews", "mission_recommendations",
     "decision_evidence", "execution_references", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
+    "delegation_requests",
 ))
 
 
@@ -148,6 +149,14 @@ class RuntimeDatabase:
                         status TEXT NOT NULL, active_mission_id TEXT,
                         mission_sequence TEXT NOT NULL, document TEXT NOT NULL
                     );
+                    CREATE TABLE delegation_requests (
+                        delegation_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        action_id TEXT NOT NULL, capability_id TEXT NOT NULL,
+                        provider TEXT NOT NULL, approval_state TEXT NOT NULL,
+                        result_state TEXT NOT NULL, requested_at TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_delete BEFORE DELETE ON architecture_reviews
@@ -187,6 +196,28 @@ class RuntimeDatabase:
                         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                         status TEXT NOT NULL, active_mission_id TEXT,
                         mission_sequence TEXT NOT NULL, document TEXT NOT NULL
+                    );
+                    CREATE TABLE delegation_requests (
+                        delegation_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        action_id TEXT NOT NULL, capability_id TEXT NOT NULL,
+                        provider TEXT NOT NULL, approval_state TEXT NOT NULL,
+                        result_state TEXT NOT NULL, requested_at TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                """)
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
+                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+        elif version == 2:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE delegation_requests (
+                        delegation_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        action_id TEXT NOT NULL, capability_id TEXT NOT NULL,
+                        provider TEXT NOT NULL, approval_state TEXT NOT NULL,
+                        result_state TEXT NOT NULL, requested_at TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
                 """)
                 self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
@@ -322,6 +353,17 @@ class RuntimeDatabase:
             self._connection.execute("INSERT INTO execution_references VALUES (?, ?, ?, ?, ?, ?, ?)",
                                      (reference_id, mission_id, execution_host, execution_run_id, correlation, executed_at, outcome))
 
+    def record_delegation_request(self, request: Any) -> dict[str, Any]:
+        """Persist the Forge-owned delegation record, never provider execution data."""
+        document = _document(request, "delegation request")
+        required = ("id", "mission_id", "action_id", "capability_id", "provider", "approval_state", "result_state", "requested_at")
+        if any(not isinstance(document.get(item), str) or not document[item] for item in required):
+            raise RuntimeDatabaseError("delegation request requires complete identity and lifecycle fields")
+        with self._connection:
+            self._connection.execute("INSERT INTO delegation_requests VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                     tuple(document[item] for item in required[:8]) + (self._dump(document),))
+        return document
+
     def record_decision_evidence(self, evidence: Any) -> dict[str, Any]:
         document = _document(evidence, "decision evidence")
         identifier = document.get("id")
@@ -356,7 +398,8 @@ class RuntimeDatabase:
 
     def get_document(self, table: str, identifier: str) -> dict[str, Any]:
         lookup = {"mission_state": ("mission_id", "document"), "architecture_reviews": ("review_id", "document"),
-                  "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document")}
+                  "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document"),
+                  "delegation_requests": ("delegation_id", "document")}
         if table not in lookup:
             raise RuntimeDatabaseError("table is not a Forge document store")
         key, column = lookup[table]

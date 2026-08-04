@@ -68,6 +68,14 @@ class RuntimeDatabaseTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "execution reference"):
             self.database.record_decision_evidence(decision)
 
+    def test_delegation_request_is_durable_and_mission_scoped(self) -> None:
+        self.database.save_mission_state(self._mission())
+        request = {"id": "delegation-1", "mission_id": "mission-1", "action_id": "action-1", "capability_id": "review",
+                   "provider": "human", "approval_state": "pending", "result_state": "pending",
+                   "requested_at": "2026-08-04T00:00:00Z"}
+        self.database.record_delegation_request(request)
+        self.assertEqual(self.database.get_document("delegation_requests", "delegation-1")["action_id"], "action-1")
+
 
 if __name__ == "__main__":
     unittest.main()

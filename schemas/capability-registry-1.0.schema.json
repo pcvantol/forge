@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/capability-registry-1.0.schema.json",
+  "title": "Forge Capability Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "capabilities"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "capabilities": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "object", "additionalProperties": false,
+        "required": ["id", "name", "owner", "availability", "execution_mode", "preferred_provider", "trust_level", "approval_required"],
+        "properties": {
+          "id": {"$ref": "common.schema.json#/$defs/id"}, "name": {"$ref": "common.schema.json#/$defs/name"},
+          "owner": {"enum": ["internal_forge", "human", "external_forge_runner", "external_ai_agent", "external_application", "professional_service"]},
+          "availability": {"enum": ["available", "unavailable"]}, "execution_mode": {"enum": ["internal", "delegated"]},
+          "preferred_provider": {"enum": ["internal_forge", "human", "external_forge_runner", "external_ai_agent", "external_application", "professional_service"]},
+          "trust_level": {"type": "string", "minLength": 1}, "approval_required": {"type": "boolean"}
+        }}
+    }
+  }
+}

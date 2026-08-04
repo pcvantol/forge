@@ -8,6 +8,8 @@ from types import SimpleNamespace
 import unittest
 
 from forge.execution import ApprovalRecord, ExecutionLoop, ExecutionLoopError, ExecutionPolicy, ExecutionPolicyKind, RecoveryAuthorization
+from forge.capabilities import (CapabilityAvailability, CapabilityExecutionMode, CapabilityOwner,
+                                CapabilityRegistration, CapabilityRegistry)
 from forge.governance import execution_policy_for_profile
 from forge.models import (
     ApprovedScope, ArchitectureMission, ArchitectureMissionStatus, EngineeringActionStatus,
@@ -103,7 +105,7 @@ class ExecutionLoopTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.store.close(); self.directory.cleanup()
 
-    def loop(self, host: Host, policy: ExecutionPolicy | None = None, profile: str = "solo") -> ExecutionLoop:
+    def loop(self, host: Host, policy: ExecutionPolicy | None = None, profile: str = "solo", registry: CapabilityRegistry | None = None) -> ExecutionLoop:
         def correlation() -> str:
             self.counter += 1
             return f"correlation-{self.counter}"
@@ -114,7 +116,7 @@ class ExecutionLoopTests(unittest.TestCase):
                              lambda _state, _evidence: {"source_id": "repository", "revision": "revision", "content_digest": digest("d")},
                              host_id="host", workspace_id="workspace", repository_id="forge",
                              clock=lambda: "2026-08-04T10:00:00Z", correlation_id_factory=correlation,
-                             execution_policy=policy, governance_profile=profile)
+                             execution_policy=policy, governance_profile=profile, capability_registry=registry)
 
     def test_multiple_actions_progress_completion_evidence_and_completion_notifications(self) -> None:
         state = self.loop(Host({"contract-action": ExecutionEvidenceOutcome.COMPLETE, "docs-action": ExecutionEvidenceOutcome.COMPLETE})).run()
@@ -186,6 +188,30 @@ class ExecutionLoopTests(unittest.TestCase):
         state = self.loop(host, ExecutionPolicy(ExecutionPolicyKind.CONTINUOUS)).run(); assert state is not None
         self.assertEqual(state.status, MissionExecutionStatus.COMPLETED)
         self.assertEqual(host.requests, ["contract-action", "docs-action"])
+
+    def test_unavailable_capability_delegates_pauses_and_verified_result_continues(self) -> None:
+        registry = CapabilityRegistry((CapabilityRegistration(
+            "capability-contract", "Contract review", CapabilityOwner.EXTERNAL_AI_AGENT,
+            CapabilityAvailability.UNAVAILABLE, CapabilityExecutionMode.DELEGATED,
+            CapabilityOwner.EXTERNAL_AI_AGENT, "reviewed", approval_required=True,
+        ), CapabilityRegistration(
+            "capability-docs", "Documentation", CapabilityOwner.FORGE,
+            CapabilityAvailability.AVAILABLE, CapabilityExecutionMode.INTERNAL,
+            CapabilityOwner.FORGE, "trusted",
+        )))
+        host = Host({"docs-action": ExecutionEvidenceOutcome.COMPLETE})
+        loop = self.loop(host, registry=registry)
+        paused = loop.run(); assert paused is not None
+        self.assertEqual(paused.status, MissionExecutionStatus.WAITING_EXTERNAL_APPROVAL)
+        self.assertEqual(host.requests, [])
+        request = paused.delegations[0]
+        approved = loop.approve_delegation("mission-loop", request["id"], ApprovalRecord("approval", "architect", "now", "decision"))
+        self.assertEqual(approved.status, MissionExecutionStatus.WAITING_EXTERNAL_RESULT)
+        ready = loop.receive_delegation_result("mission-loop", request["id"], accepted=True, verification={"verified": True, "reference": "report"})
+        self.assertEqual(ready.status, MissionExecutionStatus.READY_TO_CONTINUE)
+        complete = loop.run(); assert complete is not None
+        self.assertEqual(complete.status, MissionExecutionStatus.COMPLETED)
+        self.assertEqual(host.requests, ["docs-action"])
 
 
 if __name__ == "__main__":

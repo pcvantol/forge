@@ -24,6 +24,7 @@ SCHEMAS = (
     "mission-candidate-1.0.schema.json",
     "mission-candidate-1.1.schema.json",
     "solution-template-1.0.schema.json",
+    "capability-registry-1.0.schema.json",
 )
 
 
@@ -81,6 +82,13 @@ class SchemaContractTests(unittest.TestCase):
         self.assertEqual(document["properties"]["schema_version"]["const"], "1.0")
         self.assertEqual(document["$defs"]["evidence"]["properties"]["outcome"]["enum"], ["PASS", "FAIL"])
         self.assertEqual(document["$defs"]["reference"]["required"], ["kind", "source_id", "source_version", "locator", "content_digest"])
+
+    def test_capability_registry_schema_carries_delegation_governance_fields(self) -> None:
+        document = json.loads((ROOT / "schemas" / "capability-registry-1.0.schema.json").read_text())
+        properties = document["properties"]["capabilities"]["items"]["properties"]
+        self.assertEqual(document["properties"]["schema_version"]["const"], "1.0")
+        self.assertIn("preferred_provider", properties)
+        self.assertIn("approval_required", properties)
 
 
 if __name__ == "__main__":

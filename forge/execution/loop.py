@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable, Mapping, Protocol
 
+from forge.capabilities import (CapabilityRegistry, DelegationApprovalState,
+                                DelegationRequest, DelegationResultState)
 from forge.dispatcher import MissionDispatcher
 from forge.governance import ApprovalRecord, ExecutionPolicy, ExecutionPolicyKind, PauseBoundary, execution_policy_for_profile
 from forge.models.action import EngineeringAction, EngineeringActionStatus
@@ -86,6 +88,7 @@ class ExecutionLoop:
         correlation_id_factory: Callable[[], str],
         execution_policy: ExecutionPolicy | None = None,
         governance_profile: str = "solo",
+        capability_registry: CapabilityRegistry | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise ExecutionLoopError("execution host, workspace, and repository identities are required")
@@ -94,6 +97,7 @@ class ExecutionLoop:
         self._host_id, self._workspace_id, self._repository_id = host_id, workspace_id, repository_id
         self._clock, self._correlation_id_factory = clock, correlation_id_factory
         self._execution_policy = execution_policy or execution_policy_for_profile(governance_profile)
+        self._capability_registry = capability_registry
 
     def run(self) -> MissionExecutionState | None:
         """Run the one dispatched Mission until terminal or awaiting host evidence."""
@@ -104,6 +108,17 @@ class ExecutionLoop:
         state = self._states.set_execution_policy(state.mission_id, self._execution_policy.to_dict(), occurred_at=self._clock())
         if state.status is MissionExecutionStatus.CREATED:
             state = self._plan(state)
+        if state.status is MissionExecutionStatus.READY_TO_CONTINUE:
+            self._replan_after_delegation(state)
+            state = self._states.transition(state.mission_id, MissionExecutionStatus.READY, occurred_at=self._clock(),
+                                            reason="verified_delegation_ready_to_continue")
+        if state.status is MissionExecutionStatus.READY:
+            state = self._delegate_if_required(state)
+        if state.status in {MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY,
+                            MissionExecutionStatus.WAITING_EXTERNAL_APPROVAL,
+                            MissionExecutionStatus.WAITING_EXTERNAL_RESULT}:
+            self._dispatcher.hold(state.mission_id, state.status)
+            return state
         if state.status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}:
             self._dispatcher.hold(state.mission_id, state.status)
             return state
@@ -144,6 +159,39 @@ class ExecutionLoop:
             raise ExecutionLoopError("recovery authorization is valid only for blocked or failed Missions")
         return self.run() if self._dispatcher.resume() else self._runner().run(mission_id)
 
+    def approve_delegation(self, mission_id: str, delegation_id: str, approval: ApprovalRecord) -> MissionExecutionState:
+        """Record governance approval for one exact delegation without invoking a provider."""
+        state = self._states.get(mission_id)
+        if state.status is not MissionExecutionStatus.WAITING_EXTERNAL_APPROVAL:
+            raise ExecutionLoopError("delegation is not awaiting external approval")
+        delegation = self._delegation(state, delegation_id)
+        updated = {**delegation, "approval_state": DelegationApprovalState.APPROVED.value}
+        return self._states.transition(mission_id, MissionExecutionStatus.WAITING_EXTERNAL_RESULT,
+                                       occurred_at=self._clock(), reason="delegation_approval_recorded",
+                                       delegations=self._replace_delegation(state, updated), approval_record=approval.to_dict())
+
+    def receive_delegation_result(self, mission_id: str, delegation_id: str, *, accepted: bool,
+                                  verification: Mapping[str, Any]) -> MissionExecutionState:
+        """Accept only verified external work and preserve the Mission-owned Action lineage."""
+        state = self._states.get(mission_id)
+        if state.status is not MissionExecutionStatus.WAITING_EXTERNAL_RESULT:
+            raise ExecutionLoopError("delegation is not awaiting an external result")
+        if not verification or not verification.get("verified"):
+            raise ExecutionLoopError("delegated result requires explicit verification")
+        delegation = self._delegation(state, delegation_id)
+        result = DelegationResultState.ACCEPTED if accepted else DelegationResultState.REJECTED
+        updated = {**delegation, "result_state": result.value, "verification": dict(verification)}
+        if not accepted:
+            return self._states.transition(mission_id, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY,
+                                           occurred_at=self._clock(), reason="delegated_result_rejected",
+                                           delegations=self._replace_delegation(state, updated))
+        actions = tuple(replace(self._action(item), status=EngineeringActionStatus.COMPLETE)
+                        if item["id"] == delegation["action_id"] else self._action(item) for item in state.actions)
+        return self._states.transition(mission_id, MissionExecutionStatus.READY_TO_CONTINUE,
+                                       occurred_at=self._clock(), reason="delegated_result_verified",
+                                       actions=actions, delegations=self._replace_delegation(state, updated),
+                                       execution_evidence={"delegation_id": delegation_id, "outcome": "verified_external_completion"})
+
     def observability(self, mission_id: str) -> ExecutionLoopObservability:
         state = self._states.get(mission_id)
         current_intent = state.current_engineering_intent or {}
@@ -167,6 +215,51 @@ class ExecutionLoop:
             state.mission_id, MissionExecutionStatus.READY, occurred_at=self._clock(), reason="deterministic_plan_persisted",
             intents=plan.intents, actions=actions, repository_truth=truth,
         )
+
+    def _delegate_if_required(self, state: MissionExecutionState) -> MissionExecutionState:
+        if self._capability_registry is None:
+            return state
+        action = next((item for item in state.actions if item["status"] == EngineeringActionStatus.READY.value), None)
+        if action is None:
+            return state
+        intent = next(item for item in state.intents if item["id"] == action["intent_id"] and item["revision"] == action["intent_revision"])
+        impacts = tuple(intent.get("capability_impact", ()))
+        if not impacts:
+            raise ExecutionLoopError("Engineering Action has no required capability for assessment")
+        assessment = self._capability_registry.assess(str(impacts[0]))
+        if assessment.available:
+            return state
+        request = DelegationRequest(
+            f"delegation-{state.mission_id}-{action['id']}", state.mission_id, str(action["id"]), assessment.capability_id,
+            assessment.selected_provider, assessment.rationale, tuple(action["expected_evidence"]), self._clock(),
+            DelegationApprovalState.PENDING if assessment.approval_required else DelegationApprovalState.NOT_REQUIRED,
+            assessment.alternatives_considered, assessment.confidence,
+        ).to_dict()
+        waiting = self._states.transition(state.mission_id, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY,
+                                          occurred_at=self._clock(), reason="capability_unavailable",
+                                          delegations=(*state.delegations, request))
+        target = MissionExecutionStatus.WAITING_EXTERNAL_APPROVAL if assessment.approval_required else MissionExecutionStatus.WAITING_EXTERNAL_RESULT
+        return self._states.transition(waiting.mission_id, target, occurred_at=self._clock(), reason="capability_delegated")
+
+    @staticmethod
+    def _delegation(state: MissionExecutionState, delegation_id: str) -> Mapping[str, Any]:
+        delegation = next((item for item in state.delegations if item.get("id") == delegation_id), None)
+        if delegation is None:
+            raise ExecutionLoopError("delegation does not belong to this Mission")
+        return delegation
+
+    @staticmethod
+    def _replace_delegation(state: MissionExecutionState, updated: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+        return tuple(updated if item.get("id") == updated["id"] else item for item in state.delegations)
+
+    def _replan_after_delegation(self, state: MissionExecutionState) -> None:
+        source = self._planning_input(state)
+        completed = tuple(sorted(action["id"] for action in state.actions if action["status"] == EngineeringActionStatus.COMPLETE.value))
+        plan = self._planner.replan(replace(source, mission_state=MissionPlanningState(state.mission_id, state.revision + 1, completed)))
+        remaining = tuple(sorted(action["id"] for action in state.actions if action["status"] != EngineeringActionStatus.COMPLETE.value))
+        planned = tuple(sorted(action.id for intent in plan.intents for action in intent.actions))
+        if planned != remaining:
+            raise ExecutionLoopError("delegation continuation must preserve every unresolved approved Engineering Action")
 
     def _recover(self, state: MissionExecutionState, authorization: RecoveryAuthorization) -> MissionExecutionState:
         if authorization.mission_id != state.mission_id:

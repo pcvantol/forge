@@ -5,6 +5,12 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
+Phase E — Increment 5.5 adds the [Capability Delegation Framework](docs/architecture/capability-delegation-framework.md).
+Forge now assesses a required capability before an Engineering Action executes,
+pauses durably when internal execution is unavailable, delegates only the
+bounded Action, verifies the external result, and continues its Mission without
+transferring ownership or bypassing governance.
+
 ## Bootstrap Phase A — complete
 
 Bootstrap Phase A is complete. Forge currently provides a deterministic,

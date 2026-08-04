@@ -12,3 +12,7 @@ Engineering Knowledge Base, DJConnect, or a Technical Debt Engine, but this
 model gives it no write, sync, or mutation authority.
 
 Schemas: `capability.schema.json` and `knowledge-source.schema.json`.
+
+The bootstrap declaration remains a legacy Foundation Model. The canonical
+execution-time registry is the [Capability Delegation Framework](capability-delegation-framework.md),
+with schema `capability-registry-1.0.schema.json`.
