@@ -7,10 +7,11 @@ Mission or its scope.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable, Mapping, Protocol
 
 from forge.dispatcher import MissionDispatcher
+from forge.governance import ApprovalRecord, ExecutionPolicy, ExecutionPolicyKind, PauseBoundary, execution_policy_for_profile
 from forge.models.action import EngineeringAction, EngineeringActionStatus
 from forge.models.execution_host import ExecutionHost, ExecutionHostEvidence
 from forge.models.mission_planner import MissionPlannerInput, MissionPlanningState
@@ -83,6 +84,8 @@ class ExecutionLoop:
         repository_id: str,
         clock: Callable[[], str],
         correlation_id_factory: Callable[[], str],
+        execution_policy: ExecutionPolicy | None = None,
+        governance_profile: str = "solo",
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise ExecutionLoopError("execution host, workspace, and repository identities are required")
@@ -90,6 +93,7 @@ class ExecutionLoop:
         self._planning_input, self._prompt_factory, self._repository_truth = planning_input, prompt_factory, repository_truth
         self._host_id, self._workspace_id, self._repository_id = host_id, workspace_id, repository_id
         self._clock, self._correlation_id_factory = clock, correlation_id_factory
+        self._execution_policy = execution_policy or execution_policy_for_profile(governance_profile)
 
     def run(self) -> MissionExecutionState | None:
         """Run the one dispatched Mission until terminal or awaiting host evidence."""
@@ -97,10 +101,13 @@ class ExecutionLoop:
         if record is None:
             return None
         state = self._states.get(record.mission_id)
+        state = self._states.set_execution_policy(state.mission_id, self._execution_policy.to_dict(), occurred_at=self._clock())
         if state.status is MissionExecutionStatus.CREATED:
             state = self._plan(state)
         if state.status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}:
             self._dispatcher.hold(state.mission_id, state.status)
+            return state
+        if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
             return state
         result = self._runner().run(state.mission_id)
         if result.status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}:
@@ -109,9 +116,25 @@ class ExecutionLoop:
             self._dispatcher.complete(result.mission_id)
         return result
 
-    def resume(self, mission_id: str, authorization: RecoveryAuthorization | None = None) -> MissionExecutionState:
+    def resume(self, mission_id: str, authorization: RecoveryAuthorization | None = None,
+               approval: ApprovalRecord | None = None) -> MissionExecutionState:
         """Resume durable work; a blocked or failed Action needs explicit authority."""
         state = self._states.get(mission_id)
+        if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
+            if approval is None:
+                raise ExecutionLoopError("governance-paused Mission requires an approval record")
+            if authorization is not None:
+                raise ExecutionLoopError("recovery authorization is not valid for a governance-paused Mission")
+            boundary = str((state.pause_reason or {}).get("boundary"))
+            target = MissionExecutionStatus.COMPLETED if boundary == PauseBoundary.MISSION.value else MissionExecutionStatus.ACTIVE
+            state = self._states.transition(mission_id, target, occurred_at=self._clock(), reason="governance_approval_recorded",
+                                            approval_record=approval.to_dict())
+            if target is MissionExecutionStatus.COMPLETED:
+                self._dispatcher.complete(mission_id)
+                return state
+            return self.run() if self._dispatcher.resume() else self._runner().run(mission_id)
+        if approval is not None:
+            raise ExecutionLoopError("approval record is valid only for a governance-paused Mission")
         if state.status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}:
             if authorization is None:
                 raise ExecutionLoopError("blocked or failed Mission requires explicit recovery authorization")
@@ -170,7 +193,46 @@ class ExecutionLoop:
         return BootstrapMissionRunner(self._states, BootstrapMissionScheduler(), self._host, self._prompt_factory,
                                       host_id=self._host_id, workspace_id=self._workspace_id, repository_id=self._repository_id,
                                       clock=self._clock, correlation_id_factory=self._correlation_id_factory,
-                                      completion_context=completion, replan_after_evidence=self._replan_after_evidence)
+                                      completion_context=completion, replan_after_evidence=self._replan_after_evidence,
+                                      evidence_progression_gate=self._pause_after_evidence)
+
+    def _pause_after_evidence(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...],
+                              evidence: ExecutionHostEvidence, mission_complete: bool) -> MissionExecutionState | None:
+        """Apply policy only after exact evidence, never by altering host execution."""
+        policy = ExecutionPolicy.from_dict(state.execution_policy or self._execution_policy.to_dict())
+        current = next(item for item in actions if item.id == evidence.repository_evidence.action_id)
+        boundary: PauseBoundary | None = None
+        identity = current.id
+        if PauseBoundary.MISSION in policy.boundaries and mission_complete:
+            boundary, identity = PauseBoundary.MISSION, state.mission_id
+        elif PauseBoundary.CAPABILITY in policy.boundaries and self._capability_complete(state, actions, current):
+            boundary, identity = PauseBoundary.CAPABILITY, self._capability_identity(state, current)
+        elif PauseBoundary.ENGINEERING_INTENT in policy.boundaries and all(
+            item.status is EngineeringActionStatus.COMPLETE for item in actions
+            if (item.intent_id, item.intent_revision) == (current.intent_id, current.intent_revision)
+        ):
+            boundary, identity = PauseBoundary.ENGINEERING_INTENT, current.intent_id
+        elif PauseBoundary.ENGINEERING_ACTION in policy.boundaries:
+            boundary = PauseBoundary.ENGINEERING_ACTION
+        if boundary is None:
+            return None
+        next_action = next((item.id for item in actions if item.status is not EngineeringActionStatus.COMPLETE), None)
+        reason = {"policy_kind": policy.kind.value, "boundary": boundary.value, "boundary_identity": identity,
+                  "completed_action_id": current.id}
+        return self._states.transition(state.mission_id, MissionExecutionStatus.AWAITING_APPROVAL,
+                                       occurred_at=self._clock(), reason="execution_policy_pause", actions=actions,
+                                       execution_evidence=asdict(evidence), pause_reason=reason,
+                                       resume={**state.resume, "next_action_id": next_action, "pause_boundary": boundary.value})
+
+    @staticmethod
+    def _capability_identity(state: MissionExecutionState, action: EngineeringAction) -> str:
+        intent = next(item for item in state.intents if item["id"] == action.intent_id and item["revision"] == action.intent_revision)
+        return str(intent["capability_impact"][0])
+
+    def _capability_complete(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...], action: EngineeringAction) -> bool:
+        capability = self._capability_identity(state, action)
+        intent_ids = {item["id"] for item in state.intents if capability in item.get("capability_impact", ())}
+        return all(item.status is EngineeringActionStatus.COMPLETE for item in actions if item.intent_id in intent_ids)
 
     def _replan_after_evidence(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...], _evidence: ExecutionHostEvidence) -> None:
         """Re-evaluate only remaining approved work; the original plan stays canonical."""

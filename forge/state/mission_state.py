@@ -16,7 +16,7 @@ import sqlite3
 from typing import Any, Mapping, Sequence
 
 
-MISSION_STATE_SCHEMA_VERSION = "1.1"
+MISSION_STATE_SCHEMA_VERSION = "1.2"
 
 
 class MissionExecutionStatus(str, Enum):
@@ -32,6 +32,7 @@ class MissionExecutionStatus(str, Enum):
     ACTIVE = "ACTIVE"
     WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
     WAITING_FOR_EVIDENCE = "WAITING_FOR_EVIDENCE"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
     BLOCKED = "BLOCKED"
     FAILED = "FAILED"
     COMPLETED = "COMPLETED"
@@ -73,6 +74,9 @@ class MissionExecutionState:
     waiting_reason: str | None = None
     repository_truth: Mapping[str, Any] | None = None
     completion: Mapping[str, Any] | None = None
+    execution_policy: Mapping[str, Any] | None = None
+    pause_reason: Mapping[str, Any] | None = None
+    approval_record: Mapping[str, Any] | None = None
     schema_version: str = MISSION_STATE_SCHEMA_VERSION
 
 
@@ -81,7 +85,8 @@ _ALLOWED_TRANSITIONS: dict[MissionExecutionStatus, frozenset[MissionExecutionSta
     MissionExecutionStatus.READY: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.ACTIVE: frozenset((MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
     MissionExecutionStatus.WAITING_FOR_EXECUTION: frozenset((MissionExecutionStatus.WAITING_FOR_EVIDENCE, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
-    MissionExecutionStatus.WAITING_FOR_EVIDENCE: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
+    MissionExecutionStatus.WAITING_FOR_EVIDENCE: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.AWAITING_APPROVAL, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
+    MissionExecutionStatus.AWAITING_APPROVAL: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.BLOCKED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.FAILED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.COMPLETED: frozenset((MissionExecutionStatus.ARCHIVED,)),
@@ -193,6 +198,7 @@ class MissionStateStore:
         *,
         occurred_at: str,
         resume: Mapping[str, Any] | None = None,
+        execution_policy: Mapping[str, Any] | None = None,
     ) -> MissionExecutionState:
         mission_document = _document(mission, "mission")
         mission_id = mission_document.get("id")
@@ -214,6 +220,8 @@ class MissionStateStore:
             "current_engineering_intent": None, "current_engineering_action": None,
             "execution_history": [], "waiting_reason": None, "repository_truth": None,
             "completion": None,
+            "execution_policy": None if execution_policy is None else _document(execution_policy, "execution policy"),
+            "pause_reason": None, "approval_record": None,
             "revision": 1,
         }
         try:
@@ -227,7 +235,8 @@ class MissionStateStore:
             raise MissionStateStoreError(f"mission state already exists: {mission_id}") from error
         return self.get(mission_id)
 
-    def create_pending(self, mission: Any, *, occurred_at: str, resume: Mapping[str, Any] | None = None) -> MissionExecutionState:
+    def create_pending(self, mission: Any, *, occurred_at: str, resume: Mapping[str, Any] | None = None,
+                       execution_policy: Mapping[str, Any] | None = None) -> MissionExecutionState:
         """Persist an approved Mission before planning creates Intents and Actions.
 
         Dispatcher admission deliberately records no tactical work.  The AI
@@ -244,7 +253,9 @@ class MissionStateStore:
             "resume": _document(resume or {}, "resume"), "execution_correlation": None,
             "execution_evidence": None, "current_engineering_intent": None,
             "current_engineering_action": None, "execution_history": [], "waiting_reason": None,
-            "repository_truth": None, "completion": None, "revision": 1,
+            "repository_truth": None, "completion": None,
+            "execution_policy": None if execution_policy is None else _document(execution_policy, "execution policy"),
+            "pause_reason": None, "approval_record": None, "revision": 1,
         }
         try:
             with self._connection:
@@ -277,6 +288,9 @@ class MissionStateStore:
         resume: Mapping[str, Any] | None = None,
         repository_truth: Mapping[str, Any] | None = None,
         completion: Mapping[str, Any] | None = None,
+        execution_policy: Mapping[str, Any] | None = None,
+        pause_reason: Mapping[str, Any] | None = None,
+        approval_record: Mapping[str, Any] | None = None,
     ) -> MissionExecutionState:
         if not occurred_at or not reason:
             raise MissionStateStoreError("transition time and reason are required")
@@ -304,6 +318,9 @@ class MissionStateStore:
             "waiting_reason": reason if status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.WAITING_FOR_EVIDENCE} else None,
             "repository_truth": _document(repository_truth, "repository truth") if repository_truth is not None else document["repository_truth"],
             "completion": _document(completion, "completion") if completion is not None else document["completion"],
+            "execution_policy": _document(execution_policy, "execution policy") if execution_policy is not None else document.get("execution_policy"),
+            "pause_reason": _document(pause_reason, "pause reason") if pause_reason is not None else (None if status is not MissionExecutionStatus.AWAITING_APPROVAL else document.get("pause_reason")),
+            "approval_record": _document(approval_record, "approval record") if approval_record is not None else document.get("approval_record"),
             "revision": current.revision + 1,
         })
         if status is MissionExecutionStatus.COMPLETED:
@@ -317,6 +334,21 @@ class MissionStateStore:
                 (document["revision"], status.value, self._encode(document), mission_id),
             )
             self._append_history(mission_id, document["revision"], current.status, status, occurred_at, reason)
+        return self.get(mission_id)
+
+    def set_execution_policy(self, mission_id: str, policy: Mapping[str, Any], *, occurred_at: str) -> MissionExecutionState:
+        """Persist the resolved policy once before planning or execution progresses."""
+        state = self.get(mission_id)
+        if state.execution_policy is not None:
+            return state
+        document = self._as_document(state)
+        document["execution_policy"] = _document(policy, "execution policy")
+        document["revision"] = state.revision + 1
+        with self._connection:
+            self._connection.execute("UPDATE mission_state SET revision = ?, document = ? WHERE mission_id = ?",
+                                     (document["revision"], self._encode(document), mission_id))
+            self._append_history(mission_id, document["revision"], state.status, state.status,
+                                 occurred_at, "execution_policy_resolved")
         return self.get(mission_id)
 
     def history(self, mission_id: str) -> tuple[MissionStateHistoryEntry, ...]:
@@ -364,12 +396,15 @@ class MissionStateStore:
             "waiting_reason": state.waiting_reason,
             "repository_truth": None if state.repository_truth is None else dict(state.repository_truth),
             "completion": None if state.completion is None else dict(state.completion), "revision": state.revision,
+            "execution_policy": None if state.execution_policy is None else dict(state.execution_policy),
+            "pause_reason": None if state.pause_reason is None else dict(state.pause_reason),
+            "approval_record": None if state.approval_record is None else dict(state.approval_record),
         }
 
     @staticmethod
     def _decode(serialized: str) -> MissionExecutionState:
         document = json.loads(serialized)
-        if document.get("schema_version") not in {"1.0", MISSION_STATE_SCHEMA_VERSION}:
+        if document.get("schema_version") not in {"1.0", "1.1", MISSION_STATE_SCHEMA_VERSION}:
             raise MissionStateStoreError("mission state schema version is unsupported")
         return MissionExecutionState(
             mission_id=document["mission_id"], mission=document["mission"], intents=tuple(document["intents"]),
@@ -380,5 +415,7 @@ class MissionStateStore:
             current_engineering_action=document.get("current_engineering_action"),
             execution_history=tuple(document.get("execution_history", ())), waiting_reason=document.get("waiting_reason"),
             repository_truth=document.get("repository_truth"), completion=document.get("completion"),
+            execution_policy=document.get("execution_policy"), pause_reason=document.get("pause_reason"),
+            approval_record=document.get("approval_record"),
             schema_version=document["schema_version"],
         )

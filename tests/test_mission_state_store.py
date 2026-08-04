@@ -88,6 +88,20 @@ class MissionStateStoreTests(unittest.TestCase):
         self.assertEqual(state.execution_correlation["host_run_id"], "run-1")  # type: ignore[index]
         self.assertEqual(state.actions[0]["id"], "action-1")
 
+    def test_execution_policy_pause_and_approval_are_persisted(self) -> None:
+        self.create()
+        self.store.set_execution_policy("mission-1", {"schema_version": "1.0", "kind": "engineering_action_review", "custom_boundaries": []}, occurred_at="2026-08-01T20:00:30Z")
+        self.store.transition("mission-1", MissionExecutionStatus.READY, occurred_at="2026-08-01T20:01:00Z", reason="planned")
+        self.store.transition("mission-1", MissionExecutionStatus.ACTIVE, occurred_at="2026-08-01T20:02:00Z", reason="started")
+        self.store.transition("mission-1", MissionExecutionStatus.WAITING_FOR_EXECUTION, occurred_at="2026-08-01T20:03:00Z", reason="released")
+        self.store.transition("mission-1", MissionExecutionStatus.WAITING_FOR_EVIDENCE, occurred_at="2026-08-01T20:04:00Z", reason="acknowledged")
+        paused = self.store.transition("mission-1", MissionExecutionStatus.AWAITING_APPROVAL, occurred_at="2026-08-01T20:05:00Z", reason="execution_policy_pause", pause_reason={"boundary": "engineering_action"})
+        self.assertEqual(paused.execution_policy["kind"], "engineering_action_review")  # type: ignore[index]
+        self.store.close(); self.store = MissionStateStore(self.path)
+        restarted = self.store.get("mission-1")
+        self.assertEqual(restarted.status, MissionExecutionStatus.AWAITING_APPROVAL)
+        self.assertEqual(restarted.pause_reason["boundary"], "engineering_action")  # type: ignore[index]
+
     def test_blocked_and_failed_missions_recover_only_through_explicit_transition(self) -> None:
         self.advance_to_waiting_evidence()
         blocked = self.store.transition("mission-1", MissionExecutionStatus.BLOCKED, occurred_at="2026-08-01T20:05:00Z", reason="dependency unavailable")

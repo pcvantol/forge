@@ -6,5 +6,7 @@ from .loop import (
     ExecutionLoopObservability,
     RecoveryAuthorization,
 )
+from forge.governance import ApprovalRecord, ExecutionPolicy, ExecutionPolicyKind, PauseBoundary
 
-__all__ = ["ExecutionLoop", "ExecutionLoopError", "ExecutionLoopObservability", "RecoveryAuthorization"]
+__all__ = ["ApprovalRecord", "ExecutionLoop", "ExecutionLoopError", "ExecutionLoopObservability",
+           "ExecutionPolicy", "ExecutionPolicyKind", "PauseBoundary", "RecoveryAuthorization"]

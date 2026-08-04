@@ -51,6 +51,13 @@ class ReplanAfterEvidence(Protocol):
     def __call__(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...], evidence: ExecutionHostEvidence) -> None: ...
 
 
+class EvidenceProgressionGate(Protocol):
+    """Optionally pause Forge progression after evidence; Execution Hosts never see it."""
+
+    def __call__(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...],
+                 evidence: ExecutionHostEvidence, mission_complete: bool) -> MissionExecutionState | None: ...
+
+
 def _document(value: Any) -> dict[str, Any]:
     if is_dataclass(value):
         value = asdict(value)
@@ -180,6 +187,7 @@ class BootstrapMissionRunner:
         correlation_id_factory: Callable[[], str],
         completion_context: CompletionContextFactory | None = None,
         replan_after_evidence: ReplanAfterEvidence | None = None,
+        evidence_progression_gate: EvidenceProgressionGate | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise MissionRunnerError("runtime host, workspace, and repository identities are required")
@@ -194,6 +202,7 @@ class BootstrapMissionRunner:
         self._correlation_id_factory = correlation_id_factory
         self._completion_context = completion_context
         self._replan_after_evidence = replan_after_evidence
+        self._evidence_progression_gate = evidence_progression_gate
 
     def start(self, mission: Any, intents: Sequence[Any], actions: Sequence[Any]) -> MissionExecutionState:
         """Persist the one permitted Mission and make it available to the Runtime."""
@@ -210,7 +219,8 @@ class BootstrapMissionRunner:
         """Advance until terminal state or a host has no terminal evidence yet."""
         while True:
             state = self._store.get(mission_id)
-            if state.status in {MissionExecutionStatus.COMPLETED, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED}:
+            if state.status in {MissionExecutionStatus.COMPLETED, MissionExecutionStatus.AWAITING_APPROVAL,
+                                MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED}:
                 return state
             before_revision = state.revision
             state = self._advance(state)
@@ -281,7 +291,12 @@ class BootstrapMissionRunner:
             return self._store.transition(state.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._now(), reason="execution_blocked", actions=actions, execution_evidence=evidence_document)
         if evidence.outcome is ExecutionEvidenceOutcome.FAILED:
             return self._store.transition(state.mission_id, MissionExecutionStatus.FAILED, occurred_at=self._now(), reason="execution_failed", actions=actions, execution_evidence=evidence_document)
-        if self._scheduler.progress(actions).is_complete:
+        mission_complete = self._scheduler.progress(actions).is_complete
+        if self._evidence_progression_gate is not None:
+            paused = self._evidence_progression_gate(state, actions, evidence, mission_complete)
+            if paused is not None:
+                return paused
+        if mission_complete:
             repository_truth = completion = None
             if self._completion_context is not None:
                 repository_truth, completion = self._completion_context(state, evidence)

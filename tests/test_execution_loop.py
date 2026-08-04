@@ -7,7 +7,8 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 
-from forge.execution import ExecutionLoop, ExecutionLoopError, RecoveryAuthorization
+from forge.execution import ApprovalRecord, ExecutionLoop, ExecutionLoopError, ExecutionPolicy, ExecutionPolicyKind, RecoveryAuthorization
+from forge.governance import execution_policy_for_profile
 from forge.models import (
     ApprovedScope, ArchitectureMission, ArchitectureMissionStatus, EngineeringActionStatus,
     ExecutionDispatch, ExecutionEvidenceOutcome, ExecutionHostEvidence, ExecutionRepositoryEvidence,
@@ -100,7 +101,7 @@ class ExecutionLoopTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.store.close(); self.directory.cleanup()
 
-    def loop(self, host: Host) -> ExecutionLoop:
+    def loop(self, host: Host, policy: ExecutionPolicy | None = None, profile: str = "solo") -> ExecutionLoop:
         def correlation() -> str:
             self.counter += 1
             return f"correlation-{self.counter}"
@@ -110,7 +111,8 @@ class ExecutionLoopTests(unittest.TestCase):
         return ExecutionLoop(self.dispatcher, self.store, MissionPlanner(), host, planning_input, prompt,
                              lambda _state, _evidence: {"source_id": "repository", "revision": "revision", "content_digest": digest("d")},
                              host_id="host", workspace_id="workspace", repository_id="forge",
-                             clock=lambda: "2026-08-04T10:00:00Z", correlation_id_factory=correlation)
+                             clock=lambda: "2026-08-04T10:00:00Z", correlation_id_factory=correlation,
+                             execution_policy=policy, governance_profile=profile)
 
     def test_multiple_actions_progress_completion_evidence_and_completion_notifications(self) -> None:
         state = self.loop(Host({"contract-action": ExecutionEvidenceOutcome.COMPLETE, "docs-action": ExecutionEvidenceOutcome.COMPLETE})).run()
@@ -144,6 +146,42 @@ class ExecutionLoopTests(unittest.TestCase):
         self.store.close(); self.store = MissionStateStore(self.path)
         host.outcomes["contract-action"] = ExecutionEvidenceOutcome.COMPLETE
         state = self.loop(host).resume("mission-loop")
+        self.assertEqual(state.status, MissionExecutionStatus.COMPLETED)
+        self.assertEqual(host.requests, ["contract-action", "docs-action"])
+
+    def test_action_review_pauses_after_exact_evidence_and_resumes_after_approval(self) -> None:
+        host = Host({"contract-action": ExecutionEvidenceOutcome.COMPLETE, "docs-action": ExecutionEvidenceOutcome.COMPLETE})
+        loop = self.loop(host, ExecutionPolicy(ExecutionPolicyKind.ENGINEERING_ACTION_REVIEW))
+        paused = loop.run(); assert paused is not None
+        self.assertEqual(paused.status, MissionExecutionStatus.AWAITING_APPROVAL)
+        self.assertEqual(paused.pause_reason["boundary"], "engineering_action")  # type: ignore[index]
+        self.store.close(); self.store = MissionStateStore(self.path)
+        resumed = self.loop(host, ExecutionPolicy(ExecutionPolicyKind.ENGINEERING_ACTION_REVIEW)).resume(
+            "mission-loop", approval=ApprovalRecord("approval-1", "architect", "2026-08-04T10:01:00Z", "review-1"))
+        self.assertEqual(resumed.status, MissionExecutionStatus.AWAITING_APPROVAL)
+        self.assertEqual(resumed.approval_record["approval_id"], "approval-1")  # type: ignore[index]
+        self.assertEqual(host.requests, ["contract-action", "docs-action"])
+
+    def test_intent_capability_and_mission_reviews_pause_only_at_their_boundary(self) -> None:
+        outcomes = {"contract-action": ExecutionEvidenceOutcome.COMPLETE, "docs-action": ExecutionEvidenceOutcome.COMPLETE}
+        expectations = ((ExecutionPolicyKind.ENGINEERING_INTENT_REVIEW, "engineering_intent"),
+                        (ExecutionPolicyKind.CAPABILITY_REVIEW, "capability"),
+                        (ExecutionPolicyKind.MISSION_REVIEW, "mission"))
+        for policy_kind, boundary in expectations:
+            with self.subTest(policy=policy_kind):
+                self.store.close(); self.path.unlink(); self.store = MissionStateStore(self.path)
+                self.store.create_pending(mission(), occurred_at="2026-08-04T10:00:00Z")
+                paused = self.loop(Host(outcomes), ExecutionPolicy(policy_kind)).run(); assert paused is not None
+                self.assertEqual(paused.status, MissionExecutionStatus.AWAITING_APPROVAL)
+                self.assertEqual(paused.pause_reason["boundary"], boundary)  # type: ignore[index]
+
+    def test_continuous_policy_and_profile_defaults_preserve_identical_host_sequence(self) -> None:
+        self.assertEqual(execution_policy_for_profile("solo").kind, ExecutionPolicyKind.CONTINUOUS)
+        self.assertEqual(execution_policy_for_profile("duo").kind, ExecutionPolicyKind.ENGINEERING_INTENT_REVIEW)
+        self.assertEqual(execution_policy_for_profile("professional").kind, ExecutionPolicyKind.ENGINEERING_ACTION_REVIEW)
+        self.assertEqual(execution_policy_for_profile("enterprise").kind, ExecutionPolicyKind.CUSTOM)
+        host = Host({"contract-action": ExecutionEvidenceOutcome.COMPLETE, "docs-action": ExecutionEvidenceOutcome.COMPLETE})
+        state = self.loop(host, ExecutionPolicy(ExecutionPolicyKind.CONTINUOUS)).run(); assert state is not None
         self.assertEqual(state.status, MissionExecutionStatus.COMPLETED)
         self.assertEqual(host.requests, ["contract-action", "docs-action"])
 

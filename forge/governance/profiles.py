@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from .execution_policy import ExecutionPolicy, ExecutionPolicyKind, PauseBoundary
+
 
 GOVERNANCE_PROFILE_DEFINITION_VERSION = "1.0"
 
@@ -14,6 +16,7 @@ class CanonicalGovernanceProfile(str, Enum):
     DUO = "duo"
     STARTUP = "startup"
     ENTERPRISE = "enterprise"
+    PROFESSIONAL = "professional"
 
 
 class GovernanceRole(str, Enum):
@@ -54,6 +57,21 @@ class ResolvedGovernanceProfile:
 
 
 _LEGACY_PROFILE_MAP = {"two_person": CanonicalGovernanceProfile.DUO, "team": CanonicalGovernanceProfile.STARTUP}
+
+
+def execution_policy_for_profile(profile: str | CanonicalGovernanceProfile) -> ExecutionPolicy:
+    """Resolve a governance default while keeping explicit policy override possible."""
+    source = profile.value if isinstance(profile, CanonicalGovernanceProfile) else profile
+    canonical = _LEGACY_PROFILE_MAP.get(source, CanonicalGovernanceProfile(source))
+    defaults = {
+        CanonicalGovernanceProfile.SOLO: ExecutionPolicyKind.CONTINUOUS,
+        CanonicalGovernanceProfile.DUO: ExecutionPolicyKind.ENGINEERING_INTENT_REVIEW,
+        CanonicalGovernanceProfile.STARTUP: ExecutionPolicyKind.ENGINEERING_ACTION_REVIEW,
+        CanonicalGovernanceProfile.PROFESSIONAL: ExecutionPolicyKind.ENGINEERING_ACTION_REVIEW,
+        CanonicalGovernanceProfile.ENTERPRISE: ExecutionPolicyKind.CUSTOM,
+    }
+    kind = defaults[canonical]
+    return ExecutionPolicy(kind, (PauseBoundary.ENGINEERING_ACTION,) if kind is ExecutionPolicyKind.CUSTOM else ())
 
 
 def resolve_governance_profile(profile: str | CanonicalGovernanceProfile) -> ResolvedGovernanceProfile:

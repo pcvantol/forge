@@ -1,4 +1,4 @@
-# Autonomous Mission Execution Loop 4.4
+# Autonomous Mission Execution Loop
 
 ## Purpose
 
@@ -54,7 +54,7 @@ Planning Evidence and Host Evidence, the Planner and loop choose the same
 Action order and persist equivalent state. Timestamps and host correlations are
 operational evidence, not planning inputs.
 
-## Blocking and resume
+## Blocking, governance pause, and resume
 
 `BLOCKED` and `FAILED` are deterministic pauses. The unresolved Action remains
 in Mission State, the Dispatcher is placed on hold, and no later Action can be
@@ -64,6 +64,11 @@ Resuming a blocked or failed Mission requires a `RecoveryAuthorization` naming
 the exact unresolved Action. It records the authority in durable state and
 returns only that unresolved Action to `READY`; completed Actions are never
 rerun. The Dispatcher is reactivated only after durable recovery.
+
+Execution Policy adds a separate `AWAITING_APPROVAL` state after exact
+successful evidence. It is neither a failure nor recovery. The resolved policy,
+boundary, resume point, and approval provenance are durable; the Host is not
+aware of them. See [Execution Policy](execution-policy.md).
 
 ## Governance relationships
 

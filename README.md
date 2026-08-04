@@ -247,6 +247,12 @@ completion notifications. Business and Architecture governance remain outside
 the loop; the Execution Host remains independent. See the
 [Execution Loop Report](docs/reports/forge-autonomous-mission-execution-loop-report-001.md).
 
+Policy-Driven Mission Execution extends that loop with versioned
+[Execution Policy](docs/architecture/execution-policy.md): continuous, Action,
+Intent, Capability, Mission, and Custom review pauses preserve identical
+planning and Execution Host behaviour. See the
+[Execution Policy Report](docs/reports/forge-execution-policy-report-001.md).
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text
