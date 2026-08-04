@@ -2,10 +2,12 @@
 
 ## Boundary
 
-`.forge/runtime.db` is Forge's canonical local SQLite runtime database. It is
-not committed. Repository Truth remains the architectural source of truth, and
-the Engineering Platform Execution Host retains its own independent Execution
-Database.
+`.forge/runtime.db` is Forge's repository-default local SQLite runtime database.
+The canonical location is resolved before opening through [Runtime Bootstrap,
+Location Resolution and Evidence Recovery](runtime-bootstrap.md); it may be a
+configured or explicitly relocated local location. It is not committed.
+Repository Truth remains the architectural source of truth, and the Engineering
+Platform Execution Host retains its own independent Execution Database.
 
 Forge owns Mission State, Architecture Reviews, Mission Recommendations,
 Decision Evidence, Execution Receipts, and Planning State. It records only

@@ -5,6 +5,9 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
+Phase E — Increment 5.6 adds [Runtime Bootstrap, Location Resolution and Evidence Recovery](docs/architecture/runtime-bootstrap.md).
+Forge now deterministically resolves one canonical Runtime Database with an immutable Runtime Identity, fails closed on ambiguity or integrity errors, and recovers operational state only from persisted runtime records.
+
 Phase E — Increment 5.5 adds the [Capability Delegation Framework](docs/architecture/capability-delegation-framework.md).
 Forge now assesses a required capability before an Engineering Action executes,
 pauses durably when internal execution is unavailable, delegates only the

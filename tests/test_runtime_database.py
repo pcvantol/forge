@@ -25,7 +25,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
         return {"id": "review-1", "mission_id": "mission-1", "input_digest": "sha256:review", "repository_maturity": [], "pressure": {"architecture": "low", "implementation": "low"}, "confidence": "high", "reviewed_at": "2026-08-04T00:00:00Z"}
 
     def test_creation_uses_canonical_runtime_path_and_versioned_metadata(self) -> None:
-        self.assertEqual(self.database.path, self.root / ".forge" / "runtime.db")
+        self.assertEqual(self.database.path, (self.root / ".forge" / "runtime.db").resolve())
         self.assertTrue(self.database.path.exists())
         self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         self.database.validate_integrity()

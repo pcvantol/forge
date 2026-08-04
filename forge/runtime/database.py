@@ -8,17 +8,23 @@ Execution Evidence, reports, telemetry, or host runtime state.
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
+from datetime import UTC, datetime
 from enum import Enum
 import json
 from pathlib import Path
 import sqlite3
 from typing import Any, Mapping
+import uuid
+
+from .bootstrap import RuntimeIdentity, RuntimeResolver, canonical_repository_root, repository_identity
 
 
-RUNTIME_SCHEMA_VERSION = 4
+RUNTIME_SCHEMA_VERSION = 5
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
+    "runtime_id", "repository_identity", "repository_root", "database_version",
+    "database_location", "last_access_at", "status",
 ))
 _TABLES = frozenset((
     "mission_state", "architecture_reviews", "mission_recommendations",
@@ -26,6 +32,10 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests",
 ))
+
+
+def _timestamp() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 class RuntimeDatabaseError(RuntimeError):
@@ -70,14 +80,20 @@ class RuntimeDatabase:
 
     def __init__(self, workspace_root: Path | str = ".", *, path: Path | str | None = None,
                  forge_version: str = "0.0") -> None:
-        self.path = Path(path) if path is not None else Path(workspace_root) / ".forge" / "runtime.db"
+        self.repository_root = canonical_repository_root(workspace_root)
+        # Normal opens resolve before SQLite is created.  An explicit path is
+        # reserved for bootstrap and relocation after their resolver step.
+        self.path = Path(path) if path is not None else RuntimeResolver(workspace_root).resolve().path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(self.path)
         self._connection.row_factory = sqlite3.Row
         try:
             self._configure()
             self._migrate(forge_version)
+            self._initialize_runtime_identity()
             self.validate_integrity()
+            if path is None:
+                RuntimeResolver(workspace_root)._register(self.path)
         except Exception:
             self._connection.close()
             raise
@@ -97,6 +113,10 @@ class RuntimeDatabase:
                     CREATE TABLE runtime_metadata (
                         key TEXT PRIMARY KEY, value TEXT NOT NULL
                     );
+                    CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
+                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'created_at')
+                         AND NEW.value <> OLD.value
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                     CREATE TABLE mission_state (
                         mission_id TEXT PRIMARY KEY, lifecycle TEXT NOT NULL,
                         status TEXT NOT NULL, current_intent TEXT, current_action TEXT,
@@ -186,7 +206,7 @@ class RuntimeDatabase:
                     "schema_version": str(RUNTIME_SCHEMA_VERSION),
                     "migration_version": str(RUNTIME_SCHEMA_VERSION),
                     "forge_version": forge_version,
-                    "created_at": "created_by_runtime_database",
+                    "created_at": _timestamp(),
                     "last_migration": str(RUNTIME_SCHEMA_VERSION),
                     "integrity_status": "valid",
                 })
@@ -286,8 +306,36 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
                 self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+        elif version == 4:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
+                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'created_at')
+                         AND NEW.value <> OLD.value
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
+                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
+
+    def _initialize_runtime_identity(self) -> None:
+        metadata = self.metadata
+        now = _timestamp()
+        created_at = metadata.get("created_at")
+        if not created_at or created_at == "created_by_runtime_database":
+            created_at = now
+        values = {
+            "runtime_id": metadata.get("runtime_id") or f"forge-runtime-{uuid.uuid4()}",
+            "repository_identity": metadata.get("repository_identity") or repository_identity(self.repository_root),
+            "repository_root": metadata.get("repository_root") or str(self.repository_root),
+            "database_version": str(RUNTIME_SCHEMA_VERSION), "database_location": str(self.path.resolve()),
+            "created_at": created_at, "last_access_at": now, "status": "active",
+        }
+        if values["repository_identity"] != repository_identity(self.repository_root):
+            raise RuntimeIntegrityError("runtime database belongs to a different repository")
+        with self._connection:
+            self._set_metadata(values)
 
     def _set_metadata(self, values: Mapping[str, str]) -> None:
         self._connection.executemany(
@@ -308,6 +356,10 @@ class RuntimeDatabase:
     def metadata(self) -> dict[str, str]:
         return {row["key"]: row["value"] for row in self._connection.execute("SELECT key, value FROM runtime_metadata")}
 
+    @property
+    def runtime_identity(self) -> RuntimeIdentity:
+        return RuntimeIdentity.from_metadata(self.metadata)
+
     def validate_integrity(self) -> None:
         check = self._connection.execute("PRAGMA integrity_check").fetchone()[0]
         if check != "ok":
@@ -322,6 +374,9 @@ class RuntimeDatabase:
             raise RuntimeIntegrityError("runtime database metadata version is inconsistent")
         if self._connection.execute("PRAGMA user_version").fetchone()[0] != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database schema version is inconsistent")
+        identity = self.runtime_identity
+        if identity.repository_identity != repository_identity(self.repository_root) or not identity.runtime_id or identity.status != "active":
+            raise RuntimeIntegrityError("runtime identity is inconsistent")
         if self._connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
             raise RuntimeIntegrityError("runtime database foreign references are invalid")
         for row in self._connection.execute("SELECT decision_id, execution_receipts FROM decision_evidence"):
