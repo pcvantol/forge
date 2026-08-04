@@ -234,6 +234,14 @@ bounded Engineering Intents and Actions, then continuously replans after
 Mission State and Execution Evidence updates. It neither changes Mission or
 Architecture authority nor performs Runtime or Execution Host work.
 
+Phase D — Increment 4.5 adds [Bootstrap Mission Sequence
+Qualification](docs/architecture/bootstrap-mission-sequence-qualification.md).
+It executes the complete predefined `MISSION-0001` through `MISSION-0005`
+portfolio through the canonical Dispatcher and Execution Loop, persists five
+evidence sets, and confirms the resulting `IDLE` dispatcher state. Architecture
+Reviews and Mission Recommendations remain advisory and do not alter bootstrap
+ordering. See the [qualification report](docs/reports/forge-bootstrap-mission-sequence-qualification-report-001.md).
+
 Phase D — Increment 4.3 adds the [Approved Mission Dispatcher](docs/architecture/approved-mission-dispatcher.md).
 It activates exactly one Architecture-approved Mission from a persistent,
 deterministic FIFO queue, resumes it safely, and re-evaluates the queue only
