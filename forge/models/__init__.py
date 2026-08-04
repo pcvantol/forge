@@ -163,6 +163,11 @@ from .mission_candidate import (
     MissionCandidateMaturity,
     MissionCandidateStatus,
 )
+from .solution_template import (
+    SOLUTION_TEMPLATE_SCHEMA_VERSION,
+    SolutionTemplate,
+    TemplateMissionCandidate,
+)
 from .ai_architect_provider import (
     AI_ARCHITECT_PROVIDER_SCHEMA_VERSION,
     AIArchitectConfidence,

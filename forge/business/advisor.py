@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 from forge.models.mission_candidate import MissionCandidate, MissionCandidateMaturity
 from forge.models.mission_recommendation import RequiredDiscipline
+from forge.models.solution_template import SolutionTemplate
+from forge.solutions.generator import ADVISOR_QUESTIONS, BusinessAdvisorAnswers
 
 
 @dataclass(frozen=True)
@@ -33,3 +35,10 @@ class BusinessAdvisor:
         challenges = ("Validate the stated business value against the target portfolio outcome.", "Confirm the priority against other Mission Candidates.")
         impact = f"Priority {candidate.priority}/100 with {candidate.confidence.value} confidence; review evidence before approval."
         return BusinessAdvisorAdvice(candidate.id, tuple(missing), disciplines, challenges, impact)
+
+    def advise_template(self, template: SolutionTemplate, answers: BusinessAdvisorAnswers) -> BusinessAdvisorAdvice:
+        """Guide a selected template without generating, approving, or persisting a Mission."""
+        missing = tuple(f"answer required: {question}" for question in answers.unanswered)
+        challenges = tuple(f"Confirm {question.replace('_', ' ')} for {template.name}." for question in ADVISOR_QUESTIONS)
+        impact = f"{template.name} is advisory; the Business Owner decides whether to create and refine its drafts."
+        return BusinessAdvisorAdvice(template.reference, missing, template.engineering_disciplines, challenges, impact)

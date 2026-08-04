@@ -9,7 +9,7 @@ from typing import Any
 from .mission_recommendation import EngineeringEffort, RecommendationConfidenceLevel, RequiredDiscipline
 
 
-MISSION_CANDIDATE_SCHEMA_VERSION = "1.0"
+MISSION_CANDIDATE_SCHEMA_VERSION = "1.1"
 
 
 class MissionCandidateStatus(str, Enum):
@@ -40,20 +40,26 @@ class MissionCandidate:
     confidence: RecommendationConfidenceLevel
     required_disciplines: tuple[RequiredDiscipline, ...]
     dependencies: tuple[str, ...]
-    architecture_review_reference: str
-    mission_recommendation_reference: str
+    architecture_review_reference: str | None
+    mission_recommendation_reference: str | None
     priority: int
     business_rationale: str
     maturity: MissionCandidateMaturity = MissionCandidateMaturity.IDEA
     status: MissionCandidateStatus = MissionCandidateStatus.BUSINESS_REVIEW
     schema_version: str = MISSION_CANDIDATE_SCHEMA_VERSION
+    solution_template_reference: str | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != MISSION_CANDIDATE_SCHEMA_VERSION:
             raise ValueError("mission candidate schema version is unsupported")
         if not all((self.id, self.title, self.summary, self.business_objective, self.business_value,
-                    self.architecture_review_reference, self.mission_recommendation_reference, self.business_rationale)):
-            raise ValueError("mission candidate requires complete business and recommendation context")
+                    self.business_rationale)):
+            raise ValueError("mission candidate requires complete business context")
+        if self.solution_template_reference:
+            if self.architecture_review_reference or self.mission_recommendation_reference:
+                raise ValueError("template candidates must not claim Architecture Review or Mission Recommendation provenance")
+        elif not all((self.architecture_review_reference, self.mission_recommendation_reference)):
+            raise ValueError("non-template candidates require complete recommendation provenance")
         if not 0 <= self.priority <= 100:
             raise ValueError("mission candidate priority must be between 0 and 100")
         for values, label in ((self.required_disciplines, "required disciplines"), (self.dependencies, "dependencies")):
@@ -80,18 +86,23 @@ class MissionCandidate:
             "business_rationale": self.business_rationale,
             "maturity": self.maturity.value,
             "status": self.status.value,
+            "solution_template_reference": self.solution_template_reference,
         }
 
     @classmethod
     def from_dict(cls, document: dict[str, Any]) -> "MissionCandidate":
+        schema_version = document["schema_version"]
+        if schema_version == "1.0":
+            schema_version = MISSION_CANDIDATE_SCHEMA_VERSION
         return cls(
             id=document["id"], title=document["title"], summary=document["summary"],
             business_objective=document["business_objective"], business_value=document["business_value"],
             estimated_engineering_effort=EngineeringEffort(document["estimated_engineering_effort"]),
             confidence=RecommendationConfidenceLevel(document["confidence"]),
             required_disciplines=tuple(RequiredDiscipline(item) for item in document["required_disciplines"]),
-            dependencies=tuple(document["dependencies"]), architecture_review_reference=document["architecture_review_reference"],
-            mission_recommendation_reference=document["mission_recommendation_reference"], priority=document["priority"],
+            dependencies=tuple(document["dependencies"]), architecture_review_reference=document.get("architecture_review_reference"),
+            mission_recommendation_reference=document.get("mission_recommendation_reference"), priority=document["priority"],
             business_rationale=document["business_rationale"], maturity=MissionCandidateMaturity(document["maturity"]),
-            status=MissionCandidateStatus(document["status"]), schema_version=document["schema_version"],
+            status=MissionCandidateStatus(document["status"]), schema_version=schema_version,
+            solution_template_reference=document.get("solution_template_reference"),
         )

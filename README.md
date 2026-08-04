@@ -253,6 +253,12 @@ Intent, Capability, Mission, and Custom review pauses preserve identical
 planning and Execution Host behaviour. See the
 [Execution Policy Report](docs/reports/forge-execution-policy-report-001.md).
 
+Phase E — Increment 5.0 adds the versioned, advisory
+[Solution Template Framework](docs/architecture/solution-template-framework.md).
+It turns reusable solution archetypes into deterministic, editable
+Business-review Mission Candidate drafts while preserving separate Business and
+Architecture approvals. It does not approve, plan, or execute a Mission.
+
 The canonical engineering hierarchy and iterative feedback loop are:
 
 ```text

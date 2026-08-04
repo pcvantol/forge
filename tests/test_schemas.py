@@ -22,6 +22,8 @@ SCHEMAS = (
     "engineering-prompt-artifact-0.7.schema.json",
     "phase-completion-1.0.schema.json",
     "mission-candidate-1.0.schema.json",
+    "mission-candidate-1.1.schema.json",
+    "solution-template-1.0.schema.json",
 )
 
 
@@ -30,7 +32,7 @@ class SchemaContractTests(unittest.TestCase):
         for name in SCHEMAS:
             document = json.loads((ROOT / "schemas" / name).read_text())
             self.assertIn("$id", document)
-            self.assertTrue(any(version in document["$id"] for version in ("0.2", "0.3", "0.5", "0.6", "0.7", "1.0")))
+            self.assertTrue(any(version in document["$id"] for version in ("0.2", "0.3", "0.5", "0.6", "0.7", "1.0", "1.1")))
 
     def test_foundation_document_has_a_versioned_composite_envelope(self) -> None:
         document = json.loads((ROOT / "schemas" / "foundation-document.schema.json").read_text())
