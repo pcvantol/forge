@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Decision Evidence is Forge's immutable Repository Truth audit layer for significant planning and governance decisions. It answers **why Forge decided this**. Execution Evidence remains owned by the Execution Host and answers **what happened**.
+Decision Evidence is Forge's immutable runtime audit layer for significant planning and governance decisions. It answers **why Forge decided this**. Repository Truth remains the architectural source of truth; Execution Evidence remains owned by the Execution Host and answers **what happened**.
 
-The canonical local repository location is `repository-truth/decision-evidence.sqlite`, opened only through `DecisionEvidenceRepository`. The append-only store rejects duplicate identifiers and content, and SQLite triggers reject updates and deletes. Records contain pointers and content digests, never copied evidence, conversations, provider output, logs, telemetry, prompts, or approval automation.
+The canonical local runtime location is `.forge/runtime.db`, opened through `forge.runtime.RuntimeDatabase`. The append-only store rejects duplicate identifiers and content, and SQLite triggers reject updates and deletes. Records contain pointers and content digests, never copied evidence, conversations, provider output, logs, telemetry, prompts, or approval automation.
 
 ## Record contract
 

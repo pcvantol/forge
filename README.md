@@ -210,6 +210,12 @@ significant planning and governance decisions were made using Repository Truth
 references, explicit confidence provenance, alternatives, constraints and
 outcomes. It does not replace human approval or duplicate Execution Evidence.
 
+Phase E — Increment 5.2 adds the canonical local [Forge Runtime
+Database](docs/architecture/runtime-database.md). It owns durable Mission,
+planning, review, recommendation and Decision Evidence runtime state in
+`.forge/runtime.db`, while Repository Truth and Engineering Platform Execution
+Evidence remain independent authorities.
+
 Phase C — Architecture Reconciliation adds the canonical
 [Governance Profile Model](docs/architecture/governance-model.md). Solo, Duo,
 Startup, and Enterprise scale the same lifecycle by changing role assignments,
