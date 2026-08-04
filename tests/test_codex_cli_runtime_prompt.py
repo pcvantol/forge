@@ -93,6 +93,8 @@ class CodexCliRuntimePromptRendererTests(unittest.TestCase):
         self.assertEqual(document["compatibility"]["execution_mode"], "GENESIS")
         self.assertEqual(document["compatibility"]["required_capabilities"], ["codex_cli", "local_git"])
         self.assertTrue(document["immutable"])
+        self.assertEqual(document["producer"]["type"], "FORGE")
+        self.assertTrue(document["execution_metadata"])
         self.assertEqual(document["policy"]["version"], "1.0.0")
         self.assertNotIn("agent_role", document["policy"])
         self.assertIn("Forge policy execution constraints", prompt.rendered_text)

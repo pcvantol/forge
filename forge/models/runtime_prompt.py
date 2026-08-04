@@ -15,6 +15,7 @@ from typing import Any
 
 from .action import EngineeringAction, EngineeringActionStatus
 from .intent import EngineeringIntent, IntentReference, IntentStatus
+from .producer import DEFAULT_FORGE_PRODUCER, ProducerIdentity
 
 
 RUNTIME_PROMPT_SCHEMA_VERSION = "1.9"
@@ -178,6 +179,10 @@ class RuntimePrompt:
     generation_request_digest: str
     sections: tuple[RuntimePromptSection, ...]
     schema_version: str = RUNTIME_PROMPT_SCHEMA_VERSION
+    producer_identity: ProducerIdentity = DEFAULT_FORGE_PRODUCER.identity
+    correlation_id: str = ""
+    mission_id: str | None = None
+    execution_metadata: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if self.schema_version != RUNTIME_PROMPT_SCHEMA_VERSION:
@@ -194,6 +199,16 @@ class RuntimePrompt:
             labels = ", ".join(sorted(kind.value for kind in missing))
             raise ValueError(f"runtime prompt is missing required sections: {labels}")
         object.__setattr__(self, "sections", tuple(sorted(self.sections, key=lambda section: section.kind.value)))
+        if not self.correlation_id:
+            seed = f"{self.id}:{self.source_intent_id}:{self.source_intent_revision}:{self.source_action_id}"
+            object.__setattr__(self, "correlation_id", "runtime-" + hashlib.sha256(seed.encode()).hexdigest()[:16])
+        metadata = tuple(sorted(self.execution_metadata)) or (
+            ("provider_definition", self.provider_definition.id),
+            ("provider_version", self.provider_definition.version),
+        )
+        if any(not key or not value for key, value in metadata) or len({key for key, _ in metadata}) != len(metadata):
+            raise ValueError("runtime prompt execution metadata keys and values must be unique and non-empty")
+        object.__setattr__(self, "execution_metadata", metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -201,6 +216,14 @@ class RuntimePrompt:
             "id": self.id,
             "source_intent": {"id": self.source_intent_id, "revision": self.source_intent_revision},
             "source_action": {"id": self.source_action_id},
+            "producer": self.producer_identity.to_dict(),
+            "correlation_id": self.correlation_id,
+            "mission_id": self.mission_id,
+            "execution_metadata": {key: value for key, value in self.execution_metadata},
+            "execution_constraints": list(next(
+                section.content for section in self.sections
+                if section.kind is RuntimePromptSectionKind.CONSTRAINTS
+            )),
             "provider_definition": self.provider_definition.to_dict(),
             "generation_request_digest": self.generation_request_digest,
             "derived": True,

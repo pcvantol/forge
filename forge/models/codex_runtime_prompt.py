@@ -17,6 +17,7 @@ from .action import EngineeringAction, EngineeringActionStatus
 from .intent import EngineeringIntent, IntentStatus
 from .mission import EngineeringMission
 from .agent_policy import AgentPolicySelection
+from .producer import DEFAULT_FORGE_PRODUCER, ProducerIdentity
 
 
 CODEX_CLI_RUNTIME_PROMPT_SCHEMA_VERSION = "3.3"
@@ -161,6 +162,8 @@ class CodexCliRuntimePrompt:
     validation: tuple[str, ...]
     source_digest: str
     rendered_text: str
+    producer_identity: ProducerIdentity = DEFAULT_FORGE_PRODUCER.identity
+    execution_metadata: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if self.schema_version != CODEX_CLI_RUNTIME_PROMPT_SCHEMA_VERSION:
@@ -185,6 +188,13 @@ class CodexCliRuntimePrompt:
             if not values or any(not item for item in values) or len(values) != len(set(values)):
                 raise ValueError(f"Codex CLI Runtime Prompt {label} values must be unique and non-empty")
             object.__setattr__(self, "expected_repository_evidence" if label == "expected repository evidence" else ("constraints" if label == "constraint" else "validation"), tuple(sorted(values)))
+        metadata = tuple(sorted(self.execution_metadata)) or (
+            ("renderer_version", self.renderer_version),
+            ("runtime_prompt_format", "codex_cli"),
+        )
+        if any(not key or not value for key, value in metadata) or len({key for key, _ in metadata}) != len(metadata):
+            raise ValueError("Codex CLI Runtime Prompt execution metadata keys and values must be unique and non-empty")
+        object.__setattr__(self, "execution_metadata", metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -196,6 +206,7 @@ class CodexCliRuntimePrompt:
             "mission": {"id": self.mission_id, "revision": self.mission_revision},
             "intent": {"id": self.intent_id, "revision": self.intent_revision},
             "action": {"id": self.action_id},
+            "producer": self.producer_identity.to_dict(),
             "repository_state": self.repository_state.to_dict(),
             "compatibility": self.compatibility.to_dict(),
             "policy": None if self.policy_version is None else {
@@ -207,6 +218,7 @@ class CodexCliRuntimePrompt:
             "expected_repository_evidence": list(self.expected_repository_evidence),
             "constraints": list(self.constraints),
             "validation": list(self.validation),
+            "execution_metadata": {key: value for key, value in self.execution_metadata},
             "source_digest": self.source_digest,
             "rendered_text": self.rendered_text,
             "derived": True,

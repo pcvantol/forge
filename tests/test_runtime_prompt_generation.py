@@ -73,6 +73,12 @@ class RuntimePromptGenerationTests(unittest.TestCase):
         self.assertTrue(prompt.to_dict()["derived"])
         self.assertTrue(prompt.to_dict()["transient"])
         self.assertEqual(prompt.provider_definition.id, "provider-definition")
+        document = prompt.to_dict()
+        self.assertEqual(document["producer"]["type"], "FORGE")
+        self.assertTrue(document["correlation_id"])
+        self.assertEqual(document["source_action"]["id"], "runtime-prompt-action")
+        self.assertEqual(document["execution_constraints"], ["Do not execute the Runtime Prompt."])
+        self.assertTrue(document["execution_metadata"])
         with self.assertRaises(FrozenInstanceError):
             prompt.id = "changed"  # type: ignore[misc]
 

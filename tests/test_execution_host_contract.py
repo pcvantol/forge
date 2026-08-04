@@ -15,6 +15,9 @@ from forge.models import (
     ExecutionHostResponsibility,
     ExecutionRepositoryEvidence,
     ExecutionRequest,
+    ProducerContract,
+    ProducerIdentity,
+    ProducerType,
     ProviderPromptDefinition,
     RuntimePrompt,
     RuntimePromptSection,
@@ -66,7 +69,18 @@ class ExecutionHostContractTests(unittest.TestCase):
         }.issubset(set(contract.forbidden_responsibilities)))
 
     def test_request_binds_mission_intent_action_prompt_and_retry_identity(self) -> None:
-        self.assertEqual(request().runtime_prompt.source_action_id, "action-1")
+        issued = request()
+        self.assertEqual(issued.runtime_prompt.source_action_id, "action-1")
+        self.assertIsInstance(issued.producer_contract, ProducerContract)
+        self.assertEqual(issued.producer_contract.producer.identity.type, "FORGE")
+        self.assertEqual(issued.producer_contract.correlation_id, "correlation-1")
+        human_prompt = RuntimePrompt(
+            "prompt-2", "intent-1", "1", "action-1", ProviderPromptDefinition("provider", "1"),
+            "sha256:" + "c" * 64,
+            tuple(RuntimePromptSection(kind, (kind.value,)) for kind in RuntimePromptSectionKind),
+            producer_identity=ProducerIdentity("architect-1", ProducerType.HUMAN, "1"),
+        )
+        self.assertEqual(request(runtime_prompt=human_prompt).producer_contract.producer.identity.type, "HUMAN")
         with self.assertRaisesRegex(ValueError, "Runtime Prompt"):
             request(action_id="other")
         with self.assertRaisesRegex(ValueError, "own correlation"):
@@ -81,6 +95,10 @@ class ExecutionHostContractTests(unittest.TestCase):
     def test_dispatch_requires_a_host_run_identity(self) -> None:
         with self.assertRaisesRegex(ValueError, "host run"):
             ExecutionDispatch(request(), "")
+
+    def test_contract_model_does_not_depend_on_a_renderer(self) -> None:
+        import forge.models.execution_host as boundary
+        self.assertNotIn("codex_runtime_prompt", boundary.__dict__)
 
 
 if __name__ == "__main__":

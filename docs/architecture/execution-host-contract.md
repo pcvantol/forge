@@ -1,11 +1,12 @@
-# Execution Host Contract 2.4
+# Execution Host Contract 3.0
 
 ## Purpose
 
 An **Execution Host** is a replaceable operational implementation that
 performs bounded engineering execution after Forge has completed its reasoning.
-Forge owns engineering reasoning; an Execution Host owns execution operations
-and returns evidence. Forge interprets that evidence against its Constitution,
+Forge owns the Producer Contract and engineering reasoning; an Execution Host
+consumes that Producer Contract, owns execution operations, and returns
+evidence. Forge interprets that evidence against its Constitution,
 Architecture, Mission, Engineering Intent, and Engineering Action.
 
 This contract establishes an abstraction only. It does not implement an
@@ -23,9 +24,9 @@ The canonical sequence is the [Runtime Evolution Roadmap](runtime-evolution-road
 ## Canonical execution contract
 
 ```text
-Engineering Intent
-  → Engineering Action
-  → Runtime Prompt
+Mission
+  → Producer
+  → Producer Contract / Runtime Prompt
   → Execution Host
   → Execution Runtime
   → Repository
@@ -42,7 +43,7 @@ the prompt as an execution artifact, rather than as architecture or authority.
 
 | Execution Host owns | Execution Host never owns |
 | --- | --- |
-| Execution; prompt delivery; runtime invocation; checkpoints; reports; logs; observability; retries; cleanup; qualification; execution evidence. | Architecture; engineering knowledge; Engineering Intent; roadmap; capability evolution; governance; Agent Role selection; Model Profile selection; Reasoning Profile selection; Execution Host selection. |
+| Execution; execution receipts; prompt delivery; runtime invocation; checkpoints; reports; logs; observability; retries; cleanup; qualification; execution evidence. | Mission Planning; Business Governance; Architecture Governance; Producer implementation; Forge implementation; architecture; engineering knowledge; Engineering Intent; roadmap; capability evolution; governance; Agent Role selection; Model Profile selection; Reasoning Profile selection; Execution Host selection. |
 
 A Host may report execution outcomes and repository observations. It must not
 interpret evidence as architectural truth, change an Action or Intent, approve
@@ -65,11 +66,13 @@ host qualification or execution telemetry.
 
 ## Dispatch and evidence correlation
 
-The typed boundary consists of `ExecutionRequest`, `ExecutionDispatch`,
-`ExecutionHostEvidence`, and the `ExecutionHost` protocol. A request carries
-the requested host, Mission, Intent revision, Engineering Action, Runtime
-Prompt, workspace, repository, correlation identity, dispatch timestamp, and
-optional retry predecessor. Dispatch returns the immutable host run identifier.
+The typed boundary consists of `ProducerContract`, `ExecutionRequest`,
+`ExecutionDispatch`, `ExecutionHostEvidence`, and the `ExecutionHost` protocol.
+A request carries the Host routing and a canonical Producer Contract containing
+Producer identity, Runtime Prompt, constraints, metadata, Mission (when
+applicable), Action, and correlation. Dispatch returns the immutable
+host-issued run identifier. Producer identity is traceability only and never
+alters execution semantics.
 
 Dispatch is correlation-idempotent. `recover_dispatch(request)` returns the
 original immutable acknowledgement for an accepted request correlation, or

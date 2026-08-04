@@ -9,17 +9,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
+from typing import Any, Protocol
 
-from .codex_runtime_prompt import CodexCliRuntimePrompt
-from .runtime_prompt import RuntimePrompt
+from .producer import DEFAULT_FORGE_PRODUCER, Producer, ProducerContract, RuntimePromptEnvelope
 
 
-EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "2.4"
+EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "3.0"
 
 
 class ExecutionHostResponsibility(str, Enum):
     EXECUTION = "execution"
+    EXECUTION_RECEIPTS = "execution_receipts"
     PROMPT_DELIVERY = "prompt_delivery"
     RUNTIME_INVOCATION = "runtime_invocation"
     CHECKPOINTS = "checkpoints"
@@ -33,6 +33,11 @@ class ExecutionHostResponsibility(str, Enum):
 
 
 class ExecutionHostForbiddenResponsibility(str, Enum):
+    MISSION_PLANNING = "mission_planning"
+    BUSINESS_GOVERNANCE = "business_governance"
+    ARCHITECTURE_GOVERNANCE = "architecture_governance"
+    PRODUCER_IMPLEMENTATION = "producer_implementation"
+    FORGE_IMPLEMENTATION = "forge_implementation"
     ARCHITECTURE = "architecture"
     ENGINEERING_KNOWLEDGE = "engineering_knowledge"
     ENGINEERING_INTENT = "engineering_intent"
@@ -91,20 +96,21 @@ class ExecutionHostContract:
 
 @dataclass(frozen=True)
 class ExecutionRequest:
-    """One exact Forge-to-host dispatch request and its correlation identity."""
+    """One exact Producer-to-host request.  Hosts consume its Producer Contract."""
 
     host_id: str
     mission_id: str
     intent_id: str
     intent_revision: str
     action_id: str
-    runtime_prompt: RuntimePrompt | CodexCliRuntimePrompt
+    runtime_prompt: Any
     workspace_id: str
     repository_id: str
     correlation_id: str
     dispatched_at: str
     retry_of_correlation_id: str | None = None
     original_correlation_id: str | None = None
+    producer_contract: ProducerContract | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.mission_id, self.intent_id, self.intent_revision,
@@ -112,13 +118,9 @@ class ExecutionRequest:
                     self.correlation_id, self.dispatched_at)):
             raise ValueError("execution request identity, context, correlation, and dispatch time are required")
         prompt_identity = (
-            self.runtime_prompt.source_intent_id,
-            self.runtime_prompt.source_intent_revision,
-            self.runtime_prompt.source_action_id,
-        ) if isinstance(self.runtime_prompt, RuntimePrompt) else (
-            self.runtime_prompt.intent_id,
-            self.runtime_prompt.intent_revision,
-            self.runtime_prompt.action_id,
+            getattr(self.runtime_prompt, "source_intent_id", getattr(self.runtime_prompt, "intent_id", None)),
+            getattr(self.runtime_prompt, "source_intent_revision", getattr(self.runtime_prompt, "intent_revision", None)),
+            getattr(self.runtime_prompt, "source_action_id", getattr(self.runtime_prompt, "action_id", None)),
         )
         if prompt_identity != (self.intent_id, self.intent_revision, self.action_id):
             raise ValueError("execution request Runtime Prompt must match its Intent and Action")
@@ -130,6 +132,49 @@ class ExecutionRequest:
             object.__setattr__(self, "original_correlation_id", self.retry_of_correlation_id)
         if self.original_correlation_id and not self.retry_of_correlation_id:
             raise ValueError("execution request original correlation requires a retry predecessor")
+        contract = self.producer_contract or self._default_producer_contract()
+        if (contract.correlation_id, contract.mission_id, contract.engineering_action_id) != (
+            self.correlation_id, self.mission_id, self.action_id,
+        ):
+            raise ValueError("execution request Producer Contract must match its mission, action, and correlation")
+        if contract.runtime_prompt.id != getattr(self.runtime_prompt, "id", None):
+            raise ValueError("execution request Producer Contract must match its Runtime Prompt")
+        object.__setattr__(self, "producer_contract", contract)
+
+    def _default_producer_contract(self) -> ProducerContract:
+        """Bridge legacy in-process prompt objects into the canonical envelope."""
+        content = getattr(self.runtime_prompt, "rendered_text", None)
+        if content is None:
+            content = self.runtime_prompt.to_markdown()
+        digest = getattr(self.runtime_prompt, "source_digest", None) or getattr(
+            self.runtime_prompt, "generation_request_digest", None
+        )
+        constraints = tuple(getattr(self.runtime_prompt, "constraints", ()))
+        if not constraints:
+            constraints = tuple(self.runtime_prompt.to_dict().get("execution_constraints", ()))
+        constraints = constraints or ("Execute only the supplied Runtime Prompt.",)
+        prompt_producer = getattr(self.runtime_prompt, "producer_identity", DEFAULT_FORGE_PRODUCER.identity)
+        metadata = tuple(getattr(self.runtime_prompt, "execution_metadata", ())) + (
+            ("intent_id", self.intent_id),
+            ("intent_revision", self.intent_revision),
+            ("repository_id", self.repository_id),
+            ("workspace_id", self.workspace_id),
+        )
+        return ProducerContract(
+            producer=Producer(prompt_producer),
+            correlation_id=self.correlation_id,
+            mission_id=self.mission_id,
+            engineering_action_id=self.action_id,
+            runtime_prompt=RuntimePromptEnvelope(
+                id=str(getattr(self.runtime_prompt, "id")),
+                version=str(getattr(self.runtime_prompt, "schema_version", "1.0")),
+                format="text/markdown",
+                content=content,
+                content_digest=str(digest),
+            ),
+            execution_constraints=constraints,
+            execution_metadata=metadata,
+        )
 
 
 @dataclass(frozen=True)

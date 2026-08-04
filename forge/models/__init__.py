@@ -244,6 +244,16 @@ from .execution_host import (
     ExecutionRequest,
     ExecutionHost,
 )
+from .producer import (
+    PRODUCER_CONTRACT_VERSION,
+    DEFAULT_FORGE_PRODUCER,
+    ExecutionReceiptReference,
+    Producer,
+    ProducerContract,
+    ProducerIdentity,
+    ProducerType,
+    RuntimePromptEnvelope,
+)
 from .agent_policy import (
     AGENT_ROLE_POLICY_SCHEMA_VERSION,
     AGENT_ROLE_POLICY_VERSION,
@@ -474,6 +484,14 @@ __all__ = [
     "ExecutionHostResponsibility",
     "ExecutionRepositoryEvidence",
     "ExecutionRequest",
+    "PRODUCER_CONTRACT_VERSION",
+    "DEFAULT_FORGE_PRODUCER",
+    "ExecutionReceiptReference",
+    "Producer",
+    "ProducerContract",
+    "ProducerIdentity",
+    "ProducerType",
+    "RuntimePromptEnvelope",
     "ENGINEERING_MISSION_SCHEMA_VERSION",
     "EngineeringMission",
     "MissionCompletion",

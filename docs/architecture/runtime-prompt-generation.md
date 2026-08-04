@@ -74,6 +74,14 @@ An Execution Host remains responsible for execution and evidence collection.
 Engineering Platform 1.5 remains the temporary external execution host during
 Forge bootstrap. This contract neither imports nor replaces it.
 
+## Producer Contract compatibility
+
+Every Runtime Prompt now carries immutable Producer identity, correlation ID,
+optional Mission ID, Engineering Action identity, execution constraints, and
+execution metadata. Before dispatch, Forge presents these fields through the
+canonical [Producer Contract](producer-contract.md). The Host consumes the
+envelope without depending on a Forge renderer, planner, or provider.
+
 ## Provider independence
 
 The same released Engineering Action and declared context should eventually
