@@ -6,6 +6,7 @@ boundary: only immutable execution-reference identities are retained here.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .database import RuntimeDatabase, RuntimeDatabaseError
@@ -48,17 +49,39 @@ class RuntimeEvidence:
         recommendations = self._documents("mission_recommendations", "mission_id", mission_id)
         decisions = self._documents("decision_evidence", "mission_id", mission_id)
         references = self.execution_references(mission_id)
-        complete = state.get("status") == "COMPLETED" and bool(references) and bool(reviews)
+        lifecycle = self._lifecycle(mission_id)
+        successful_references = tuple(reference for reference in references if reference["outcome"] == "complete")
+        decision_references = {
+            reference["artifact_id"]
+            for decision in decisions for reference in decision.get("execution_evidence_references", ())
+            if isinstance(reference, dict) and isinstance(reference.get("artifact_id"), str)
+        }
+        completed = state.get("status") == "COMPLETED" and state.get("completion") is not None
+        has_timestamps = bool({"ACTIVATED", "COMPLETED"} <= {item["lifecycle"] for item in lifecycle})
+        complete = (completed and has_timestamps and len(successful_references) == 1 and len(reviews) >= 1
+                    and len(recommendations) >= 1 and len(decisions) >= 1
+                    and successful_references[0]["reference_id"] in decision_references)
         return {
             "mission_id": mission_id, "mission_state": state, "architecture_reviews": reviews,
             "mission_recommendations": recommendations, "decision_evidence": decisions,
-            "execution_references": references, "qualified": complete,
+            "execution_references": references, "mission_lifecycle": lifecycle, "qualified": complete,
             "ownership": {"runtime_state": "forge_runtime_database", "execution_evidence": "execution_host", "architecture": "repository_truth"},
         }
 
     def bootstrap_qualification(self, mission_ids: tuple[str, ...]) -> dict[str, Any]:
         missions = tuple(self.mission_qualification(identifier) for identifier in mission_ids)
-        return {"mission_ids": mission_ids, "missions": missions, "qualified": bool(missions) and all(item["qualified"] for item in missions),
+        dispatcher = self._database._connection.execute("SELECT status, active_mission_id, mission_sequence FROM dispatcher_state WHERE singleton = 1").fetchone()
+        sequence_matches = dispatcher is not None and tuple(json.loads(dispatcher["mission_sequence"])) == mission_ids
+        idle = dispatcher is not None and dispatcher["status"] == "IDLE" and dispatcher["active_mission_id"] is None
+        lifecycle = tuple(
+            (row["mission_id"], row["lifecycle"])
+            for row in self._database._connection.execute(
+                "SELECT mission_id, lifecycle FROM mission_lifecycle_events ORDER BY mission_id, sequence"
+            )
+        )
+        expected_lifecycle = tuple(item for mission_id in mission_ids for item in ((mission_id, "ACTIVATED"), (mission_id, "COMPLETED")))
+        return {"mission_ids": mission_ids, "missions": missions, "dispatcher_status": None if dispatcher is None else dispatcher["status"],
+                "qualified": bool(missions) and all(item["qualified"] for item in missions) and sequence_matches and idle and lifecycle == expected_lifecycle,
                 "source": "runtime_database"}
 
     def architecture_review_report(self, review_id: str) -> dict[str, Any]:
@@ -89,5 +112,10 @@ class RuntimeEvidence:
         rows = self._database._connection.execute(
             f"SELECT document FROM {table} WHERE {column} = ? ORDER BY {keys[table]}", (value,)
         ).fetchall()
-        import json
         return tuple(json.loads(row["document"]) for row in rows)
+
+    def _lifecycle(self, mission_id: str) -> tuple[dict[str, str], ...]:
+        rows = self._database._connection.execute(
+            "SELECT lifecycle, occurred_at FROM mission_lifecycle_events WHERE mission_id = ? ORDER BY sequence", (mission_id,)
+        ).fetchall()
+        return tuple(dict(row) for row in rows)

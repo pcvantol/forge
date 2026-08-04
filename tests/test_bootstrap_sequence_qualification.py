@@ -90,15 +90,15 @@ class BootstrapSequenceQualificationTests(unittest.TestCase):
             self.assertEqual(len(source.receipts), 5)
             self.assertEqual(len({item["execution_references"][0]["execution_run_id"] for item in evidence["missions"]}), 5)
 
-    def test_fabricated_completed_state_without_host_receipt_is_rejected(self) -> None:
+    def test_json_evidence_cache_is_ignored_by_runtime_database_qualification(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "bootstrap-sequence-evidence.json").write_text(json.dumps({
                 "mission_sequence": list(BOOTSTRAP_MISSION_SEQUENCE), "dispatcher_status": "IDLE",
                 "missions": [{"mission_id": identifier, "completion_outcome": "COMPLETED", "execution_evidence": {}, "execution_lineage": []} for identifier in BOOTSTRAP_MISSION_SEQUENCE],
             }), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "host-issued"):
-                run_bootstrap_sequence_qualification(root, HostIssuedEvidenceSource())
+            report = run_bootstrap_sequence_qualification(root, HostIssuedEvidenceSource())
+            self.assertEqual(report.answer, "YES")
 
 
 if __name__ == "__main__":

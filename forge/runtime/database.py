@@ -15,14 +15,15 @@ import sqlite3
 from typing import Any, Mapping
 
 
-RUNTIME_SCHEMA_VERSION = 1
+RUNTIME_SCHEMA_VERSION = 2
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
 ))
 _TABLES = frozenset((
     "mission_state", "architecture_reviews", "mission_recommendations",
-    "decision_evidence", "execution_references", "runtime_metadata",
+    "decision_evidence", "execution_references", "mission_lifecycle_events",
+    "dispatcher_state", "runtime_metadata",
 ))
 
 
@@ -132,6 +133,21 @@ class RuntimeDatabase:
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id),
                         FOREIGN KEY (review_id) REFERENCES architecture_reviews(review_id)
                     );
+                    CREATE TABLE mission_lifecycle_events (
+                        mission_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+                        lifecycle TEXT NOT NULL, occurred_at TEXT NOT NULL,
+                        PRIMARY KEY (mission_id, sequence),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TRIGGER mission_lifecycle_events_immutable_update BEFORE UPDATE ON mission_lifecycle_events
+                    BEGIN SELECT RAISE(ABORT, 'mission lifecycle events are immutable'); END;
+                    CREATE TRIGGER mission_lifecycle_events_immutable_delete BEFORE DELETE ON mission_lifecycle_events
+                    BEGIN SELECT RAISE(ABORT, 'mission lifecycle events are immutable'); END;
+                    CREATE TABLE dispatcher_state (
+                        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                        status TEXT NOT NULL, active_mission_id TEXT,
+                        mission_sequence TEXT NOT NULL, document TEXT NOT NULL
+                    );
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_delete BEFORE DELETE ON architecture_reviews
@@ -153,6 +169,27 @@ class RuntimeDatabase:
                     "last_migration": str(RUNTIME_SCHEMA_VERSION),
                     "integrity_status": "valid",
                 })
+                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+        elif version == 1:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE mission_lifecycle_events (
+                        mission_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+                        lifecycle TEXT NOT NULL, occurred_at TEXT NOT NULL,
+                        PRIMARY KEY (mission_id, sequence),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TRIGGER mission_lifecycle_events_immutable_update BEFORE UPDATE ON mission_lifecycle_events
+                    BEGIN SELECT RAISE(ABORT, 'mission lifecycle events are immutable'); END;
+                    CREATE TRIGGER mission_lifecycle_events_immutable_delete BEFORE DELETE ON mission_lifecycle_events
+                    BEGIN SELECT RAISE(ABORT, 'mission lifecycle events are immutable'); END;
+                    CREATE TABLE dispatcher_state (
+                        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                        status TEXT NOT NULL, active_mission_id TEXT,
+                        mission_sequence TEXT NOT NULL, document TEXT NOT NULL
+                    );
+                """)
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
                 self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
@@ -222,6 +259,30 @@ class RuntimeDatabase:
                 self._dump(document.get("resume", document.get("resume_point", {}))), self._dump(document.get("execution_policy")), self._dump(document),
             ))
         return document
+
+    def record_mission_lifecycle(self, mission_id: str, lifecycle: str, occurred_at: str) -> None:
+        """Append the operational lifecycle used by qualification; it cannot be rewritten."""
+        if not all(isinstance(value, str) and value for value in (mission_id, lifecycle, occurred_at)):
+            raise RuntimeDatabaseError("mission lifecycle requires identity, state, and timestamp")
+        with self._connection:
+            sequence = self._connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM mission_lifecycle_events WHERE mission_id = ?", (mission_id,)
+            ).fetchone()[0]
+            self._connection.execute("INSERT INTO mission_lifecycle_events VALUES (?, ?, ?, ?)", (mission_id, sequence, lifecycle, occurred_at))
+
+    def save_dispatcher_state(self, *, status: str, mission_sequence: tuple[str, ...],
+                              active_mission_id: str | None = None) -> None:
+        """Persist dispatcher terminal/sequencing authority in the Runtime Database."""
+        if status not in {"ACTIVE", "IDLE"} or not mission_sequence:
+            raise RuntimeDatabaseError("dispatcher state requires a status and mission sequence")
+        if status == "IDLE" and active_mission_id is not None:
+            raise RuntimeDatabaseError("idle dispatcher cannot retain an active Mission")
+        document = {"status": status, "active_mission_id": active_mission_id, "mission_sequence": list(mission_sequence)}
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO dispatcher_state VALUES (1, ?, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET status=excluded.status, active_mission_id=excluded.active_mission_id, mission_sequence=excluded.mission_sequence, document=excluded.document",
+                (status, active_mission_id, self._dump(mission_sequence), self._dump(document)),
+            )
 
     def record_architecture_review(self, review: Any, *, timestamp: str | None = None) -> dict[str, Any]:
         document = _document(review, "architecture review")
