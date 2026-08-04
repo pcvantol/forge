@@ -8,10 +8,10 @@ the Engineering Platform Execution Host retains its own independent Execution
 Database.
 
 Forge owns Mission State, Architecture Reviews, Mission Recommendations,
-Decision Evidence, and planning runtime state. The database contains only
-references to execution: Execution Host, run ID, correlation, timestamp, and
-outcome. It never copies Execution Evidence, reports, telemetry, logs, or
-host credentials.
+Decision Evidence, Execution Receipts, and Planning State. It records only
+execution receipt identity: Execution Host, run ID, Engineering Report ID,
+correlation identity, timestamp, and outcome. It never copies Execution
+Evidence, reports, telemetry, logs, or host credentials.
 
 ## Schema and migration
 
@@ -24,10 +24,12 @@ SQLite integrity check, or invalid foreign reference.
 
 The initial extensible schema contains exactly the runtime foundations:
 `mission_state`, `architecture_reviews`, `mission_recommendations`,
-`decision_evidence`, `execution_references`, and `runtime_metadata`.
+`decision_evidence`, `execution_receipts`, `planning_state`, and
+`runtime_metadata`. The version 4 migration replaces legacy execution
+references with immutable Execution Receipts and preserves their identifiers.
 
-Architecture Reviews, Mission Recommendations, and Decision Evidence are
-immutable. Mission State is the durable restart point and records lifecycle,
+Architecture Reviews, Mission Recommendations, Decision Evidence, and
+Execution Receipts are immutable. Mission State is the durable restart point and records lifecycle,
 current Engineering Intent and Action, progress, resume point, execution
 policy, and current status.
 
@@ -35,10 +37,17 @@ policy, and current status.
 
 ```text
 Repository Truth ── architectural evidence ──> Forge Runtime Database
-Execution Host ── execution references only ──> Forge Runtime Database
-Forge Runtime Database ── Mission / Review / Recommendation / Decision state
+Execution Host ── immutable execution receipts only ──> Forge Runtime Database
+Forge Runtime Database ── Mission / Planning / Review / Recommendation / Decision state
 ```
 
 Decision Evidence links the Mission, Architecture Review, alternatives,
-reasoning, confidence, and execution references without taking ownership of
+reasoning, confidence, and execution receipts without taking ownership of
 either Repository Truth or Execution Evidence.
+
+Planning State is a singleton mutable planner snapshot with planner version,
+current queue, pending and blocked Engineering Actions, execution policy, and
+planner runtime metadata. It is not dispatcher state. Bootstrap Qualification
+consumes this database boundary, while the Business Workspace, Architecture
+Workspace, Mission Planner, and Repository Truth retain their existing
+separate responsibilities.

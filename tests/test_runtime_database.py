@@ -30,13 +30,13 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         self.database.validate_integrity()
 
-    def test_mission_review_recommendation_decision_and_execution_reference_persist(self) -> None:
+    def test_mission_review_recommendation_decision_and_execution_receipt_persist(self) -> None:
         self.database.save_mission_state(self._mission())
         self.database.record_architecture_review(self._review())
-        recommendation = {"id": "recommendation-1", "architecture_review_id": "review-1", "confidence": {"score": 80}, "dependencies": {}, "required_disciplines": ["engineering"], "recommendation_timestamp": "2026-08-04T00:00:00Z"}
+        recommendation = {"id": "recommendation-1", "architecture_review_id": "review-1", "priority": "high", "confidence": {"score": 80}, "dependencies": {}, "required_disciplines": ["engineering"], "recommendation_timestamp": "2026-08-04T00:00:00Z"}
         self.database.record_mission_recommendation(recommendation, mission_id="mission-1")
-        self.database.record_execution_reference(reference_id="execution-1", mission_id="mission-1", execution_host="engineering-platform", execution_run_id="run-1", correlation="correlation-1", executed_at="2026-08-04T00:00:00Z", outcome="complete")
-        decision = {"id": "decision-1", "decision_type": "mission_planning", "mission_context": {"artifact_id": "mission-1"}, "repository_context": {"artifact_id": "repository-truth-1"}, "reasoning_summary": "bounded", "evidence_references": [], "alternatives_considered": [], "confidence": {"score": 80, "architecture_review": {"artifact_id": "review-1"}, "mission_state": {"artifact_id": "mission-1"}}, "execution_evidence_references": [{"artifact_id": "execution-1"}], "timestamp": "2026-08-04T00:00:00Z"}
+        self.database.record_execution_receipt(receipt_id="execution-1", mission_id="mission-1", execution_host="engineering-platform", execution_run_id="run-1", engineering_report_id="report-1", correlation_identity="correlation-1", executed_at="2026-08-04T00:00:00Z", outcome="complete")
+        decision = {"id": "decision-1", "decision_type": "mission_planning", "mission_context": {"artifact_id": "mission-1"}, "repository_context": {"artifact_id": "repository-truth-1"}, "reasoning_summary": "bounded", "evidence_references": [], "alternatives_considered": [], "confidence": {"score": 80, "architecture_review": {"artifact_id": "review-1"}, "mission_state": {"artifact_id": "mission-1"}}, "execution_receipt_references": [{"artifact_id": "execution-1"}], "timestamp": "2026-08-04T00:00:00Z"}
         self.database.record_decision_evidence(decision)
         self.assertEqual(self.database.get_document("mission_state", "mission-1")["status"], "READY")
         self.assertEqual(self.database.get_document("architecture_reviews", "review-1")["id"], "review-1")
@@ -49,7 +49,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.database = RuntimeDatabase(self.root, forge_version="test")
         self.assertEqual(self.database.get_document("mission_state", "mission-1")["mission_id"], "mission-1")
         with self.assertRaises(sqlite3.IntegrityError):
-            self.database.record_execution_reference(reference_id="bad", mission_id="missing", execution_host="host", execution_run_id="run", correlation="correlation", executed_at="now", outcome="failed")
+            self.database.record_execution_receipt(receipt_id="bad", mission_id="missing", execution_host="host", execution_run_id="run", engineering_report_id="report", correlation_identity="correlation", executed_at="now", outcome="failed")
 
     def test_newer_schema_and_missing_metadata_are_rejected(self) -> None:
         self.database.close()
@@ -59,14 +59,44 @@ class RuntimeDatabaseTests(unittest.TestCase):
         with self.assertRaises(RuntimeIntegrityError):
             RuntimeDatabase(self.root)
 
-    def test_decision_requires_a_persisted_execution_reference(self) -> None:
+    def test_version_three_execution_references_migrate_to_immutable_receipts(self) -> None:
+        self.database.close()
+        connection = sqlite3.connect(self.root / ".forge" / "runtime.db")
+        connection.execute("DROP TRIGGER execution_receipts_immutable_update")
+        connection.execute("DROP TRIGGER execution_receipts_immutable_delete")
+        connection.execute("DROP TABLE execution_receipts")
+        connection.execute("CREATE TABLE execution_references (reference_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL, execution_host TEXT NOT NULL, execution_run_id TEXT NOT NULL, correlation TEXT NOT NULL, executed_at TEXT NOT NULL, outcome TEXT NOT NULL, FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id), UNIQUE (execution_host, execution_run_id, correlation))")
+        connection.execute("ALTER TABLE decision_evidence RENAME COLUMN execution_receipts TO execution_references")
+        connection.execute("UPDATE runtime_metadata SET value='3' WHERE key IN ('schema_version', 'migration_version', 'last_migration')")
+        connection.execute("PRAGMA user_version=3")
+        connection.commit(); connection.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        tables = {row[0] for row in self.database._connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertIn("execution_receipts", tables)
+        self.assertNotIn("execution_references", tables)
+        self.database.validate_integrity()
+
+    def test_decision_requires_a_persisted_execution_receipt(self) -> None:
         self.database.save_mission_state(self._mission())
         self.database.record_architecture_review(self._review())
-        decision = {"id": "decision-1", "mission_context": {"artifact_id": "mission-1"}, "repository_context": {"artifact_id": "repository-truth-1"},
+        decision = {"id": "decision-1", "decision_type": "mission_planning", "reasoning_summary": "bounded", "evidence_references": [], "alternatives_considered": [], "timestamp": "2026-08-04T00:00:00Z", "mission_context": {"artifact_id": "mission-1"}, "repository_context": {"artifact_id": "repository-truth-1"},
                     "confidence": {"architecture_review": {"artifact_id": "review-1"}, "mission_state": {"artifact_id": "mission-1"}},
-                    "execution_evidence_references": [{"artifact_id": "missing"}]}
-        with self.assertRaisesRegex(Exception, "execution reference"):
+                    "execution_receipt_references": [{"artifact_id": "missing"}]}
+        with self.assertRaisesRegex(Exception, "execution receipt"):
             self.database.record_decision_evidence(decision)
+
+    def test_planning_state_is_durable_and_required_fields_fail_closed(self) -> None:
+        state = {"planner_version": "1", "current_queue": ["mission-1"], "pending_engineering_actions": ["action-1"], "blocked_engineering_actions": [], "execution_policy": {"mode": "local"}, "planner_runtime_metadata": {"revision": 1}}
+        self.database.save_planning_state(state)
+        self.assertEqual(self.database.get_document("planning_state", "1"), state)
+        with self.assertRaises(RuntimeError):
+            self.database.save_planning_state({"planner_version": "1"})
+
+    def test_execution_receipts_are_immutable(self) -> None:
+        self.database.save_mission_state(self._mission())
+        self.database.record_execution_receipt(receipt_id="receipt-1", mission_id="mission-1", execution_host="host", execution_run_id="run", engineering_report_id="report", correlation_identity="correlation", executed_at="2026-08-04T00:00:00Z", outcome="complete")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute("UPDATE execution_receipts SET outcome='failed' WHERE receipt_id='receipt-1'")
 
     def test_delegation_request_is_durable_and_mission_scoped(self) -> None:
         self.database.save_mission_state(self._mission())

@@ -11,12 +11,12 @@ control.
 
 | Owner | Canonical artefacts |
 | --- | --- |
-| Forge Runtime Database | Mission State, Planning State, Architecture Reviews, Mission Recommendations, Decision Evidence |
+| Forge Runtime Database | Mission State, Planning State, Architecture Reviews, Mission Recommendations, Decision Evidence, Execution Receipts |
 | Repository Truth | architectural source material and evidence references |
 | Engineering Platform Execution Database | execution runtime, execution evidence, reports, telemetry |
 
-Execution references record only host, run ID, correlation, timestamp, and
-outcome. This preserves loose coupling and prevents Forge from duplicating
+Execution Receipts record only host, run ID, Engineering Report ID, correlation
+identity, timestamp, and outcome. This preserves loose coupling and prevents Forge from duplicating
 Engineering Platform evidence.
 
 ## Safety decision
@@ -24,5 +24,5 @@ Engineering Platform evidence.
 Startup performs deterministic migration and fails closed if the schema is
 newer than supported, metadata/version values disagree, a required table or
 metadata field is absent, SQLite integrity fails, or any mission, review, or
-stored execution reference is invalid. Architecture Reviews, Mission
-Recommendations, and Decision Evidence are append-only immutable records.
+stored execution receipt is invalid. Architecture Reviews, Mission
+Recommendations, Decision Evidence, and Execution Receipts are append-only immutable records.

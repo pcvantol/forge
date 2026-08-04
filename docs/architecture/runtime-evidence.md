@@ -2,14 +2,14 @@
 
 Forge Runtime Database is the canonical operational authority for Mission
 State, Architecture Reviews, Mission Recommendations, Decision Evidence,
-Execution References, and planning state. `RuntimeEvidence` is the only query
+Execution Receipts, and Planning State. `RuntimeEvidence` is the only query
 and projection boundary for runtime qualification, governance reports, and the
 Business and Architecture Workspace runtime views.
 
 The evidence chain is `Mission → Mission State → Decision Evidence → Execution
-Reference → Execution Host Evidence → Execution Report`. Forge retains the
-immutable execution reference only: host identity, run identifier, timestamp,
-outcome, and correlation. Engineering Platform retains all Execution Host
+Receipt → Execution Host Evidence → Execution Report`. Forge retains the
+immutable execution receipt only: host identity, run identifier, Engineering
+Report ID, timestamp, outcome, and correlation identity. Engineering Platform retains all Execution Host
 Evidence, reports, and telemetry. Repository Truth retains architecture.
 
 Bootstrap Qualification and Mission Qualification read Runtime Database

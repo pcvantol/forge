@@ -1,7 +1,7 @@
 """Read-only Runtime Database projections for Forge qualification and reports.
 
-Forge owns these projections.  Execution Host evidence remains outside this
-boundary: only immutable execution-reference identities are retained here.
+Forge owns these projections. Execution Host evidence remains outside this
+boundary: only immutable execution-receipt identities are retained here.
 """
 
 from __future__ import annotations
@@ -30,10 +30,13 @@ class RuntimeEvidence:
     def decision_evidence(self, decision_id: str) -> dict[str, Any]:
         return self._database.get_document("decision_evidence", decision_id)
 
-    def execution_references(self, mission_id: str) -> tuple[dict[str, str], ...]:
+    def planning_state(self) -> dict[str, Any]:
+        return self._database.get_document("planning_state", "1")
+
+    def execution_receipts(self, mission_id: str) -> tuple[dict[str, str], ...]:
         rows = self._database._connection.execute(
-            "SELECT reference_id, execution_host, execution_run_id, correlation, executed_at, outcome "
-            "FROM execution_references WHERE mission_id = ? ORDER BY executed_at, reference_id", (mission_id,)
+            "SELECT receipt_id, execution_host, execution_run_id, engineering_report_id, correlation_identity, executed_at, outcome "
+            "FROM execution_receipts WHERE mission_id = ? ORDER BY executed_at, receipt_id", (mission_id,)
         ).fetchall()
         return tuple(dict(row) for row in rows)
 
@@ -43,28 +46,28 @@ class RuntimeEvidence:
             state = self.mission_state(mission_id)
         except RuntimeDatabaseError:
             return {"mission_id": mission_id, "mission_state": None, "architecture_reviews": (),
-                    "mission_recommendations": (), "decision_evidence": (), "execution_references": (),
+                    "mission_recommendations": (), "decision_evidence": (), "execution_receipts": (),
                     "qualified": False, "ownership": {"runtime_state": "forge_runtime_database", "execution_evidence": "execution_host", "architecture": "repository_truth"}}
         reviews = self._documents("architecture_reviews", "mission_id", mission_id)
         recommendations = self._documents("mission_recommendations", "mission_id", mission_id)
         decisions = self._documents("decision_evidence", "mission_id", mission_id)
-        references = self.execution_references(mission_id)
+        receipts = self.execution_receipts(mission_id)
         lifecycle = self._lifecycle(mission_id)
-        successful_references = tuple(reference for reference in references if reference["outcome"] == "complete")
-        decision_references = {
+        successful_receipts = tuple(receipt for receipt in receipts if receipt["outcome"] == "complete")
+        decision_receipts = {
             reference["artifact_id"]
-            for decision in decisions for reference in decision.get("execution_evidence_references", ())
+            for decision in decisions for reference in decision.get("execution_receipt_references", ())
             if isinstance(reference, dict) and isinstance(reference.get("artifact_id"), str)
         }
         completed = state.get("status") == "COMPLETED" and state.get("completion") is not None
         has_timestamps = bool({"ACTIVATED", "COMPLETED"} <= {item["lifecycle"] for item in lifecycle})
-        complete = (completed and has_timestamps and len(successful_references) == 1 and len(reviews) >= 1
+        complete = (completed and has_timestamps and len(successful_receipts) == 1 and len(reviews) >= 1
                     and len(recommendations) >= 1 and len(decisions) >= 1
-                    and successful_references[0]["reference_id"] in decision_references)
+                    and successful_receipts[0]["receipt_id"] in decision_receipts)
         return {
             "mission_id": mission_id, "mission_state": state, "architecture_reviews": reviews,
             "mission_recommendations": recommendations, "decision_evidence": decisions,
-            "execution_references": references, "mission_lifecycle": lifecycle, "qualified": complete,
+            "execution_receipts": receipts, "mission_lifecycle": lifecycle, "qualified": complete,
             "ownership": {"runtime_state": "forge_runtime_database", "execution_evidence": "execution_host", "architecture": "repository_truth"},
         }
 
@@ -87,7 +90,7 @@ class RuntimeEvidence:
     def architecture_review_report(self, review_id: str) -> dict[str, Any]:
         review = self.architecture_review(review_id)
         return {"report": "architecture_review", "source": "runtime_database", "review": review,
-                "execution_references": self.execution_references(str(review["mission_id"]))}
+                "execution_receipts": self.execution_receipts(str(review["mission_id"]))}
 
     def mission_recommendation_report(self, recommendation_id: str) -> dict[str, Any]:
         recommendation = self.mission_recommendation(recommendation_id)
@@ -96,11 +99,11 @@ class RuntimeEvidence:
     def decision_evidence_report(self, decision_id: str) -> dict[str, Any]:
         decision = self.decision_evidence(decision_id)
         return {"report": "decision_evidence", "source": "runtime_database", "decision": decision,
-                "execution_references": self.execution_references(str(decision["mission_context"]["artifact_id"]))}
+                "execution_receipts": self.execution_receipts(str(decision["mission_context"]["artifact_id"]))}
 
     def business_workspace(self, mission_id: str) -> dict[str, Any]:
         evidence = self.mission_qualification(mission_id)
-        return {key: evidence[key] for key in ("mission_state", "mission_recommendations", "decision_evidence", "architecture_reviews", "execution_references")}
+        return {key: evidence[key] for key in ("mission_state", "mission_recommendations", "decision_evidence", "architecture_reviews", "execution_receipts")}
 
     def architecture_workspace(self, mission_id: str) -> dict[str, Any]:
         return self.business_workspace(mission_id)

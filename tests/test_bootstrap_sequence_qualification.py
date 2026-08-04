@@ -57,7 +57,7 @@ class BootstrapSequenceQualificationTests(unittest.TestCase):
             self.assertEqual(report.mission_ids, BOOTSTRAP_MISSION_SEQUENCE)
             self.assertEqual([item["mission_id"] for item in evidence["missions"]], list(BOOTSTRAP_MISSION_SEQUENCE))
             self.assertTrue(all(item["qualified"] for item in evidence["missions"]))
-            self.assertTrue(all(item["execution_references"] and item["architecture_reviews"] for item in evidence["missions"]))
+            self.assertTrue(all(item["execution_receipts"] and item["architecture_reviews"] for item in evidence["missions"]))
 
     def test_resume_is_idempotent_after_complete_persisted_qualification(self) -> None:
         with TemporaryDirectory() as directory:
@@ -88,7 +88,7 @@ class BootstrapSequenceQualificationTests(unittest.TestCase):
             self.assertEqual(report.dispatcher_status, "IDLE")
             self.assertEqual([item["mission_id"] for item in evidence["missions"]], list(BOOTSTRAP_MISSION_SEQUENCE))
             self.assertEqual(len(source.receipts), 5)
-            self.assertEqual(len({item["execution_references"][0]["execution_run_id"] for item in evidence["missions"]}), 5)
+            self.assertEqual(len({item["execution_receipts"][0]["execution_run_id"] for item in evidence["missions"]}), 5)
 
     def test_json_evidence_cache_is_ignored_by_runtime_database_qualification(self) -> None:
         with TemporaryDirectory() as directory:
