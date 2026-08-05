@@ -70,5 +70,8 @@ immutable Decision Evidence, Architecture Review, Mission Recommendation,
 Execution Receipt identity, Execution Host, Execution Run ID, lifecycle
 lineage, completion timestamp, and outcome. It also proves the terminal IDLE
 Dispatcher and empty approved queue. Qualification fails closed with exact
-missing Runtime Database evidence. A successful projection recommends
-**Portfolio Intelligence Foundation**; a failed projection recommends nothing.
+missing Runtime Database evidence. A successful projection recommends the
+required **Generation 1 Completion Record**; a failed projection recommends
+nothing. The portfolio and lifecycle ordering are read from the persistent
+Runtime Instance, never imported from dispatcher or repository mission
+definitions during qualification.

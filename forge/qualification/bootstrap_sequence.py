@@ -205,11 +205,11 @@ def run_bootstrap_sequence_qualification(root: Path, evidence_source: Engineerin
             for recommendation in recommendations[identifier]:
                 runtime.record_mission_recommendation(recommendation, mission_id=identifier)
             host_evidence = state.execution_evidence or {}
-            receipt_id = str(host_evidence["report_id"])
+            receipt_id = str(host_evidence["receipt_id"])
             runtime.record_execution_receipt(
                 receipt_id=receipt_id, mission_id=identifier,
                 execution_host=str(host_evidence["host_id"]), execution_run_id=str(host_evidence["host_run_id"]),
-                engineering_report_id=receipt_id, correlation_identity=str(host_evidence["correlation_id"]),
+                engineering_report_id=str(host_evidence["report_id"]), correlation_identity=str(host_evidence["correlation_id"]),
                 executed_at=str(host_evidence["execution_completed_at"]), outcome=str(host_evidence["outcome"]),
             )
             runtime.record_decision_evidence({

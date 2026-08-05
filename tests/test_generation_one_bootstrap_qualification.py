@@ -44,11 +44,22 @@ class GenerationOneBootstrapQualificationTests(unittest.TestCase):
             self.addCleanup(database.close)
             report = qualify_generation_one_bootstrap(database)
             self.assertEqual(report.answer, "YES")
-            self.assertEqual(report.recommended_next_increment, "Portfolio Intelligence Foundation")
+            self.assertEqual(report.recommended_next_increment, "Generation 1 Completion Record")
             self.assertEqual(report.projection["source"], "runtime_database")
             self.assertEqual(report.projection["dispatcher_status"], "IDLE")
             self.assertFalse(report.missing_runtime_evidence)
             self.assertEqual(len(source.receipts), 5)
+
+    def test_reads_the_portfolio_only_from_the_persisted_runtime_instance(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_bootstrap_sequence_qualification(root, _HostEvidence())
+            database = RuntimeDatabase(root)
+            self.addCleanup(database.close)
+            persisted = database.runtime_evidence().bootstrap_qualification()
+            self.assertEqual(persisted["mission_ids"], (
+                "MISSION-0001", "MISSION-0002", "MISSION-0003", "MISSION-0004", "MISSION-0005",
+            ))
 
     def test_fails_closed_with_exact_missing_runtime_evidence(self) -> None:
         with TemporaryDirectory() as directory:
@@ -57,7 +68,7 @@ class GenerationOneBootstrapQualificationTests(unittest.TestCase):
             report = qualify_generation_one_bootstrap(database)
             self.assertEqual(report.answer, "NO")
             self.assertIsNone(report.recommended_next_increment)
-            self.assertIn("MISSION-0001:mission_state", report.missing_runtime_evidence)
+            self.assertIn("dispatcher:bootstrap_fifo_sequence", report.missing_runtime_evidence)
             self.assertIn("dispatcher:idle", report.missing_runtime_evidence)
             self.assertIn("approved_mission_queue:empty", report.missing_runtime_evidence)
 

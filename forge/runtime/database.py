@@ -19,7 +19,7 @@ import uuid
 from .bootstrap import RuntimeIdentity, RuntimeResolver, canonical_repository_root, repository_identity
 
 
-RUNTIME_SCHEMA_VERSION = 7
+RUNTIME_SCHEMA_VERSION = 8
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -156,7 +156,7 @@ class RuntimeDatabase:
                         FOREIGN KEY (review_id) REFERENCES architecture_reviews(review_id)
                     );
                     CREATE TABLE mission_lifecycle_events (
-                        mission_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+                        mission_id TEXT NOT NULL, sequence INTEGER NOT NULL, transition_sequence INTEGER NOT NULL UNIQUE,
                         lifecycle TEXT NOT NULL, occurred_at TEXT NOT NULL,
                         PRIMARY KEY (mission_id, sequence),
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
@@ -315,8 +315,9 @@ class RuntimeDatabase:
                     CREATE TRIGGER execution_receipts_immutable_delete BEFORE DELETE ON execution_receipts
                     BEGIN SELECT RAISE(ABORT, 'execution receipts are immutable'); END;
                 """)
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1"})
-                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+                self._set_metadata({"schema_version": "7", "migration_version": "7", "last_migration": "7", "instance_version": "1"})
+                self._connection.execute("PRAGMA user_version=7")
+            self._migrate(forge_version)
         elif version == 4:
             with self._connection:
                 self._connection.executescript("""
@@ -325,8 +326,9 @@ class RuntimeDatabase:
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                 """)
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1"})
-                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+                self._set_metadata({"schema_version": "7", "migration_version": "7", "last_migration": "7", "instance_version": "1"})
+                self._connection.execute("PRAGMA user_version=7")
+            self._migrate(forge_version)
         elif version == 5:
             with self._connection:
                 self._connection.executescript("""
@@ -342,14 +344,25 @@ class RuntimeDatabase:
                     CREATE TRIGGER integration_evidence_immutable_delete BEFORE DELETE ON integration_evidence
                     BEGIN SELECT RAISE(ABORT, 'integration evidence is immutable'); END;
                 """)
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1"})
-                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+                self._set_metadata({"schema_version": "7", "migration_version": "7", "last_migration": "7", "instance_version": "1"})
+                self._connection.execute("PRAGMA user_version=7")
+            self._migrate(forge_version)
         elif version == 6:
             with self._connection:
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION),
-                                    "migration_version": str(RUNTIME_SCHEMA_VERSION),
-                                    "last_migration": str(RUNTIME_SCHEMA_VERSION),
+                self._set_metadata({"schema_version": "7",
+                                    "migration_version": "7",
+                                    "last_migration": "7",
                                     "instance_version": "1"})
+                self._connection.execute("PRAGMA user_version=7")
+            self._migrate(forge_version)
+        elif version == 7:
+            with self._connection:
+                columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(mission_lifecycle_events)")}
+                if "transition_sequence" not in columns:
+                    self._connection.execute("ALTER TABLE mission_lifecycle_events ADD COLUMN transition_sequence INTEGER")
+                self._connection.execute("UPDATE mission_lifecycle_events SET transition_sequence = rowid WHERE transition_sequence IS NULL")
+                self._connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS mission_lifecycle_events_transition_sequence ON mission_lifecycle_events(transition_sequence)")
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1"})
                 self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
@@ -422,6 +435,11 @@ class RuntimeDatabase:
             raise RuntimeIntegrityError("runtime identity is inconsistent")
         if self._connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
             raise RuntimeIntegrityError("runtime database foreign references are invalid")
+        transitions = tuple(row[0] for row in self._connection.execute(
+            "SELECT transition_sequence FROM mission_lifecycle_events ORDER BY transition_sequence"
+        ))
+        if transitions != tuple(range(1, len(transitions) + 1)):
+            raise RuntimeIntegrityError("mission lifecycle transition order is inconsistent")
         for row in self._connection.execute("SELECT decision_id, execution_receipts FROM decision_evidence"):
             try:
                 references = json.loads(row["execution_receipts"])
@@ -463,7 +481,13 @@ class RuntimeDatabase:
             sequence = self._connection.execute(
                 "SELECT COALESCE(MAX(sequence), 0) + 1 FROM mission_lifecycle_events WHERE mission_id = ?", (mission_id,)
             ).fetchone()[0]
-            self._connection.execute("INSERT INTO mission_lifecycle_events VALUES (?, ?, ?, ?)", (mission_id, sequence, lifecycle, occurred_at))
+            transition_sequence = self._connection.execute(
+                "SELECT COALESCE(MAX(transition_sequence), 0) + 1 FROM mission_lifecycle_events"
+            ).fetchone()[0]
+            self._connection.execute(
+                "INSERT INTO mission_lifecycle_events (mission_id, sequence, transition_sequence, lifecycle, occurred_at) VALUES (?, ?, ?, ?, ?)",
+                (mission_id, sequence, transition_sequence, lifecycle, occurred_at),
+            )
 
     def has_mission_lifecycle(self, mission_id: str, lifecycle: str) -> bool:
         """Return whether an immutable lifecycle event was already recorded."""

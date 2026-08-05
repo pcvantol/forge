@@ -16,7 +16,7 @@ qualification entry point.
 `forge.qualification.qualify_generation_one_bootstrap` is the Generation 1
 qualification entry point. It accepts an existing Runtime Database and produces
 a projection only from that database. It never reads Mission definitions or
-other repository source, creates operational state, constructs a dispatcher or
+other repository source, imports a dispatcher portfolio, creates operational state, constructs a dispatcher or
 workspace, resumes work, or interacts with Engineering Platform. Engineering
 Platform evidence remains external; Forge validates only the immutable receipt
 identity that references it.
@@ -36,4 +36,4 @@ or cached `YES` path.
 
 The persisted qualification is restart-safe. Reinvocation after a completed Runtime Database qualification returns the same result without another dispatch. The controlled interruption regression stops immediately after the first completed Mission has persisted its host receipt, review, recommendation, and decision evidence, restarts the stores and adapter, and proves the remaining FIFO sequence without a duplicate first action or completion. Runtime qualification accepts a resumed portfolio only when its Runtime Database lifecycle and dispatcher sequence prove the same order, unique run correlations and terminal `IDLE` state.
 
-After all five records are complete, the dispatcher is `IDLE`, awaiting the next Business-approved Mission Candidate through the normal Business → Architecture → Mission lifecycle. A `YES` qualification therefore declares Forge Generation 1 Bootstrap complete. Until an actual Engineering Platform client supplies five admissible receipt/report pairs, the answer is **NO** and Portfolio Intelligence is not recommended.
+After all five records are complete, the dispatcher is `IDLE`, awaiting the next Business-approved Mission Candidate through the normal Business → Architecture → Mission lifecycle. A `YES` qualification therefore declares Forge Generation 1 Bootstrap complete. Until an actual Engineering Platform client supplies five admissible receipt/report pairs, the answer is **NO** and Generation 2 is not recommended. A successful qualification recommends **Generation 1 Completion Record**.

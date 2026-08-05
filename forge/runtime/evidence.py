@@ -97,18 +97,27 @@ class RuntimeEvidence:
             "ownership": {"runtime_state": "forge_runtime_database", "execution_evidence": "execution_host", "architecture": "repository_truth"},
         }
 
-    def bootstrap_qualification(self, mission_ids: tuple[str, ...]) -> dict[str, Any]:
-        missions = tuple(self.mission_qualification(identifier) for identifier in mission_ids)
+    def bootstrap_qualification(self, mission_ids: tuple[str, ...] | None = None) -> dict[str, Any]:
+        """Project the persisted bootstrap portfolio without source reconstruction.
+
+        The dispatcher snapshot is part of the Runtime Instance.  Callers may
+        provide an expected sequence only as an integrity assertion; a normal
+        Generation 1 qualification reads the portfolio exclusively from that
+        persisted snapshot.
+        """
         dispatcher = self._database._connection.execute("SELECT status, active_mission_id, mission_sequence FROM dispatcher_state WHERE singleton = 1").fetchone()
-        sequence_matches = dispatcher is not None and tuple(json.loads(dispatcher["mission_sequence"])) == mission_ids
+        persisted_ids = () if dispatcher is None else tuple(json.loads(dispatcher["mission_sequence"]))
+        selected_ids = persisted_ids if mission_ids is None else mission_ids
+        sequence_matches = dispatcher is not None and persisted_ids == selected_ids and len(selected_ids) == len(set(selected_ids))
+        missions = tuple(self.mission_qualification(identifier) for identifier in selected_ids)
         idle = dispatcher is not None and dispatcher["status"] == "IDLE" and dispatcher["active_mission_id"] is None
         lifecycle = tuple(
             (row["mission_id"], row["lifecycle"])
             for row in self._database._connection.execute(
-                "SELECT mission_id, lifecycle FROM mission_lifecycle_events ORDER BY mission_id, sequence"
+                "SELECT mission_id, lifecycle FROM mission_lifecycle_events ORDER BY transition_sequence"
             )
         )
-        expected_lifecycle = tuple(item for mission_id in mission_ids for item in ((mission_id, "ACTIVATED"), (mission_id, "COMPLETED")))
+        expected_lifecycle = tuple(item for mission_id in selected_ids for item in ((mission_id, "ACTIVATED"), (mission_id, "COMPLETED")))
         try:
             planning = self.planning_state()
         except RuntimeDatabaseError:
@@ -124,7 +133,7 @@ class RuntimeEvidence:
         if not queue_empty:
             missing.append("approved_mission_queue:empty")
         qualified = bool(missions) and not missing
-        return {"mission_ids": mission_ids, "missions": missions,
+        return {"mission_ids": selected_ids, "missions": missions,
                 "dispatcher_status": None if dispatcher is None else dispatcher["status"],
                 "approved_mission_queue": () if planning is None else tuple(planning.get("current_queue", ())),
                 "planning_state": planning, "mission_lifecycle": lifecycle,

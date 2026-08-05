@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from forge.dispatcher import BOOTSTRAP_MISSION_SEQUENCE
 from forge.runtime import RuntimeDatabase, RuntimeIntegrityError
 
 
@@ -48,11 +47,11 @@ def qualify_generation_one_bootstrap(database: RuntimeDatabase) -> GenerationOne
             None,
         )
 
-    projection = database.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)
+    projection = database.runtime_evidence().bootstrap_qualification()
     missing = tuple(projection["missing_runtime_evidence"])
     return GenerationOneBootstrapQualificationReport(
         "YES" if projection["qualified"] else "NO",
         projection,
         missing,
-        "Portfolio Intelligence Foundation" if projection["qualified"] else None,
+        "Generation 1 Completion Record" if projection["qualified"] else None,
     )

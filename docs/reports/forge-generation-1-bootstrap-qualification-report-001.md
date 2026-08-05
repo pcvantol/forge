@@ -32,5 +32,5 @@ duplicated in Forge.
 ## Next increment
 
 Do not begin Generation 2 yet. After a real Runtime Database projection returns
-**YES**, declare Forge Generation 1 Bootstrap COMPLETE and begin **Portfolio
-Intelligence Foundation**.
+**YES**, declare Forge Generation 1 Bootstrap COMPLETE and create the required
+**Generation 1 Completion Record**.

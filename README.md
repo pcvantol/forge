@@ -5,6 +5,14 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
+Phase E — Increment 5.10 qualifies Generation 1 only from a resolved,
+persistent Runtime Instance. The read-only projection derives its portfolio,
+global lifecycle order, completion state, and receipt identities from runtime
+records; it neither imports a dispatcher portfolio nor reconstructs state from
+repository files. Engineering Platform remains the sole owner of Execution
+Evidence and Forge retains only immutable receipt references. A successful
+qualification recommends the Generation 1 Completion Record.
+
 Phase E — Increment 5.9 adds [Runtime Instance Persistence](docs/architecture/runtime-bootstrap.md).
 Forge now resolves one persistent Runtime Instance through a location-independent Git Repository Identity and a durable fail-closed registry. Runtime recovery preserves Runtime Identity across independent executions, restarts, cleanup, relocations, branches, and worktrees; the Runtime Database remains storage only.
 

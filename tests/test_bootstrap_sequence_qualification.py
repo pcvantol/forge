@@ -58,6 +58,11 @@ class BootstrapSequenceQualificationTests(unittest.TestCase):
             self.assertEqual([item["mission_id"] for item in evidence["missions"]], list(BOOTSTRAP_MISSION_SEQUENCE))
             self.assertTrue(all(item["qualified"] for item in evidence["missions"]))
             self.assertTrue(all(item["execution_receipts"] and item["architecture_reviews"] for item in evidence["missions"]))
+            self.assertTrue(all(
+                item["execution_receipts"][0]["receipt_id"].startswith("host-receipt-")
+                and item["execution_receipts"][0]["engineering_report_id"].startswith("host-report-")
+                for item in evidence["missions"]
+            ))
 
     def test_resume_is_idempotent_after_complete_persisted_qualification(self) -> None:
         with TemporaryDirectory() as directory:
