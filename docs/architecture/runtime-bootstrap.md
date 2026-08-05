@@ -1,56 +1,74 @@
-# Forge Runtime Bootstrap, Location Resolution and Evidence Recovery
+# Forge Runtime Instance Persistence
 
-## Canonical runtime
+## Canonical concept
 
-Every Forge repository has exactly one canonical Runtime Database.  Its
-Runtime Identity consists of a generated immutable Runtime ID, Repository
-Identity, canonical Repository Root, database version and location, creation
-and last-access timestamps, and active status.  The Runtime ID and repository
-identity never change during a migration or relocation; database location and
-last-access time are operational metadata.
+The **Runtime Instance** is Forge's persistent operational identity. The
+Runtime Database is its SQLite implementation detail, never its architectural
+identity.
 
-Repository Truth remains architectural authority.  The Runtime Database is
-operational authority for Mission State, Architecture Reviews, Mission
-Recommendations, Decision Evidence, immutable Execution Receipts, and
-Planning State.  Engineering Platform remains owner of Execution Evidence;
-Forge records only the immutable receipt identity and references.
+```text
+Repository Identity
+  -> Runtime Identity
+    -> Runtime Instance
+      -> Runtime Database
+```
 
-## Resolution and bootstrap
+Runtime Identity is immutable: Runtime ID, repository identity, original
+repository root, instance version, and creation timestamp. Runtime Instance
+metadata is mutable and validated: current instance location, last-access
+timestamp, and active status. A Runtime Instance owns Mission State, Decision
+Evidence, Architecture Reviews, Mission Recommendations, Execution Receipts,
+Planning State, and runtime metadata. It records receipt identities only;
+Engineering Platform retains ownership of Execution Evidence and Repository
+Truth remains the architectural authority.
 
-`RuntimeResolver` resolves locations before SQLite is opened. It considers a
-configured location, a shared Git-common-dir registration, the repository
-default `.forge/runtime.db`, and discovered runtime files. Candidates must
-belong to the current Repository Identity. Exactly one existing candidate is
-opened; more than one fails closed. No candidate causes bootstrap at the
-configured or repository-default location.
+## Resolution, persistence, and bootstrap
 
-Bootstrap creates the database, applies migrations, validates SQLite and
-foreign references, then initializes Runtime Identity. It does not create
-missions, decisions, receipts, or any execution evidence.
+Repository Identity is derived from the Git repository's initial commit, not
+an absolute filesystem path. It is therefore stable across branch and
+worktree transitions and repository relocation. A configured Runtime Root may
+place the instance registry and database outside repository cleanup paths; in
+that mode they live under the Repository Identity. Otherwise the durable
+registry is Git-common metadata, outside cleanup-prone `.forge`, and shared by
+all worktrees.
 
-Explicit relocation validates an SQLite backup at its destination before it is
-registered and the former location is removed. The Runtime ID is preserved.
-The shared registration makes the canonical location stable across branches,
-worktrees, host restarts, and normal repository cleanup.
+`RuntimeResolver` resolves exactly one candidate from configured location,
+registered instance location, repository default, and local discovery. It
+validates the registry, immutable Runtime Identity, repository identity,
+instance version, schema/migration version, instance status, SQLite integrity,
+Mission/Decision/Receipt references, and Planning State before startup.
+Ambiguity, a corrupt registry, identity mismatch, invalid references, or a
+missing registered location fails closed. A prior registration never permits
+bootstrap to silently fabricate a replacement instance.
 
-## Recovery and integrity
+`RuntimeBootstrap` first discovers a valid instance, or creates a new instance
+only when no registry exists and no candidate exists. It never overwrites an
+existing Runtime Instance.
 
-`RuntimeRecovery` first runs Runtime Database integrity validation, then
-returns persisted Mission State, Decision Evidence, Architecture Reviews,
-Mission Recommendations, Execution Receipts, and Planning State. It never
-reads repository source files, old side databases, JSON caches, or Execution
-Host evidence to reconstruct state.
+## Relocation and recovery
 
-Integrity validates schema and migration versions, Runtime Identity,
-SQLite/foreign-key integrity, and Decision Evidence receipt references.
-Failures prevent runtime startup. Execution Receipts remain append-only and
-are verified by their persisted identity, mission ownership, and Decision
-Evidence references.
+Explicit relocation copies SQLite through its backup API, validates the
+destination, activates its registry entry atomically, then removes the old
+database. The Runtime ID and Repository Identity are preserved. This is the
+only migration path; a workspace move, branch switch, worktree switch, host
+restart, Forge restart, or repository cleanup merely resolves the same
+registered instance.
 
-## Bootstrap Qualification
+`RuntimeRecovery` reads only the validated Runtime Instance projection. It
+does not inspect repository source, old databases, caches, or Execution Host
+records to reconstruct state. Interrupted Missions resume from persisted
+Mission State; recovery never fabricates a mission, review, recommendation,
+decision, receipt, or planning record.
 
-Generation 1 Bootstrap Qualification consumes the Runtime Database projection
-only. Qualification never reconstructs execution history: it reads Mission
-State, Decision Evidence, Architecture Reviews, Mission Recommendations, and
-immutable Execution Receipts already persisted by Forge. This preserves
-Repository Truth and Engineering Platform ownership boundaries.
+## Generation 1 Bootstrap Qualification
+
+Generation 1 Bootstrap Qualification consumes only the persistent Runtime
+Instance projection: Mission State, Decision Evidence, Architecture Reviews,
+Mission Recommendations, Execution Receipts, and Planning State. It cannot
+reconstruct runtime state by inspecting repository source. This preserves
+Repository Truth and Engineering Platform ownership boundaries while making
+independent Engineering Platform executions continuous.
+
+See [Runtime Database](runtime-database.md) for SQLite storage details and
+[the Runtime Instance report](../reports/forge-runtime-instance-report-001.md)
+for the operational conclusion.

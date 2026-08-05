@@ -2,10 +2,11 @@
 
 ## Boundary
 
-`.forge/runtime.db` is Forge's repository-default local SQLite runtime database.
-The canonical location is resolved before opening through [Runtime Bootstrap,
-Location Resolution and Evidence Recovery](runtime-bootstrap.md); it may be a
-configured or explicitly relocated local location. It is not committed.
+The Runtime Database is the SQLite storage implementation of one persistent
+[Runtime Instance](runtime-bootstrap.md). `.forge/runtime.db` is only the
+repository-default location; a configured Runtime Root or explicit relocation
+may locate it durably outside repository cleanup paths. The canonical location
+is resolved before opening and is not committed.
 Repository Truth remains the architectural source of truth, and the Engineering
 Platform Execution Host retains its own independent Execution Database.
 
@@ -17,8 +18,8 @@ Evidence, reports, telemetry, logs, or host credentials.
 
 ## Schema and migration
 
-`forge.runtime.RuntimeDatabase` creates and opens the database at the fixed
-workspace location. It enables SQLite foreign keys, WAL, and full synchronous
+`forge.runtime.RuntimeDatabase` opens storage only after Runtime Instance
+resolution. It enables SQLite foreign keys, WAL, and full synchronous
 commits. Schema version and migration version are recorded in both SQLite's
 user version and `runtime_metadata`. Startup is fail-closed for an unsupported
 future version, incomplete migration, malformed required metadata, failed
@@ -38,9 +39,9 @@ policy, and current status.
 ## Relationships
 
 ```text
-Repository Truth ── architectural evidence ──> Forge Runtime Database
-Execution Host ── immutable execution receipts only ──> Forge Runtime Database
-Forge Runtime Database ── Mission / Planning / Review / Recommendation / Decision state
+Repository Truth ── architectural evidence ──> Runtime Instance ──> Runtime Database
+Execution Host ── immutable receipt identities ──> Runtime Instance ──> Runtime Database
+Runtime Instance ── Mission / Planning / Review / Recommendation / Decision state
 ```
 
 Decision Evidence links the Mission, Architecture Review, alternatives,
@@ -58,7 +59,7 @@ separate responsibilities.
 
 `forge.qualification.qualify_generation_one_bootstrap` is the read-only
 Generation 1 qualification entry point. Its caller supplies an existing,
-already-resolved Runtime Database; the entry point never creates a database,
+already-resolved Runtime Instance Database; the entry point never creates a database,
 loads `missions/`, constructs a portfolio, initializes a dispatcher, resumes a
 Mission, or contacts an Execution Host. Integrity is checked without recording
 a new status update, then the result is projected exclusively from Runtime

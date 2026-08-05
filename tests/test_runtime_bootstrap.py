@@ -65,7 +65,7 @@ class RuntimeBootstrapTests(unittest.TestCase):
         self.assertEqual(recovered["mission_state"][0]["mission_id"], "mission-1")
         self.assertEqual(recovered["execution_receipts"][0]["receipt_id"], "receipt-1")
         self.assertEqual(recovered["planning_state"]["planner_version"], "test")
-        self.assertEqual(recovered["source"], "runtime_database")
+        self.assertEqual(recovered["source"], "runtime_instance")
 
     def test_multiple_runtime_candidates_fail_closed(self) -> None:
         database = self._database()

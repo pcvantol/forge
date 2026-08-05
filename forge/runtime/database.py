@@ -19,12 +19,12 @@ import uuid
 from .bootstrap import RuntimeIdentity, RuntimeResolver, canonical_repository_root, repository_identity
 
 
-RUNTIME_SCHEMA_VERSION = 6
+RUNTIME_SCHEMA_VERSION = 7
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
     "runtime_id", "repository_identity", "repository_root", "database_version",
-    "database_location", "last_access_at", "status",
+    "database_location", "last_access_at", "status", "instance_version",
 ))
 _TABLES = frozenset((
     "mission_state", "architecture_reviews", "mission_recommendations",
@@ -315,7 +315,7 @@ class RuntimeDatabase:
                     CREATE TRIGGER execution_receipts_immutable_delete BEFORE DELETE ON execution_receipts
                     BEGIN SELECT RAISE(ABORT, 'execution receipts are immutable'); END;
                 """)
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1"})
                 self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
         elif version == 4:
             with self._connection:
@@ -325,7 +325,7 @@ class RuntimeDatabase:
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                 """)
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1"})
                 self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
         elif version == 5:
             with self._connection:
@@ -342,7 +342,14 @@ class RuntimeDatabase:
                     CREATE TRIGGER integration_evidence_immutable_delete BEFORE DELETE ON integration_evidence
                     BEGIN SELECT RAISE(ABORT, 'integration evidence is immutable'); END;
                 """)
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1"})
+                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+        elif version == 6:
+            with self._connection:
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION),
+                                    "migration_version": str(RUNTIME_SCHEMA_VERSION),
+                                    "last_migration": str(RUNTIME_SCHEMA_VERSION),
+                                    "instance_version": "1"})
                 self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
@@ -357,7 +364,8 @@ class RuntimeDatabase:
             "runtime_id": metadata.get("runtime_id") or f"forge-runtime-{uuid.uuid4()}",
             "repository_identity": metadata.get("repository_identity") or repository_identity(self.repository_root),
             "repository_root": metadata.get("repository_root") or str(self.repository_root),
-            "database_version": str(RUNTIME_SCHEMA_VERSION), "database_location": str(self.path.resolve()),
+            "database_version": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1",
+            "database_location": str(self.path.resolve()),
             "created_at": created_at, "last_access_at": now, "status": "active",
         }
         if values["repository_identity"] != repository_identity(self.repository_root):
@@ -387,6 +395,13 @@ class RuntimeDatabase:
     @property
     def runtime_identity(self) -> RuntimeIdentity:
         return RuntimeIdentity.from_metadata(self.metadata)
+
+    @property
+    def runtime_instance(self):
+        """Return the Runtime Instance represented by this validated storage."""
+        from .bootstrap import RuntimeInstance
+        identity = self.runtime_identity
+        return RuntimeInstance(identity, self.path.resolve(), identity.last_access_at, identity.status)
 
     def validate_integrity(self, *, record_status: bool = True) -> None:
         check = self._connection.execute("PRAGMA integrity_check").fetchone()[0]

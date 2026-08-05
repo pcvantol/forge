@@ -11,12 +11,15 @@ from .database import (
     RuntimeIntegrityError,
 )
 from .bootstrap import (
+    RUNTIME_INSTANCE_VERSION,
     RuntimeBootstrap,
     RuntimeIdentity,
+    RuntimeInstance,
     RuntimeLocation,
     RuntimeRecovery,
     RuntimeResolutionError,
     RuntimeResolver,
+    repository_identity,
 )
 from .evidence import RuntimeEvidence
 from .runner import BootstrapMissionRunner, MissionRunnerError, RuntimePromptFactory
@@ -24,5 +27,5 @@ from .runner import BootstrapMissionRunner, MissionRunnerError, RuntimePromptFac
 __all__ = [
     "BootstrapMissionRunner", "MissionRunnerError", "RuntimePromptFactory",
     "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError", "RuntimeEvidence",
-    "RuntimeBootstrap", "RuntimeIdentity", "RuntimeLocation", "RuntimeRecovery", "RuntimeResolutionError", "RuntimeResolver",
+    "RUNTIME_INSTANCE_VERSION", "RuntimeBootstrap", "RuntimeIdentity", "RuntimeInstance", "RuntimeLocation", "RuntimeRecovery", "RuntimeResolutionError", "RuntimeResolver", "repository_identity",
 ]

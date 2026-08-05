@@ -5,6 +5,9 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
+Phase E — Increment 5.9 adds [Runtime Instance Persistence](docs/architecture/runtime-bootstrap.md).
+Forge now resolves one persistent Runtime Instance through a location-independent Git Repository Identity and a durable fail-closed registry. Runtime recovery preserves Runtime Identity across independent executions, restarts, cleanup, relocations, branches, and worktrees; the Runtime Database remains storage only.
+
 Phase F — Increment 6.0 adds the [Integration Coordination Framework](docs/architecture/integration-coordination-framework.md).
 Forge now owns deterministic integration readiness, conflict events, immutable
 integration evidence, and Mission pause/resume state independently from the
