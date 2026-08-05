@@ -47,7 +47,9 @@ class RuntimeEvidence:
         except RuntimeDatabaseError:
             return {"mission_id": mission_id, "mission_state": None, "architecture_reviews": (),
                     "mission_recommendations": (), "decision_evidence": (), "execution_receipts": (),
-                    "qualified": False, "ownership": {"runtime_state": "forge_runtime_database", "execution_evidence": "execution_host", "architecture": "repository_truth"}}
+                    "mission_lineage": (), "completion_timestamp": None, "mission_outcome": None,
+                    "missing_runtime_evidence": (f"{mission_id}:mission_state",), "qualified": False,
+                    "ownership": {"runtime_state": "forge_runtime_database", "execution_evidence": "execution_host", "architecture": "repository_truth"}}
         reviews = self._documents("architecture_reviews", "mission_id", mission_id)
         recommendations = self._documents("mission_recommendations", "mission_id", mission_id)
         decisions = self._documents("decision_evidence", "mission_id", mission_id)
@@ -59,15 +61,39 @@ class RuntimeEvidence:
             for decision in decisions for reference in decision.get("execution_receipt_references", ())
             if isinstance(reference, dict) and isinstance(reference.get("artifact_id"), str)
         }
-        completed = state.get("status") == "COMPLETED" and state.get("completion") is not None
-        has_timestamps = bool({"ACTIVATED", "COMPLETED"} <= {item["lifecycle"] for item in lifecycle})
-        complete = (completed and has_timestamps and len(successful_receipts) == 1 and len(reviews) >= 1
-                    and len(recommendations) >= 1 and len(decisions) >= 1
-                    and successful_receipts[0]["receipt_id"] in decision_receipts)
+        completed = state.get("status") in {"COMPLETE", "COMPLETED"} and state.get("completion") is not None
+        expected_lineage = ("ACTIVATED", "COMPLETED")
+        actual_lineage = tuple(item["lifecycle"] for item in lifecycle)
+        missing: list[str] = []
+        if not completed:
+            missing.append(f"{mission_id}:complete_mission_state")
+        if actual_lineage != expected_lineage:
+            missing.append(f"{mission_id}:deterministic_mission_lineage")
+        if not reviews:
+            missing.append(f"{mission_id}:architecture_review")
+        if not recommendations:
+            missing.append(f"{mission_id}:mission_recommendation")
+        if not decisions:
+            missing.append(f"{mission_id}:decision_evidence")
+        if len(receipts) != 1 or len(successful_receipts) != 1:
+            missing.append(f"{mission_id}:single_successful_execution_receipt")
+        elif successful_receipts[0]["receipt_id"] not in decision_receipts:
+            missing.append(f"{mission_id}:decision_receipt_lineage")
+        receipt = successful_receipts[0] if len(successful_receipts) == 1 else None
+        if receipt is not None and not all(receipt[key] for key in (
+            "execution_host", "execution_run_id", "engineering_report_id", "correlation_identity", "executed_at", "outcome",
+        )):
+            missing.append(f"{mission_id}:complete_execution_receipt_identity")
+        completion_timestamp = next((item["occurred_at"] for item in lifecycle if item["lifecycle"] == "COMPLETED"), None)
+        complete = not missing
         return {
             "mission_id": mission_id, "mission_state": state, "architecture_reviews": reviews,
             "mission_recommendations": recommendations, "decision_evidence": decisions,
-            "execution_receipts": receipts, "mission_lifecycle": lifecycle, "qualified": complete,
+            "execution_receipts": receipts, "mission_lifecycle": lifecycle, "mission_lineage": lifecycle,
+            "completion_timestamp": completion_timestamp, "mission_outcome": None if receipt is None else receipt["outcome"],
+            "execution_host": None if receipt is None else receipt["execution_host"],
+            "execution_run_id": None if receipt is None else receipt["execution_run_id"],
+            "missing_runtime_evidence": tuple(missing), "qualified": complete,
             "ownership": {"runtime_state": "forge_runtime_database", "execution_evidence": "execution_host", "architecture": "repository_truth"},
         }
 
@@ -83,8 +109,27 @@ class RuntimeEvidence:
             )
         )
         expected_lifecycle = tuple(item for mission_id in mission_ids for item in ((mission_id, "ACTIVATED"), (mission_id, "COMPLETED")))
-        return {"mission_ids": mission_ids, "missions": missions, "dispatcher_status": None if dispatcher is None else dispatcher["status"],
-                "qualified": bool(missions) and all(item["qualified"] for item in missions) and sequence_matches and idle and lifecycle == expected_lifecycle,
+        try:
+            planning = self.planning_state()
+        except RuntimeDatabaseError:
+            planning = None
+        queue_empty = planning is not None and planning.get("current_queue") == [] and planning.get("pending_engineering_actions") == []
+        missing = [item for mission in missions for item in mission["missing_runtime_evidence"]]
+        if not sequence_matches:
+            missing.append("dispatcher:bootstrap_fifo_sequence")
+        if lifecycle != expected_lifecycle:
+            missing.append("dispatcher:deterministic_lifecycle_sequence")
+        if not idle:
+            missing.append("dispatcher:idle")
+        if not queue_empty:
+            missing.append("approved_mission_queue:empty")
+        qualified = bool(missions) and not missing
+        return {"mission_ids": mission_ids, "missions": missions,
+                "dispatcher_status": None if dispatcher is None else dispatcher["status"],
+                "approved_mission_queue": () if planning is None else tuple(planning.get("current_queue", ())),
+                "planning_state": planning, "mission_lifecycle": lifecycle,
+                "ownership": {"architecture": "repository_truth", "operational_state": "forge_runtime_database", "execution_evidence": "engineering_platform"},
+                "missing_runtime_evidence": tuple(missing), "qualified": qualified,
                 "source": "runtime_database"}
 
     def architecture_review_report(self, review_id: str) -> dict[str, Any]:

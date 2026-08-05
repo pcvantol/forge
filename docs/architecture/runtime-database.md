@@ -53,3 +53,21 @@ planner runtime metadata. It is not dispatcher state. Bootstrap Qualification
 consumes this database boundary, while the Business Workspace, Architecture
 Workspace, Mission Planner, and Repository Truth retain their existing
 separate responsibilities.
+
+## Generation 1 qualification
+
+`forge.qualification.qualify_generation_one_bootstrap` is the read-only
+Generation 1 qualification entry point. Its caller supplies an existing,
+already-resolved Runtime Database; the entry point never creates a database,
+loads `missions/`, constructs a portfolio, initializes a dispatcher, resumes a
+Mission, or contacts an Execution Host. Integrity is checked without recording
+a new status update, then the result is projected exclusively from Runtime
+Database tables.
+
+The projection includes every canonical Mission's ID, terminal Mission State,
+immutable Decision Evidence, Architecture Review, Mission Recommendation,
+Execution Receipt identity, Execution Host, Execution Run ID, lifecycle
+lineage, completion timestamp, and outcome. It also proves the terminal IDLE
+Dispatcher and empty approved queue. Qualification fails closed with exact
+missing Runtime Database evidence. A successful projection recommends
+**Portfolio Intelligence Foundation**; a failed projection recommends nothing.

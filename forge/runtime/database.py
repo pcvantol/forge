@@ -360,7 +360,7 @@ class RuntimeDatabase:
     def runtime_identity(self) -> RuntimeIdentity:
         return RuntimeIdentity.from_metadata(self.metadata)
 
-    def validate_integrity(self) -> None:
+    def validate_integrity(self, *, record_status: bool = True) -> None:
         check = self._connection.execute("PRAGMA integrity_check").fetchone()[0]
         if check != "ok":
             raise RuntimeIntegrityError("SQLite integrity check failed")
@@ -390,8 +390,9 @@ class RuntimeDatabase:
                     "SELECT 1 FROM execution_receipts WHERE receipt_id = ?", (identifier,)
                 ).fetchone():
                     raise RuntimeIntegrityError("decision references an unknown Forge execution receipt")
-        self._connection.execute("UPDATE runtime_metadata SET value = 'valid' WHERE key = 'integrity_status'")
-        self._connection.commit()
+        if record_status:
+            self._connection.execute("UPDATE runtime_metadata SET value = 'valid' WHERE key = 'integrity_status'")
+            self._connection.commit()
 
     def save_mission_state(self, state: Any) -> dict[str, Any]:
         document = _document(state, "mission state")

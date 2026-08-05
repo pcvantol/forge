@@ -6,7 +6,20 @@ Forge qualifies the canonical bootstrap portfolio through its existing runtime:
 
 The portfolio is exactly `MISSION-0001` through `MISSION-0005`, in that FIFO order. The dispatcher database enforces one active Mission. Each completed Mission triggers the review hook and then produces only advisory Mission Recommendations; neither can reorder or replace the predefined portfolio. No business approval is required between these predefined Missions.
 
-`forge.qualification.run_bootstrap_sequence_qualification` composes the real queue, dispatcher, intake, durable state store, planner, renderer, adapter, review engine and recommendation engine. It loads the five immutable definitions in `missions/` only to execute the approved portfolio; qualification itself reads only `.forge/runtime.db`. Its caller must provide the Engineering Platform 1.5 receipt/report client. Forge never generates a host receipt, a host report, timestamps, a run ID, or a terminal host outcome.
+`forge.qualification.run_bootstrap_sequence_qualification` remains the legacy
+bootstrap execution harness. It composes the real queue, dispatcher, intake,
+durable state store, planner, renderer, adapter, review engine and
+recommendation engine, and may load the five immutable definitions in
+`missions/` to execute the approved portfolio. It is not the Generation 1
+qualification entry point.
+
+`forge.qualification.qualify_generation_one_bootstrap` is the Generation 1
+qualification entry point. It accepts an existing Runtime Database and produces
+a projection only from that database. It never reads Mission definitions or
+other repository source, creates operational state, constructs a dispatcher or
+workspace, resumes work, or interacts with Engineering Platform. Engineering
+Platform evidence remains external; Forge validates only the immutable receipt
+identity that references it.
 
 A receipt/report pair is admissible only when the host-issued receipt identifies the host, receipt, run and issue time and the terminal report repeats the exact host, Mission, Intent/revision, Action, correlation and Runtime Prompt identities. The report also supplies execution timestamps, terminal outcome, validation references and repository observation. The adapter rejects missing or mismatched provenance before it reaches Mission State.
 

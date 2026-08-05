@@ -5,6 +5,9 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
+Phase E — Increment 5.7 adds [Generation 1 Bootstrap Qualification](docs/architecture/bootstrap-mission-sequence-qualification.md).
+Forge projects an already persisted Runtime Database through a read-only qualification boundary. It never reconstructs a portfolio from repository files, dispatches work, or copies Engineering Platform evidence while qualifying Generation 1.
+
 Phase E — Increment 5.6 adds [Runtime Bootstrap, Location Resolution and Evidence Recovery](docs/architecture/runtime-bootstrap.md).
 Forge now deterministically resolves one canonical Runtime Database with an immutable Runtime Identity, fails closed on ambiguity or integrity errors, and recovers operational state only from persisted runtime records.
 
