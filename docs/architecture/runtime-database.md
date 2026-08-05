@@ -10,7 +10,7 @@ Repository Truth remains the architectural source of truth, and the Engineering
 Platform Execution Host retains its own independent Execution Database.
 
 Forge owns Mission State, Architecture Reviews, Mission Recommendations,
-Decision Evidence, Execution Receipts, and Planning State. It records only
+Decision Evidence, Integration Evidence, Execution Receipts, and Planning State. It records only
 execution receipt identity: Execution Host, run ID, Engineering Report ID,
 correlation identity, timestamp, and outcome. It never copies Execution
 Evidence, reports, telemetry, logs, or host credentials.
@@ -26,7 +26,7 @@ SQLite integrity check, or invalid foreign reference.
 
 The initial extensible schema contains exactly the runtime foundations:
 `mission_state`, `architecture_reviews`, `mission_recommendations`,
-`decision_evidence`, `execution_receipts`, `planning_state`, and
+`decision_evidence`, `integration_evidence`, `execution_receipts`, `planning_state`, and
 `runtime_metadata`. The version 4 migration replaces legacy execution
 references with immutable Execution Receipts and preserves their identifiers.
 

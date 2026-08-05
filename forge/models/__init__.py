@@ -168,6 +168,15 @@ from .decision_evidence import (
     DecisionReferenceKind,
     DecisionType,
 )
+from .integration import (
+    INTEGRATION_SCHEMA_VERSION,
+    ConflictResolutionKind,
+    IntegrationConflict,
+    IntegrationEventKind,
+    IntegrationEvidence,
+    IntegrationOutcome,
+    IntegrationUnit,
+)
 from .mission_candidate import (
     MISSION_CANDIDATE_SCHEMA_VERSION,
     MissionCandidate,
@@ -506,4 +515,11 @@ __all__ = [
     "MissionStatus",
     "derive_mission_progress",
     "transition_mission",
+    "INTEGRATION_SCHEMA_VERSION",
+    "ConflictResolutionKind",
+    "IntegrationConflict",
+    "IntegrationEventKind",
+    "IntegrationEvidence",
+    "IntegrationOutcome",
+    "IntegrationUnit",
 ]

@@ -5,6 +5,11 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
+Phase F — Increment 6.0 adds the [Integration Coordination Framework](docs/architecture/integration-coordination-framework.md).
+Forge now owns deterministic integration readiness, conflict events, immutable
+integration evidence, and Mission pause/resume state independently from the
+Execution Host. The next architectural increment is Parallel Mission Execution.
+
 Phase E — Increment 5.7 adds [Generation 1 Bootstrap Qualification](docs/architecture/bootstrap-mission-sequence-qualification.md).
 Forge projects an already persisted Runtime Database through a read-only qualification boundary. It never reconstructs a portfolio from repository files, dispatches work, or copies Engineering Platform evidence while qualifying Generation 1.
 

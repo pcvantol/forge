@@ -19,7 +19,7 @@ import uuid
 from .bootstrap import RuntimeIdentity, RuntimeResolver, canonical_repository_root, repository_identity
 
 
-RUNTIME_SCHEMA_VERSION = 5
+RUNTIME_SCHEMA_VERSION = 6
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -30,7 +30,7 @@ _TABLES = frozenset((
     "mission_state", "architecture_reviews", "mission_recommendations",
     "decision_evidence", "execution_receipts", "planning_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
-    "delegation_requests",
+    "delegation_requests", "integration_evidence",
 ))
 
 
@@ -185,6 +185,13 @@ class RuntimeDatabase:
                         document TEXT NOT NULL,
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
+                    CREATE TABLE integration_evidence (
+                        integration_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        outcome TEXT NOT NULL, merge_result TEXT NOT NULL,
+                        integrated_at TEXT NOT NULL, content_digest TEXT NOT NULL UNIQUE,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_delete BEFORE DELETE ON architecture_reviews
@@ -201,6 +208,10 @@ class RuntimeDatabase:
                     BEGIN SELECT RAISE(ABORT, 'execution receipts are immutable'); END;
                     CREATE TRIGGER execution_receipts_immutable_delete BEFORE DELETE ON execution_receipts
                     BEGIN SELECT RAISE(ABORT, 'execution receipts are immutable'); END;
+                    CREATE TRIGGER integration_evidence_immutable_update BEFORE UPDATE ON integration_evidence
+                    BEGIN SELECT RAISE(ABORT, 'integration evidence is immutable'); END;
+                    CREATE TRIGGER integration_evidence_immutable_delete BEFORE DELETE ON integration_evidence
+                    BEGIN SELECT RAISE(ABORT, 'integration evidence is immutable'); END;
                 """)
                 self._set_metadata({
                     "schema_version": str(RUNTIME_SCHEMA_VERSION),
@@ -313,6 +324,23 @@ class RuntimeDatabase:
                     WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'created_at')
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
+                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+        elif version == 5:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE integration_evidence (
+                        integration_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        outcome TEXT NOT NULL, merge_result TEXT NOT NULL,
+                        integrated_at TEXT NOT NULL, content_digest TEXT NOT NULL UNIQUE,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TRIGGER integration_evidence_immutable_update BEFORE UPDATE ON integration_evidence
+                    BEGIN SELECT RAISE(ABORT, 'integration evidence is immutable'); END;
+                    CREATE TRIGGER integration_evidence_immutable_delete BEFORE DELETE ON integration_evidence
+                    BEGIN SELECT RAISE(ABORT, 'integration evidence is immutable'); END;
                 """)
                 self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION)})
                 self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
@@ -433,7 +461,7 @@ class RuntimeDatabase:
         """Check an owned document without exposing host evidence."""
         lookup = {
             "architecture_reviews": "review_id", "mission_recommendations": "recommendation_id",
-            "decision_evidence": "decision_id",
+            "decision_evidence": "decision_id", "integration_evidence": "integration_id",
         }
         if table not in lookup:
             raise RuntimeDatabaseError("table is not an immutable Forge document store")
@@ -561,10 +589,31 @@ class RuntimeDatabase:
             ))
         return document
 
+    def record_integration_evidence(self, evidence: Any) -> dict[str, Any]:
+        """Persist immutable Forge integration evidence bound to known receipts."""
+        document = _document(evidence, "integration evidence")
+        required = ("id", "mission_id", "outcome", "merge_result", "timestamp", "content_digest")
+        if any(not isinstance(document.get(item), str) or not document[item] for item in required):
+            raise RuntimeDatabaseError("integration evidence requires identity, mission, outcome, merge result, timestamp, and digest")
+        if not self._connection.execute("SELECT 1 FROM mission_state WHERE mission_id = ?", (document["mission_id"],)).fetchone():
+            raise RuntimeDatabaseError("integration evidence references an unknown Mission")
+        receipts = document.get("execution_receipt_references", [])
+        if not isinstance(receipts, list) or not receipts:
+            raise RuntimeDatabaseError("integration evidence requires execution receipt references")
+        for receipt_id in receipts:
+            if not isinstance(receipt_id, str) or not self.has_execution_receipt(receipt_id):
+                raise RuntimeDatabaseError("integration evidence references an unknown Forge execution receipt")
+        with self._connection:
+            self._connection.execute("INSERT INTO integration_evidence VALUES (?, ?, ?, ?, ?, ?, ?)", (
+                document["id"], document["mission_id"], document["outcome"], document["merge_result"],
+                document["timestamp"], document["content_digest"], self._dump(document),
+            ))
+        return document
+
     def get_document(self, table: str, identifier: str) -> dict[str, Any]:
         lookup = {"mission_state": ("mission_id", "document"), "architecture_reviews": ("review_id", "document"),
                   "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document"), "planning_state": ("singleton", "document"),
-                  "delegation_requests": ("delegation_id", "document")}
+                  "delegation_requests": ("delegation_id", "document"), "integration_evidence": ("integration_id", "document")}
         if table not in lookup:
             raise RuntimeDatabaseError("table is not a Forge document store")
         key, column = lookup[table]

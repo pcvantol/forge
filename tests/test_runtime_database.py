@@ -106,6 +106,15 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.database.record_delegation_request(request)
         self.assertEqual(self.database.get_document("delegation_requests", "delegation-1")["action_id"], "action-1")
 
+    def test_integration_evidence_is_durable_immutable_and_receipt_bound(self) -> None:
+        self.database.save_mission_state(self._mission())
+        self.database.record_execution_receipt(receipt_id="receipt-1", mission_id="mission-1", execution_host="host", execution_run_id="run", engineering_report_id="report", correlation_identity="correlation", executed_at="now", outcome="complete")
+        evidence = {"id": "integration-1", "mission_id": "mission-1", "outcome": "complete", "merge_result": "merge_ready", "timestamp": "now", "content_digest": "sha256:integration", "execution_receipt_references": ["receipt-1"]}
+        self.database.record_integration_evidence(evidence)
+        self.assertEqual(self.database.get_document("integration_evidence", "integration-1")["id"], "integration-1")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute("UPDATE integration_evidence SET outcome='blocked' WHERE integration_id='integration-1'")
+
 
 if __name__ == "__main__":
     unittest.main()
