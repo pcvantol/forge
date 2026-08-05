@@ -14,7 +14,10 @@ Evidence, reports, and telemetry. Repository Truth retains architecture.
 
 Bootstrap Qualification and Mission Qualification read Runtime Database
 projections; they do not inspect repository implementation files or rebuild
-execution history. Architecture Review, Mission Recommendation, and Decision
+execution history. Generation 1 Bootstrap Qualification also calls a
+read-only Engineering Platform receipt resolver to confirm that each persisted
+identity remains externally resolvable. The resolver returns no host evidence
+for Forge to retain. Architecture Review, Mission Recommendation, and Decision
 Evidence reports use the same projections. This preserves explicit ownership:
 Forge owns runtime state, the Execution Host owns execution evidence, and the
 repository owns architecture.

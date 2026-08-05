@@ -33,6 +33,16 @@ class _HostEvidence:
     def report_for(self, run_id):
         return self.reports.get(run_id)
 
+    def resolves(self, *, execution_host, execution_run_id, engineering_report_id,
+                 correlation_identity, executed_at, outcome):
+        receipt = next((item for item in self.receipts.values()
+                        if item.run_id == execution_run_id and item.host_id == execution_host), None)
+        report = self.reports.get(execution_run_id)
+        return bool(receipt and report and report.report_id == engineering_report_id
+                    and report.correlation_id == correlation_identity
+                    and report.execution_completed_at == executed_at
+                    and report.outcome.value.lower() == outcome)
+
 
 class GenerationOneBootstrapQualificationTests(unittest.TestCase):
     def test_projects_an_existing_runtime_database_without_dispatching(self) -> None:
@@ -42,13 +52,33 @@ class GenerationOneBootstrapQualificationTests(unittest.TestCase):
             run_bootstrap_sequence_qualification(root, source)
             database = RuntimeDatabase(root)
             self.addCleanup(database.close)
-            report = qualify_generation_one_bootstrap(database)
+            report = qualify_generation_one_bootstrap(database, source)
             self.assertEqual(report.answer, "YES")
             self.assertEqual(report.recommended_next_increment, "Generation 1 Completion Record")
             self.assertEqual(report.projection["source"], "runtime_database")
             self.assertEqual(report.projection["dispatcher_status"], "IDLE")
             self.assertFalse(report.missing_runtime_evidence)
             self.assertEqual(len(source.receipts), 5)
+
+    def test_requires_independent_engineering_platform_receipt_resolution(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _HostEvidence()
+            run_bootstrap_sequence_qualification(root, source)
+            database = RuntimeDatabase(root)
+            self.addCleanup(database.close)
+            report = qualify_generation_one_bootstrap(database)
+            self.assertEqual(report.answer, "NO")
+            self.assertIn("MISSION-0001:engineering_platform_evidence", report.missing_runtime_evidence)
+
+    def test_empty_instance_identifies_every_missing_bootstrap_mission(self) -> None:
+        with TemporaryDirectory() as directory:
+            database = RuntimeDatabase(Path(directory))
+            self.addCleanup(database.close)
+            report = qualify_generation_one_bootstrap(database)
+            self.assertEqual(report.answer, "NO")
+            for mission_id in ("MISSION-0001", "MISSION-0002", "MISSION-0003", "MISSION-0004", "MISSION-0005"):
+                self.assertIn(f"{mission_id}:mission_state", report.missing_runtime_evidence)
 
     def test_reads_the_portfolio_only_from_the_persisted_runtime_instance(self) -> None:
         with TemporaryDirectory() as directory:

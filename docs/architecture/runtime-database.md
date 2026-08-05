@@ -59,18 +59,23 @@ separate responsibilities.
 
 `forge.qualification.qualify_generation_one_bootstrap` is the read-only
 Generation 1 qualification entry point. Its caller supplies an existing,
-already-resolved Runtime Instance Database; the entry point never creates a database,
-loads `missions/`, constructs a portfolio, initializes a dispatcher, resumes a
-Mission, or contacts an Execution Host. Integrity is checked without recording
-a new status update, then the result is projected exclusively from Runtime
+already-resolved Runtime Instance Database and a read-only Engineering Platform
+receipt resolver; the entry point never creates a database,
+loads `missions/`, constructs a portfolio, initializes a dispatcher, or resumes a
+Mission. It invokes only the supplied read-only receipt resolver. Integrity is
+checked without recording a new status update, then the runtime projection is
+produced exclusively from Runtime
 Database tables.
 
 The projection includes every canonical Mission's ID, terminal Mission State,
 immutable Decision Evidence, Architecture Review, Mission Recommendation,
 Execution Receipt identity, Execution Host, Execution Run ID, lifecycle
 lineage, completion timestamp, and outcome. It also proves the terminal IDLE
-Dispatcher and empty approved queue. Qualification fails closed with exact
-missing Runtime Database evidence. A successful projection recommends the
+Dispatcher and empty approved queue. Each stored receipt identity must also
+resolve through the supplied Engineering Platform resolver. The resolver
+returns only reference validity and never copies host reports, telemetry, or
+other Execution Evidence into Forge. Qualification fails closed with exact
+missing runtime evidence. A successful projection recommends the
 required **Generation 1 Completion Record**; a failed projection recommends
 nothing. The portfolio and lifecycle ordering are read from the persistent
 Runtime Instance, never imported from dispatcher or repository mission

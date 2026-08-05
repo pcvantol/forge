@@ -177,6 +177,13 @@ Current Portfolio Seeds:
 
 These Missions bootstrap Forge into an AI-native Product Development Platform.
 
+Generation 1 Bootstrap Qualification reads only the persistent Runtime Instance
+for the operational lifecycle of these five Missions. Each Mission qualifies
+only with its COMPLETE Mission State, immutable Decision Evidence, Architecture
+Review, Mission Recommendation, immutable Engineering Platform receipt
+reference, and FIFO lineage. The receipt reference must resolve independently
+with Engineering Platform; execution evidence itself remains host-owned.
+
 ---
 
 # Future Directory Structure

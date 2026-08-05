@@ -14,12 +14,13 @@ recommendation engine, and may load the five immutable definitions in
 qualification entry point.
 
 `forge.qualification.qualify_generation_one_bootstrap` is the Generation 1
-qualification entry point. It accepts an existing Runtime Database and produces
+qualification entry point. It accepts an existing Runtime Database and a
+read-only Engineering Platform receipt resolver, and produces
 a projection only from that database. It never reads Mission definitions or
 other repository source, imports a dispatcher portfolio, creates operational state, constructs a dispatcher or
-workspace, resumes work, or interacts with Engineering Platform. Engineering
-Platform evidence remains external; Forge validates only the immutable receipt
-identity that references it.
+workspace, or resumes work. It resolves exact stored receipt identities through
+Engineering Platform but never copies host evidence. Engineering Platform
+evidence remains external.
 
 A receipt/report pair is admissible only when the host-issued receipt identifies the host, receipt, run and issue time and the terminal report repeats the exact host, Mission, Intent/revision, Action, correlation and Runtime Prompt identities. The report also supplies execution timestamps, terminal outcome, validation references and repository observation. The adapter rejects missing or mismatched provenance before it reaches Mission State.
 
