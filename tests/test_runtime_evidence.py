@@ -34,6 +34,17 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence.mission_recommendation_report("recommendation-1")["source"], "runtime_database")
         self.assertEqual(evidence.decision_evidence_report("decision-1")["execution_receipts"][0]["execution_run_id"], "run-1")
 
+    def test_decision_evidence_reference_is_pinned_to_the_runtime_instance(self) -> None:
+        evidence = self.database.runtime_evidence()
+        reference = evidence.decision_evidence_reference("decision-1")
+        report = evidence.decision_evidence_report("decision-1")
+
+        self.assertEqual(reference.runtime_id, self.database.runtime_identity.runtime_id)
+        self.assertEqual(reference.repository_identity, self.database.runtime_identity.repository_identity)
+        self.assertEqual(reference.locator, f"runtime://{reference.runtime_id}/decision-evidence/decision-1")
+        self.assertEqual(report["decision_evidence_reference"], reference.to_dict())
+        self.assertEqual(report["runtime_instance"]["runtime_id"], reference.runtime_id)
+
     def test_workspace_projections_do_not_reconstruct_repository_or_host_evidence(self) -> None:
         projection = self.database.runtime_evidence().business_workspace("mission-1")
         self.assertEqual(set(projection), {"mission_state", "mission_recommendations", "decision_evidence", "architecture_reviews", "execution_receipts"})

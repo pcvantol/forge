@@ -23,11 +23,11 @@ from .bootstrap import (
     repository_identity,
     repository_uuid,
 )
-from .evidence import RuntimeEvidence
+from .evidence import RuntimeDecisionEvidenceReference, RuntimeEvidence
 from .runner import BootstrapMissionRunner, MissionRunnerError, RuntimePromptFactory
 
 __all__ = [
     "BootstrapMissionRunner", "MissionRunnerError", "RuntimePromptFactory",
-    "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError", "RuntimeEvidence",
+    "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError", "RuntimeDecisionEvidenceReference", "RuntimeEvidence",
     "RUNTIME_INSTANCE_VERSION", "RUNTIME_INITIALIZATION_VERSION", "RuntimeBootstrap", "RuntimeIdentity", "RuntimeInstance", "RuntimeLocation", "RuntimeRecovery", "RuntimeResolutionError", "RuntimeResolver", "repository_identity", "repository_uuid",
 ]

@@ -12,6 +12,13 @@ immutable execution receipt only: host identity, run identifier, Engineering
 Report ID, timestamp, outcome, and correlation identity. Engineering Platform retains all Execution Host
 Evidence, reports, and telemetry. Repository Truth retains architecture.
 
+`RuntimeEvidence.decision_evidence_reference()` exposes the narrow connection
+between the resolved Runtime Instance and one immutable Decision Evidence
+record. The reference contains only runtime identity, repository identity, a
+stable runtime locator, Decision Evidence identity and a SHA-256 digest of the
+canonical stored record. It is not a second Decision Evidence store and cannot
+contain host evidence, prompts, or decision reasoning.
+
 Mission Qualification reads Runtime Database projections; it does not inspect
 repository implementation files or rebuild execution history. Generation 1
 completion instead verifies that the operational Runtime Instance is

@@ -6,10 +6,38 @@ boundary: only immutable execution-receipt identities are retained here.
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
+from hashlib import sha256
 import json
 from typing import Any
 
 from .database import RuntimeDatabase, RuntimeDatabaseError
+
+
+@dataclass(frozen=True)
+class RuntimeDecisionEvidenceReference:
+    """A digest-pinned pointer from one Runtime Instance to Decision Evidence.
+
+    The reference deliberately contains no decision reasoning and no host
+    evidence.  Its identity binds a Runtime Instance to an immutable Decision
+    Evidence record already owned by the Runtime Database.
+    """
+
+    runtime_id: str
+    repository_identity: str
+    decision_id: str
+    locator: str
+    content_digest: str
+
+    def __post_init__(self) -> None:
+        digest = self.content_digest.removeprefix("sha256:")
+        if not all((self.runtime_id, self.repository_identity, self.decision_id, self.locator)):
+            raise ValueError("runtime decision evidence references require complete identity")
+        if not self.content_digest.startswith("sha256:") or len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            raise ValueError("runtime decision evidence references require a sha256 content digest")
+
+    def to_dict(self) -> dict[str, str]:
+        return asdict(self)
 
 
 class RuntimeEvidence:
@@ -29,6 +57,19 @@ class RuntimeEvidence:
 
     def decision_evidence(self, decision_id: str) -> dict[str, Any]:
         return self._database.get_document("decision_evidence", decision_id)
+
+    def decision_evidence_reference(self, decision_id: str) -> RuntimeDecisionEvidenceReference:
+        """Return the bounded Runtime Instance pointer for immutable evidence."""
+        decision = self.decision_evidence(decision_id)
+        document = json.dumps(decision, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        identity = self._database.runtime_identity
+        return RuntimeDecisionEvidenceReference(
+            identity.runtime_id,
+            identity.repository_identity,
+            decision_id,
+            f"runtime://{identity.runtime_id}/decision-evidence/{decision_id}",
+            "sha256:" + sha256(document.encode("utf-8")).hexdigest(),
+        )
 
     def planning_state(self) -> dict[str, Any]:
         return self._database.get_document("planning_state", "1")
@@ -152,7 +193,10 @@ class RuntimeEvidence:
 
     def decision_evidence_report(self, decision_id: str) -> dict[str, Any]:
         decision = self.decision_evidence(decision_id)
-        return {"report": "decision_evidence", "source": "runtime_database", "decision": decision,
+        return {"report": "decision_evidence", "source": "runtime_database", "runtime_instance": {
+                    "runtime_id": self._database.runtime_identity.runtime_id,
+                    "repository_identity": self._database.runtime_identity.repository_identity,
+                }, "decision_evidence_reference": self.decision_evidence_reference(decision_id).to_dict(), "decision": decision,
                 "execution_receipts": self.execution_receipts(str(decision["mission_context"]["artifact_id"]))}
 
     def business_workspace(self, mission_id: str) -> dict[str, Any]:
