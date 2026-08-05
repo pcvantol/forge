@@ -4,7 +4,7 @@
 
 - Mission type: Business Mission
 - Generation: 2
-- Lifecycle: registered for engineering planning; no Engineering Action has been executed
+- Lifecycle: active; the next Engineering Action is planned and ready for Engineering Platform execution
 - Business approval: approved
 - Architecture approval: approved for engineering
 - Runtime Instance: `forge-runtime-7bba2467-eca6-49fc-98d8-b67da0d43b33`
@@ -49,15 +49,26 @@ its Business and architectural value, expected repository impact, alternatives
 considered and high confidence. It is dedicated pre-approval intake evidence;
 it does not claim non-existent Execution Evidence.
 
-## Initial engineering plan
+## Persisted engineering plan
 
 | Engineering Intent | Engineering Actions | Runtime prompts |
 | --- | ---: | ---: |
 | Repository Truth and Runtime Evidence Foundation | 2 | 2 |
 | Governed Mission Candidate Recommendation Boundary | 1 | 1 |
 
-Total: 2 Engineering Intents, 3 Engineering Actions and 3 generated Runtime
-Prompt definitions. They remain pending under the Mission execution policy.
+Total: 2 Engineering Intents and 3 Engineering Actions. The active runtime
+plan persists the canonical Intent and Action records, selects only
+`MISSION-0006-action-repository-truth` for the next Engineering Platform
+iteration, and retains the other two actions as dependency-ordered pending
+work. The generated runtime prompt is an execution handoff, not completion
+evidence.
+
+## Planning evidence
+
+`MISSION-0006-planning-decision-1` records the activation and sequential
+action selection. It preserves the distinction between Forge planning and
+Engineering Platform execution: no execution receipt is claimed until the
+Platform returns one for the selected action.
 
 ## Success criteria
 

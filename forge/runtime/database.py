@@ -738,8 +738,14 @@ class RuntimeDatabase:
         state_id = mission_state.get("artifact_id") if isinstance(mission_state, dict) else None
         repository_truth = document.get("repository_context", {})
         repository_truth_id = repository_truth.get("artifact_id") if isinstance(repository_truth, dict) else None
-        if not all(isinstance(item, str) and item for item in (identifier, mission_id, review_id, state_id, repository_truth_id)):
-            raise RuntimeDatabaseError("decision evidence requires mission state, architecture review, and repository truth references")
+        planning_types = {"mission_planning", "engineering_intent", "engineering_action_selection", "execution_policy"}
+        required_references = (identifier, mission_id, state_id, repository_truth_id)
+        if not all(isinstance(item, str) and item for item in required_references):
+            raise RuntimeDatabaseError("decision evidence requires mission state and repository truth references")
+        if review_id is not None and (not isinstance(review_id, str) or not review_id):
+            raise RuntimeDatabaseError("decision evidence architecture review reference is invalid")
+        if review_id is None and document.get("decision_type") not in planning_types:
+            raise RuntimeDatabaseError("non-planning decision evidence requires an architecture review reference")
         if state_id != mission_id:
             raise RuntimeDatabaseError("decision evidence mission state must reference its mission")
         references = document.get("execution_receipt_references", [])
