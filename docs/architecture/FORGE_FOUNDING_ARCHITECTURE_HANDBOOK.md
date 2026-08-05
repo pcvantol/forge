@@ -41,6 +41,19 @@ for the applicable authority.
 The [Bootstrap Knowledge Reconciliation Report](../reports/bootstrap-knowledge-reconciliation-001.md)
 established that this edition can be authored solely from repository knowledge.
 
+### Generation boundary
+
+Generation 1 Bootstrap is historical engineering, not operational runtime.
+`MISSION-0001` through `MISSION-0005` are canonical Portfolio Seed Missions
+represented by Repository Truth, Engineering Platform evidence, reports, and
+architecture documentation. Forge must not recreate them as Runtime Instance
+state. The Runtime Instance begins operationally with the first
+Business-approved and Architecture-approved Generation 2 Mission; immediately
+after bootstrap it is intentionally empty with an `IDLE` Dispatcher and an
+empty Approved Mission Queue. The canonical decision is recorded in the
+[Generation 1 Completion Record](../../GENERATION_1_COMPLETION.md) and
+[Generation 1 transition architecture](generation-1-transition.md).
+
 ---
 
 # Part I — Constitution

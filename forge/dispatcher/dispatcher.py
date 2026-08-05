@@ -17,7 +17,8 @@ from forge.intake import MissionIntake
 from forge.models.architecture_mission import ArchitectureMission
 from forge.state import MissionExecutionStatus, MissionStateStore
 
-
+# Historical portfolio identifier set retained for the bootstrap regression
+# harness only. It does not affect operational queue ordering.
 BOOTSTRAP_MISSION_SEQUENCE = ("MISSION-0001", "MISSION-0002", "MISSION-0003", "MISSION-0004", "MISSION-0005")
 
 
@@ -53,10 +54,7 @@ class ApprovedMissionQueue:
         self._workspace = workspace
 
     def missions(self) -> tuple[ArchitectureMission, ...]:
-        approved = self._workspace.approved_for_engineering()
-        bootstrap = [item for identifier in BOOTSTRAP_MISSION_SEQUENCE for item in approved if item.id == identifier]
-        remainder = [item for item in approved if item.id not in BOOTSTRAP_MISSION_SEQUENCE]
-        return tuple(bootstrap + remainder)
+        return self._workspace.approved_for_engineering()
 
 
 class MissionDispatcherStore:

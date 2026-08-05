@@ -1,10 +1,13 @@
 # Forge
 
-Phase E — Increment 5.12 initializes the canonical [Runtime Instance](docs/architecture/runtime-bootstrap.md)
-for this repository exactly once. Its Git-common registry and default durable
-database are protected by an inter-process claim lock; initialization persists
-empty operational infrastructure only. The next increment is Generation 1
-Bootstrap Qualification using the persistent Runtime Instance.
+Phase E — Increment 5.14 formally completes Generation 1 and makes Generation
+2 ready. The [Generation 1 Completion Record](GENERATION_1_COMPLETION.md)
+establishes that `MISSION-0001` through `MISSION-0005` are historical Portfolio
+Seed Missions, never reconstructed as Runtime Instance state. The Runtime
+Instance is operational and intentionally empty, its Dispatcher is `IDLE`, and
+its Approved Mission Queue is empty until the first Business- and
+Architecture-approved Generation 2 Mission. The next architectural increment
+is [Portfolio Intelligence Foundation](docs/architecture/generation-1-transition.md).
 
 Forge is a local-first, AI-native engineering platform foundation. It gives an
 engineering workspace a small, explicit vocabulary before it gains automation:
@@ -285,13 +288,11 @@ bounded Engineering Intents and Actions, then continuously replans after
 Mission State and Execution Evidence updates. It neither changes Mission or
 Architecture authority nor performs Runtime or Execution Host work.
 
-Phase D — Increment 4.5 adds [Bootstrap Mission Sequence
-Qualification](docs/architecture/bootstrap-mission-sequence-qualification.md).
-It executes the complete predefined `MISSION-0001` through `MISSION-0005`
-portfolio through the canonical Dispatcher and Execution Loop, persists five
-evidence sets, and confirms the resulting `IDLE` dispatcher state. Architecture
-Reviews and Mission Recommendations remain advisory and do not alter bootstrap
-ordering. See the [qualification report](docs/reports/forge-bootstrap-mission-sequence-qualification-report-001.md).
+Phase D — Increment 4.5 added a historical [Bootstrap Mission Sequence
+Qualification](docs/architecture/bootstrap-mission-sequence-qualification.md)
+harness. It remains regression evidence for the bootstrap portfolio only; it
+does not create Runtime Instance state and does not govern Generation 2
+dispatch.
 
 Phase D — Increment 4.3 adds the [Approved Mission Dispatcher](docs/architecture/approved-mission-dispatcher.md).
 It activates exactly one Architecture-approved Mission from a persistent,

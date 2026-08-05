@@ -54,7 +54,8 @@ Runtime Instance; explicit relocation is the sole controlled registry update.
 Initialization creates only the empty runtime infrastructure: Mission State,
 Decision Evidence, Architecture Reviews, Mission Recommendations, Execution
 Receipts, Planning State, Bootstrap Portfolio State, and metadata storage. It
-does not infer, import, or mark any Mission complete.
+does not infer, import, or mark any Mission complete. In particular, it does
+not materialise historical bootstrap Portfolio Seed Missions.
 
 ## Relocation and recovery
 
@@ -71,14 +72,14 @@ records to reconstruct state. Interrupted Missions resume from persisted
 Mission State; recovery never fabricates a mission, review, recommendation,
 decision, receipt, or planning record.
 
-## Generation 1 Bootstrap Qualification
+## Generation 1 completion reconciliation
 
-Generation 1 Bootstrap Qualification consumes only the persistent Runtime
-Instance projection: Mission State, Decision Evidence, Architecture Reviews,
-Mission Recommendations, Execution Receipts, and Planning State. It cannot
-reconstruct runtime state by inspecting repository source. This preserves
-Repository Truth and Engineering Platform ownership boundaries while making
-independent Engineering Platform executions continuous.
+Generation 1 Bootstrap is historical. Its Portfolio Seed Missions are owned by
+Repository Truth and Engineering Platform evidence, not by the Runtime
+Instance. Generation 1 completion therefore verifies an integrity-valid,
+operational, intentionally empty Runtime Instance with an `IDLE` Dispatcher
+and empty Approved Mission Queue. It cannot reconstruct bootstrap state by
+inspecting repository source or external evidence.
 
 See [Runtime Database](runtime-database.md) for SQLite storage details and
 [the Runtime Instance report](../reports/forge-runtime-instance-report-001.md)

@@ -177,18 +177,18 @@ Current Portfolio Seeds:
 
 These Missions bootstrap Forge into an AI-native Product Development Platform.
 
-Generation 1 Bootstrap Qualification reads only the persistent Runtime Instance
-for the operational lifecycle of these five Missions. Each Mission qualifies
-only with its COMPLETE Mission State, immutable Decision Evidence, Architecture
-Review, Mission Recommendation, immutable Engineering Platform receipt
-reference, and FIFO lineage. The receipt reference must resolve independently
-with Engineering Platform; execution evidence itself remains host-owned.
+These are historical bootstrap engineering events. They are represented by
+Repository Truth, Engineering Platform execution evidence, engineering reports,
+and architecture documentation. They are not recreated as Runtime Instance
+state; no Runtime materialisation of historical bootstrap Missions occurs.
 
 ---
 
 # Future Directory Structure
 
-The current bootstrap contains Portfolio Seeds only.
+The completed bootstrap contains Portfolio Seeds only. Generation 2 adds the
+first operational Mission only after Business approval and Architecture
+approval.
 
 Future repository evolution is expected to introduce:
 
@@ -212,11 +212,10 @@ Mission Recommendations remain advisory.
 
 Only approved Missions become executable.
 
-The Approved Mission Dispatcher executes engineering-approved bootstrap
-Missions deterministically in this canonical order: `MISSION-0001` →
-`MISSION-0002` → `MISSION-0003` → `MISSION-0004` → `MISSION-0005`. A listed
-Mission still requires Business and Architecture approval before it enters the
-Approved Mission Queue; bootstrap recommendations never replace this sequence.
+The Approved Mission Dispatcher is operational and begins with the first
+Business-approved and Architecture-approved Generation 2 Mission. It uses the
+normal Architecture approval FIFO; historical bootstrap Mission identifiers
+have no priority and do not enter the queue.
 
 ---
 

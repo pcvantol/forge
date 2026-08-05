@@ -45,10 +45,10 @@ class MissionDispatcherTests(unittest.TestCase):
     def dispatcher(self, *, review=None, recommendations=None) -> MissionDispatcher:
         return MissionDispatcher(ApprovedMissionQueue(self.workspace), MissionIntake(self.state_store, self.clock), self.states, self.dispatch_store, clock=self.clock, architecture_review=review, recommendations=recommendations)
 
-    def test_first_selection_fifo_and_bootstrap_sequence_are_deterministic(self) -> None:
+    def test_first_selection_follows_approval_fifo_not_historical_bootstrap_order(self) -> None:
         self.approve("MISSION-0002"); self.approve("MISSION-0001")
-        self.assertEqual([item.id for item in ApprovedMissionQueue(self.workspace).missions()], ["MISSION-0001", "MISSION-0002"])
-        self.assertEqual(self.dispatcher().dispatch().mission_id, "MISSION-0001")  # type: ignore[union-attr]
+        self.assertEqual([item.id for item in ApprovedMissionQueue(self.workspace).missions()], ["MISSION-0002", "MISSION-0001"])
+        self.assertEqual(self.dispatcher().dispatch().mission_id, "MISSION-0002")  # type: ignore[union-attr]
 
     def test_single_active_and_resume_do_not_start_a_second_mission(self) -> None:
         self.approve("MISSION-0001"); self.approve("MISSION-0002"); dispatcher = self.dispatcher(); active = dispatcher.dispatch()

@@ -1,30 +1,19 @@
-"""Read-only Generation 1 Bootstrap qualification from Runtime Database state.
+"""Read-only Generation 1 completion qualification from Runtime Instance state.
 
-This module deliberately has no dependency on repository mission definitions,
-dispatchers, state stores, or an Execution Host.  It projects an already
-persisted Runtime Database and reports whether the operational record is
-sufficient to qualify Generation 1.
+Generation 1 bootstrap is historical engineering, represented by Repository
+Truth and Engineering Platform evidence.  It is deliberately not recreated in
+the operational Runtime Instance.  This boundary therefore verifies that a
+valid Runtime Instance is ready, intentionally empty, and awaiting its first
+approved Generation 2 Mission.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from forge.runtime import RuntimeDatabase, RuntimeIntegrityError
-
-
-BOOTSTRAP_MISSION_IDS = (
-    "MISSION-0001", "MISSION-0002", "MISSION-0003", "MISSION-0004", "MISSION-0005",
-)
-
-
-class EngineeringPlatformEvidenceResolver(Protocol):
-    """Read-only resolver for immutable Engineering Platform receipt identities."""
-
-    def resolves(self, *, execution_host: str, execution_run_id: str,
-                 engineering_report_id: str, correlation_identity: str,
-                 executed_at: str, outcome: str) -> bool: ...
+from forge.runtime.database import RuntimeDatabaseError
 
 
 @dataclass(frozen=True)
@@ -43,14 +32,12 @@ class GenerationOneBootstrapQualificationReport:
 
 def qualify_generation_one_bootstrap(
     database: RuntimeDatabase,
-    evidence_resolver: EngineeringPlatformEvidenceResolver | None = None,
 ) -> GenerationOneBootstrapQualificationReport:
-    """Qualify only persisted Runtime Database state, failing closed on integrity.
+    """Qualify an empty, integrity-valid operational Runtime Instance.
 
     The caller owns database resolution and opening.  This function neither
-    creates a database nor dispatches, resumes, or reconstructs. It may invoke
-    only the caller-supplied read-only resolver for immutable receipt identity;
-    Execution Evidence remains outside Forge.
+    creates, dispatches, resumes, reconstructs, nor imports bootstrap work.
+    Historical execution evidence remains owned by Engineering Platform.
     """
 
     try:
@@ -63,28 +50,54 @@ def qualify_generation_one_bootstrap(
             None,
         )
 
-    projection = database.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_IDS)
-    missing = list(projection["missing_runtime_evidence"])
-    receipt_validation: dict[str, tuple[dict[str, Any], ...]] = {}
-    for mission in projection["missions"]:
-        validations: list[dict[str, Any]] = []
-        for receipt in mission["execution_receipts"]:
-            resolved = evidence_resolver is not None and evidence_resolver.resolves(
-                execution_host=receipt["execution_host"],
-                execution_run_id=receipt["execution_run_id"],
-                engineering_report_id=receipt["engineering_report_id"],
-                correlation_identity=receipt["correlation_identity"],
-                executed_at=receipt["executed_at"],
-                outcome=receipt["outcome"],
-            )
-            validations.append({"receipt_id": receipt["receipt_id"], "resolved": resolved})
-            if not resolved:
-                missing.append(f"{mission['mission_id']}:engineering_platform_evidence")
-        receipt_validation[mission["mission_id"]] = tuple(validations)
-    projection = {**projection, "execution_receipt_validation": receipt_validation, "qualified": not missing}
+    counts = {
+        "mission_state": database._connection.execute("SELECT COUNT(*) FROM mission_state").fetchone()[0],
+        "decision_evidence": database._connection.execute("SELECT COUNT(*) FROM decision_evidence").fetchone()[0],
+        "architecture_reviews": database._connection.execute("SELECT COUNT(*) FROM architecture_reviews").fetchone()[0],
+        "mission_recommendations": database._connection.execute("SELECT COUNT(*) FROM mission_recommendations").fetchone()[0],
+        "execution_receipts": database._connection.execute("SELECT COUNT(*) FROM execution_receipts").fetchone()[0],
+        "mission_lifecycle_events": database._connection.execute("SELECT COUNT(*) FROM mission_lifecycle_events").fetchone()[0],
+    }
+    dispatcher = database._connection.execute(
+        "SELECT status, active_mission_id, mission_sequence FROM dispatcher_state WHERE singleton = 1"
+    ).fetchone()
+    try:
+        planning = database.runtime_evidence().planning_state()
+    except RuntimeDatabaseError:
+        planning = {"current_queue": [], "pending_engineering_actions": []}
+    dispatcher_idle = dispatcher is None or (
+        dispatcher["status"] == "IDLE" and dispatcher["active_mission_id"] is None
+    )
+    queue_empty = planning.get("current_queue") == [] and planning.get("pending_engineering_actions") == []
+    empty = not any(counts.values())
+    missing: list[str] = []
+    if not empty:
+        missing.append("runtime_instance:intentionally_empty")
+    if not dispatcher_idle:
+        missing.append("dispatcher:idle")
+    if not queue_empty:
+        missing.append("approved_mission_queue:empty")
+    projection = {
+        "source": "runtime_instance",
+        "runtime_identity": database.runtime_identity.to_dict(),
+        "historical_bootstrap_mission_ids": (
+            "MISSION-0001", "MISSION-0002", "MISSION-0003", "MISSION-0004", "MISSION-0005",
+        ),
+        "runtime_record_counts": counts,
+        "dispatcher_status": "IDLE" if dispatcher is None else dispatcher["status"],
+        "approved_mission_queue": tuple(planning.get("current_queue", ())),
+        "planning_state": planning,
+        "runtime_instance_status": "intentionally_empty" if empty else "operational_state_present",
+        "ownership": {
+            "historical_architecture": "repository_truth",
+            "historical_execution_evidence": "engineering_platform",
+            "operational_runtime": "forge_runtime_instance",
+        },
+        "qualified": not missing,
+    }
     return GenerationOneBootstrapQualificationReport(
         "YES" if not missing else "NO",
         projection,
         tuple(missing),
-        "Generation 1 Completion Record" if not missing else None,
+        "Portfolio Intelligence Foundation" if not missing else None,
     )

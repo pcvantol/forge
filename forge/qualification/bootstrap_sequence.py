@@ -14,7 +14,7 @@ import re
 from typing import Any, Protocol
 
 from forge.architecture import ArchitectureWorkspace
-from forge.dispatcher import BOOTSTRAP_MISSION_SEQUENCE, ApprovedMissionQueue, MissionDispatcher, MissionDispatcherStore
+from forge.dispatcher import ApprovedMissionQueue, MissionDispatcher, MissionDispatcherStore
 from forge.execution import ExecutionLoop
 from forge.intake import MissionIntake
 from forge.models import (
@@ -40,6 +40,9 @@ from forge.scheduler.adapter import (
 )
 from forge.state import MissionExecutionStatus, MissionStateStore
 from forge.runtime import RuntimeDatabase
+
+
+BOOTSTRAP_MISSION_SEQUENCE = ("MISSION-0001", "MISSION-0002", "MISSION-0003", "MISSION-0004", "MISSION-0005")
 
 
 def _digest(value: object) -> str:

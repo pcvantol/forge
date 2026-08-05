@@ -23,8 +23,11 @@ canonical records, and component contracts needed to begin runtime
 implementation have been established and reconciled. It does **not** mean that
 the complete Forge Runtime, Forge CLI, Mission Planner, concrete provider
 renderer, or a qualified live Execution Host integration has been delivered.
-Forge is entering runtime implementation from this repository-defined
-architecture.
+Forge has completed its historical bootstrap. The Runtime Instance is
+operational and intentionally empty: bootstrap Missions are not materialised
+as runtime state. Generation 2 begins only with the first Business-approved
+and Architecture-approved operational Mission. See the
+[Generation 1 Completion Record](../../GENERATION_1_COMPLETION.md).
 
 ## 2. Canonical architecture
 
@@ -60,7 +63,21 @@ Evidence** is accepted only when it exactly matches the dispatched request.
 **Repository Truth** remains the authoritative implementation reality that
 informs subsequent planning.
 
-## 3. Execution architecture
+## 3. Historical bootstrap and operational runtime
+
+The canonical Portfolio Seed Missions, `MISSION-0001` through `MISSION-0005`,
+established Forge. Repository Truth owns their historical architecture and
+Engineering Platform owns their execution evidence, reports, receipts, and
+telemetry. Forge Runtime Instance owns future Mission State, Decision Evidence,
+Architecture Reviews, Mission Recommendations, Execution Receipt identities,
+and Planning State. It does not reconstruct bootstrap history.
+
+Immediately after Generation 1 completion, the Dispatcher is `IDLE`, the
+Approved Mission Queue is empty, and the Runtime Instance is intentionally
+empty. The first Runtime Mission is the first Business-approved Generation 2
+Mission that subsequently receives Architecture approval.
+
+## 4. Execution architecture
 
 ```text
 Mission

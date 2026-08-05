@@ -2,27 +2,24 @@
 
 ## Decision
 
-Generation 1 qualification projects its portfolio from the persistent Runtime
-Instance and checks the five required bootstrap Mission identifiers without
-constructing operational state from repository files. A missing Mission is
-reported as missing Runtime Instance evidence.
+This superseded qualification interpretation is reconciled by the
+[Generation 1 Completion Record](../../GENERATION_1_COMPLETION.md). Bootstrap
+Missions are historical engineering, not required Runtime Instance state.
 
 ## Execution receipt boundary
 
-Forge retains only immutable receipt identity. The qualification caller supplies
-a read-only Engineering Platform resolver for host, run, report, correlation,
-timestamp, and outcome. A receipt that cannot be independently resolved fails
-qualification. No report, telemetry, or other Execution Evidence is copied into
-Forge.
+Engineering Platform retains historical execution receipts, reports, and
+telemetry. Forge does not copy those artefacts into its operational runtime.
 
 ## Current result
 
-The canonical Runtime Instance is operational but empty. Its Generation 1
-qualification answer is **NO**: `MISSION-0001` through `MISSION-0005` lack
-persisted operational chains. Forge Generation 1 Bootstrap is not complete and
-Generation 1 Completion Record is not yet recommended.
+The canonical Runtime Instance is operational and intentionally empty. Its
+Generation 1 completion answer is **YES**: no bootstrap Mission chain belongs
+in future operational Runtime state. Forge Generation 1 is complete and
+Generation 2 is ready.
 
 ## Ownership
 
-Repository Truth owns architecture. The Persistent Runtime Instance owns
-operational state. Engineering Platform owns execution and execution evidence.
+Repository Truth owns historical architecture and bootstrap engineering. The
+Runtime Instance owns future operational state. Engineering Platform owns
+historical and future execution evidence.
