@@ -52,6 +52,8 @@ class RuntimeBootstrapTests(unittest.TestCase):
         database = self._database()
         with self.assertRaises(sqlite3.IntegrityError):
             database._connection.execute("UPDATE runtime_metadata SET value = 'other' WHERE key = 'runtime_id'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            database._connection.execute("UPDATE runtime_metadata SET value = 'other' WHERE key = 'initialization_version'")
 
     def test_recovery_reads_only_persisted_runtime_records_after_restart(self) -> None:
         database = self._database()
@@ -72,7 +74,7 @@ class RuntimeBootstrapTests(unittest.TestCase):
         database.close()
         duplicate = self.root / ".forge" / "duplicate" / "runtime-copy.db"
         duplicate.parent.mkdir(parents=True)
-        duplicate.write_bytes((self.root / ".forge" / "runtime.db").read_bytes())
+        duplicate.write_bytes(database.path.read_bytes())
         with self.assertRaises(RuntimeResolutionError):
             RuntimeResolver(self.root).resolve()
 

@@ -1,5 +1,11 @@
 # Forge
 
+Phase E — Increment 5.12 initializes the canonical [Runtime Instance](docs/architecture/runtime-bootstrap.md)
+for this repository exactly once. Its Git-common registry and default durable
+database are protected by an inter-process claim lock; initialization persists
+empty operational infrastructure only. The next increment is Generation 1
+Bootstrap Qualification using the persistent Runtime Instance.
+
 Forge is a local-first, AI-native engineering platform foundation. It gives an
 engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human

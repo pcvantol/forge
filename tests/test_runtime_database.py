@@ -7,7 +7,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from forge.runtime import RUNTIME_SCHEMA_VERSION, RuntimeDatabase, RuntimeIntegrityError
+from forge.runtime import RUNTIME_SCHEMA_VERSION, RuntimeDatabase, RuntimeIntegrityError, RuntimeResolver
 
 
 class RuntimeDatabaseTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
         return {"id": "review-1", "mission_id": "mission-1", "input_digest": "sha256:review", "repository_maturity": [], "pressure": {"architecture": "low", "implementation": "low"}, "confidence": "high", "reviewed_at": "2026-08-04T00:00:00Z"}
 
     def test_creation_uses_canonical_runtime_path_and_versioned_metadata(self) -> None:
-        self.assertEqual(self.database.path, (self.root / ".forge" / "runtime.db").resolve())
+        self.assertEqual(self.database.path, RuntimeResolver(self.root).default_location)
         self.assertTrue(self.database.path.exists())
         self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         self.database.validate_integrity()
@@ -53,7 +53,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
 
     def test_newer_schema_and_missing_metadata_are_rejected(self) -> None:
         self.database.close()
-        connection = sqlite3.connect(self.root / ".forge" / "runtime.db")
+        connection = sqlite3.connect(self.database.path)
         connection.execute("PRAGMA user_version=99")
         connection.commit(); connection.close()
         with self.assertRaises(RuntimeIntegrityError):
@@ -61,7 +61,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
 
     def test_version_three_execution_references_migrate_to_immutable_receipts(self) -> None:
         self.database.close()
-        connection = sqlite3.connect(self.root / ".forge" / "runtime.db")
+        connection = sqlite3.connect(self.database.path)
         connection.execute("DROP TRIGGER execution_receipts_immutable_update")
         connection.execute("DROP TRIGGER execution_receipts_immutable_delete")
         connection.execute("DROP TABLE execution_receipts")

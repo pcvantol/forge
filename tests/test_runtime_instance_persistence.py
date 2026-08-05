@@ -54,6 +54,29 @@ class RuntimeInstancePersistenceTests(unittest.TestCase):
         self.assertEqual(recovered["decision_evidence"][0]["id"], "decision-1")
         self.assertEqual(recovered["execution_receipts"][0]["receipt_id"], "receipt-1")
 
+    def test_first_initialization_claims_one_durable_canonical_instance(self) -> None:
+        self._git("config", "forge.repositoryUUID", "fixture-repository-uuid")
+        database = RuntimeBootstrap(self.repository, forge_version="test").open()
+        self.addCleanup(database.close)
+        identity = database.runtime_identity
+        resolver = RuntimeResolver(self.repository)
+        self.assertEqual(database.path, (self.repository / ".git" / "forge-runtime" / "runtime.db").resolve())
+        self.assertEqual(resolver.resolve().path, database.path)
+        self.assertEqual(identity.initialization_version, "1")
+        self.assertEqual(identity.repository_uuid, "fixture-repository-uuid")
+        for table in ("mission_state", "decision_evidence", "architecture_reviews", "mission_recommendations", "execution_receipts", "planning_state", "bootstrap_portfolio_state"):
+            self.assertEqual(database._connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 0)
+
+    def test_existing_claim_wins_over_a_different_configured_location(self) -> None:
+        first = self._open()
+        runtime_id = first.runtime_identity.runtime_id
+        first.close()
+        alternate = self.root / "another-runtime" / "runtime.db"
+        opened = RuntimeBootstrap(self.repository, configured_location=alternate, forge_version="test").open()
+        self.addCleanup(opened.close)
+        self.assertEqual(opened.runtime_identity.runtime_id, runtime_id)
+        self.assertFalse(alternate.exists())
+
     def test_runtime_survives_repository_cleanup_and_workspace_relocation(self) -> None:
         database = self._open()
         runtime_id = database.runtime_instance.identity.runtime_id

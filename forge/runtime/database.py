@@ -16,19 +16,20 @@ import sqlite3
 from typing import Any, Mapping
 import uuid
 
-from .bootstrap import RuntimeIdentity, RuntimeResolver, canonical_repository_root, repository_identity
+from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, RuntimeResolver,
+                        canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 8
+RUNTIME_SCHEMA_VERSION = 10
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
     "runtime_id", "repository_identity", "repository_root", "database_version",
-    "database_location", "last_access_at", "status", "instance_version",
+    "database_location", "last_access_at", "status", "instance_version", "initialization_version",
 ))
 _TABLES = frozenset((
     "mission_state", "architecture_reviews", "mission_recommendations",
-    "decision_evidence", "execution_receipts", "planning_state", "mission_lifecycle_events",
+    "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence",
 ))
@@ -80,10 +81,18 @@ class RuntimeDatabase:
 
     def __init__(self, workspace_root: Path | str = ".", *, path: Path | str | None = None,
                  forge_version: str = "0.0") -> None:
+        if path is None:
+            # Canonical creation and registration are a single inter-process
+            # transaction owned by RuntimeBootstrap.  Keep this compatibility
+            # entry point without permitting a second unclaimed create path.
+            from .bootstrap import RuntimeBootstrap
+            opened = RuntimeBootstrap(workspace_root, forge_version=forge_version).open()
+            self.__dict__.update(opened.__dict__)
+            return
         self.repository_root = canonical_repository_root(workspace_root)
-        # Normal opens resolve before SQLite is created.  An explicit path is
-        # reserved for bootstrap and relocation after their resolver step.
-        self.path = Path(path) if path is not None else RuntimeResolver(workspace_root).resolve().path
+        # Explicit paths are reserved for bootstrap and relocation after their
+        # resolver/claim step.
+        self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(self.path)
         self._connection.row_factory = sqlite3.Row
@@ -92,8 +101,6 @@ class RuntimeDatabase:
             self._migrate(forge_version)
             self._initialize_runtime_identity()
             self.validate_integrity()
-            if path is None:
-                RuntimeResolver(workspace_root)._register(self.path)
         except Exception:
             self._connection.close()
             raise
@@ -114,7 +121,7 @@ class RuntimeDatabase:
                         key TEXT PRIMARY KEY, value TEXT NOT NULL
                     );
                     CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
-                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'created_at')
+                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                     CREATE TABLE mission_state (
@@ -175,6 +182,10 @@ class RuntimeDatabase:
                         planner_version TEXT NOT NULL, current_queue TEXT NOT NULL,
                         pending_engineering_actions TEXT NOT NULL, blocked_engineering_actions TEXT NOT NULL,
                         execution_policy TEXT NOT NULL, planner_runtime_metadata TEXT NOT NULL,
+                        document TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS bootstrap_portfolio_state (
+                        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                         document TEXT NOT NULL
                     );
                     CREATE TABLE delegation_requests (
@@ -362,7 +373,35 @@ class RuntimeDatabase:
                     self._connection.execute("ALTER TABLE mission_lifecycle_events ADD COLUMN transition_sequence INTEGER")
                 self._connection.execute("UPDATE mission_lifecycle_events SET transition_sequence = rowid WHERE transition_sequence IS NULL")
                 self._connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS mission_lifecycle_events_transition_sequence ON mission_lifecycle_events(transition_sequence)")
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION), "migration_version": str(RUNTIME_SCHEMA_VERSION), "last_migration": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1"})
+                self._set_metadata({"schema_version": "8", "migration_version": "8", "last_migration": "8", "instance_version": "1"})
+                self._connection.execute("PRAGMA user_version=8")
+            self._migrate(forge_version)
+        elif version == 8:
+            with self._connection:
+                self._connection.executescript("""
+                    DROP TRIGGER runtime_identity_immutable;
+                    CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
+                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
+                         AND NEW.value <> OLD.value
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "9",
+                                    "migration_version": "9",
+                                    "last_migration": "9",
+                                    "initialization_version": RUNTIME_INITIALIZATION_VERSION})
+                self._connection.execute("PRAGMA user_version=9")
+            self._migrate(forge_version)
+        elif version == 9:
+            with self._connection:
+                self._connection.execute("""
+                    CREATE TABLE IF NOT EXISTS bootstrap_portfolio_state (
+                        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                        document TEXT NOT NULL
+                    )
+                """)
+                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION),
+                                    "migration_version": str(RUNTIME_SCHEMA_VERSION),
+                                    "last_migration": str(RUNTIME_SCHEMA_VERSION)})
                 self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
@@ -378,11 +417,20 @@ class RuntimeDatabase:
             "repository_identity": metadata.get("repository_identity") or repository_identity(self.repository_root),
             "repository_root": metadata.get("repository_root") or str(self.repository_root),
             "database_version": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1",
+            "initialization_version": metadata.get("initialization_version") or RUNTIME_INITIALIZATION_VERSION,
             "database_location": str(self.path.resolve()),
             "created_at": created_at, "last_access_at": now, "status": "active",
         }
         if values["repository_identity"] != repository_identity(self.repository_root):
             raise RuntimeIntegrityError("runtime database belongs to a different repository")
+        current_repository_uuid = repository_uuid(self.repository_root)
+        stored_repository_uuid = metadata.get("repository_uuid")
+        if stored_repository_uuid and current_repository_uuid and stored_repository_uuid != current_repository_uuid:
+            raise RuntimeIntegrityError("runtime database repository UUID is inconsistent")
+        if stored_repository_uuid:
+            values["repository_uuid"] = stored_repository_uuid
+        elif current_repository_uuid:
+            values["repository_uuid"] = current_repository_uuid
         with self._connection:
             self._set_metadata(values)
 
@@ -433,6 +481,9 @@ class RuntimeDatabase:
         identity = self.runtime_identity
         if identity.repository_identity != repository_identity(self.repository_root) or not identity.runtime_id or identity.status != "active":
             raise RuntimeIntegrityError("runtime identity is inconsistent")
+        current_repository_uuid = repository_uuid(self.repository_root)
+        if identity.repository_uuid and current_repository_uuid and identity.repository_uuid != current_repository_uuid:
+            raise RuntimeIntegrityError("runtime identity repository UUID is inconsistent")
         if self._connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
             raise RuntimeIntegrityError("runtime database foreign references are invalid")
         transitions = tuple(row[0] for row in self._connection.execute(

@@ -16,9 +16,15 @@ import sqlite3
 import subprocess
 from typing import Any
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - supported Forge hosts are POSIX.
+    fcntl = None
+
 
 RUNTIME_INSTANCE_VERSION = "1"
 RUNTIME_REGISTRY_VERSION = "1"
+RUNTIME_INITIALIZATION_VERSION = "1"
 
 
 class RuntimeResolutionError(RuntimeError):
@@ -37,6 +43,8 @@ class RuntimeIdentity:
     repository_identity: str
     repository_root: str
     instance_version: str
+    initialization_version: str
+    repository_uuid: str | None
     created_at: str
     database_location: str
     last_access_at: str
@@ -44,11 +52,12 @@ class RuntimeIdentity:
 
     @classmethod
     def from_metadata(cls, metadata: dict[str, str]) -> "RuntimeIdentity":
-        required = ("runtime_id", "repository_identity", "repository_root", "created_at")
+        required = ("runtime_id", "repository_identity", "repository_root", "created_at", "initialization_version")
         if any(not metadata.get(key) for key in required):
             raise RuntimeResolutionError("runtime identity metadata is incomplete")
         return cls(metadata["runtime_id"], metadata["repository_identity"], metadata["repository_root"],
-                   metadata.get("instance_version", RUNTIME_INSTANCE_VERSION), metadata["created_at"],
+                   metadata.get("instance_version", RUNTIME_INSTANCE_VERSION), metadata["initialization_version"],
+                   metadata.get("repository_uuid") or None, metadata["created_at"],
                    metadata.get("database_location", ""), metadata.get("last_access_at", ""), metadata.get("status", ""))
 
     @property
@@ -60,11 +69,15 @@ class RuntimeIdentity:
         return self.instance_version
 
     def to_dict(self) -> dict[str, str]:
-        return {"runtime_id": self.runtime_id, "repository_identity": self.repository_identity,
+        result = {"runtime_id": self.runtime_id, "repository_identity": self.repository_identity,
                 "repository_id": self.repository_identity, "repository_root": self.repository_root,
                 "instance_version": self.instance_version, "database_version": self.instance_version,
+                "initialization_version": self.initialization_version,
                 "created_at": self.created_at, "database_location": self.database_location,
                 "last_access_at": self.last_access_at, "status": self.status}
+        if self.repository_uuid is not None:
+            result["repository_uuid"] = self.repository_uuid
+        return result
 
 
 @dataclass(frozen=True)
@@ -122,6 +135,18 @@ def repository_identity(repository_root: Path | str) -> str:
     return "forge-repository-" + hashlib.sha256(basis.encode("utf-8")).hexdigest()[:24]
 
 
+def repository_uuid(repository_root: Path | str) -> str | None:
+    """Return an explicitly configured repository UUID when the host provides one."""
+    try:
+        value = subprocess.check_output(
+            ("git", "-C", str(canonical_repository_root(repository_root)), "config", "--get", "forge.repositoryUUID"),
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return value or None
+
+
 class RuntimeResolver:
     """Resolve exactly one registered Runtime Instance, or fail closed."""
 
@@ -136,15 +161,21 @@ class RuntimeResolver:
     def default_location(self) -> Path:
         if self.configured_runtime_root is not None:
             return self.configured_runtime_root / repository_identity(self.repository_root) / "runtime.db"
-        return self.canonical_root / ".forge" / "runtime.db"
+        return self._git_metadata_root() / "forge-runtime" / "runtime.db"
 
     @property
     def registry_path(self) -> Path:
-        """Registry is outside cleanup-prone ``.forge`` and shared by worktrees."""
-        if self.configured_runtime_root is not None:
-            return self.configured_runtime_root / repository_identity(self.repository_root) / "runtime-instance.json"
+        """Canonical registry is Git-common metadata and shared by all worktrees."""
+        return self._git_metadata_root() / "forge-runtime-instance.json"
+
+    @property
+    def initialization_lock_path(self) -> Path:
+        """One repository-wide inter-process claim lock, independent of storage choice."""
+        return self._git_metadata_root() / "forge-runtime-instance.lock"
+
+    def _git_metadata_root(self) -> Path:
         git_dir = self.canonical_root / ".git"
-        return (git_dir / "forge-runtime-instance.json") if git_dir.exists() else (self.canonical_root / ".forge-runtime-instance.json")
+        return git_dir if git_dir.exists() else self.canonical_root
 
     def resolve(self) -> RuntimeLocation:
         registered = self._registered_location()
@@ -198,7 +229,7 @@ class RuntimeResolver:
                 opened.validate_integrity()
             finally:
                 opened.close()
-            self._register(destination_path)
+            self._register(destination_path, replace=True)
             source.path.unlink()
             for suffix in ("-wal", "-shm"):
                 sidecar = Path(str(source.path) + suffix)
@@ -231,11 +262,15 @@ class RuntimeResolver:
             raise RuntimeResolutionError("Runtime Instance registry has invalid identity metadata")
         return Path(payload["instance_location"]).expanduser().resolve()
 
-    def _register(self, location: Path, instance: RuntimeInstance | None = None) -> None:
+    def _register(self, location: Path, instance: RuntimeInstance | None = None, *, replace: bool = False) -> None:
         if instance is None:
             instance = self._instance_from_database(location)
         if instance.identity.repository_identity != repository_identity(self.repository_root):
             raise RuntimeResolutionError("Runtime Instance belongs to a different repository")
+        if self._registry_exists():
+            existing = self._registered_location()
+            if existing is not None and existing != location.resolve() and not replace:
+                raise RuntimeResolutionError("Runtime Instance registry already claims a different location")
         payload = {"registry_version": RUNTIME_REGISTRY_VERSION, **instance.to_dict()}
         payload["instance_location"] = str(location.resolve())
         self.registry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -282,10 +317,22 @@ class RuntimeBootstrap:
 
     def open(self):
         from .database import RuntimeDatabase
-        location = self.resolver.resolve()
-        database = RuntimeDatabase(self.resolver.repository_root, path=location.path, forge_version=self.forge_version)
-        self.resolver._register(database.path)
-        return database
+        if fcntl is None:
+            raise RuntimeResolutionError("Runtime Instance initialization lock is unavailable")
+        self.resolver.initialization_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.resolver.initialization_lock_path.open("a+", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                location = self.resolver.resolve()
+                database = RuntimeDatabase(self.resolver.repository_root, path=location.path, forge_version=self.forge_version)
+                try:
+                    self.resolver._register(database.path)
+                except Exception:
+                    database.close()
+                    raise
+                return database
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 class RuntimeRecovery:

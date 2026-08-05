@@ -14,9 +14,10 @@ Repository Identity
 ```
 
 Runtime Identity is immutable: Runtime ID, repository identity, original
-repository root, instance version, and creation timestamp. Runtime Instance
-metadata is mutable and validated: current instance location, last-access
-timestamp, and active status. A Runtime Instance owns Mission State, Decision
+repository root, optional repository UUID, instance version, initialization
+version, and creation timestamp. Runtime Instance metadata is mutable and
+validated: current instance location, last-access timestamp, and active
+status. A Runtime Instance owns Mission State, Decision
 Evidence, Architecture Reviews, Mission Recommendations, Execution Receipts,
 Planning State, and runtime metadata. It records receipt identities only;
 Engineering Platform retains ownership of Execution Evidence and Repository
@@ -26,11 +27,13 @@ Truth remains the architectural authority.
 
 Repository Identity is derived from the Git repository's initial commit, not
 an absolute filesystem path. It is therefore stable across branch and
-worktree transitions and repository relocation. A configured Runtime Root may
-place the instance registry and database outside repository cleanup paths; in
-that mode they live under the Repository Identity. Otherwise the durable
-registry is Git-common metadata, outside cleanup-prone `.forge`, and shared by
-all worktrees.
+worktree transitions and repository relocation. Where a host supplies an
+explicit Git `forge.repositoryUUID`, Forge persists it as immutable supporting
+identity metadata. The durable registry and default database live in Git-common
+metadata, outside cleanup-prone `.forge`, and are shared by all worktrees. A
+configured Runtime Root may place the database outside the repository; the
+single canonical registry remains in Git-common metadata so future executions
+discover the same instance without relying on caller configuration.
 
 `RuntimeResolver` resolves exactly one candidate from configured location,
 registered instance location, repository default, and local discovery. It
@@ -41,9 +44,17 @@ Ambiguity, a corrupt registry, identity mismatch, invalid references, or a
 missing registered location fails closed. A prior registration never permits
 bootstrap to silently fabricate a replacement instance.
 
-`RuntimeBootstrap` first discovers a valid instance, or creates a new instance
-only when no registry exists and no candidate exists. It never overwrites an
-existing Runtime Instance.
+`RuntimeBootstrap` acquires one repository-wide inter-process initialization
+lock before resolving, creating, and registering. It first discovers a valid
+instance, or creates a new instance only when no registry exists and no
+candidate exists. The registry claim is atomic, so competing configured
+locations cannot produce multiple instances. It never overwrites an existing
+Runtime Instance; explicit relocation is the sole controlled registry update.
+
+Initialization creates only the empty runtime infrastructure: Mission State,
+Decision Evidence, Architecture Reviews, Mission Recommendations, Execution
+Receipts, Planning State, Bootstrap Portfolio State, and metadata storage. It
+does not infer, import, or mark any Mission complete.
 
 ## Relocation and recovery
 
