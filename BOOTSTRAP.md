@@ -17,13 +17,17 @@ repository documentation for host qualification.
 
 Before a bounded change, inspect the current repository state and then read:
 
-1. [README.md](README.md) for the current Generation and scope;
-2. [Generation 1 Completion Record](GENERATION_1_COMPLETION.md) for historical
+1. this bootstrap and the three execution-facing companion documents:
+   [ENGINEERING_METHOD.md](ENGINEERING_METHOD.md),
+   [PROMPT_INITIALIZATION.md](PROMPT_INITIALIZATION.md), and
+   [AGENTS.md](AGENTS.md);
+2. [README.md](README.md) for the current Generation and scope;
+3. [Generation 1 Completion Record](GENERATION_1_COMPLETION.md) for historical
    bootstrap completion;
-3. [Founding Architecture Handbook](docs/architecture/FORGE_FOUNDING_ARCHITECTURE_HANDBOOK.md)
+4. [Founding Architecture Handbook](docs/architecture/FORGE_FOUNDING_ARCHITECTURE_HANDBOOK.md)
    for canonical architecture navigation;
-4. the architecture document governing the requested bounded work; and
-5. the applicable regression tests in `tests/`.
+5. the architecture document governing the requested bounded work; and
+6. the applicable regression tests in `tests/`.
 
 ## Canonical responsibility map
 
@@ -51,11 +55,17 @@ The Forge-to-Engineering-Platform boundary is the versioned Producer and
 Execution Host contracts. Engineering Platform remains a replaceable Execution
 Host, not a Forge governance, planning, or repository authority.
 
-## Document review
+## Execution-facing document contract
 
-Current Engineering Platform Bootstrap Contract `2026.12` requires this root
-bootstrap document and Git repository identity for repository admission.
-`ENGINEERING_METHOD.md`, `PROMPT_INITIALIZATION.md`, and `AGENTS.md` are not
-separate Forge admission artefacts: their subjects are already owned by the
-canonical records linked above. Do not create duplicate Forge copies unless a
-future Engineering Platform contract explicitly requires them.
+Engineering Platform Bootstrap Contract `2026.12` remains the host-owned
+admission contract. Its transaction instruction requires an agent to read
+`BOOTSTRAP.md`, `ENGINEERING_METHOD.md`, `PROMPT_INITIALIZATION.md`, and
+`AGENTS.md` from the actual target repository before acting. Forge therefore
+maintains those four root documents as a small, internally consistent entry
+surface. They state operating boundaries and link to canonical architecture;
+they do not duplicate the architecture handbook or claim host qualification.
+
+The Execution Host independently qualifies the Development Host, workspace,
+and declared capabilities. Forge may consume qualification evidence but cannot
+replace it with repository documentation. This boundary is canonical in the
+[Execution Host Contract](docs/architecture/execution-host-contract.md).
