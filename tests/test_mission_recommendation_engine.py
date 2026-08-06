@@ -6,7 +6,7 @@ import unittest
 from hashlib import sha256
 
 from forge.models import (
-    ArchitectureReviewInput, RecommendationCategory, RecommendationRepositoryContext,
+    ArchitectureReviewInput, MissionOrigin, RecommendationCategory, RecommendationRepositoryContext,
     RequiredDiscipline, ReviewEvidence, ReviewInputKind, ReviewSignal, ReviewSignalKind,
 )
 from forge.recommendations import MissionRecommendationEngine, MissionRecommendationInput
@@ -80,6 +80,30 @@ class MissionRecommendationEngineTests(unittest.TestCase):
         self.assertEqual(recommendation.portfolio_item_ids, ("portfolio-1",))
         with self.assertRaises(Exception):
             recommendation.title = "mutated"  # type: ignore[misc]
+
+    def test_maintenance_signals_produce_an_advisory_maintenance_recommendation_with_provenance(self) -> None:
+        maintenance_kinds = (
+            ReviewSignalKind.TECHNICAL_DEBT, ReviewSignalKind.DUPLICATE_IMPLEMENTATION,
+            ReviewSignalKind.REFACTORING_OPPORTUNITY, ReviewSignalKind.DOCUMENTATION_INCONSISTENCY,
+            ReviewSignalKind.DEPENDENCY_MAINTENANCE, ReviewSignalKind.REPOSITORY_HYGIENE,
+            ReviewSignalKind.PERFORMANCE_OBSERVATION, ReviewSignalKind.ARCHITECTURE_EROSION,
+        )
+        review = self.review(tuple(
+            ReviewSignal(kind, f"maintenance-{kind.value}", "Observed Repository Truth.", self.truth)
+            for kind in maintenance_kinds
+        ))
+        recommendation = next(item for item in self.generate(review) if item.origin is MissionOrigin.MAINTENANCE)
+        self.assertTrue(recommendation.advisory)
+        self.assertEqual(recommendation.recommendation_source, "architecture_review")
+        self.assertTrue(recommendation.repository_evidence)
+        self.assertEqual(recommendation.decision_evidence_references, (f"architecture-review:{review.id}",))
+        self.assertEqual(set(review.maintenance_observations), {f"maintenance-{kind.value}" for kind in maintenance_kinds})
+
+    def test_supported_origins_are_extensible_machine_values(self) -> None:
+        self.assertEqual(
+            {origin.value for origin in MissionOrigin},
+            {"business", "architecture", "maintenance", "security", "performance", "operations", "documentation", "user_feedback"},
+        )
 
 
 if __name__ == "__main__":

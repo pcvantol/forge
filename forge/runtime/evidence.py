@@ -55,6 +55,10 @@ class RuntimeEvidence:
     def mission_recommendation(self, recommendation_id: str) -> dict[str, Any]:
         return self._database.get_document("mission_recommendations", recommendation_id)
 
+    def mission_recommendation_history(self, mission_id: str) -> tuple[dict[str, Any], ...]:
+        """Return the immutable, Runtime Instance-owned advisory history."""
+        return self._documents("mission_recommendations", "mission_id", mission_id)
+
     def decision_evidence(self, decision_id: str) -> dict[str, Any]:
         return self._database.get_document("decision_evidence", decision_id)
 

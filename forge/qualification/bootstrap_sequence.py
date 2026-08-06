@@ -196,7 +196,12 @@ def run_bootstrap_sequence_qualification(root: Path, evidence_source: Engineerin
                     "required_disciplines": [RequiredDiscipline.PLATFORM_ARCHITECTURE.value],
                     "missing_disciplines": [], "capability_impact": ["bootstrap_qualification"],
                     "recommendation_timestamp": clock(), "source_signal_ids": ["mission_completion"],
-                    "portfolio_item_ids": [identifier], "advisory": True,
+                    "portfolio_item_ids": [identifier], "origin": "architecture",
+                    "repository_evidence": [{"id": review.id, "kind": "repository_truth", "revision": "qualification-revision", "locator": f"qualification://{identifier}/repository-truth", "content_digest": review.input_digest}],
+                    "expected_engineering_value": "Preserves a bounded qualification record for later governance review.",
+                    "risk_if_deferred": "The completed Mission lacks a traceable advisory qualification record.",
+                    "recommendation_source": "bootstrap_sequence_qualification",
+                    "decision_evidence_references": [f"{identifier}:bootstrap-completion"], "advisory": True,
                 }]
             # Completion is checkpointed before the dispatcher may activate the
             # next Mission.  The host remains the evidence authority: Forge

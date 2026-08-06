@@ -70,6 +70,14 @@ class ReviewSignalKind(str, Enum):
     IMPLEMENTATION_FAILURE = "implementation_failure"
     REPOSITORY_GROWTH = "repository_growth"
     OPERATIONAL_FAILURE = "operational_failure"
+    TECHNICAL_DEBT = "technical_debt"
+    DUPLICATE_IMPLEMENTATION = "duplicate_implementation"
+    REFACTORING_OPPORTUNITY = "refactoring_opportunity"
+    DOCUMENTATION_INCONSISTENCY = "documentation_inconsistency"
+    DEPENDENCY_MAINTENANCE = "dependency_maintenance"
+    REPOSITORY_HYGIENE = "repository_hygiene"
+    PERFORMANCE_OBSERVATION = "performance_observation"
+    ARCHITECTURE_EROSION = "architecture_erosion"
 
 
 class ReviewConfidence(str, Enum):
@@ -194,6 +202,7 @@ class ArchitectureReview:
     detected_inconsistencies: tuple[str, ...]
     detected_duplication: tuple[str, ...]
     capability_gaps: tuple[str, ...]
+    maintenance_observations: tuple[str, ...]
     recommended_mission_candidates: tuple[str, ...]
     portfolio_item_ids: tuple[str, ...]
     rationale: str
@@ -207,7 +216,7 @@ class ArchitectureReview:
         if len(self.repository_maturity) != len(MaturityArea) or {item.area for item in self.repository_maturity} != set(MaturityArea):
             raise ValueError("architecture review must assess every maturity area")
         object.__setattr__(self, "repository_maturity", tuple(sorted(self.repository_maturity, key=lambda item: item.area.value)))
-        for field_name in ("architectural_observations", "implementation_observations", "repository_strengths", "repository_weaknesses", "detected_inconsistencies", "detected_duplication", "capability_gaps", "recommended_mission_candidates", "portfolio_item_ids"):
+        for field_name in ("architectural_observations", "implementation_observations", "repository_strengths", "repository_weaknesses", "detected_inconsistencies", "detected_duplication", "capability_gaps", "maintenance_observations", "recommended_mission_candidates", "portfolio_item_ids"):
             object.__setattr__(self, field_name, tuple(sorted(getattr(self, field_name))))
 
     def to_dict(self) -> dict[str, Any]:
@@ -218,5 +227,6 @@ class ArchitectureReview:
                 "repository_strengths": list(self.repository_strengths), "repository_weaknesses": list(self.repository_weaknesses),
                 "pressure": self.pressure.to_dict(), "detected_inconsistencies": list(self.detected_inconsistencies),
                 "detected_duplication": list(self.detected_duplication), "capability_gaps": list(self.capability_gaps),
+                "maintenance_observations": list(self.maintenance_observations),
                 "recommended_mission_candidates": list(self.recommended_mission_candidates), "portfolio_item_ids": list(self.portfolio_item_ids), "rationale": self.rationale,
                 "confidence": self.confidence.value, "input_digest": self.input_digest}

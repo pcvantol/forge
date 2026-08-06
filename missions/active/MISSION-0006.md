@@ -14,9 +14,9 @@
 
 Enable Forge to analyse Repository Truth, Runtime Instance and historical
 Decision Evidence in order to recommend evidence-based future Mission
-Candidates. This reduces manual roadmap planning, improves portfolio
-prioritisation, supports deterministic Business decisions and preserves
-canonical governance.
+Candidates, including governed repository-maintenance opportunities. This
+reduces manual roadmap planning, improves portfolio prioritisation, supports
+deterministic Business decisions and preserves canonical governance.
 
 ## Scope
 
@@ -74,6 +74,10 @@ Platform returns one for the selected action.
 
 - Repository Truth, Runtime Instance and Decision Evidence have explicit,
   bounded inputs for portfolio analysis.
+- Recommendations retain Mission Origin, Repository Evidence, Business Value,
+  Expected Engineering Value, Risk if Deferred, Dependencies, Confidence,
+  Recommendation Source and Decision Evidence in the Runtime Instance.
 - Recommendations remain advisory until a new Mission Candidate separately
-  passes Business and Architecture governance.
+  passes the identical Business then Architecture governance lifecycle,
+  including maintenance-origin work.
 - All provenance is deterministic, local and auditable.

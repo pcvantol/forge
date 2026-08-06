@@ -11,8 +11,8 @@ from pathlib import Path
 from forge.business import BusinessAdvisor, BusinessWorkspace, BusinessWorkspaceError, render_mission_recommendation
 from forge.governance import ApprovalStage, CanonicalGovernanceProfile, GovernanceRole, resolve_governance_profile
 from forge.models import (
-    EngineeringEffort, MissionCandidate, MissionCandidateMaturity, MissionCandidateStatus, MissionRecommendation,
-    RecommendationCategory, RecommendationConfidence, RecommendationDependencies, RecommendationRepositoryContext,
+    EngineeringEffort, MissionCandidate, MissionCandidateMaturity, MissionCandidateStatus, MissionOrigin, MissionRecommendation,
+    RecommendationCategory, RecommendationConfidence, RecommendationDependencies, RecommendationEvidenceReference, RecommendationRepositoryContext,
     RecommendationConfidenceLevel, RequiredDiscipline,
 )
 
@@ -35,6 +35,8 @@ def recommendation() -> MissionRecommendation:
         "Preserves separation.", EngineeringEffort.MEDIUM, RecommendationConfidence(80, 60, 20, 80, 70, 80),
         RecommendationDependencies(), (RequiredDiscipline.BUSINESS,), (RequiredDiscipline.BUSINESS,), ("capability-gap",),
         "2026-08-03T23:40:18Z", ("signal-1",), ("portfolio-1",),
+        MissionOrigin.BUSINESS, (RecommendationEvidenceReference("truth", "repository_truth", "revision", "repository://truth", digest),),
+        "Creates a governed engineering option.", "The opportunity remains unassessed.", "architecture_review", ("decision-1",),
     )
 
 

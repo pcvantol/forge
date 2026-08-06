@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 11
+RUNTIME_SCHEMA_VERSION = 12
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -143,6 +143,8 @@ class RuntimeDatabase:
                         review_id TEXT NOT NULL, confidence TEXT NOT NULL, priority TEXT NOT NULL,
                         dependencies TEXT NOT NULL, required_disciplines TEXT NOT NULL,
                         approval_state TEXT NOT NULL, recommended_at TEXT NOT NULL, document TEXT NOT NULL,
+                        origin TEXT NOT NULL, recommendation_source TEXT NOT NULL,
+                        repository_evidence TEXT NOT NULL, decision_evidence_references TEXT NOT NULL,
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id),
                         FOREIGN KEY (review_id) REFERENCES architecture_reviews(review_id)
                     );
@@ -442,6 +444,16 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "11", "migration_version": "11", "last_migration": "11"})
                 self._connection.execute("PRAGMA user_version=11")
+        elif version == 11:
+            with self._connection:
+                self._connection.executescript("""
+                    ALTER TABLE mission_recommendations ADD COLUMN origin TEXT NOT NULL DEFAULT 'business';
+                    ALTER TABLE mission_recommendations ADD COLUMN recommendation_source TEXT NOT NULL DEFAULT 'legacy';
+                    ALTER TABLE mission_recommendations ADD COLUMN repository_evidence TEXT NOT NULL DEFAULT '[]';
+                    ALTER TABLE mission_recommendations ADD COLUMN decision_evidence_references TEXT NOT NULL DEFAULT '[]';
+                """)
+                self._set_metadata({"schema_version": "12", "migration_version": "12", "last_migration": "12"})
+                self._connection.execute("PRAGMA user_version=12")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -681,15 +693,20 @@ class RuntimeDatabase:
                                       approval_state: str = "advisory") -> dict[str, Any]:
         document = _document(recommendation, "mission recommendation")
         identifier, review_id = document.get("id"), document.get("architecture_review_id")
-        required = (identifier, review_id, document.get("confidence"), document.get("priority", document.get("estimated_effort")), document.get("dependencies"), document.get("required_disciplines"), document.get("recommendation_timestamp"))
+        required = (identifier, review_id, document.get("confidence"), document.get("priority", document.get("estimated_effort")), document.get("dependencies"), document.get("required_disciplines"), document.get("recommendation_timestamp"), document.get("origin"), document.get("recommendation_source"), document.get("repository_evidence"), document.get("decision_evidence_references"))
         if not all(value is not None for value in required) or not isinstance(identifier, str) or not identifier or not isinstance(review_id, str) or not review_id:
-            raise RuntimeDatabaseError("mission recommendation requires identity, review, priority, confidence, dependencies, disciplines, and timestamp")
+            raise RuntimeDatabaseError("mission recommendation requires identity, review, origin, source, Repository Truth and Decision Evidence references, priority, confidence, dependencies, disciplines, and timestamp")
         with self._connection:
-            self._connection.execute("INSERT INTO mission_recommendations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (
+            self._connection.execute("""INSERT INTO mission_recommendations
+                (recommendation_id, mission_id, review_id, confidence, priority, dependencies, required_disciplines,
+                 approval_state, recommended_at, document, origin, recommendation_source, repository_evidence,
+                 decision_evidence_references) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
                 identifier, mission_id, review_id, self._dump(document.get("confidence", {})),
                 str(document.get("priority", document.get("estimated_effort", "advisory"))), self._dump(document.get("dependencies", {})),
                 self._dump(document.get("required_disciplines", [])), approval_state,
                 str(document.get("recommendation_timestamp", "unknown")), self._dump(document),
+                str(document["origin"]), str(document["recommendation_source"]), self._dump(document["repository_evidence"]),
+                self._dump(document["decision_evidence_references"]),
             ))
         return document
 

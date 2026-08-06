@@ -8,15 +8,19 @@ Architecture Review remains assessment-only. Its output records Repository Truth
 
 ## Model and lifecycle
 
-Each immutable recommendation includes a content-derived identity, repository context, Architecture Review reference, repository maturity digest, rationale, business and architectural value, bounded engineering effort, deterministic confidence, advisory dependencies, required and explicitly missing disciplines, capability impact, timestamp, source signals and Portfolio references.
+Each immutable recommendation includes a content-derived identity, Mission Origin, repository context, revision- and digest-pinned Repository Evidence, Architecture Review reference, repository maturity digest, rationale, Business Value, Expected Engineering Value, Risk if Deferred, bounded engineering effort, deterministic confidence, advisory dependencies, recommendation source, immutable Decision Evidence references, required and explicitly missing disciplines, capability impact, timestamp, source signals and Portfolio references. The Runtime Instance retains the immutable recommendation history and these provenance fields.
 
 ```text
-Completed Mission -> Execution Evidence -> Repository Truth -> Architecture Review
-  -> Mission Recommendation -> Business Workspace -> Mission Candidate
-  -> Business Approval -> Architecture Approval -> Mission
+Repository Truth -> Mission Recommendation (advisory) -> Mission Candidate
+  -> Business Workspace -> Business Approval -> Architecture Workspace
+  -> Architecture Approval -> Approved Mission -> Mission Dispatcher -> Engineering
 ```
 
-The Business Workspace owns approval, rejection, refinement and prioritisation. A recommendation is only an artefact available to that workspace; it is not a state transition and has no approval field. A later Mission Candidate and Mission retain their own explicit governance.
+The Business Workspace owns approval, rejection, refinement and prioritisation. A recommendation is only an artefact available to that workspace; it is not a state transition and has no approval field. A later Mission Candidate and Mission retain their own explicit governance. Maintenance-origin recommendations follow this identical lifecycle and cannot bypass either approval.
+
+## Origins and maintenance intelligence
+
+`MissionOrigin` is extensible and currently supports Business, Architecture, Maintenance, Security, Performance, Operations, Documentation and User Feedback. Repository Truth may surface technical debt, duplicate implementation, refactoring opportunities, documentation inconsistencies, dependency maintenance, repository hygiene, performance observations and architecture erosion. Those observations produce advisory recommendations only; neither Repository Truth nor the Recommendation Engine creates a Mission Candidate, Mission, dispatch entry or Engineering work.
 
 ## Categories, dependencies and disciplines
 
