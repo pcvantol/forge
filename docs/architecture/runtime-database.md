@@ -15,6 +15,31 @@ execution receipt identity: Execution Host, run ID, Engineering Report ID,
 correlation identity, timestamp, and outcome. It never copies Execution
 Evidence, reports, telemetry, logs, or host credentials.
 
+## Execution Context projection
+
+Execution Context is the compact, read-only, operator-facing projection of an
+active Mission Runtime. The projection chain is `Mission Runtime -> Living
+Mission Graph -> Execution Context -> clients`. It is a Runtime Instance
+record, not a prompt, an Engineering Platform report, or a source-derived
+view. Every successful Runtime reconciliation appends one immutable,
+versioned snapshot to `execution_context_snapshots`; the prior snapshots stay
+available as historical runtime evidence.
+
+The context carries mission identity/title/lifecycle, concise Business and
+Engineering summaries, active Intent and Action (or their explicit empty
+messages), deterministic Execution Phase, Planning Confidence, iteration,
+completed/ready/blocked/discovered/discarded Intent projections, remaining
+Actions, last receipt identity, last Runtime update, timestamp and version.
+It never carries Runtime Prompt text or internals, decision reasoning, hidden
+reasoning, Execution Host reports, telemetry, logs, or credentials.
+
+The canonical API is read-only through `RuntimeEvidence.execution_context_api`.
+Engineering Platform, Apple, Windows, CLI, API and future clients consume the
+same snapshot; none mutates it. Deterministic phase mapping supports
+Preparing, Planning, Engineering, Validation, Waiting For Receipt, Waiting For
+Governance, Paused, Mission Complete and Execution Complete. Planning
+Confidence describes only plan confidence and is never Mission completion.
+
 ## Schema and migration
 
 `forge.runtime.RuntimeDatabase` opens storage only after Runtime Instance

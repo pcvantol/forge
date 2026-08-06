@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 13
+RUNTIME_SCHEMA_VERSION = 14
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -29,7 +29,7 @@ _REQUIRED_METADATA = frozenset((
     "database_location", "last_access_at", "status", "instance_version", "initialization_version",
 ))
 _TABLES = frozenset((
-    "mission_state", "mission_runtime_projections", "architecture_reviews", "mission_recommendations",
+    "mission_state", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
     "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
@@ -136,6 +136,17 @@ class RuntimeDatabase:
                         document TEXT NOT NULL,
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
+                    CREATE TABLE execution_context_snapshots (
+                        context_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        context_version INTEGER NOT NULL, source_digest TEXT NOT NULL,
+                        created_at TEXT NOT NULL, document TEXT NOT NULL,
+                        UNIQUE (mission_id, context_version),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TRIGGER execution_context_snapshots_immutable_update BEFORE UPDATE ON execution_context_snapshots
+                    BEGIN SELECT RAISE(ABORT, 'execution context snapshots are immutable'); END;
+                    CREATE TRIGGER execution_context_snapshots_immutable_delete BEFORE DELETE ON execution_context_snapshots
+                    BEGIN SELECT RAISE(ABORT, 'execution context snapshots are immutable'); END;
                     CREATE TABLE architecture_reviews (
                         review_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
                         repository_reference TEXT NOT NULL, repository_maturity TEXT NOT NULL,
@@ -417,16 +428,25 @@ class RuntimeDatabase:
             self._migrate(forge_version)
         elif version == 9:
             with self._connection:
-                self._connection.execute("""
+                self._connection.executescript("""
                     CREATE TABLE IF NOT EXISTS bootstrap_portfolio_state (
                         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                         document TEXT NOT NULL
-                    )
+                    );
+                    CREATE TABLE IF NOT EXISTS execution_context_snapshots (
+                        context_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        context_version INTEGER NOT NULL, source_digest TEXT NOT NULL,
+                        created_at TEXT NOT NULL, document TEXT NOT NULL,
+                        UNIQUE (mission_id, context_version),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS execution_context_snapshots_immutable_update BEFORE UPDATE ON execution_context_snapshots
+                    BEGIN SELECT RAISE(ABORT, 'execution context snapshots are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS execution_context_snapshots_immutable_delete BEFORE DELETE ON execution_context_snapshots
+                    BEGIN SELECT RAISE(ABORT, 'execution context snapshots are immutable'); END;
                 """)
-                self._set_metadata({"schema_version": str(RUNTIME_SCHEMA_VERSION),
-                                    "migration_version": str(RUNTIME_SCHEMA_VERSION),
-                                    "last_migration": str(RUNTIME_SCHEMA_VERSION)})
-                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+                self._set_metadata({"schema_version": "14", "migration_version": "14", "last_migration": "14"})
+                self._connection.execute("PRAGMA user_version=14")
         elif version == 10:
             with self._connection:
                 self._connection.executescript("""
@@ -449,6 +469,7 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "11", "migration_version": "11", "last_migration": "11"})
                 self._connection.execute("PRAGMA user_version=11")
+            self._migrate(forge_version)
         elif version == 11:
             with self._connection:
                 self._connection.executescript("""
@@ -459,6 +480,7 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "12", "migration_version": "12", "last_migration": "12"})
                 self._connection.execute("PRAGMA user_version=12")
+            self._migrate(forge_version)
         elif version == 12:
             with self._connection:
                 self._connection.execute("""
@@ -470,6 +492,24 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "13", "migration_version": "13", "last_migration": "13"})
                 self._connection.execute("PRAGMA user_version=13")
+            self._migrate(forge_version)
+        elif version == 13:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE execution_context_snapshots (
+                        context_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        context_version INTEGER NOT NULL, source_digest TEXT NOT NULL,
+                        created_at TEXT NOT NULL, document TEXT NOT NULL,
+                        UNIQUE (mission_id, context_version),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TRIGGER execution_context_snapshots_immutable_update BEFORE UPDATE ON execution_context_snapshots
+                    BEGIN SELECT RAISE(ABORT, 'execution context snapshots are immutable'); END;
+                    CREATE TRIGGER execution_context_snapshots_immutable_delete BEFORE DELETE ON execution_context_snapshots
+                    BEGIN SELECT RAISE(ABORT, 'execution context snapshots are immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "14", "migration_version": "14", "last_migration": "14"})
+                self._connection.execute("PRAGMA user_version=14")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -606,6 +646,42 @@ class RuntimeDatabase:
                 (mission_id, source_digest, self._dump(document)),
             )
         return document
+
+    def append_execution_context_snapshot(self, context: Any) -> dict[str, Any]:
+        """Append one immutable operator-facing Execution Context snapshot."""
+        document = _document(context, "execution context")
+        required = ("context_id", "mission_id", "context_version", "source_digest", "last_updated_timestamp")
+        if any(document.get(name) in (None, "") for name in required):
+            raise RuntimeDatabaseError("execution context requires identity, version, source digest, and timestamp")
+        if not isinstance(document["context_version"], int) or document["context_version"] < 1:
+            raise RuntimeDatabaseError("execution context version must be a positive integer")
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO execution_context_snapshots VALUES (?, ?, ?, ?, ?, ?)",
+                (document["context_id"], document["mission_id"], document["context_version"], document["source_digest"],
+                 document["last_updated_timestamp"], self._dump(document)),
+            )
+        return document
+
+    def next_execution_context_version(self, mission_id: str) -> int:
+        row = self._connection.execute(
+            "SELECT COALESCE(MAX(context_version), 0) + 1 FROM execution_context_snapshots WHERE mission_id = ?", (mission_id,)
+        ).fetchone()
+        return int(row[0])
+
+    def execution_context(self, mission_id: str) -> dict[str, Any]:
+        row = self._connection.execute(
+            "SELECT document FROM execution_context_snapshots WHERE mission_id = ? ORDER BY context_version DESC LIMIT 1", (mission_id,)
+        ).fetchone()
+        if row is None:
+            raise RuntimeDatabaseError(f"unknown execution context for Mission: {mission_id}")
+        return json.loads(row["document"])
+
+    def execution_context_history(self, mission_id: str) -> tuple[dict[str, Any], ...]:
+        rows = self._connection.execute(
+            "SELECT document FROM execution_context_snapshots WHERE mission_id = ? ORDER BY context_version", (mission_id,)
+        ).fetchall()
+        return tuple(json.loads(row["document"]) for row in rows)
 
     def allocate_next_mission_id(self, *, source: str, allocated_at: str) -> str:
         """Atomically allocate the next Mission identifier from Repository Truth."""

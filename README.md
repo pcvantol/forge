@@ -14,6 +14,14 @@ engineering workspace a small, explicit vocabulary before it gains automation:
 the workspace it operates in, the repositories it knows, and the human
 governance that constrains its work.
 
+Generation 2 also provides a canonical, read-only [Execution Context
+projection](docs/architecture/runtime-database.md#execution-context-projection).
+It is an immutable Runtime Instance snapshot of the active Mission's
+operator-facing state, derived after Runtime reconciliation rather than from
+repository source. It is safe for Engineering Platform, Apple, Windows, CLI,
+API and future-client projections because it excludes prompts, hidden
+reasoning and Execution Host internals.
+
 Phase E — Increment 5.10 qualifies Generation 1 only from a resolved,
 persistent Runtime Instance. The read-only projection derives its portfolio,
 global lifecycle order, completion state, and receipt identities from runtime

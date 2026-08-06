@@ -12,6 +12,7 @@ import json
 from typing import Any
 
 from .database import RuntimeDatabase, RuntimeDatabaseError
+from .execution_context import ExecutionContextAPI, project_execution_context
 
 
 @dataclass(frozen=True)
@@ -131,18 +132,40 @@ class RuntimeEvidence:
             "intake_evidence_references": tuple(intake_references),
             "execution_receipt_references": receipt_references, "dispatcher_state": dispatcher,
             "approved_mission_queue": tuple(planning.get("current_queue", ())), "source_digest": source_digest,
+            "execution_receipts": receipts, "last_runtime_update_timestamp": self._last_runtime_update_timestamp(mission_id),
         }
-        return self._database.save_mission_runtime_projection(projection)
+        persisted = self._database.save_mission_runtime_projection(projection)
+        context = project_execution_context(
+            state=state, projection=persisted, context_version=self._database.next_execution_context_version(mission_id),
+        )
+        self._database.append_execution_context_snapshot(context)
+        return persisted
 
     def persisted_mission_runtime_projection(self, mission_id: str) -> dict[str, Any]:
         """Read the last reconciled operational view without regenerating it."""
         return self._database.get_document("mission_runtime_projections", mission_id)
+
+    def execution_context(self, mission_id: str) -> dict[str, Any]:
+        """Return the latest immutable operator-facing snapshot without reconciling."""
+        return self._database.execution_context(mission_id)
+
+    def execution_context_history(self, mission_id: str) -> tuple[dict[str, Any], ...]:
+        return self._database.execution_context_history(mission_id)
+
+    def execution_context_api(self) -> ExecutionContextAPI:
+        return ExecutionContextAPI(self._database)
 
     def _dispatcher_state(self) -> dict[str, Any]:
         row = self._database._connection.execute("SELECT document FROM dispatcher_state WHERE singleton = 1").fetchone()
         if row is None:
             raise RuntimeDatabaseError("operational Mission projection requires dispatcher state")
         return json.loads(row["document"])
+
+    def _last_runtime_update_timestamp(self, mission_id: str) -> str:
+        row = self._database._connection.execute(
+            "SELECT occurred_at FROM mission_lifecycle_events WHERE mission_id = ? ORDER BY sequence DESC LIMIT 1", (mission_id,)
+        ).fetchone()
+        return str(row["occurred_at"]) if row is not None else "runtime-state"
 
     @staticmethod
     def _planning_confidence(decisions: tuple[dict[str, Any], ...]) -> dict[str, Any] | None:
