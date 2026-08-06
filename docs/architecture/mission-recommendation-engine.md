@@ -8,7 +8,7 @@ Architecture Review remains assessment-only. Its output records Repository Truth
 
 ## Model and lifecycle
 
-Each immutable recommendation includes a content-derived identity, Mission Origin, repository context, revision- and digest-pinned Repository Evidence, Architecture Review reference, repository maturity digest, rationale, Business Value, Expected Engineering Value, Risk if Deferred, bounded engineering effort, deterministic confidence, advisory dependencies, recommendation source, immutable Decision Evidence references, required and explicitly missing disciplines, capability impact, timestamp, source signals and Portfolio references. The Runtime Instance retains the immutable recommendation history and these provenance fields.
+Each immutable recommendation includes a content-derived identity, Mission Origin, repository context, revision- and digest-pinned Repository Evidence, Architecture Review reference, repository maturity digest, rationale, Business Value, Expected Engineering Value, Risk if Deferred, bounded engineering effort, deterministic confidence, advisory dependencies, recommendation source, immutable Decision Evidence references, required and explicitly missing disciplines, capability impact, timestamp, source signals and Portfolio references. Generation 2 retains new recommendation history in the separate [Mission Recommendation Lifecycle](mission-recommendation-lifecycle.md) governance aggregate; Runtime retains only allocated operational Mission state and Decision Evidence references.
 
 ```text
 Repository Truth -> Mission Recommendation (advisory) -> Mission Candidate

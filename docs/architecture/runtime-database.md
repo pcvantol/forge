@@ -10,8 +10,7 @@ canonical location is resolved and claimed before opening and is not committed.
 Repository Truth remains the architectural source of truth, and the Engineering
 Platform Execution Host retains its own independent Execution Database.
 
-Forge owns Mission State, Architecture Reviews, Mission Recommendations,
-Decision Evidence, Integration Evidence, Execution Receipts, and Planning State. It records only
+Forge Runtime owns allocated Mission State, Decision Evidence references, Integration Evidence, Execution Receipts, and Planning State. New Generation 2 Mission Recommendations and unallocated Mission Candidates belong to the separate [Mission Recommendation Lifecycle](mission-recommendation-lifecycle.md) governance store. Legacy recommendation records remain readable only for historical compatibility. Runtime records only
 execution receipt identity: Execution Host, run ID, Engineering Report ID,
 correlation identity, timestamp, and outcome. It never copies Execution
 Evidence, reports, telemetry, logs, or host credentials.
