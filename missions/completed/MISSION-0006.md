@@ -4,11 +4,12 @@
 
 - Mission type: Business Mission
 - Generation: 2
-- Lifecycle: active; the next Engineering Action is planned and ready for Engineering Platform execution
+- Lifecycle: complete
 - Business approval: approved
 - Architecture approval: approved for engineering
 - Runtime Instance: `forge-runtime-7bba2467-eca6-49fc-98d8-b67da0d43b33`
-- Decision Evidence: `MISSION-0006-intake-evidence-1`
+- Completion timestamp: `2026-08-06T06:08:17Z`
+- Completion Decision Evidence: `MISSION-0006-mission-completion-decision-1`
 
 ## Business objective
 
@@ -39,8 +40,8 @@ Business review → Business approved → Architecture review
 ```
 
 The approvals are distinct auditable events, even when one operator holds both
-roles. The dispatcher has registered this Mission; it has not submitted a
-Runtime Prompt to Engineering Platform.
+roles. The authoritative Runtime Instance records this Mission as complete;
+the Dispatcher is `IDLE` and the approved Mission Queue is empty.
 
 ## Initial Decision Evidence
 
@@ -49,26 +50,34 @@ its Business and architectural value, expected repository impact, alternatives
 considered and high confidence. It is dedicated pre-approval intake evidence;
 it does not claim non-existent Execution Evidence.
 
-## Persisted engineering plan
+## Completed engineering plan
 
 | Engineering Intent | Engineering Actions | Runtime prompts |
 | --- | ---: | ---: |
 | Repository Truth and Runtime Evidence Foundation | 2 | 2 |
 | Governed Mission Candidate Recommendation Boundary | 1 | 1 |
 
-Total: 2 Engineering Intents and 3 Engineering Actions. The active runtime
-plan persists the canonical Intent and Action records, selects only
-`MISSION-0006-action-repository-truth` for the next Engineering Platform
-iteration, and retains the other two actions as dependency-ordered pending
-work. The generated runtime prompt is an execution handoff, not completion
-evidence.
+Total: 2 Engineering Intents and 3 Engineering Actions. The authoritative
+Runtime Instance records both Intents and all three Actions as `COMPLETED`.
+The dependency-ordered action receipts are bound to these local Genesis
+commits:
 
-## Planning evidence
+- `MISSION-0006-action-repository-truth`: `925b7d9`
+- `MISSION-0006-action-runtime-evidence`: `7426791`
+- `MISSION-0006-action-mission-candidates`: `8659784`
 
-`MISSION-0006-planning-decision-1` records the activation and sequential
-action selection. It preserves the distinction between Forge planning and
-Engineering Platform execution: no execution receipt is claimed until the
-Platform returns one for the selected action.
+The Mission completion evidence binds the final receipt to
+`MISSION-0006-mission-completion-decision-1` and records an outcome of
+`complete`.
+
+## Completion evidence
+
+`MISSION-0006-planning-decision-1` records the original sequential action
+selection. `MISSION-0006-runtime-evidence-execution-decision-1` and
+`MISSION-0006-mission-candidate-origin-decision-1` preserve the bounded
+implementation decisions. `MISSION-0006-mission-completion-decision-1`
+records that all dependency-ordered actions have complete local Genesis
+receipts and that the Mission may close.
 
 ## Success criteria
 

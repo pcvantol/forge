@@ -50,7 +50,7 @@ def _intent(intent_id: str, *, title: str, objective: str, action_ids: tuple[str
         },
         "relationships": ([{"kind": "depends_on", "target_intent_id": dependency} for dependency in depends_on]),
         "traceability": {
-            "vision": [{"id": MISSION_ID, "version": "1", "locator": "missions/active/MISSION-0006.md"}],
+            "vision": [{"id": MISSION_ID, "version": "1", "locator": "missions/completed/MISSION-0006.md"}],
             "architecture": [{"id": "portfolio-intelligence-foundation", "version": "1", "locator": "docs/architecture/generation-1-transition.md"}],
             "roadmap": [{"id": "generation-2", "version": "1", "locator": "README.md"}],
             "proposal": [{"id": "MISSION-0006-intake-evidence-1", "version": "1", "locator": "runtime:mission_intake_evidence"}],
