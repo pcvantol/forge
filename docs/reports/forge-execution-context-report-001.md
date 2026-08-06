@@ -7,10 +7,16 @@ successful Mission Runtime reconciliation appends a deterministic context
 revision and the latest revision is available through the read-only canonical
 projection API.
 
+**YES.** Forge can expose a canonical Execution Context that accurately
+projects the current Mission Runtime and Mission Recommendation Lifecycle
+without exposing prompts or hidden reasoning. Execution Context is operational.
+
 ## Validation scope
 
-Regression coverage verifies compact projection fields, deterministic phase,
-absence of prompts and reasoning, versioned history and SQLite immutability.
+Regression coverage verifies compact projection fields, the canonical lifecycle
+vocabulary, separate running Intent projection, terminal completion evidence,
+deterministic phase, absence of prompts and reasoning, versioned history and
+SQLite immutability.
 
 ## Recommended consumers
 

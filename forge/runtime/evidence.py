@@ -98,7 +98,10 @@ class RuntimeEvidence:
             if len(prompt) != 1:
                 raise RuntimeDatabaseError("operational Mission projection requires exactly one ready Runtime Prompt")
         completed_intents = tuple(item for item in intents if item.get("status") == "COMPLETED")
-        ready_intents = tuple(item for item in intents if item.get("status") in {"APPROVED", "READY", "ACTIVE"})
+        current_intent = state.get("current_engineering_intent")
+        current_intent_id = current_intent.get("id") if isinstance(current_intent, dict) else None
+        running_intents = tuple(item for item in intents if item.get("status") in {"ACTIVE", "RUNNING"} or item.get("id") == current_intent_id)
+        ready_intents = tuple(item for item in intents if item.get("status") in {"APPROVED", "READY"} and item.get("id") != current_intent_id)
         blocked_intents = tuple(item for item in intents if item.get("status") == "BLOCKED")
         decision_ids = tuple(state.get("decision_evidence_ids", ()))
         decisions: list[dict[str, Any]] = []
@@ -121,7 +124,7 @@ class RuntimeEvidence:
         projection = {
             "mission_id": mission_id, "mission_lifecycle": state.get("lifecycle"), "mission_progress": state.get("progress"),
             "current_intent": state.get("current_engineering_intent"), "completed_intents": completed_intents,
-            "ready_intents": ready_intents, "blocked_intents": blocked_intents,
+            "running_intents": running_intents, "ready_intents": ready_intents, "blocked_intents": blocked_intents,
             "discovered_intents": tuple(state.get("discovered_engineering_intents", ())),
             "discarded_intents": tuple(state.get("discarded_engineering_intents", ())),
             "completed_engineering_actions": completed_actions,

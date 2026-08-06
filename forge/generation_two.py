@@ -40,6 +40,10 @@ def intake_portfolio_intelligence_foundation(runtime: RuntimeDatabase, *, reposi
 
     state = {
         "mission_id": mission_id,
+        "mission_title": MISSION_TITLE,
+        "mission_recommendation_status": "MISSION_ALLOCATED",
+        "business_summary": "Establish deterministic portfolio intelligence for governed future Mission recommendations.",
+        "engineering_summary": "Forge is establishing bounded Repository Truth and Runtime Evidence inputs.",
         "lifecycle": "REGISTERED",
         "status": "REGISTERED",
         "progress": {"percent_complete": 0},

@@ -10,7 +10,8 @@ read-only interface for operator clients and preserves Runtime ownership.
 
 The projection consumes the reconciled Mission Runtime and Living Mission Graph
 state only. It exposes operational lifecycle, concise summaries, current work,
-phase, planning confidence, intent/action counts and receipt identity. It does
+phase, planning confidence, separate completed/running/ready/blocked Intent
+projections, action counts, Mission Recommendation status and receipt identity. It does
 not expose Runtime Prompts, prompt text, hidden reasoning, decision reasoning,
 host reports, telemetry, logs or credentials.
 

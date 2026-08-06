@@ -7,6 +7,7 @@ import unittest
 from forge.generation_two import intake_portfolio_intelligence_foundation
 from forge.generation_two_execution import MISSION_ID, activate_and_plan_portfolio_intelligence
 from forge.runtime import RuntimeDatabase
+from forge.runtime.execution_context import project_execution_context
 
 
 class ExecutionContextTests(unittest.TestCase):
@@ -28,11 +29,48 @@ class ExecutionContextTests(unittest.TestCase):
         context = evidence.execution_context_api().get(MISSION_ID)
         self.assertEqual(context["context_id"], "execution-context:MISSION-0006:1")
         self.assertEqual(context["execution_phase"], "Engineering")
+        self.assertEqual(context["mission_lifecycle"], "Active")
+        self.assertEqual(context["mission_recommendation_status"], "MISSION_ALLOCATED")
+        self.assertEqual(context["running_intents"][0]["id"], "MISSION-0006-intent-repository-runtime-evidence")
         self.assertEqual(context["current_engineering_action"]["id"], "MISSION-0006-action-repository-truth")
         self.assertEqual(context["context_schema_version"], "1")
         self.assertNotIn("runtime_prompts", context)
         self.assertNotIn("reasoning_summary", context)
         self.assertNotIn("prompt", repr(context).lower())
+
+    def test_lifecycle_projection_uses_the_canonical_operator_vocabulary(self) -> None:
+        values = {
+            "RECOMMENDATION": "Recommendation", "BUSINESS_REVIEW": "Business Review",
+            "ARCHITECTURE_REVIEW": "Architecture Review", "MISSION_CANDIDATE": "Mission Candidate",
+            "REGISTERED": "Allocated", "ACTIVE": "Active", "PAUSED": "Paused",
+            "WAITING_FOR_GOVERNANCE": "Waiting For Governance", "WAITING_FOR_RECEIPT": "Waiting For Receipt",
+            "COMPLETE": "Mission Complete", "EXECUTION_COMPLETE": "Execution Complete",
+        }
+        for source, expected in values.items():
+            context = project_execution_context(
+                state={"lifecycle": source, "status": source},
+                projection={"mission_id": MISSION_ID, "execution_receipts": ()}, context_version=1,
+            )
+            self.assertEqual(context["mission_lifecycle"], expected)
+
+    def test_identical_reconciled_runtime_input_has_a_deterministic_context(self) -> None:
+        state = {"lifecycle": "ACTIVE", "status": "ACTIVE", "mission_title": "Stable Mission"}
+        projection = {"mission_id": MISSION_ID, "execution_receipts": (), "completed_intents": ()}
+        self.assertEqual(
+            project_execution_context(state=state, projection=projection, context_version=7),
+            project_execution_context(state=state, projection=projection, context_version=7),
+        )
+
+    def test_completion_context_includes_only_compact_final_runtime_evidence(self) -> None:
+        context = project_execution_context(
+            state={"lifecycle": "COMPLETE", "status": "COMPLETE", "completion_timestamp": "2026-08-06T00:00:00Z",
+                   "mission_completion_summary": "The approved Mission is complete."},
+            projection={"mission_id": MISSION_ID, "execution_receipts": (), "remaining_engineering_actions": ()},
+            context_version=1,
+        )
+        self.assertEqual(context["mission_completion_summary"], "The approved Mission is complete.")
+        self.assertEqual(context["completion_timestamp"], "2026-08-06T00:00:00Z")
+        self.assertEqual(context["final_runtime_state"]["mission_lifecycle"], "Mission Complete")
 
     def test_context_history_is_immutable_and_versioned_per_reconciliation(self) -> None:
         evidence = self.database.runtime_evidence()
