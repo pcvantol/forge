@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 12
+RUNTIME_SCHEMA_VERSION = 13
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -29,7 +29,7 @@ _REQUIRED_METADATA = frozenset((
     "database_location", "last_access_at", "status", "instance_version", "initialization_version",
 ))
 _TABLES = frozenset((
-    "mission_state", "architecture_reviews", "mission_recommendations",
+    "mission_state", "mission_runtime_projections", "architecture_reviews", "mission_recommendations",
     "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
@@ -130,6 +130,11 @@ class RuntimeDatabase:
                         status TEXT NOT NULL, current_intent TEXT, current_action TEXT,
                         progress TEXT NOT NULL, resume_point TEXT NOT NULL,
                         execution_policy TEXT, document TEXT NOT NULL
+                    );
+                    CREATE TABLE mission_runtime_projections (
+                        mission_id TEXT PRIMARY KEY, source_digest TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
                     CREATE TABLE architecture_reviews (
                         review_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
@@ -454,6 +459,17 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "12", "migration_version": "12", "last_migration": "12"})
                 self._connection.execute("PRAGMA user_version=12")
+        elif version == 12:
+            with self._connection:
+                self._connection.execute("""
+                    CREATE TABLE mission_runtime_projections (
+                        mission_id TEXT PRIMARY KEY, source_digest TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    )
+                """)
+                self._set_metadata({"schema_version": "13", "migration_version": "13", "last_migration": "13"})
+                self._connection.execute("PRAGMA user_version=13")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -575,6 +591,22 @@ class RuntimeDatabase:
             ))
         return document
 
+    def save_mission_runtime_projection(self, projection: Any) -> dict[str, Any]:
+        """Persist the canonical, mutable operational view of one Mission."""
+        document = _document(projection, "mission runtime projection")
+        mission_id, source_digest = document.get("mission_id"), document.get("source_digest")
+        if not all(isinstance(value, str) and value for value in (mission_id, source_digest)):
+            raise RuntimeDatabaseError("mission runtime projection requires mission identity and source digest")
+        if not source_digest.startswith("sha256:") or len(source_digest) != 71:
+            raise RuntimeDatabaseError("mission runtime projection requires a sha256 source digest")
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO mission_runtime_projections VALUES (?, ?, ?) "
+                "ON CONFLICT(mission_id) DO UPDATE SET source_digest=excluded.source_digest, document=excluded.document",
+                (mission_id, source_digest, self._dump(document)),
+            )
+        return document
+
     def allocate_next_mission_id(self, *, source: str, allocated_at: str) -> str:
         """Atomically allocate the next Mission identifier from Repository Truth."""
         if not source or not allocated_at:
@@ -643,11 +675,11 @@ class RuntimeDatabase:
     def has_document(self, table: str, identifier: str) -> bool:
         """Check an owned document without exposing host evidence."""
         lookup = {
-            "architecture_reviews": "review_id", "mission_recommendations": "recommendation_id",
+            "mission_runtime_projections": "mission_id", "mission_intake_evidence": "evidence_id", "architecture_reviews": "review_id", "mission_recommendations": "recommendation_id",
             "decision_evidence": "decision_id", "integration_evidence": "integration_id",
         }
         if table not in lookup:
-            raise RuntimeDatabaseError("table is not an immutable Forge document store")
+            raise RuntimeDatabaseError("table is not a Forge document store")
         return self._connection.execute(
             f"SELECT 1 FROM {table} WHERE {lookup[table]} = ?", (identifier,)
         ).fetchone() is not None
@@ -805,7 +837,7 @@ class RuntimeDatabase:
         return document
 
     def get_document(self, table: str, identifier: str) -> dict[str, Any]:
-        lookup = {"mission_state": ("mission_id", "document"), "architecture_reviews": ("review_id", "document"),
+        lookup = {"mission_state": ("mission_id", "document"), "mission_runtime_projections": ("mission_id", "document"), "mission_intake_evidence": ("evidence_id", "document"), "architecture_reviews": ("review_id", "document"),
                   "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document"), "planning_state": ("singleton", "document"),
                   "delegation_requests": ("delegation_id", "document"), "integration_evidence": ("integration_id", "document")}
         if table not in lookup:

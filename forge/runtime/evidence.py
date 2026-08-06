@@ -49,6 +49,109 @@ class RuntimeEvidence:
     def mission_state(self, mission_id: str) -> dict[str, Any]:
         return self._database.get_document("mission_state", mission_id)
 
+    def mission_runtime_projection(self, mission_id: str) -> dict[str, Any]:
+        """Reconcile and persist the complete operational view for one active Mission.
+
+        The projection never creates work.  It derives the only executable
+        action from the persisted Mission, planning and dispatcher records and
+        fails closed when those sources disagree.
+        """
+        state = self.mission_state(mission_id)
+        planning = self.planning_state()
+        dispatcher = self._dispatcher_state()
+        terminal = state.get("lifecycle") == "COMPLETE" and state.get("status") == "COMPLETE"
+        if terminal:
+            if dispatcher.get("status") != "IDLE" or dispatcher.get("active_mission_id") is not None:
+                raise RuntimeDatabaseError("completed Mission projection requires an idle dispatcher")
+            if planning.get("current_queue") or planning.get("pending_engineering_actions"):
+                raise RuntimeDatabaseError("completed Mission projection requires an empty approved Mission queue")
+        else:
+            if dispatcher.get("active_mission_id") != mission_id or dispatcher.get("status") != "ACTIVE":
+                raise RuntimeDatabaseError("operational Mission projection requires the active dispatcher Mission")
+            if mission_id not in planning.get("current_queue", ()):
+                raise RuntimeDatabaseError("operational Mission projection requires the approved Mission queue")
+        actions = tuple(state.get("engineering_actions", ()))
+        intents = tuple(state.get("engineering_intents", ()))
+        if not actions or not intents:
+            raise RuntimeDatabaseError("operational Mission projection requires persisted Intents and Actions")
+        action_by_id = {item.get("id"): item for item in actions if isinstance(item, dict) and item.get("id")}
+        if len(action_by_id) != len(actions):
+            raise RuntimeDatabaseError("operational Mission projection requires unique Engineering Actions")
+        completed_actions = tuple(item for item in actions if item.get("status") == "COMPLETED")
+        ready_actions = tuple(item for item in actions if item.get("status") in {"READY", "ACTIVE"}
+                              and all(action_by_id.get(dependency, {}).get("status") == "COMPLETED"
+                                      for dependency in item.get("dependencies", ())) )
+        blocked_actions = tuple(item for item in actions if item.get("status") == "BLOCKED")
+        if terminal:
+            if ready_actions or len(completed_actions) != len(actions):
+                raise RuntimeDatabaseError("completed Mission projection requires every Engineering Action complete")
+            selected, prompt = None, ()
+        else:
+            if len(ready_actions) != 1:
+                raise RuntimeDatabaseError("operational Mission projection requires exactly one executable Engineering Action")
+            selected = ready_actions[0]
+            if state.get("current_engineering_action", {}).get("id") != selected["id"]:
+                raise RuntimeDatabaseError("operational Mission projection current Action is inconsistent")
+            prompt = tuple(item for item in state.get("runtime_prompts", ()) if item.get("action_id") == selected["id"]
+                           and item.get("status") == "READY_FOR_ENGINEERING_PLATFORM")
+            if len(prompt) != 1:
+                raise RuntimeDatabaseError("operational Mission projection requires exactly one ready Runtime Prompt")
+        completed_intents = tuple(item for item in intents if item.get("status") == "COMPLETED")
+        ready_intents = tuple(item for item in intents if item.get("status") in {"APPROVED", "READY", "ACTIVE"})
+        blocked_intents = tuple(item for item in intents if item.get("status") == "BLOCKED")
+        decision_ids = tuple(state.get("decision_evidence_ids", ()))
+        decisions: list[dict[str, Any]] = []
+        intake_references: list[dict[str, str]] = []
+        for identifier in decision_ids:
+            if self._database.has_document("decision_evidence", identifier):
+                decisions.append(self.decision_evidence(identifier))
+            elif self._database.has_document("mission_intake_evidence", identifier):
+                intake_references.append({"artifact_id": identifier, "kind": "mission_intake_evidence"})
+            else:
+                raise RuntimeDatabaseError("operational Mission projection references unknown Decision Evidence")
+        receipt_references = tuple(state.get("execution_receipt_references", ()))
+        receipts = self.execution_receipts(mission_id)
+        receipt_ids = {item["receipt_id"] for item in receipts}
+        if any(reference.get("artifact_id") not in receipt_ids for reference in receipt_references if isinstance(reference, dict)):
+            raise RuntimeDatabaseError("operational Mission projection references an unknown Execution Receipt")
+        source = {"mission_state": state, "planning_state": planning, "dispatcher_state": dispatcher,
+                  "decision_ids": decision_ids, "execution_receipt_references": receipt_references}
+        source_digest = "sha256:" + sha256(json.dumps(source, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
+        projection = {
+            "mission_id": mission_id, "mission_lifecycle": state.get("lifecycle"), "mission_progress": state.get("progress"),
+            "current_intent": state.get("current_engineering_intent"), "completed_intents": completed_intents,
+            "ready_intents": ready_intents, "blocked_intents": blocked_intents,
+            "discovered_intents": tuple(state.get("discovered_engineering_intents", ())),
+            "discarded_intents": tuple(state.get("discarded_engineering_intents", ())),
+            "completed_engineering_actions": completed_actions,
+            "remaining_engineering_actions": tuple(item for item in actions if item.get("status") != "COMPLETED"),
+            "next_executable_engineering_action": selected, "runtime_prompts": prompt,
+            "planning_confidence": self._planning_confidence(tuple(decisions)),
+            "decision_evidence_references": tuple(self.decision_evidence_reference(item["id"]).to_dict() for item in decisions),
+            "intake_evidence_references": tuple(intake_references),
+            "execution_receipt_references": receipt_references, "dispatcher_state": dispatcher,
+            "approved_mission_queue": tuple(planning.get("current_queue", ())), "source_digest": source_digest,
+        }
+        return self._database.save_mission_runtime_projection(projection)
+
+    def persisted_mission_runtime_projection(self, mission_id: str) -> dict[str, Any]:
+        """Read the last reconciled operational view without regenerating it."""
+        return self._database.get_document("mission_runtime_projections", mission_id)
+
+    def _dispatcher_state(self) -> dict[str, Any]:
+        row = self._database._connection.execute("SELECT document FROM dispatcher_state WHERE singleton = 1").fetchone()
+        if row is None:
+            raise RuntimeDatabaseError("operational Mission projection requires dispatcher state")
+        return json.loads(row["document"])
+
+    @staticmethod
+    def _planning_confidence(decisions: tuple[dict[str, Any], ...]) -> dict[str, Any] | None:
+        for decision in reversed(decisions):
+            confidence = decision.get("confidence")
+            if isinstance(confidence, dict) and confidence:
+                return confidence
+        return None
+
     def architecture_review(self, review_id: str) -> dict[str, Any]:
         return self._database.get_document("architecture_reviews", review_id)
 
