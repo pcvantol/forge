@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 14
+RUNTIME_SCHEMA_VERSION = 15
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -33,6 +33,7 @@ _TABLES = frozenset((
     "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
+    "scheduler_submissions",
 ))
 
 
@@ -232,6 +233,14 @@ class RuntimeDatabase:
                         mission_id TEXT NOT NULL,
                         decided_at TEXT NOT NULL,
                         document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS scheduler_submissions (
+                        submission_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        intent_id TEXT NOT NULL, action_id TEXT NOT NULL,
+                        iteration INTEGER NOT NULL, state TEXT NOT NULL,
+                        execution_run_id TEXT, receipt_id TEXT, document TEXT NOT NULL,
+                        UNIQUE (mission_id, action_id, iteration),
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
@@ -447,6 +456,7 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "14", "migration_version": "14", "last_migration": "14"})
                 self._connection.execute("PRAGMA user_version=14")
+            self._migrate(forge_version)
         elif version == 10:
             with self._connection:
                 self._connection.executescript("""
@@ -510,6 +520,21 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "14", "migration_version": "14", "last_migration": "14"})
                 self._connection.execute("PRAGMA user_version=14")
+            self._migrate(forge_version)
+        elif version == 14:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS scheduler_submissions (
+                        submission_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        intent_id TEXT NOT NULL, action_id TEXT NOT NULL,
+                        iteration INTEGER NOT NULL, state TEXT NOT NULL,
+                        execution_run_id TEXT, receipt_id TEXT, document TEXT NOT NULL,
+                        UNIQUE (mission_id, action_id, iteration),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                """)
+                self._set_metadata({"schema_version": "15", "migration_version": "15", "last_migration": "15"})
+                self._connection.execute("PRAGMA user_version=15")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -765,6 +790,65 @@ class RuntimeDatabase:
         return self._connection.execute(
             "SELECT 1 FROM execution_receipts WHERE receipt_id = ?", (receipt_id,)
         ).fetchone() is not None
+
+    def scheduler_submission(self, submission_id: str) -> dict[str, Any] | None:
+        row = self._connection.execute(
+            "SELECT document FROM scheduler_submissions WHERE submission_id = ?", (submission_id,)
+        ).fetchone()
+        return json.loads(row["document"]) if row is not None else None
+
+    def outstanding_scheduler_submission(self, mission_id: str) -> dict[str, Any] | None:
+        rows = self._connection.execute(
+            "SELECT document FROM scheduler_submissions WHERE mission_id = ? AND state IN ('CREATED', 'SUBMITTED', 'ACCEPTED', 'EXECUTING', 'RECEIPT_AVAILABLE') ORDER BY iteration",
+            (mission_id,),
+        ).fetchall()
+        if len(rows) > 1:
+            raise RuntimeIntegrityError("Mission has multiple outstanding scheduler submissions")
+        return json.loads(rows[0]["document"]) if rows else None
+
+    def create_scheduler_submission(self, submission: Any) -> dict[str, Any]:
+        """Persist one complete immutable envelope before host publication."""
+        document = _document(submission, "scheduler submission")
+        required = ("submission_id", "mission_id", "intent_id", "action_id", "iteration", "state", "envelope")
+        if any(document.get(name) in (None, "") for name in required) or document["state"] != "CREATED":
+            raise RuntimeDatabaseError("scheduler submission requires a complete CREATED envelope")
+        if not isinstance(document["iteration"], int) or document["iteration"] < 1:
+            raise RuntimeDatabaseError("scheduler submission iteration must be positive")
+        existing = self.scheduler_submission(str(document["submission_id"]))
+        if existing is not None:
+            if existing.get("envelope") != document.get("envelope"):
+                raise RuntimeIntegrityError("scheduler submission identity has conflicting envelope content")
+            return existing
+        if self.outstanding_scheduler_submission(str(document["mission_id"])) is not None:
+            raise RuntimeIntegrityError("Mission already has an outstanding scheduler submission")
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO scheduler_submissions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (document["submission_id"], document["mission_id"], document["intent_id"], document["action_id"],
+                 document["iteration"], "CREATED", None, None, self._dump(document)),
+            )
+        return document
+
+    def update_scheduler_submission(self, submission_id: str, *, state: str,
+                                    execution_run_id: str | None = None, receipt_id: str | None = None) -> dict[str, Any]:
+        allowed = {"CREATED", "SUBMITTED", "ACCEPTED", "EXECUTING", "RECEIPT_AVAILABLE", "RECONCILED", "BLOCKED", "FAILED", "SUPERSEDED"}
+        if state not in allowed:
+            raise RuntimeDatabaseError("scheduler submission state is unsupported")
+        document = self.scheduler_submission(submission_id)
+        if document is None:
+            raise RuntimeDatabaseError("unknown scheduler submission")
+        document["state"] = state
+        document.setdefault("state_history", []).append({"state": state})
+        if execution_run_id is not None:
+            document["execution_run_id"] = execution_run_id
+        if receipt_id is not None:
+            document["receipt_id"] = receipt_id
+        with self._connection:
+            self._connection.execute(
+            "UPDATE scheduler_submissions SET state=?, execution_run_id=?, receipt_id=?, document=? WHERE submission_id=?",
+                (state, document.get("execution_run_id"), document.get("receipt_id"), self._dump(document), submission_id),
+            )
+        return document
 
     def save_dispatcher_state(self, *, status: str, mission_sequence: tuple[str, ...],
                               active_mission_id: str | None = None) -> None:
