@@ -3,5 +3,6 @@
 from .advisor import BusinessAdvisor, BusinessAdvisorAdvice
 from .presentation import render_business_decision_evidence, render_mission_recommendation
 from .workspace import BusinessWorkspace, BusinessWorkspaceError, MissionCandidateHistoryEntry
+from .ingress import BusinessGovernanceIngress, BusinessGovernanceIngressResult
 
-__all__ = ["BusinessAdvisor", "BusinessAdvisorAdvice", "BusinessWorkspace", "BusinessWorkspaceError", "MissionCandidateHistoryEntry", "render_business_decision_evidence", "render_mission_recommendation"]
+__all__ = ["BusinessAdvisor", "BusinessAdvisorAdvice", "BusinessWorkspace", "BusinessWorkspaceError", "MissionCandidateHistoryEntry", "BusinessGovernanceIngress", "BusinessGovernanceIngressResult", "render_business_decision_evidence", "render_mission_recommendation"]

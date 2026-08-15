@@ -218,6 +218,19 @@ class RecommendationLifecycleStore:
         document = json.loads(row["document"]); document["status"] = status
         return MissionRecommendation.from_dict(document)
 
+    def resolve_recommendation(self, reference: str) -> MissionRecommendation:
+        """Resolve an exact canonical ID or title, failing closed on ambiguity."""
+        try:
+            return self.get_recommendation(reference)
+        except LifecycleError:
+            rows = self._connection.execute("SELECT recommendation_id, document FROM recommendations").fetchall()
+            matches = [row["recommendation_id"] for row in rows if json.loads(row["document"])["title"] == reference]
+            if not matches:
+                raise LifecycleError(f"unknown recommendation reference: {reference}")
+            if len(matches) != 1:
+                raise LifecycleError(f"ambiguous recommendation reference: {reference}")
+            return self.get_recommendation(str(matches[0]))
+
     def transition(self, recommendation_id: str, target: RecommendationStatus, *, actor: str, occurred_at: str, rationale: str, references: tuple[str, ...] = ()) -> MissionRecommendation:
         current = self.get_recommendation(recommendation_id)
         if target not in _TRANSITIONS[current.status]:
@@ -289,6 +302,20 @@ class RecommendationLifecycleStore:
         self.get_recommendation(recommendation_id)
         rows = self._connection.execute("SELECT document FROM decision_evidence WHERE recommendation_id = ? ORDER BY evidence_id", (recommendation_id,)).fetchall()
         return tuple(LifecycleDecisionEvidence(**{**json.loads(row["document"]), "references": tuple(json.loads(row["document"])["references"])}) for row in rows)
+
+    def candidate_for_recommendation(self, recommendation_id: str) -> MissionCandidate | None:
+        """Return the one canonical candidate, without creating one implicitly."""
+        row = self._connection.execute(
+            "SELECT document FROM candidates WHERE recommendation_id = ?", (recommendation_id,)
+        ).fetchone()
+        return None if row is None else MissionCandidate.from_dict(json.loads(row["document"]))
+
+    def allocation_for_recommendation(self, recommendation_id: str) -> MissionAllocation | None:
+        """Return the immutable allocation when the recommendation already has one."""
+        row = self._connection.execute(
+            "SELECT document FROM allocations WHERE recommendation_id = ?", (recommendation_id,)
+        ).fetchone()
+        return None if row is None else MissionAllocation(**json.loads(row["document"]))
 
     def _approval_evidence(self, recommendation_id: str) -> dict[str, str]:
         rows = self._connection.execute("SELECT kind, evidence_id FROM decision_evidence WHERE recommendation_id = ?", (recommendation_id,)).fetchall()
