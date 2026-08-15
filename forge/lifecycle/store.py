@@ -64,6 +64,16 @@ class MissionRecommendation:
     confidence: int
     recommendation_timestamp: str
     status: RecommendationStatus = RecommendationStatus.PROPOSED
+    recommendation_set_id: str | None = None
+    rank: int | None = None
+    recommendation_type: str | None = None
+    expected_outcome: str | None = None
+    expected_repository_impact: str | None = None
+    risk_if_deferred: str | None = None
+    required_disciplines: tuple[str, ...] = ()
+    known_constraints: tuple[str, ...] = ()
+    evidence_references: tuple[str, ...] = ()
+    supersedes_recommendation_id: str | None = None
 
     def __post_init__(self) -> None:
         if not all((self.id, self.title, self.mission_origin, self.business_summary, self.engineering_summary,
@@ -72,7 +82,9 @@ class MissionRecommendation:
             raise LifecycleError("recommendation requires complete governance context")
         if not 0 <= self.confidence <= 100:
             raise LifecycleError("recommendation confidence must be between 0 and 100")
-        for name in ("repository_evidence", "dependencies", "alternatives"):
+        if self.rank is not None and self.rank < 1:
+            raise LifecycleError("recommendation rank must be positive when supplied")
+        for name in ("repository_evidence", "dependencies", "alternatives", "required_disciplines", "known_constraints", "evidence_references"):
             values = getattr(self, name)
             if any(not item for item in values) or len(values) != len(set(values)):
                 raise LifecycleError(f"recommendation {name} must be unique and non-empty when supplied")
@@ -87,6 +99,9 @@ class MissionRecommendation:
     def from_dict(cls, document: dict[str, object]) -> "MissionRecommendation":
         return cls(**{**document, "repository_evidence": tuple(document["repository_evidence"]),
                       "dependencies": tuple(document["dependencies"]), "alternatives": tuple(document["alternatives"]),
+                      "required_disciplines": tuple(document.get("required_disciplines", ())),
+                      "known_constraints": tuple(document.get("known_constraints", ())),
+                      "evidence_references": tuple(document.get("evidence_references", ())),
                       "status": RecommendationStatus(str(document["status"]))})  # type: ignore[arg-type]
 
 
@@ -131,13 +146,22 @@ class LifecycleDecisionEvidence:
     actor: str
     rationale: str
     references: tuple[str, ...]
+    decision_type: str = "LIFECYCLE"
+    selected_recommendation_id: str | None = None
+    ranked_alternatives: tuple[str, ...] = ()
+    confidence: int | None = None
 
     def __post_init__(self) -> None:
         if not all((self.id, self.kind, self.recommendation_id, self.occurred_at, self.actor, self.rationale)):
             raise LifecycleError("decision evidence requires identity, actor, time, and rationale")
         if any(not value for value in self.references) or len(self.references) != len(set(self.references)):
             raise LifecycleError("decision evidence references must be unique and non-empty")
+        if self.confidence is not None and not 0 <= self.confidence <= 100:
+            raise LifecycleError("decision evidence confidence must be between 0 and 100")
+        if any(not value for value in self.ranked_alternatives) or len(self.ranked_alternatives) != len(set(self.ranked_alternatives)):
+            raise LifecycleError("decision evidence ranked alternatives must be unique and non-empty when supplied")
         object.__setattr__(self, "references", tuple(sorted(self.references)))
+        object.__setattr__(self, "ranked_alternatives", tuple(self.ranked_alternatives))
 
     @property
     def content_digest(self) -> str:
@@ -301,7 +325,28 @@ class RecommendationLifecycleStore:
     def history(self, recommendation_id: str) -> tuple[LifecycleDecisionEvidence, ...]:
         self.get_recommendation(recommendation_id)
         rows = self._connection.execute("SELECT document FROM decision_evidence WHERE recommendation_id = ? ORDER BY evidence_id", (recommendation_id,)).fetchall()
-        return tuple(LifecycleDecisionEvidence(**{**json.loads(row["document"]), "references": tuple(json.loads(row["document"])["references"])}) for row in rows)
+        return tuple(LifecycleDecisionEvidence(**{**json.loads(row["document"]), "references": tuple(json.loads(row["document"])["references"]),
+                                                 "ranked_alternatives": tuple(json.loads(row["document"]).get("ranked_alternatives", ()))}) for row in rows)
+
+    def list_recommendations(self) -> tuple[MissionRecommendation, ...]:
+        """Return the current immutable governance projection in deterministic rank order."""
+        rows = self._connection.execute("SELECT recommendation_id FROM recommendations").fetchall()
+        recommendations = tuple(self.get_recommendation(str(row["recommendation_id"])) for row in rows)
+        return tuple(sorted(recommendations, key=lambda item: (item.rank is None, item.rank or 0, item.id)))
+
+    def append_recommendation_decision(self, recommendation_id: str, *, evidence_id: str,
+                                       occurred_at: str, actor: str, rationale: str,
+                                       ranked_alternatives: tuple[str, ...], confidence: int,
+                                       references: tuple[str, ...]) -> LifecycleDecisionEvidence:
+        """Persist the bounded Portfolio recommendation decision without an approval transition."""
+        self.get_recommendation(recommendation_id)
+        evidence = LifecycleDecisionEvidence(
+            evidence_id, "mission_recommendation", recommendation_id, occurred_at, actor, rationale,
+            references, "MISSION_RECOMMENDATION", recommendation_id, ranked_alternatives, confidence,
+        )
+        with self._connection:
+            self._append_evidence(evidence)
+        return evidence
 
     def candidate_for_recommendation(self, recommendation_id: str) -> MissionCandidate | None:
         """Return the one canonical candidate, without creating one implicitly."""

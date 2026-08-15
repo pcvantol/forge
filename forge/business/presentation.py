@@ -6,6 +6,7 @@ from typing import Any
 
 from forge.models.mission_recommendation import MissionRecommendation
 from forge.models.decision_evidence import DecisionEvidence
+from forge.lifecycle import MissionRecommendation as LifecycleMissionRecommendation
 
 
 def render_mission_recommendation(recommendation: MissionRecommendation) -> dict[str, Any]:
@@ -37,3 +38,18 @@ def render_business_decision_evidence(evidence: DecisionEvidence) -> dict[str, A
             "reasoning_summary": evidence.reasoning_summary, "alternatives": [item.to_dict() for item in evidence.alternatives_considered],
             "chosen_alternative": evidence.chosen_alternative, "confidence": evidence.confidence.to_dict(),
             "approval_state": evidence.approval_state.value, "advisory": True}
+
+
+def render_persisted_mission_recommendation(recommendation: LifecycleMissionRecommendation) -> dict[str, Any]:
+    """Render lifecycle-owned recommendation fields required for Business review."""
+    return {
+        "id": recommendation.id, "recommendation_set_id": recommendation.recommendation_set_id,
+        "rank": recommendation.rank, "title": recommendation.title,
+        "mission_origin": recommendation.mission_origin, "business_value": recommendation.business_value,
+        "architectural_value": recommendation.architectural_value, "engineering_value": recommendation.engineering_value,
+        "confidence": recommendation.confidence, "dependencies": list(recommendation.dependencies),
+        "risk_if_deferred": recommendation.risk_if_deferred, "rationale": recommendation.business_summary,
+        "decision_evidence_reference": recommendation.decision_evidence_reference,
+        "recommendation_status": recommendation.status.value, "approval_status": "NOT_YET_APPROVED",
+        "advisory": True,
+    }
