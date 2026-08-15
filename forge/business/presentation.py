@@ -6,7 +6,7 @@ from typing import Any
 
 from forge.models.mission_recommendation import MissionRecommendation
 from forge.models.decision_evidence import DecisionEvidence
-from forge.lifecycle import MissionRecommendation as LifecycleMissionRecommendation
+from forge.lifecycle import LifecycleDecisionEvidence, MissionRecommendation as LifecycleMissionRecommendation
 
 
 def render_mission_recommendation(recommendation: MissionRecommendation) -> dict[str, Any]:
@@ -40,7 +40,8 @@ def render_business_decision_evidence(evidence: DecisionEvidence) -> dict[str, A
             "approval_state": evidence.approval_state.value, "advisory": True}
 
 
-def render_persisted_mission_recommendation(recommendation: LifecycleMissionRecommendation) -> dict[str, Any]:
+def render_persisted_mission_recommendation(recommendation: LifecycleMissionRecommendation,
+                                            *, selection_decision_evidence_id: str | None = None) -> dict[str, Any]:
     """Render lifecycle-owned recommendation fields required for Business review."""
     return {
         "id": recommendation.id, "recommendation_set_id": recommendation.recommendation_set_id,
@@ -49,7 +50,25 @@ def render_persisted_mission_recommendation(recommendation: LifecycleMissionReco
         "architectural_value": recommendation.architectural_value, "engineering_value": recommendation.engineering_value,
         "confidence": recommendation.confidence, "dependencies": list(recommendation.dependencies),
         "risk_if_deferred": recommendation.risk_if_deferred, "rationale": recommendation.business_summary,
-        "decision_evidence_reference": recommendation.decision_evidence_reference,
+        "decision_evidence_reference": selection_decision_evidence_id or recommendation.decision_evidence_reference,
         "recommendation_status": recommendation.status.value, "approval_status": "NOT_YET_APPROVED",
         "advisory": True,
     }
+
+
+def render_persisted_recommendation_set(recommendations: tuple[LifecycleMissionRecommendation, ...],
+                                        decision_evidence: LifecycleDecisionEvidence) -> tuple[dict[str, Any], ...]:
+    """Render a complete current set for Business review without inferring Mission state."""
+    if not recommendations or decision_evidence.decision_type != "MISSION_RECOMMENDATION":
+        raise ValueError("a recommendation selection Decision Evidence record is required")
+    if decision_evidence.selected_recommendation_id != recommendations[0].id:
+        raise ValueError("selection Decision Evidence must identify rank one")
+    if decision_evidence.ranked_alternatives != tuple(item.id for item in recommendations):
+        raise ValueError("selection Decision Evidence must preserve the ranked alternatives")
+    rendered = tuple(
+        render_persisted_mission_recommendation(item, selection_decision_evidence_id=decision_evidence.id)
+        for item in recommendations
+    )
+    if sum(item["recommendation_status"] == "RECOMMENDED" for item in rendered) != 1:
+        raise ValueError("Business Workspace requires exactly one recommended recommendation")
+    return rendered

@@ -7,8 +7,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from forge.business import render_persisted_mission_recommendation
-from forge.lifecycle import RecommendationLifecycleStore
+from forge.business import render_persisted_mission_recommendation, render_persisted_recommendation_set
+from forge.lifecycle import RecommendationLifecycleStore, RecommendationStatus
 from forge.models import (
     RecommendationRepositoryContext, RequiredDiscipline, ReviewEvidence,
     ReviewInputKind, ReviewSignal, ReviewSignalKind,
@@ -59,6 +59,7 @@ class PortfolioIntelligenceOperationTests(unittest.TestCase):
         self.assertEqual([item.rank for item in result.recommendations], [1, 2, 3, 4])
         self.assertEqual(result.recommended.title, "Operationalize persisted Portfolio Intelligence")
         self.assertEqual(result.recommended.status.value, "RECOMMENDED")
+        self.assertEqual([item.status.value for item in result.recommendations], ["RECOMMENDED", "PROPOSED", "PROPOSED", "PROPOSED"])
         self.assertEqual(result.decision_evidence.decision_type, "MISSION_RECOMMENDATION")
         self.assertEqual(result.decision_evidence.ranked_alternatives, tuple(item.id for item in result.recommendations))
         self.assertIsNone(self.store.candidate_for_recommendation(result.recommended.id))
@@ -66,6 +67,9 @@ class PortfolioIntelligenceOperationTests(unittest.TestCase):
         view = render_persisted_mission_recommendation(result.recommended)
         self.assertEqual(view["approval_status"], "NOT_YET_APPROVED")
         self.assertEqual(view["recommendation_status"], "RECOMMENDED")
+        workspace = render_persisted_recommendation_set(result.recommendations, result.decision_evidence)
+        self.assertEqual([item["decision_evidence_reference"] for item in workspace], [result.decision_evidence.id] * 4)
+        self.assertEqual(sum(item["recommendation_status"] == "RECOMMENDED" for item in workspace), 1)
 
     def test_reinvocation_and_restart_reuse_equivalent_recommendations(self) -> None:
         first = self.operation.run(self.source(), self.store)
@@ -74,6 +78,8 @@ class PortfolioIntelligenceOperationTests(unittest.TestCase):
         second = self.operation.run(self.source(), self.store)
         self.assertEqual(first.recommendation_set_id, second.recommendation_set_id)
         self.assertEqual([item.id for item in first.recommendations], [item.id for item in second.recommendations])
+        self.assertEqual([item.status for item in first.recommendations], [item.status for item in second.recommendations])
+        self.assertEqual(second.decision_evidence.id, first.decision_evidence.id)
         self.assertEqual(len(self.store.list_recommendations()), 4)
 
     def test_ranking_is_deterministic_and_evidence_backed(self) -> None:
@@ -84,6 +90,20 @@ class PortfolioIntelligenceOperationTests(unittest.TestCase):
             self.assertTrue(item.evidence_references)
             self.assertTrue(item.risk_if_deferred)
             self.assertTrue(item.required_disciplines)
+
+    def test_reconciles_legacy_multiple_recommended_records_append_only(self) -> None:
+        first = self.operation.run(self.source(), self.store)
+        for recommendation in first.recommendations[1:]:
+            self.store.transition(recommendation.id, RecommendationStatus.RECOMMENDED,
+                                  actor="legacy-portfolio-intelligence", occurred_at="2026-08-15T20:01:00Z",
+                                  rationale="Legacy defect.", references=(recommendation.id,))
+        reconciled = self.operation.run(self.source(), self.store)
+        self.assertEqual([item.status.value for item in reconciled.recommendations], ["RECOMMENDED", "PROPOSED", "PROPOSED", "PROPOSED"])
+        self.assertEqual(reconciled.decision_evidence.id, first.decision_evidence.id)
+        self.assertTrue(all(
+            any(item.kind == "recommendation_selection_correction" for item in self.store.history(recommendation.id))
+            for recommendation in reconciled.recommendations[1:]
+        ))
 
 
 if __name__ == "__main__":

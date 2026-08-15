@@ -334,6 +334,60 @@ class RecommendationLifecycleStore:
         recommendations = tuple(self.get_recommendation(str(row["recommendation_id"])) for row in rows)
         return tuple(sorted(recommendations, key=lambda item: (item.rank is None, item.rank or 0, item.id)))
 
+    def recommendation_set(self, recommendation_set_id: str) -> tuple[MissionRecommendation, ...]:
+        """Return one canonical, deterministically ranked recommendation set."""
+        if not recommendation_set_id:
+            raise LifecycleError("recommendation set id is required")
+        recommendations = tuple(item for item in self.list_recommendations() if item.recommendation_set_id == recommendation_set_id)
+        if not recommendations:
+            raise LifecycleError(f"unknown recommendation set: {recommendation_set_id}")
+        ranks = tuple(item.rank for item in recommendations)
+        if any(rank is None for rank in ranks) or ranks != tuple(range(1, len(recommendations) + 1)):
+            raise LifecycleError("recommendation set ranks must be complete, unique, and contiguous")
+        return recommendations
+
+    def reconcile_recommendation_set_selection(self, recommendation_set_id: str, *, selected_recommendation_id: str,
+                                               decision_evidence_id: str, actor: str, occurred_at: str,
+                                               rationale: str) -> tuple[MissionRecommendation, ...]:
+        """Append a bounded correction so exactly rank one is current and recommended.
+
+        This preserves immutable recommendation generation and Decision Evidence.
+        It cannot approve, allocate, supersede, or archive work.
+        """
+        recommendations = self.recommendation_set(recommendation_set_id)
+        selected = recommendations[0]
+        if selected.id != selected_recommendation_id:
+            raise LifecycleError("only the rank-one recommendation may be selected")
+        decision = self._decision_evidence(decision_evidence_id)
+        if (decision.decision_type != "MISSION_RECOMMENDATION"
+                or decision.selected_recommendation_id != selected.id
+                or decision.ranked_alternatives != tuple(item.id for item in recommendations)):
+            raise LifecycleError("selection Decision Evidence does not match the recommendation set")
+        if selected.status is RecommendationStatus.PROPOSED:
+            self.transition(selected.id, RecommendationStatus.RECOMMENDED, actor=actor, occurred_at=occurred_at,
+                            rationale=rationale, references=(decision_evidence_id,))
+        elif selected.status is not RecommendationStatus.RECOMMENDED:
+            raise LifecycleError("selected recommendation is not eligible for reconciliation")
+        for recommendation in recommendations[1:]:
+            if recommendation.status is RecommendationStatus.PROPOSED:
+                continue
+            if recommendation.status is not RecommendationStatus.RECOMMENDED:
+                raise LifecycleError("non-selected recommendation is not eligible for reconciliation")
+            evidence = self._evidence("recommendation_selection_correction", recommendation.id, occurred_at, actor,
+                                      rationale, (decision_evidence_id, recommendation_set_id, selected.id))
+            with self._connection:
+                self._append_evidence(evidence)
+                self._connection.execute(
+                    "INSERT INTO transitions(recommendation_id, from_status, to_status, evidence_id) VALUES (?, ?, ?, ?)",
+                    (recommendation.id, RecommendationStatus.RECOMMENDED.value,
+                     RecommendationStatus.PROPOSED.value, evidence.id),
+                )
+        reconciled = self.recommendation_set(recommendation_set_id)
+        if (sum(item.status is RecommendationStatus.RECOMMENDED for item in reconciled) != 1
+                or reconciled[0].status is not RecommendationStatus.RECOMMENDED):
+            raise LifecycleError("recommendation set selection reconciliation failed")
+        return reconciled
+
     def append_recommendation_decision(self, recommendation_id: str, *, evidence_id: str,
                                        occurred_at: str, actor: str, rationale: str,
                                        ranked_alternatives: tuple[str, ...], confidence: int,
@@ -347,6 +401,10 @@ class RecommendationLifecycleStore:
         with self._connection:
             self._append_evidence(evidence)
         return evidence
+
+    def decision_evidence(self, evidence_id: str) -> LifecycleDecisionEvidence:
+        """Resolve immutable lifecycle Decision Evidence by canonical identifier."""
+        return self._decision_evidence(evidence_id)
 
     def candidate_for_recommendation(self, recommendation_id: str) -> MissionCandidate | None:
         """Return the one canonical candidate, without creating one implicitly."""
@@ -365,6 +423,14 @@ class RecommendationLifecycleStore:
     def _approval_evidence(self, recommendation_id: str) -> dict[str, str]:
         rows = self._connection.execute("SELECT kind, evidence_id FROM decision_evidence WHERE recommendation_id = ?", (recommendation_id,)).fetchall()
         return {row["kind"]: row["evidence_id"] for row in rows}
+
+    def _decision_evidence(self, evidence_id: str) -> LifecycleDecisionEvidence:
+        row = self._connection.execute("SELECT document FROM decision_evidence WHERE evidence_id = ?", (evidence_id,)).fetchone()
+        if row is None:
+            raise LifecycleError(f"unknown decision evidence: {evidence_id}")
+        document = json.loads(row["document"])
+        return LifecycleDecisionEvidence(**{**document, "references": tuple(document["references"]),
+                                             "ranked_alternatives": tuple(document.get("ranked_alternatives", ()))})
 
     @staticmethod
     def _decision_kind(target: RecommendationStatus) -> str:

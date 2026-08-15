@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 
-from forge.lifecycle import LifecycleDecisionEvidence, MissionRecommendation as LifecycleRecommendation, RecommendationLifecycleStore, RecommendationStatus
+from forge.lifecycle import LifecycleDecisionEvidence, MissionRecommendation as LifecycleRecommendation, RecommendationLifecycleStore
 from forge.models import ArchitectureReviewInput, RecommendationCategory, RecommendationRepositoryContext, RequiredDiscipline, ReviewEvidence, ReviewSignal
 from forge.recommendations import MissionRecommendationEngine, MissionRecommendationInput
 from forge.review import ArchitectureReviewEngine
@@ -77,24 +77,25 @@ class PortfolioIntelligence:
             raise ValueError("Portfolio Intelligence found no evidence-backed recommendation candidates")
         set_id = "recommendation-set-" + _digest({"review": review.id, "recommendations": [item.id for item in selected]})[:16]
         ranked = tuple(sorted(selected, key=self._rank_key))
-        persisted: list[LifecycleRecommendation] = []
         for rank, recommendation in enumerate(ranked, start=1):
             projected = self._project(recommendation, set_id, rank, source.known_constraints)
             try:
-                current = lifecycle.get_recommendation(projected.id)
+                lifecycle.get_recommendation(projected.id)
             except ValueError:
                 lifecycle.create_recommendation(projected, actor="portfolio-intelligence", rationale="Declared Repository Truth and completed Mission evidence produced this advisory recommendation.")
-                current = lifecycle.transition(projected.id, RecommendationStatus.RECOMMENDED, actor="portfolio-intelligence", occurred_at=source.recommendation_timestamp, rationale="Ranked recommendation is ready for Business Workspace review.", references=projected.evidence_references)
-            if current.status is not RecommendationStatus.RECOMMENDED:
-                raise ValueError("equivalent recommendation is not available for Business review")
-            persisted.append(current)
-        ordered = tuple(sorted(persisted, key=lambda item: item.rank or 0))
+        ordered = lifecycle.recommendation_set(set_id)
         evidence_id = "decision-mission-recommendation-" + _digest({"set": set_id, "ranked": [item.id for item in ordered]})[:16]
         try:
             decision = next(item for item in lifecycle.history(ordered[0].id) if item.id == evidence_id)
         except StopIteration:
             decision = lifecycle.append_recommendation_decision(ordered[0].id, evidence_id=evidence_id, occurred_at=source.recommendation_timestamp, actor="portfolio-intelligence", confidence=ordered[0].confidence, rationale="Deterministic ranking considers declared business, architectural, engineering, deferred-risk, dependency-readiness, maturity-fit, capability-gap, and maintenance-pressure signals.", ranked_alternatives=tuple(item.id for item in ordered), references=tuple(sorted({*source.execution_evidence_references, *(reference for item in ordered for reference in item.evidence_references)})))
-        return PersistedRecommendationSet(set_id, ordered, decision)
+        reconciled = lifecycle.reconcile_recommendation_set_selection(
+            set_id, selected_recommendation_id=ordered[0].id,
+            decision_evidence_id=decision.id, actor="portfolio-intelligence",
+            occurred_at=source.recommendation_timestamp,
+            rationale="Deterministic ranking selects rank one; viable lower-ranked alternatives remain proposed.",
+        )
+        return PersistedRecommendationSet(set_id, reconciled, decision)
 
     @staticmethod
     def _rank_key(recommendation) -> tuple[int, int, str]:
