@@ -1,0 +1,19 @@
+name: Bug report
+description: Report unexpected Forge behavior.
+title: "bug: "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Evidence and safe reproduction
+      description: Redact secrets, prompts, host diagnostics, and private data.

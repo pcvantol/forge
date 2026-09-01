@@ -1,5 +1,6 @@
 .DS_Store
 .forge/
+.tde/
 runtime.db
 __pycache__/
 *.py[cod]
