@@ -37,12 +37,12 @@ and handoff material consistently identify this line as Forge.
 
 ## Historical material and future normalization
 
-Bootstrap reports, knowledge captures, handoffs, and the root execution-facing
-documents are retained as historical Forge development material. Some contain
-generic AI-development guidance. They remain functional until the separate
-AI-native repository-family authority project supplies an approved canonical
-projection. They are marked **PENDING_AI_DEVELOPMENT_CONTRACT_NORMALIZATION**;
-this promotion does not delete, migrate, or duplicate them.
+Bootstrap reports, knowledge captures, handoffs, and historical commits remain
+Forge development evidence. They are immutable historical material, not
+independently maintained generic contract authority. Current generic
+AI-development guidance is supplied by the generated
+`docs/ai-development/GENERATED_PROJECTION.md`; current Forge-only development
+semantics are in `FORGE_DEVELOPMENT_EXTENSION.md`.
 
 ## Boundary statement
 

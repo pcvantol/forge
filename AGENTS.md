@@ -1,22 +1,20 @@
-# Forge Agent Instructions
+# Forge agent instructions
 
 Read [BOOTSTRAP.md](BOOTSTRAP.md), [ENGINEERING_METHOD.md](ENGINEERING_METHOD.md),
-and [PROMPT_INITIALIZATION.md](PROMPT_INITIALIZATION.md) before acting.
+[PROMPT_INITIALIZATION.md](PROMPT_INITIALIZATION.md), and the generated
+[AI-development projection](docs/ai-development/GENERATED_PROJECTION.md)
+before acting. Generic agent workflow rules are authoritative only in that
+projection.
 
-Agents work only within an approved, bounded Mission and must preserve the
-Forge-to-Engineering-Platform boundary:
+Forge-specific boundaries are immutable for this repository: Forge owns Mission
+planning, Action derivation, Producer Contracts and interpretation of evidence;
+the installed Execution Host owns host qualification, runtime invocation,
+execution evidence, telemetry and cleanup. Business owns portfolio value and
+approval; Architecture owns technical refinement and approval. Mission Intake
+admits an already-approved Mission only. Do not allocate a Mission ID, change a
+Mission lifecycle state, expand an objective, or use repository documentation
+as host-qualification evidence.
 
-- Forge owns Mission planning, Action derivation, Producer Contracts, and
-  interpretation of evidence.
-- The Execution Host owns Development Host, workspace, and capability
-  qualification, plus runtime invocation, execution evidence, telemetry, and
-  cleanup.
-- Business owns portfolio value and Business approval; Architecture owns
-  technical refinement and Architecture approval. Mission Intake only admits
-  an already approved Mission into durable Mission State.
-
-Do not treat repository documentation as host-qualification evidence. Do not
-allocate a Mission ID, change a Mission lifecycle state, or expand an objective
-without the applicable recorded governance and host evidence. Keep this file
-as execution guidance; canonical architecture remains in
-[docs/architecture](docs/architecture/).
+Canonical Forge architecture remains in [docs/architecture](docs/architecture/).
+The Forge-to-Engineering-Platform boundary is defined by the versioned Producer
+and Execution Host contracts.

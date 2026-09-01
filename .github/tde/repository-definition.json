@@ -1,0 +1,9 @@
+{
+  "identifier": "forge",
+  "name": "Forge",
+  "repositoryRoot": "../..",
+  "repositoryType": "source",
+  "primaryLanguage": "Python",
+  "defaultAssessmentProfile": "standard",
+  "metadata": {"consumer": "Forge", "rolloutPhase": "observe"}
+}

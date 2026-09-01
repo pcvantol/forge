@@ -57,9 +57,10 @@ deterministically declared dependency ecosystem.
 
 The root [BOOTSTRAP](../../BOOTSTRAP.md), [ENGINEERING_METHOD](../../ENGINEERING_METHOD.md),
 [PROMPT_INITIALIZATION](../../PROMPT_INITIALIZATION.md), and [AGENTS](../../AGENTS.md)
-documents remain Forge's working new-chat entrypoint. Their generic portions
-are **PENDING_AI_DEVELOPMENT_CONTRACT_NORMALIZATION**. They are deliberately
-retained until a canonical replacement exists.
+documents remain Forge's thin working entrypoints. Their generic portions are
+provided by the generated [AI-development projection](../ai-development/GENERATED_PROJECTION.md);
+Forge-only orientation and boundaries are in the
+[Forge development extension](../ai-development/FORGE_DEVELOPMENT_EXTENSION.md).
 
 Current Forge handoffs remain under [`docs/handoff`](../handoff/); reports and
 historical evidence remain under [`docs/reports`](../reports/) and

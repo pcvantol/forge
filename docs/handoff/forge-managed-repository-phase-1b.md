@@ -21,14 +21,14 @@
 - Managed governance: [Managed Repository Baseline](../governance/managed-repository-baseline.md)
 - Provenance: [Forge Genesis Provenance](../../FORGE_GENESIS_PROVENANCE.md)
 
-## Retained generic-governance candidates
+## Historical generic-governance candidates
 
 The root `BOOTSTRAP.md`, `ENGINEERING_METHOD.md`, `PROMPT_INITIALIZATION.md`,
 and `AGENTS.md`, together with historic bootstrap reports and handoffs, remain
-functional Forge material. Their generic portions are
-**PENDING_AI_DEVELOPMENT_CONTRACT_NORMALIZATION**. They must be considered by
-the later `ai-development-contracts` projection work; this Phase-1B promotion
-does not delete or migrate them.
+historical Forge material. Phase 2E subsequently made the generated
+`ai-development-contracts` projection authoritative for generic portions and
+retained only Forge-specific local extension/navigation. This Phase-1B handoff
+remains immutable promotion evidence, not a current generic authority.
 
 ## TDE integration
 

@@ -9,7 +9,8 @@ and its source-history record in [Forge Genesis Provenance](FORGE_GENESIS_PROVEN
 
 Start a new development session with [BOOTSTRAP.md](BOOTSTRAP.md), then
 [ENGINEERING_METHOD.md](ENGINEERING_METHOD.md), [PROMPT_INITIALIZATION.md](PROMPT_INITIALIZATION.md),
-and [AGENTS.md](AGENTS.md). Run local validation with:
+and [AGENTS.md](AGENTS.md). Use [HANDOFF.md](HANDOFF.md) for the local
+handoff navigation. Run local validation with:
 
 ```text
 bash scripts/validate.sh

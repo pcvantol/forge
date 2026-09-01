@@ -1,37 +1,19 @@
-# Forge Prompt Initialization
+# Forge prompt initialization
 
-**Status:** Canonical execution-facing admission checklist
+The generic bounded-prompt and repository-initialization rules are in the
+generated [PROMPT_INITIALIZATION_CONTRACT](docs/ai-development/GENERATED_PROJECTION.md#prompt_initialization_contract).
 
-Before a Forge agent acts on a bounded prompt, it must establish a `GO` only
-when all of the following are true:
-
-- the actual target repository contains the four root execution-facing
-  documents and has been inspected;
-- repository identity and local Git state are valid for the declared execution
-  mode;
-- the objective is a bounded, approved Mission or an explicitly authorized
-  Mission-scoped action;
-- the governing architecture record and applicable tests have been identified;
-- independently issued Execution Host evidence passes Development Host,
-  workspace, and capability qualification; and
-- the requested change remains within the Mission's objective, constraints,
-  and success criteria.
-
-If any condition is absent or fails, record `NO-GO` and stop before repository
-mutation. Missing or failed host qualification is an infrastructure blocker;
-Forge documentation cannot waive it.
-
-## Responsibilities at initialization
-
-| Responsibility | Owner |
-| --- | --- |
-| Portfolio value and Business approval | Business Workspace |
-| Technical refinement and Architecture approval | Architecture Workspace |
-| Approved Mission validation and durable Mission State | Mission Intake |
-| Mission planning, Action derivation, and Producer Contract | Forge |
-| Runtime invocation, host qualification, execution receipts, telemetry, and reports | Execution Host |
-| Prompt production and bounded hand-off | Producer |
-
-The canonical models are [Mission-driven engineering](docs/architecture/engineering-mission.md),
+For Forge context, read [BOOTSTRAP.md](BOOTSTRAP.md), the
+[Forge development extension](docs/ai-development/FORGE_DEVELOPMENT_EXTENSION.md),
+[Genesis provenance](FORGE_GENESIS_PROVENANCE.md), the relevant Forge
+architecture and roadmap record, and applicable tests. Forge-specific approval,
+Mission and Producer boundaries are governed by
+[Mission-driven engineering](docs/architecture/engineering-mission.md),
 [Producer Contract](docs/architecture/producer-contract.md), and the
 [Execution Host Contract](docs/architecture/execution-host-contract.md).
+
+Development Host and capability qualification remain Execution Host-owned
+product-boundary concerns; Forge documentation does not substitute for them.
+
+This entrypoint adds Forge context only; it does not re-author the generic
+prompt-initialization contract.
