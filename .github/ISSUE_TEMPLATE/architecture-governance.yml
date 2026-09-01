@@ -1,0 +1,18 @@
+name: Architecture or governance decision
+description: Record a proposed Forge architecture or governance change.
+title: "architecture: "
+labels: [architecture, governance]
+body:
+  - type: textarea
+    attributes:
+      label: Decision or question
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Constitutional and architecture impact
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Evidence, alternatives, and approvals

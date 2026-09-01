@@ -1,0 +1,18 @@
+name: Capability proposal
+description: Propose a bounded Forge capability or enhancement.
+title: "capability: "
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: Outcome and value
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Scope and boundaries
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Evidence and affected architecture

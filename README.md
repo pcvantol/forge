@@ -1,5 +1,26 @@
 # Forge
 
+## Managed repository status
+
+Forge is the first-class repository [`pcvantol/forge`](https://github.com/pcvantol/forge),
+promoted with its complete Genesis ancestry preserved. Its current repository
+governance baseline is documented in [Managed Repository Baseline](docs/governance/managed-repository-baseline.md)
+and its source-history record in [Forge Genesis Provenance](FORGE_GENESIS_PROVENANCE.md).
+
+Start a new development session with [BOOTSTRAP.md](BOOTSTRAP.md), then
+[ENGINEERING_METHOD.md](ENGINEERING_METHOD.md), [PROMPT_INITIALIZATION.md](PROMPT_INITIALIZATION.md),
+and [AGENTS.md](AGENTS.md). Run local validation with:
+
+```text
+bash scripts/validate.sh
+```
+
+Forge remains independent of Engineering Platform, which is a replaceable
+Execution Host; Forge and Workspace are first-class peers. The canonical
+architecture entrypoint is the [Founding Architecture Handbook](docs/architecture/FORGE_FOUNDING_ARCHITECTURE_HANDBOOK.md).
+Roadmap entrypoints are [Bootstrap Roadmap](knowledge/bootstrap/10_ROADMAP.md)
+and [Runtime Evolution Roadmap](docs/architecture/runtime-evolution-roadmap.md).
+
 Phase E — Increment 5.14 formally completes Generation 1 and makes Generation
 2 ready. The [Generation 1 Completion Record](GENERATION_1_COMPLETION.md)
 establishes that `MISSION-0001` through `MISSION-0005` are historical Portfolio
