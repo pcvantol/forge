@@ -12,6 +12,8 @@ EXPECTED_IDENTITIES = {
     "BRANCH_WORKTREE_CONTRACT", "VALIDATION_EVIDENCE_CONTRACT", "TDE_INTEGRATION_CONTRACT",
     "REPOSITORY_GOVERNANCE_CONTRACT", "PROJECTION_CONTRACT",
 }
+REQUIRED_SOURCE_COMMIT = "ec070e399ff4dbd92e760370002995fe4f4d52d6"
+REQUIRED_PROJECTION_DIGEST = "34d04daa1668d5ee1288a22d77aa143fecf4e167cb7fdc443d4082cb3ed45d77"
 
 parser = argparse.ArgumentParser(description="Validate an offline AI-development projection")
 parser.add_argument("--profile", required=True)
@@ -23,6 +25,10 @@ manifest = json.loads((ROOT / "projection-manifest.json").read_text())
 body = (ROOT / "GENERATED_PROJECTION.md").read_bytes()
 if manifest.get("source_repo") != "pcvantol/ai-development-contracts":
     raise SystemExit("unexpected projection authority")
+if manifest.get("source_commit") != REQUIRED_SOURCE_COMMIT:
+    raise SystemExit("noncanonical projection source revision")
+if manifest.get("projection_digest") != REQUIRED_PROJECTION_DIGEST:
+    raise SystemExit("noncanonical projection digest")
 if manifest.get("profile") != args.profile:
     raise SystemExit("profile mismatch")
 if args.source_commit and manifest.get("source_commit") != args.source_commit:
