@@ -20,7 +20,7 @@ and the current runtime direction by [Runtime Evolution Roadmap](../architecture
 | Main integrity | DJConnect | Active default-branch ruleset: no deletion or force push; pull requests and resolved conversations required | Protect canonical history and keep review evidence. |
 | CI | DJConnect/TDE | Python standard-library tests, compilation, JSON contracts, and documentation validation | Forge currently has Python source and tests, no packaged dependency stack or UI. |
 | TDE | Technical Debt Engine | Standalone public CLI integration with the Forge `.tde.yml` code-size profile; observe-only | TDE owns its policies and evidence semantics. |
-| Security | Repository family | CodeQL, dependency review, Dependabot for GitHub Actions, secret scanning, and `SECURITY.md` | Applies to Forge's actual Python and workflow surfaces. |
+| Security | Repository family | CodeQL, Dependabot for GitHub Actions, secret scanning, push protection, and `SECURITY.md` | Applies to Forge's actual Python and workflow surfaces. GitHub Dependency Review is unavailable until Forge has a supported dependency-graph surface. |
 
 ## TDE evidence profile
 
@@ -42,6 +42,16 @@ tde qualify --capability code_size .
 
 When TDE publishes a supported immutable consumer distribution or reusable
 workflow, Forge may add that exact producer as an observe-only CI check.
+
+## Dependency review boundary
+
+Forge currently has no Python package manifest or other supported GitHub
+dependency-graph input. GitHub Dependency Review therefore rejects this
+repository rather than producing a meaningful result. It is intentionally not
+configured as a failing workflow. Dependabot monitors the actual GitHub Actions
+ecosystem; CodeQL and secret scanning cover the current source and workflow
+surfaces. Dependency Review may be enabled when Forge adopts a supported,
+deterministically declared dependency ecosystem.
 
 ## AI-development and handoff continuity
 
