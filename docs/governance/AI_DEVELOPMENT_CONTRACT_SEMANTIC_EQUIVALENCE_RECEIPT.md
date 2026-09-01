@@ -70,7 +70,7 @@ Genesis material remain in their existing Forge-owned locations.
 - Static validation: `bash scripts/validate.sh` and `git diff --check` PASS.
 - TDE: `validate`, `assess`, and `qualify` for `code_size` PASS; qualification
   level `QUALIFIED`, policy decision `PASS`, no triggered rules.
-- Hosted CI and CodeQL are required on the existing pull request; they are
-  evaluated after this receipt is pushed. Secret scanning, push protection,
-  Dependabot, pinned workflow actions and the main integrity ruleset remain
-  repository-local security controls.
+- Hosted CI [run 33492851072](https://github.com/pcvantol/forge/actions/runs/33492851072)
+  and CodeQL [run 33492851045](https://github.com/pcvantol/forge/actions/runs/33492851045): PASS.
+  Secret scanning, push protection, Dependabot, pinned workflow actions and the
+  main integrity ruleset remain repository-local security controls.

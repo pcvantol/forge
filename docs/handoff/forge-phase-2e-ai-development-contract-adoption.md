@@ -27,8 +27,10 @@ and provenance at [FORGE_GENESIS_PROVENANCE.md](../../FORGE_GENESIS_PROVENANCE.m
 - Forge suite: 293 passed; failures 0; skips 0.
 - Static validation: PASS.
 - TDE `validate`, `assess` and `qualify`: PASS / `QUALIFIED`.
-- Hosted CI, CodeQL and managed-repository security state are verified on PR #3
-  after this commit is pushed.
+- Hosted [Forge CI](https://github.com/pcvantol/forge/actions/runs/33492851072)
+  and [CodeQL](https://github.com/pcvantol/forge/actions/runs/33492851045): PASS.
+  Secret scanning, push protection, Dependabot, workflow permissions and the
+  main-integrity ruleset remain enabled and unchanged.
 
 ## Family boundaries
 
