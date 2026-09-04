@@ -1,1 +1,422 @@
-{"schema_version":1,"authority":"DERIVED","dag_schema_version":1,"bootstrap_coordination":"NOT_A_CANONICAL_EXECUTION_LEASE","dispatch_requires":["SEMANTIC_READY","DEPENDENCY_SAFE","REPOSITORY_SAFE","APPROVED_MISSION_BOUND","OPERATOR_BOOTSTRAP_AUTHORIZATION"],"node_contracts":{"F1":{"write_scopes":["RUNTIME_SERVICE","OPERATIONAL_STORE"],"read_scopes":["ARCHITECTURE_CONTRACT"],"exclusive_scopes":["RUNTIME_SERVICE","OPERATIONAL_STORE"],"integration_scopes":["API_SCHEMA"],"dor":["ARCHITECTURE_DECISION"],"pre_merge":["LOCAL_TEST","HOSTED_CI"],"merge_gate":["ARCHITECTURE_DECISION","HUMAN_MERGE"],"post_merge":["POST_MERGE_GATE"]},"F2":{"write_scopes":["API_SCHEMA","ARCHITECTURE_CONTRACT"],"read_scopes":["RUNTIME_SERVICE"],"exclusive_scopes":["API_SCHEMA","ARCHITECTURE_CONTRACT"],"integration_scopes":["RUNTIME_SERVICE"],"dor":["PREDECESSOR_DONE:F1","ARCHITECTURE_DECISION","SECURITY_DECISION"],"pre_merge":["LOCAL_TEST","HOSTED_CI","SECURITY_GATE"],"merge_gate":["ARCHITECTURE_DECISION","SECURITY_DECISION","HUMAN_MERGE"],"post_merge":["POST_MERGE_GATE"]},"F3":{"write_scopes":["CROSS_PRODUCT_CONTRACT","RUNTIME_SERVICE"],"read_scopes":["API_SCHEMA","EP_PRODUCER"],"exclusive_scopes":["CROSS_PRODUCT_CONTRACT"],"integration_scopes":["EP_ATTACHMENT"],"dor":["PREDECESSOR_DONE:F1","PREDECESSOR_DONE:F2","EXTERNAL_GATE"],"pre_merge":["LOCAL_TEST","HOSTED_CI","CROSS_PRODUCT_GATE"],"merge_gate":["OWNER_AUTHORIZATION","HUMAN_MERGE"],"post_merge":["POST_MERGE_GATE","CROSS_PRODUCT_GATE"]},"F4":{"write_scopes":["RUNTIME_SERVICE","CROSS_PRODUCT_CONTRACT"],"read_scopes":["API_SCHEMA","EP_PRODUCER"],"exclusive_scopes":["RUNTIME_SERVICE","CROSS_PRODUCT_CONTRACT"],"integration_scopes":["EP_RECEIPT"],"dor":["PREDECESSOR_DONE:F1","PREDECESSOR_DONE:F2","EXTERNAL_GATE"],"pre_merge":["LOCAL_TEST","HOSTED_CI","CROSS_PRODUCT_GATE"],"merge_gate":["HUMAN_MERGE"],"post_merge":["POST_MERGE_GATE","CROSS_PRODUCT_GATE"]},"F5":{"write_scopes":["PORTFOLIO","FORECAST"],"read_scopes":["API_SCHEMA"],"exclusive_scopes":["FORECAST"],"integration_scopes":["API_SCHEMA"],"dor":["PREDECESSOR_DONE:F2"],"pre_merge":["LOCAL_TEST","HOSTED_CI"],"merge_gate":["HUMAN_MERGE"],"post_merge":["POST_MERGE_GATE"]},"F6":{"write_scopes":["REFINEMENT_SESSION","PORTFOLIO"],"read_scopes":["API_SCHEMA"],"exclusive_scopes":["REFINEMENT_SESSION"],"integration_scopes":["API_SCHEMA"],"dor":["PREDECESSOR_DONE:F2","BUSINESS_DECISION","ARCHITECTURE_DECISION"],"pre_merge":["LOCAL_TEST","HOSTED_CI"],"merge_gate":["BUSINESS_DECISION","ARCHITECTURE_DECISION","HUMAN_MERGE"],"post_merge":["POST_MERGE_GATE"]},"F7":{"write_scopes":["QUALITY"],"read_scopes":["API_SCHEMA","EP_RECEIPT"],"exclusive_scopes":["QUALITY"],"integration_scopes":[],"dor":["PREDECESSOR_DONE:F2","PREDECESSOR_DONE:F4"],"pre_merge":["LOCAL_TEST","HOSTED_CI"],"merge_gate":["HUMAN_MERGE"],"post_merge":["POST_MERGE_GATE"]},"F8":{"write_scopes":["KNOWLEDGE"],"read_scopes":["API_SCHEMA","EP_RECEIPT"],"exclusive_scopes":["KNOWLEDGE"],"integration_scopes":["KB_CONTRACT"],"dor":["PREDECESSOR_DONE:F2","PREDECESSOR_DONE:F4","EXTERNAL_GATE"],"pre_merge":["LOCAL_TEST","HOSTED_CI","CROSS_PRODUCT_GATE"],"merge_gate":["HUMAN_MERGE"],"post_merge":["POST_MERGE_GATE"]},"F9":{"write_scopes":["PACKAGING","CROSS_PRODUCT_CONTRACT"],"read_scopes":["API_SCHEMA","RUNTIME_SERVICE","FORECAST","REFINEMENT_SESSION"],"exclusive_scopes":["PACKAGING","CROSS_PRODUCT_CONTRACT"],"integration_scopes":["WORKSPACE_ONBOARDING","INSTALLED_PRODUCT"],"dor":["PREDECESSOR_DONE:F2","PREDECESSOR_DONE:F3","PREDECESSOR_DONE:F4","PREDECESSOR_DONE:F5","PREDECESSOR_DONE:F6","EXTERNAL_GATE"],"pre_merge":["LOCAL_TEST","HOSTED_CI","BROWSER_GATE","CROSS_PRODUCT_GATE"],"merge_gate":["HUMAN_UI_REVIEW","HUMAN_MERGE"],"post_merge":["INSTALLED_PRODUCT_CANARY","POST_MERGE_GATE","CROSS_PRODUCT_GATE"]}},"governance":{"programme_authorization":{"model":"HYBRID","record_required":["authorization_id","programme_id","programme_version","dag_digest","approved_main_sha","approved_node_set","productization_contract_version","architecture_refs","allowed_repositories","allowed_write_scopes","exclusions","human_gates","external_gates","approved_by","approved_at","supersession_revocation"],"stale_on":["DAG_NODE_SET_CHANGE","NODE_OBJECTIVE_CHANGE","ARCHITECTURE_BOUNDARY_CHANGE","PRODUCTIZATION_DECISION_CHANGE","SECURITY_CONTRACT_CHANGE","WRITE_SCOPE_EXPANSION","EXTERNAL_PRODUCER_CHANGE","NEW_HUMAN_GATE","MISSION_OBJECTIVE_EXPANSION"]},"dispatch_authority":["PROGRAMME_AUTHORIZED","NODE_IN_AUTHORIZED_SET","DOR_PASS","PREDECESSORS_DONE","EXTERNAL_GATES_PASS","DEPENDENCY_SAFE","REPOSITORY_SAFE","NO_UNRESOLVED_HUMAN_GATE","AUTHORIZATION_NOT_STALE"],"scope_expansion_auto_accepted":false,"owner_authorization":{"risk_mapping":{"NORMAL_LOW":["documentation","isolated_non_security_logic"],"ELEVATED":["persistence_schema","cross_product_contract","repository_governance"],"HIGH":["security_auth","credential","execution_or_lease_authority","installer_or_update","remote_access","autonomous_mutation"]},"applicability":{"NORMAL_LOW":"NO_SEPARATE_OWNER_AUTHORIZATION","ELEVATED":"EXACT_HEAD_OWNER_AUTHORIZATION_REQUIRED","HIGH":"EXACT_HEAD_OWNER_AUTHORIZATION_AND_SECURITY_REVIEW_REQUIRED"},"stale_on_new_commit":true},"merge_policy":{"auto_merge":false,"human_merge_required":true,"merge_ready_requires":["IMPLEMENTATION_COMPLETE","LOCAL_QUALIFICATION_PASS","EXACT_HEAD_HOSTED_CI_PASS","REVIEWS_RESOLVED","HUMAN_GATES_PASS","OWNER_AUTHORIZATION_IF_REQUIRED","NO_STALE_CONTRACT","MERGEABLE","NODE_AUTHORITY_VALID"],"decision_packet":["NODE","PR","EXACT_HEAD","RISK_CLASS","DOR","DOD","CI","REVIEWS","HUMAN_GATES","OWNER_AUTHORIZATION","WRITE_SCOPE","DEPENDENTS_UNLOCKED_AFTER_MERGE","KNOWN_RISKS"],"parallel_merge_reevaluation":true},"autonomous_repair_enabled":false}}
+{
+  "schema_version": 1,
+  "authority": "DERIVED",
+  "dag_schema_version": 1,
+  "bootstrap_coordination": "NOT_A_CANONICAL_EXECUTION_LEASE",
+  "dispatch_requires": [
+    "SEMANTIC_READY",
+    "DEPENDENCY_SAFE",
+    "REPOSITORY_SAFE",
+    "APPROVED_MISSION_BOUND",
+    "OPERATOR_BOOTSTRAP_AUTHORIZATION"
+  ],
+  "node_contracts": {
+    "F1": {
+      "write_scopes": [
+        "RUNTIME_SERVICE",
+        "OPERATIONAL_STORE"
+      ],
+      "read_scopes": [
+        "ARCHITECTURE_CONTRACT"
+      ],
+      "exclusive_scopes": [
+        "RUNTIME_SERVICE",
+        "OPERATIONAL_STORE"
+      ],
+      "integration_scopes": [
+        "API_SCHEMA"
+      ],
+      "dor": [
+        "ARCHITECTURE_DECISION"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI"
+      ],
+      "merge_gate": [
+        "ARCHITECTURE_DECISION",
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "POST_MERGE_GATE"
+      ],
+      "risk_class": "ELEVATED"
+    },
+    "F2": {
+      "write_scopes": [
+        "API_SCHEMA",
+        "ARCHITECTURE_CONTRACT"
+      ],
+      "read_scopes": [
+        "RUNTIME_SERVICE"
+      ],
+      "exclusive_scopes": [
+        "API_SCHEMA",
+        "ARCHITECTURE_CONTRACT"
+      ],
+      "integration_scopes": [
+        "RUNTIME_SERVICE"
+      ],
+      "dor": [
+        "PREDECESSOR_DONE:F1",
+        "ARCHITECTURE_DECISION",
+        "SECURITY_DECISION"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI",
+        "SECURITY_GATE"
+      ],
+      "merge_gate": [
+        "ARCHITECTURE_DECISION",
+        "SECURITY_DECISION",
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "POST_MERGE_GATE"
+      ],
+      "risk_class": "HIGH"
+    },
+    "F3": {
+      "write_scopes": [
+        "CROSS_PRODUCT_CONTRACT",
+        "RUNTIME_SERVICE"
+      ],
+      "read_scopes": [
+        "API_SCHEMA",
+        "EP_PRODUCER"
+      ],
+      "exclusive_scopes": [
+        "CROSS_PRODUCT_CONTRACT"
+      ],
+      "integration_scopes": [
+        "EP_ATTACHMENT"
+      ],
+      "dor": [
+        "PREDECESSOR_DONE:F1",
+        "PREDECESSOR_DONE:F2",
+        "EXTERNAL_GATE"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI",
+        "CROSS_PRODUCT_GATE"
+      ],
+      "merge_gate": [
+        "OWNER_AUTHORIZATION",
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "POST_MERGE_GATE",
+        "CROSS_PRODUCT_GATE"
+      ],
+      "risk_class": "ELEVATED"
+    },
+    "F4": {
+      "write_scopes": [
+        "RUNTIME_SERVICE",
+        "CROSS_PRODUCT_CONTRACT"
+      ],
+      "read_scopes": [
+        "API_SCHEMA",
+        "EP_PRODUCER"
+      ],
+      "exclusive_scopes": [
+        "RUNTIME_SERVICE",
+        "CROSS_PRODUCT_CONTRACT"
+      ],
+      "integration_scopes": [
+        "EP_RECEIPT"
+      ],
+      "dor": [
+        "PREDECESSOR_DONE:F1",
+        "PREDECESSOR_DONE:F2",
+        "EXTERNAL_GATE"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI",
+        "CROSS_PRODUCT_GATE"
+      ],
+      "merge_gate": [
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "POST_MERGE_GATE",
+        "CROSS_PRODUCT_GATE"
+      ],
+      "risk_class": "HIGH"
+    },
+    "F5": {
+      "write_scopes": [
+        "PORTFOLIO",
+        "FORECAST"
+      ],
+      "read_scopes": [
+        "API_SCHEMA"
+      ],
+      "exclusive_scopes": [
+        "FORECAST"
+      ],
+      "integration_scopes": [
+        "API_SCHEMA"
+      ],
+      "dor": [
+        "PREDECESSOR_DONE:F2"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI"
+      ],
+      "merge_gate": [
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "POST_MERGE_GATE"
+      ],
+      "risk_class": "NORMAL_LOW"
+    },
+    "F6": {
+      "write_scopes": [
+        "REFINEMENT_SESSION",
+        "PORTFOLIO"
+      ],
+      "read_scopes": [
+        "API_SCHEMA"
+      ],
+      "exclusive_scopes": [
+        "REFINEMENT_SESSION"
+      ],
+      "integration_scopes": [
+        "API_SCHEMA"
+      ],
+      "dor": [
+        "PREDECESSOR_DONE:F2",
+        "BUSINESS_DECISION",
+        "ARCHITECTURE_DECISION"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI"
+      ],
+      "merge_gate": [
+        "BUSINESS_DECISION",
+        "ARCHITECTURE_DECISION",
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "POST_MERGE_GATE"
+      ],
+      "risk_class": "ELEVATED"
+    },
+    "F7": {
+      "write_scopes": [
+        "QUALITY"
+      ],
+      "read_scopes": [
+        "API_SCHEMA",
+        "EP_RECEIPT"
+      ],
+      "exclusive_scopes": [
+        "QUALITY"
+      ],
+      "integration_scopes": [],
+      "dor": [
+        "PREDECESSOR_DONE:F2",
+        "PREDECESSOR_DONE:F4"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI"
+      ],
+      "merge_gate": [
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "POST_MERGE_GATE"
+      ],
+      "risk_class": "NORMAL_LOW"
+    },
+    "F8": {
+      "write_scopes": [
+        "KNOWLEDGE"
+      ],
+      "read_scopes": [
+        "API_SCHEMA",
+        "EP_RECEIPT"
+      ],
+      "exclusive_scopes": [
+        "KNOWLEDGE"
+      ],
+      "integration_scopes": [
+        "KB_CONTRACT"
+      ],
+      "dor": [
+        "PREDECESSOR_DONE:F2",
+        "PREDECESSOR_DONE:F4",
+        "EXTERNAL_GATE"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI",
+        "CROSS_PRODUCT_GATE"
+      ],
+      "merge_gate": [
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "POST_MERGE_GATE"
+      ],
+      "risk_class": "ELEVATED"
+    },
+    "F9": {
+      "write_scopes": [
+        "PACKAGING",
+        "CROSS_PRODUCT_CONTRACT"
+      ],
+      "read_scopes": [
+        "API_SCHEMA",
+        "RUNTIME_SERVICE",
+        "FORECAST",
+        "REFINEMENT_SESSION"
+      ],
+      "exclusive_scopes": [
+        "PACKAGING",
+        "CROSS_PRODUCT_CONTRACT"
+      ],
+      "integration_scopes": [
+        "WORKSPACE_ONBOARDING",
+        "INSTALLED_PRODUCT"
+      ],
+      "dor": [
+        "PREDECESSOR_DONE:F2",
+        "PREDECESSOR_DONE:F3",
+        "PREDECESSOR_DONE:F4",
+        "PREDECESSOR_DONE:F5",
+        "PREDECESSOR_DONE:F6",
+        "EXTERNAL_GATE"
+      ],
+      "pre_merge": [
+        "LOCAL_TEST",
+        "HOSTED_CI",
+        "BROWSER_GATE",
+        "CROSS_PRODUCT_GATE"
+      ],
+      "merge_gate": [
+        "HUMAN_UI_REVIEW",
+        "HUMAN_MERGE"
+      ],
+      "post_merge": [
+        "INSTALLED_PRODUCT_CANARY",
+        "POST_MERGE_GATE",
+        "CROSS_PRODUCT_GATE"
+      ],
+      "risk_class": "HIGH"
+    }
+  },
+  "governance": {
+    "programme_authorization": {
+      "model": "HYBRID",
+      "record_required": [
+        "authorization_id",
+        "programme_id",
+        "programme_version",
+        "dag_digest",
+        "approved_main_sha",
+        "approved_node_set",
+        "productization_contract_version",
+        "architecture_refs",
+        "allowed_repositories",
+        "allowed_write_scopes",
+        "exclusions",
+        "human_gates",
+        "external_gates",
+        "approved_by",
+        "approved_at",
+        "supersession_revocation"
+      ],
+      "stale_on": [
+        "DAG_NODE_SET_CHANGE",
+        "NODE_OBJECTIVE_CHANGE",
+        "ARCHITECTURE_BOUNDARY_CHANGE",
+        "PRODUCTIZATION_DECISION_CHANGE",
+        "SECURITY_CONTRACT_CHANGE",
+        "WRITE_SCOPE_EXPANSION",
+        "EXTERNAL_PRODUCER_CHANGE",
+        "NEW_HUMAN_GATE",
+        "MISSION_OBJECTIVE_EXPANSION"
+      ]
+    },
+    "dispatch_authority": [
+      "PROGRAMME_AUTHORIZED",
+      "NODE_IN_AUTHORIZED_SET",
+      "DOR_PASS",
+      "PREDECESSORS_DONE",
+      "EXTERNAL_GATES_PASS",
+      "DEPENDENCY_SAFE",
+      "REPOSITORY_SAFE",
+      "NO_UNRESOLVED_HUMAN_GATE",
+      "AUTHORIZATION_NOT_STALE"
+    ],
+    "scope_expansion_auto_accepted": false,
+    "owner_authorization": {
+      "risk_mapping": {
+        "NORMAL_LOW": [
+          "documentation",
+          "isolated_non_security_logic"
+        ],
+        "ELEVATED": [
+          "persistence_schema",
+          "cross_product_contract",
+          "repository_governance"
+        ],
+        "HIGH": [
+          "security_auth",
+          "credential",
+          "execution_or_lease_authority",
+          "installer_or_update",
+          "remote_access",
+          "autonomous_mutation"
+        ]
+      },
+      "applicability": {
+        "NORMAL_LOW": "NO_SEPARATE_OWNER_AUTHORIZATION",
+        "ELEVATED": "EXACT_HEAD_OWNER_AUTHORIZATION_REQUIRED",
+        "HIGH": "EXACT_HEAD_OWNER_AUTHORIZATION_AND_SECURITY_REVIEW_REQUIRED"
+      },
+      "stale_on_new_commit": true
+    },
+    "merge_policy": {
+      "auto_merge": false,
+      "human_merge_required": true,
+      "merge_ready_requires": [
+        "IMPLEMENTATION_COMPLETE",
+        "LOCAL_QUALIFICATION_PASS",
+        "EXACT_HEAD_HOSTED_CI_PASS",
+        "REVIEWS_RESOLVED",
+        "HUMAN_GATES_PASS",
+        "OWNER_AUTHORIZATION_IF_REQUIRED",
+        "NO_STALE_CONTRACT",
+        "MERGEABLE",
+        "NODE_AUTHORITY_VALID"
+      ],
+      "decision_packet": [
+        "NODE",
+        "PR",
+        "EXACT_HEAD",
+        "RISK_CLASS",
+        "DOR",
+        "DOD",
+        "CI",
+        "REVIEWS",
+        "HUMAN_GATES",
+        "OWNER_AUTHORIZATION",
+        "WRITE_SCOPE",
+        "DEPENDENTS_UNLOCKED_AFTER_MERGE",
+        "KNOWN_RISKS"
+      ],
+      "parallel_merge_reevaluation": true
+    },
+    "autonomous_repair_enabled": false
+  }
+}

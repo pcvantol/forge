@@ -27,7 +27,7 @@ DISPATCHABLE = SEMANTIC_READY AND DEPENDENCY_SAFE AND REPOSITORY_SAFE
 
 Temporary local scheduling for this Forge bootstrap repository is `BOOTSTRAP_COORDINATION`, never an execution lease; EP remains the repository-write lease owner. `BOOTSTRAP_RUNNER_IS_LEASE_AUTHORITY = FALSE`; `BOOTSTRAP_PROMPT_IS_AUTHORITY = FALSE`; `CI_GREEN_UNLOCKS_DEPENDENTS = FALSE`; `POST_MERGE_DAG_REEVALUATION = TRUE`; `HUMAN_GATE_GLOBAL_STOP_BY_DEFAULT = FALSE`.
 
-No canonical evidence grants a V1-programme exception to Roadmap → Candidate → Business approval → Architecture approval → Mission → Action. `BOOTSTRAP_MISSION_AUTHORITY = HUMAN_DECISION_REQUIRED`. This blocks autonomous dispatch, not planning. No canonical Forge policy permits automatic merge: `BOOTSTRAP_AUTO_MERGE_POLICY = NOT_DECIDED / EXPLICITLY_BLOCKED`.
+The canonical [V1 Bootstrap Governance Decision](FORGE_V1_BOOTSTRAP_GOVERNANCE_DECISION.md) selects a bounded hybrid programme authorization. `BOOTSTRAP_MISSION_AUTHORITY = BOUNDED_V1_BOOTSTRAP_PROGRAMME_AUTHORIZATION (MODEL_C)`: an explicit human authorization record admits only its immutable node set and authority envelope. It never omits the permanent Roadmap → Candidate → Business approval → Architecture approval → Mission → Action model; a new product, architecture, security, cross-product, repository, scope, or undefined-contract finding returns the node to full governance. `BOOTSTRAP_AUTO_MERGE_POLICY = DISABLED`; a human merge remains required.
 
 ## Scheduler-grade coverage
 
@@ -68,7 +68,7 @@ Every qualification names `LOCAL_TEST`, `HOSTED_CI`, `INSTALLED_PRODUCT_CANARY`,
 
 Ordinary review is same-node `REPAIR_REQUIRED`; an architecture decision, dependency, new capability or scope expansion is `REPLAN_REQUIRED`. CI failures must first classify as `IMPLEMENTATION_DEFECT`, `TEST_DEFECT`, `FLAKY_INFRASTRUCTURE`, `STALE_BASE`, `DEPENDENCY_CHANGED`, `SECURITY_FAILURE`, `QUALIFICATION_GAP`, or `UNDEFINED_CONTRACT`. No canonical retry limit exists: automatic repair requires a future operator-set finite limit; otherwise it is disallowed. `UNBOUNDED_AUTONOMOUS_REPAIR = FALSE`.
 
-Human UI review, owner authorization, business approval, architecture approval and security decision pause only their node; each needs named evidence and returns to re-evaluation. Other safe nodes continue. Owner authorization is SHA-specific where a governed profile requires it. Forge has no Owner Authorization workflow, so its risk mapping is `UNDEFINED_CONTRACT`, not inferred from EP.
+Human UI review, owner authorization, business approval, architecture approval and security decision pause only their node; each needs named evidence and returns to re-evaluation. Other safe nodes continue. The canonical governance decision supplies Forge's consequence-based risk mapping: `NORMAL_LOW` needs no separate Owner Authorization, `ELEVATED` needs exact-head Owner Authorization, and `HIGH` needs exact-head Owner Authorization plus security review. A new commit invalidates the authorization. This is a Forge contract, not an inference from EP.
 
 ## External gates and parallel proof
 
@@ -89,3 +89,9 @@ The future adapter consumes an immutable execution package: snapshot/node/Missio
 `CODEX_BOOTSTRAP_ADAPTER_CONTRACT = DEFINED`; `BOOTSTRAP_PROMPT_IS_AUTHORITY = FALSE`.
 
 After a human merge: refresh main, verify merge SHA, clean context, refresh Repository Truth, run post-merge qualification, refresh DAG/gate evidence, then re-evaluate readiness.
+
+## Governance closure
+
+The governance decision resolves the three prior blockers: `BOOTSTRAP_MISSION_AUTHORITY = RESOLVED`, `OWNER_AUTHORIZATION_SCHEDULER_CONTRACT = RESOLVED`, and `BOOTSTRAP_AUTO_MERGE_POLICY = DISABLED`. The future runner is therefore contract-ready for a separately approved implementation Mission; dispatch still requires an actual, non-stale programme authorization record and cannot use repair automation.
+
+`FORGE_V1_BOOTSTRAP_ORCHESTRATOR_READY_FOR_IMPLEMENTATION = YES`.
