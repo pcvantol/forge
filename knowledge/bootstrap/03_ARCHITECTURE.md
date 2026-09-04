@@ -1,5 +1,11 @@
 # Forge Core Architecture
 
+> **Productization status:** this Bootstrap capture is canonical Foundation
+> provenance. Its Workspace-first vocabulary must be read as the original
+> Forge aggregate model, not as ownership of the separate Workspace product's
+> control surfaces. The current target split is
+> [Forge Productization Reconciliation](../../docs/architecture/FORGE_PRODUCTIZATION_RECONCILIATION.md).
+
 ## Purpose and authority
 
 This is Forge's canonical conceptual architecture overview. It captures the

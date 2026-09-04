@@ -1,12 +1,13 @@
 # Forge Studio Governance Boundary
 
-Forge Studio is a future presentation and orchestration surface. It consumes
-Forge-owned architecture and resolved Governance Profile context; it does not
-own a workflow, alter governance, or become an approval authority.
+Forge Studio is historical Forge terminology for a future presentation surface.
+The separate Workspace product now owns human interaction and control surfaces;
+this record retains only compatible presentation safeguards. See the canonical
+[Productization Reconciliation](FORGE_PRODUCTIZATION_RECONCILIATION.md).
 
 ## Profile-aware presentation
 
-When implemented, Studio must consume a versioned resolved Governance Profile
+When implemented by Workspace, the presentation surface must consume a versioned resolved Governance Profile
 to determine:
 
 - which canonical Business, Architecture, Execution, and Analytics Workspaces

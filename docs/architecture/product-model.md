@@ -14,6 +14,11 @@ The [Founding Architecture Handbook](FORGE_FOUNDING_ARCHITECTURE_HANDBOOK.md),
 and [Forge Studio model](forge-studio.md) apply this model in their respective
 domains.
 
+The [Productization Reconciliation](FORGE_PRODUCTIZATION_RECONCILIATION.md)
+is the canonical target for Runtime Service, separate Workspace product,
+application-service adapters, Product Vision, Forecast and terminology
+supersession. This document remains the lifecycle authority.
+
 ## Canonical capability lifecycle
 
 ```text

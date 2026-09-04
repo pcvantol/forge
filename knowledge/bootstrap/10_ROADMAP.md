@@ -16,6 +16,18 @@ Foundation is complete. Self Engineering is underway. Runtime and Production rem
 
 The V1 programme is dependency/capability driven. Cross-product milestones do not allocate another repository's implementation work. The derived `FORGE_WORKSPACE_V1_CROSS_PRODUCT_DEPENDENCIES.md` is an index, not authority.
 
+### Productization reconciliation baseline
+
+The [Productization Reconciliation](../../docs/architecture/FORGE_PRODUCTIZATION_RECONCILIATION.md)
+is the target architecture for Product Vision, Portfolio/Roadmap/Forecast,
+Runtime Service, Workspace, application services and MCP adapters. It does not
+renumber L0–L10 or allocate cross-product work. Application-service/API,
+Runtime Service, Workspace-facing projections, Business/Architecture session
+support, Portfolio Intelligence, and MCP exposure are dependencies to be
+introduced through approved Missions alongside the existing L0–L10 learning
+increments. Installed-product qualification remains gated by L0/L1/L1-R/L10
+and owner-qualified Workspace/EP contracts.
+
 ### L0 — Engineering Contract Foundation
 
 **Node type:** CAPABILITY_MILESTONE. **Implementation owner:** Engineering Platform through `EP::ENGINEERING_CONTRACT_FOUNDATION_V1`; Forge is consumer.

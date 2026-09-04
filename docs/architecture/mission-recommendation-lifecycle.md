@@ -6,17 +6,20 @@ Forge Generation 2 makes the following lifecycle canonical:
 
 ```text
 Repository Analysis → Portfolio Intelligence → Mission Recommendation
-→ Business Governance Ingress → Business Decision → Architecture Workspace
-→ Architecture Decision → Mission Candidate → Mission Allocation
+→ Portfolio → Mission Candidate → Business Governance Ingress → Business Decision
+→ Architecture Workspace → Architecture Decision → Mission Allocation
 → Mission Runtime → Autonomous Mission Runtime Scheduler
 → Producer Submission Envelope → Engineering Platform
 ```
 
 Portfolio Intelligence creates immutable, advisory Mission Recommendations.
-Business alone records Business approval or rejection; Architecture alone
-records architectural approval or rejection. A recommendation has no execution
-authority. Forge allocates a Mission ID only after both approvals are recorded
-as immutable Decision Evidence.
+Business refinement creates or updates the non-executable Mission Candidate
+before Business Review. Business alone records Business approval or rejection;
+Architecture alone records architectural approval or rejection. A
+recommendation has no execution authority. The target allocation boundary is
+Mission Intake after both approvals; this architecture change does not allocate
+a Mission ID or change existing lifecycle state. See
+[Productization Reconciliation](FORGE_PRODUCTIZATION_RECONCILIATION.md).
 
 ## Governance aggregate
 
@@ -34,17 +37,17 @@ Candidate content is mutable only while unallocated. Allocation freezes the
 candidate and creates an immutable record connecting the recommendation,
 candidate, both approval records, Mission ID, and allocation evidence.
 
-The allocation service accepts a Forge-owned Mission-ID allocator and validates
-the resulting `MISSION-<number>` identity. Engineering Platform has no role in
-allocation. Mission completion appends Decision Evidence against the allocated
+Existing allocator behavior is compatibility implementation evidence, not the
+target lifecycle authority. Engineering Platform has no role in Mission
+semantics. Mission completion appends Decision Evidence against the allocated
 identity; it never turns an advisory recommendation into Runtime state.
 
 ## Business Governance Ingress
 
-`forge.business.BusinessGovernanceIngress` is the canonical direct approval
-operation for an existing lifecycle-store recommendation. It resolves only an
-exact canonical recommendation ID, authorizes the actor against the resolved
-`Business Owner` role, and appends immutable Business Decision Evidence. A
+`forge.business.BusinessGovernanceIngress` is the compatibility direct approval
+operation for a provenance-bound Mission Candidate/recommendation relationship.
+It resolves an exact canonical identity, authorizes the actor against the
+resolved `Business Owner` role, and appends immutable Business Decision Evidence. A
 missing record returns `NOT_FOUND`; missing or invalid authority returns
 `AUTHORIZATION_REQUIRED` or `FORBIDDEN`; terminal or skipped states return an
 explicit invalid-lifecycle result. Repeated approval returns the existing
@@ -52,15 +55,11 @@ approval and never duplicates evidence, candidates, allocations, Runtime, or
 submissions.
 
 Business approval reaches Architecture Governance but never substitutes for
-Architecture approval. Until the separate canonical Architecture decision is
-recorded, the ingress returns `WAITING_ARCHITECTURE_APPROVAL`. Once that
-decision exists, it materialises the one provenance-bound candidate, delegates
-Mission ID allocation to `RuntimeDatabase.allocate_next_mission_id`,
-initialises the allocated Mission Runtime and its Execution Context, and hands
-the active Mission to `MissionRuntimeScheduler`. The scheduler alone produces
-the `Producer = FORGE` envelope. The ingress imports no Engineering Platform
-surface, creates no Inbox files, prompts, or HUMAN submissions, and executes
-no repository work.
+Architecture approval. Until the separate Architecture decision is recorded,
+the ingress returns `WAITING_ARCHITECTURE_APPROVAL`. After both decisions, a
+separate governed Mission Intake request is required before operational runtime
+initialization. The ingress imports no Engineering Platform surface, creates no
+Inbox files, prompts, or HUMAN submissions, and executes no repository work.
 
 ## Runtime and historical learning
 

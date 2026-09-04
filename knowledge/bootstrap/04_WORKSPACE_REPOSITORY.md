@@ -1,5 +1,11 @@
 # Forge Workspace & Repository Model
 
+> **Productization status:** this Bootstrap capture preserves the original
+> Forge Workspace aggregate and repository boundary. It is historical
+> provenance for productization terminology; the separate Workspace product
+> now owns interaction/control surfaces under the target reconciliation in
+> [Forge Productization Reconciliation](../../docs/architecture/FORGE_PRODUCTIZATION_RECONCILIATION.md).
+
 ## Purpose and authority
 
 This document is Forge's canonical conceptual architecture for the Workspace
