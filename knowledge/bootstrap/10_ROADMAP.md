@@ -28,6 +28,10 @@ introduced through approved Missions alongside the existing L0–L10 learning
 increments. Installed-product qualification remains gated by L0/L1/L1-R/L10
 and owner-qualified Workspace/EP contracts.
 
+The versioned topology, attachment, API, operational-store, control-plane and
+qualification decisions are defined by
+[Forge V1 Productization Decision Contract](../../docs/architecture/FORGE_V1_PRODUCTIZATION_DECISION_CONTRACT.md).
+
 ### L0 — Engineering Contract Foundation
 
 **Node type:** CAPABILITY_MILESTONE. **Implementation owner:** Engineering Platform through `EP::ENGINEERING_CONTRACT_FOUNDATION_V1`; Forge is consumer.

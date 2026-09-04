@@ -293,3 +293,7 @@ The linked canonical records are updated with this pointer.
 
 `FORGE_PRODUCTIZATION_RECONCILIATION = BLOCKED` until the named human/product
 decisions and producer qualification evidence are closed.
+
+The decision contracts are now closed by
+[Forge V1 Productization Decision Contract](FORGE_V1_PRODUCTIZATION_DECISION_CONTRACT.md);
+implementation and qualification evidence remain separate gates.
