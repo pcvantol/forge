@@ -32,6 +32,8 @@ from .mission_planner import (
 )
 from .action_derivation import (
     ACTION_DERIVATION_SCHEMA_VERSION,
+    DerivationLifecycle,
+    DerivationRecord,
     DerivationPolicy,
     DerivedActionProposal,
     GovernanceRefinementRequired,
@@ -322,6 +324,8 @@ __all__ = [
     "PlanningInputKind",
     "planning_digest",
     "ACTION_DERIVATION_SCHEMA_VERSION",
+    "DerivationLifecycle",
+    "DerivationRecord",
     "DerivationPolicy",
     "DerivedActionProposal",
     "GovernanceRefinementRequired",

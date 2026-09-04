@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from forge.models import (
-    ArchitectureMission, ArchitectureMissionStatus, DerivationPolicy, DerivedActionProposal,
+    ArchitectureMission, ArchitectureMissionStatus, DerivationLifecycle, DerivationPolicy, DerivationRecord, DerivedActionProposal,
     EngineeringEffort, IntentReference, MissionPlannerInput, MissionPlanningState,
     PlanningEvidence, PlanningInputKind, PlanningSnapshot, ProposalProvenance,
     RequiredDiscipline, ApprovedScope,
@@ -108,6 +108,13 @@ class ActionDerivationTests(unittest.TestCase):
         with self.assertRaisesRegex(ProposalValidationError, "cover every approved Mission scope"):
             AIMissionPlanner(provider).plan(self.input, self.policy)
         self.assertEqual(provider.calls, 1)
+
+    def test_lifecycle_is_ordered_and_terminal_states_fail_closed(self) -> None:
+        record = DerivationRecord("derivation-1", "mission-1", self.snapshot.digest, "1.0", "fixture-v1", DerivationLifecycle.SNAPSHOT_CREATED)
+        running = record.transition(DerivationLifecycle.DERIVATION_REQUESTED).transition(DerivationLifecycle.PROVIDER_RUNNING)
+        self.assertEqual(running.lifecycle, DerivationLifecycle.PROVIDER_RUNNING)
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            record.transition(DerivationLifecycle.MATERIALIZED)
 
 
 if __name__ == "__main__":

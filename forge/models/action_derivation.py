@@ -133,6 +133,62 @@ class ProposalValidationStatus(str, Enum):
     GOVERNANCE_REFINEMENT_REQUIRED = "GOVERNANCE_REFINEMENT_REQUIRED"
 
 
+class DerivationLifecycle(str, Enum):
+    SNAPSHOT_CREATED = "SNAPSHOT_CREATED"
+    DERIVATION_REQUESTED = "DERIVATION_REQUESTED"
+    PROVIDER_RUNNING = "PROVIDER_RUNNING"
+    PROPOSAL_RECEIVED = "PROPOSAL_RECEIVED"
+    VALIDATION_RUNNING = "VALIDATION_RUNNING"
+    VALIDATED = "VALIDATED"
+    MATERIALIZED = "MATERIALIZED"
+    GOVERNANCE_REFINEMENT_REQUIRED = "GOVERNANCE_REFINEMENT_REQUIRED"
+    FAILED = "FAILED"
+    STALE = "STALE"
+    SUPERSEDED = "SUPERSEDED"
+
+
+_LIFECYCLE_TRANSITIONS = {
+    DerivationLifecycle.SNAPSHOT_CREATED: {DerivationLifecycle.DERIVATION_REQUESTED, DerivationLifecycle.STALE},
+    DerivationLifecycle.DERIVATION_REQUESTED: {DerivationLifecycle.PROVIDER_RUNNING, DerivationLifecycle.FAILED},
+    DerivationLifecycle.PROVIDER_RUNNING: {DerivationLifecycle.PROPOSAL_RECEIVED, DerivationLifecycle.FAILED},
+    DerivationLifecycle.PROPOSAL_RECEIVED: {DerivationLifecycle.VALIDATION_RUNNING, DerivationLifecycle.STALE},
+    DerivationLifecycle.VALIDATION_RUNNING: {DerivationLifecycle.VALIDATED, DerivationLifecycle.GOVERNANCE_REFINEMENT_REQUIRED, DerivationLifecycle.FAILED, DerivationLifecycle.STALE},
+    DerivationLifecycle.VALIDATED: {DerivationLifecycle.MATERIALIZED, DerivationLifecycle.STALE},
+    DerivationLifecycle.MATERIALIZED: {DerivationLifecycle.SUPERSEDED},
+    DerivationLifecycle.GOVERNANCE_REFINEMENT_REQUIRED: set(),
+    DerivationLifecycle.FAILED: set(),
+    DerivationLifecycle.STALE: set(),
+    DerivationLifecycle.SUPERSEDED: set(),
+}
+
+
+@dataclass(frozen=True)
+class DerivationRecord:
+    """Durable operational projection; raw provider payloads are intentionally absent."""
+
+    derivation_id: str
+    mission_id: str
+    snapshot_digest: str
+    contract_version: str
+    provider_configuration: str
+    lifecycle: DerivationLifecycle
+    proposal_digest: str | None = None
+    validation_digest: str | None = None
+    materialization_digest: str | None = None
+    parent_derivation_id: str | None = None
+
+    def transition(self, lifecycle: DerivationLifecycle, **digests: str | None) -> "DerivationRecord":
+        if lifecycle not in _LIFECYCLE_TRANSITIONS[self.lifecycle]:
+            raise ValueError(f"invalid action derivation transition: {self.lifecycle.value} -> {lifecycle.value}")
+        values = {**asdict(self), **digests, "lifecycle": lifecycle}
+        return DerivationRecord(**values)
+
+    def to_dict(self) -> dict[str, Any]:
+        document = asdict(self)
+        document["lifecycle"] = self.lifecycle.value
+        return document
+
+
 @dataclass(frozen=True)
 class DerivationPolicy:
     """Architecture-approved allow-lists, supplied by Forge rather than a provider."""
@@ -161,4 +217,3 @@ class ValidatedDerivation:
         if len({proposal.logical_action_id for proposal in self.proposals}) != len(self.proposals):
             raise ValueError("derived proposal identities must be unique")
         object.__setattr__(self, "proposals", tuple(sorted(self.proposals, key=lambda item: (item.priority, item.logical_action_id))))
-
