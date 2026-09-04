@@ -259,6 +259,6 @@ Conversely, Certified Knowledge consumed by Forge may suggest likely quality pro
 
 ## Roadmap boundary
 
-Delivery is intentionally staged in the canonical [Forge Roadmap](../roadmap/0.1.md). The early EP Engineering Contract Foundation provides Effective DoR/DoD/Human Gates and structured outcomes; Forge then adds the Quality Observer and review intelligence; Workspace adds governance UX. Knowledge-learning stages remain independent and additive.
+Delivery is intentionally staged in the canonical [Forge Roadmap](../../knowledge/bootstrap/10_ROADMAP.md). The early EP Engineering Contract Foundation provides Effective DoR/DoD/Human Gates and structured outcomes; Forge then adds the Quality Observer and review intelligence; Workspace adds governance UX. Knowledge-learning stages remain independent and additive.
 
 **EP enforces. Forge learns. Workspace governs.**

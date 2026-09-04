@@ -129,7 +129,7 @@ The KB is not assumed to be an installable Forge Platform server role. Productiz
 
 ## Roadmap
 
-Implementation is planned in the canonical [Forge Roadmap](../roadmap/0.1.md), primarily stages L5-L10. The detailed KB-internal lifecycle remains owned by the KB repository and is not duplicated here.
+Implementation is planned in the canonical [Forge Roadmap](../../knowledge/bootstrap/10_ROADMAP.md), primarily stages L5-L10. The detailed KB-internal lifecycle remains owned by the KB repository and is not duplicated here.
 
 ## Canonical rule
 

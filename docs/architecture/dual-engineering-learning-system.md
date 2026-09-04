@@ -263,4 +263,5 @@ Forge Platform may retain a short compatibility/deprecation pointer but must not
 
 This architecture is staged. It does not require the KB to become a daemon, does not require EP to depend on the KB, and does not require Workspace to exist before structured evidence can be captured.
 
-The product roadmap in `docs/roadmap/0.1.md` defines the planned implementation increments.
+The canonical [Forge Roadmap](../../knowledge/bootstrap/10_ROADMAP.md) defines
+the planned implementation increments.
