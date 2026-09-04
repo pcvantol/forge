@@ -102,3 +102,20 @@ value; Golden evidence). Each requires its predecessor gate, has repository
 impact limited to its named capability, and may proceed only in its lane.
 
 `IMPLEMENTATION_CANDIDATES_ARE_ADVISORY = TRUE`
+
+## Roadmap-to-action readiness contract
+
+The canonical roadmap remains the authority for strategic sequencing. This
+derived graph maps a roadmap capability node to a deterministic Effective DoR:
+all graph predecessors complete, external producer gates qualified, version and
+security contracts compatible, migration prerequisites available, and the node
+has no unresolved authority decision. A passing DoR yields
+`READY_FOR_MISSION_CANDIDATE`, not executable work. Forge then creates or
+refines an advisory Candidate; Business and Architecture retain their separate
+approvals before Mission Intake. DoD evidence updates node state and may
+invalidate dependent projections, never self-approve a successor.
+
+Regenerate this graph whenever one of its listed authority sources, external
+producer gate identities, or V1 classification changes. The validator protects
+only graph structure; consumer and producer qualification remain evidence work
+owned by the relevant product.
