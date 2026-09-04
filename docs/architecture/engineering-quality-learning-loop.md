@@ -4,6 +4,8 @@
 
 Canonical target architecture for Forge/Workspace quality learning. This document defines future product behavior; it does not claim the capability is implemented.
 
+This is the project-quality half of the canonical [Dual Engineering Learning System](dual-engineering-learning-system.md). The sibling Knowledge Learning Loop extracts reusable engineering evidence toward the independent Knowledge Base lifecycle. Quality Learning and Knowledge Learning share Action evidence but never share authority.
+
 ## Purpose
 
 Forge must become better at engineering a project as evidence accumulates. The objective is not merely to remember defects or write retrospective notes. Forge converts observed failures, rework, human review findings, late qualification failures, and recurring friction into proposed improvements to the project's executable engineering contract.
@@ -249,13 +251,14 @@ The generic lesson is:
 
 This is motivating evidence, not a Forge dependency on EP implementation details.
 
+## Relationship to reusable knowledge learning
+
+Quality Learning may itself produce evidence worth observing by the Knowledge Learning Loop. For example, repeated localization escapes across multiple projects may support a reusable Knowledge Candidate. That does not make a Quality Learning rule Certified Knowledge: the Knowledge Observer must preserve source evidence and the KB lifecycle remains authoritative.
+
+Conversely, Certified Knowledge consumed by Forge may suggest likely quality profiles or controls, but it does not automatically rewrite Effective DoR/DoD. Adoption into project policy is governed separately.
+
 ## Roadmap boundary
 
-Delivery is intentionally staged:
-
-1. **Engineering contract foundation in EP** — first-class Effective DoR, pre-dispatch readiness gate, Effective DoD, proof requirements, Human Gates, Action workflow projection, completion enforcement, and structured `ActionQualityOutcome` evidence.
-2. **Forge Quality Observer/Analyzer** — consumes Action outcomes and project evidence, clusters failures, audits requirement-to-enforcement chains, and creates Quality Learning Records/proposals.
-3. **Workspace Quality Review** — human review and approval of proposed engineering-contract evolution.
-4. **Managed hardening** — accepted changes are delivered to the project's canonical engineering contract and enforced by EP/CI on future Actions.
+Delivery is intentionally staged in the canonical [Forge Roadmap](../roadmap/0.1.md). The early EP Engineering Contract Foundation provides Effective DoR/DoD/Human Gates and structured outcomes; Forge then adds the Quality Observer and review intelligence; Workspace adds governance UX. Knowledge-learning stages remain independent and additive.
 
 **EP enforces. Forge learns. Workspace governs.**
