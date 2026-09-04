@@ -9,6 +9,11 @@ Forge runtime. The Forge Runtime Service follows only after the CLI has been
 qualified end to end; it automates the proven CLI workflow and is not a second
 engineering engine.
 
+The CLI is a reference/qualification adapter, not a second application
+authority. Target services are interface-neutral and are shared by CLI,
+Workspace API, MCP and Runtime Service workers; see the
+[Productization Reconciliation](FORGE_PRODUCTIZATION_RECONCILIATION.md).
+
 ## Canonical implementation sequence
 
 ### Stage 1 — First executable runtime
@@ -41,10 +46,11 @@ Mission State
 Forge CLI Resume
 ```
 
-Mission Intake belongs to the Forge CLI. It transforms an approved Mission
-Document into Mission State; it neither creates a Mission nor grants approval.
-The CLI owns deterministic intake, execution, resume, and status. Mission
-Runner and Mission Scheduler remain CLI workflow components, not services.
+Mission Intake is a Forge application service invoked by the CLI. It transforms
+an already-approved Mission into Mission State; it neither creates a Mission
+nor grants approval. The CLI supplies deterministic intake, resume and status
+as a qualification surface. Mission Runner and Scheduler are application
+capabilities exposed through that adapter, not CLI-owned product authority.
 
 ### Stage 2 — CLI qualification
 
@@ -71,12 +77,13 @@ execution scheduling, and service lifecycle management. It reuses the same
 CLI workflow and execution semantics; it introduces no new engineering
 behavior.
 
-### Stage 4 — Forge Studio
+### Stage 4 — Workspace integration
 
-Forge Studio is the primary user interface. It owns the Business Workspace,
-Architecture Workspace, Execution Workspace, and Analytics. Studio owns
-interaction, visualization, and governance workflows; it orchestrates the
-Runtime but never owns execution.
+The separate Workspace product is the primary human interaction and control
+surface. It presents Business, Architecture, Execution and Analytics views,
+submits governed intents, and never owns Forge planning or execution. Historic
+Forge Studio terminology is superseded as a product surface; its
+presentation-only safeguards remain applicable.
 
 The workspaces retain the product-model boundaries: Business owns Mission
 Candidates and Portfolio decisions; Architecture refines and approves Missions
@@ -97,8 +104,9 @@ Bootstrap Execution Host Adapter
 Engineering Platform 1.5
 ```
 
-There is no direct Engineering Platform integration in Forge core, the CLI,
-the Runtime Service, or Studio. Execution remains owned by the Execution Host.
+There is no direct Engineering Platform integration in Forge core, application
+services, CLI, Runtime Service or Workspace. Execution remains owned by the
+Execution Host.
 
 ## Autonomous engineering boundary
 

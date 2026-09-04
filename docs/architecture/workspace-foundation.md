@@ -1,5 +1,11 @@
 # Forge Workspace Model
 
+> **Productization status:** this is the historical Foundation model of a
+> Forge-owned declarative Workspace aggregate. It remains valid repository
+> provenance and compatibility context, but it is not the authority for the
+> separate Workspace product's interaction/control-plane role. The current
+> target division is in [Productization Reconciliation](FORGE_PRODUCTIZATION_RECONCILIATION.md).
+
 ## Boundary
 
 A Workspace represents one software product, never a single repository. It

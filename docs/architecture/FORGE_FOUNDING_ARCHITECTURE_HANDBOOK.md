@@ -6,6 +6,14 @@
 
 **Basis:** Reconciled repository knowledge
 
+> **Productization status:** this handbook remains the canonical Foundation
+> orientation. Its original Workspace and Studio vocabulary describes the
+> bootstrap model; the current target product split among Forge, separate
+> Workspace and EP is reconciled in
+> [Forge Productization Reconciliation](FORGE_PRODUCTIZATION_RECONCILIATION.md).
+> That record supersedes conflicting productization terminology, not the
+> constitutional Mission, evidence or approval boundaries.
+
 ## How to use this handbook
 
 This handbook is the integrated architectural expression of Forge's completed
