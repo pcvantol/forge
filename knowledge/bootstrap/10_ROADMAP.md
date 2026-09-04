@@ -400,15 +400,32 @@ preserve the Forge/Workspace/EP ownership boundaries. The [V1 gap
 register](../../docs/architecture/FORGE_WORKSPACE_V1_GAP_REGISTER.md) records
 unresolved cross-product decisions.
 
+### Cross-product node terminology
+
+A **CAPABILITY_MILESTONE** names a consumer-visible outcome and can span
+products. An **IMPLEMENTATION_INCREMENT** has exactly one owning repository.
+A **QUALIFICATION_GATE** is producer evidence that makes a versioned capability
+available to a consumer. An **EXTERNAL_DEPENDENCY** is a reference to such a
+producer capability; it never allocates the producer's implementation work.
+The derived, non-authoritative [cross-product dependency view](../../docs/architecture/FORGE_WORKSPACE_V1_CROSS_PRODUCT_DEPENDENCIES.md)
+is the complete edge index.
+
 ### L0 — Engineering Contract Foundation
 
-**Owner:** Engineering Platform. **Predecessor:** `P-TRANSPORT`.
+**Node type:** CAPABILITY_MILESTONE. **Implementation owner:** Engineering
+Platform through `EP::ENGINEERING_CONTRACT_FOUNDATION_V1`; Forge is its
+consumer, not its implementation owner. **External dependency:** the producer
+has passed `EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED`. `P-TRANSPORT`
+is deliberately not a predecessor: it was historical branch terminology, not
+a canonical EP roadmap node.
 
 Deliver capability classification, Effective DoR, pre-dispatch readiness,
 Effective DoD, proof requirements, Human Gates, live/historical workflow
 projection, completion enforcement, `ActionQualityOutcome`, packaged baseline
-contracts and immutable Action snapshots. **Exit:** EP can enforce why an
-Action is Ready and what makes it Done without source-repository access.
+contracts and immutable Action snapshots. **Exit:** the qualified installed EP
+can enforce why an Action is Ready and what makes it Done without
+source-repository access. This milestone unlocks Forge L1; it does not schedule
+EP work.
 
 ### L1 — Learning Evidence + New-Project Bootstrap Contract
 
@@ -511,7 +528,7 @@ credentials/connectivity.
 ### Dependency, milestone and parallelism rules
 
 ```text
-P-TRANSPORT → L0 → L1 → L1-R → Installer/Release qualification
+EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED → L0 → L1 → L1-R → Installer/Release qualification
 Forge runtime/planning maturity → L2 → L3 → L4
 KB integration readiness → L5 → L6 → L7 → L8
 L2 + L6 stable → L9 → L10
