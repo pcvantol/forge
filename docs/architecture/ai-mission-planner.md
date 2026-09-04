@@ -1,4 +1,4 @@
-# Forge AI Mission Planner 4.2
+# Forge AI Mission Planner 4.3
 
 ## Purpose and boundary
 
@@ -8,7 +8,8 @@ and the smallest executable Engineering Actions. It plans only: Forge Runtime
 and the Execution Host continue to render prompts and perform execution.
 
 ```text
-Mission → Mission Planner → Engineering Intent → Engineering Action
+Mission → Action Derivation → Deterministic Validation → Graph Materialization
+  → Engineering Intent → Engineering Action
   → Runtime Prompt Renderer → Execution Host → Repository → Execution Evidence
   → Repository Truth → Mission Planner
 ```
@@ -18,6 +19,20 @@ determines how it may be engineered. Mission Recommendation remains an
 advisory Portfolio responsibility. The Planner neither recommends a Mission,
 changes Mission objectives or business value, changes architecture constraints,
 approves work, invokes an AI provider, produces a Runtime Prompt, nor executes.
+
+## Internal stages and authority
+
+The approved Mission remains the sole planning authority. Action Derivation is
+an interface-neutral, provider-optional reasoning stage: it receives only an
+immutable digest-pinned Planning Snapshot and returns untrusted rich planning
+proposals. Deterministic validation checks snapshot freshness and provenance,
+Mission scope, write authority, human gates, risk inputs, dependencies and
+cycles. Only validated proposals are projected into the existing deterministic
+materializer. A need for authority outside the Mission becomes
+`GOVERNANCE_REFINEMENT_REQUIRED`, never a wider Action.
+
+Provider, CLI, Workspace, MCP, chat and raw provider output are not planning
+authority. A provider's identity/model are provenance only.
 
 ## Inputs and determinism
 

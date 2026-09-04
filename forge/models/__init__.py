@@ -30,6 +30,16 @@ from .mission_planner import (
     PlanningInputKind,
     planning_digest,
 )
+from .action_derivation import (
+    ACTION_DERIVATION_SCHEMA_VERSION,
+    DerivationPolicy,
+    DerivedActionProposal,
+    GovernanceRefinementRequired,
+    PlanningSnapshot,
+    ProposalProvenance,
+    ProposalValidationStatus,
+    ValidatedDerivation,
+)
 from .planning import (
     EngineeringGoal,
     EngineeringIncrementProposal,
@@ -311,6 +321,14 @@ __all__ = [
     "PlanningEvidence",
     "PlanningInputKind",
     "planning_digest",
+    "ACTION_DERIVATION_SCHEMA_VERSION",
+    "DerivationPolicy",
+    "DerivedActionProposal",
+    "GovernanceRefinementRequired",
+    "PlanningSnapshot",
+    "ProposalProvenance",
+    "ProposalValidationStatus",
+    "ValidatedDerivation",
     "Capability",
     "EngineeringMode",
     "GovernanceProfile",
