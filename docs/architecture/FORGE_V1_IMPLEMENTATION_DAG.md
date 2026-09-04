@@ -75,3 +75,30 @@ No chain has an unknown edge. `AUTONOMOUS_MISSION_EXECUTION_UNKNOWN_EDGE = 0`,
 `UNSAFE_PARALLEL_LANES = 0`; each lane merges only against its named shared
 contract. Node DoR is its predecessor and external gate set; node DoD is its
 JSON completion/qualification contract; its listed `human_gates` is exhaustive.
+
+## Consumer gates, installation and advisory candidates
+
+Workspace V1 requires F2 for Product Vision, Portfolio, Candidates,
+Business/Architecture refinement, decisions/evidence and health; F5 for
+Roadmap/Forecast; F4 for Mission/Living Graph/runtime status; and F9 for
+attachment and EP views. Quality is optional and Knowledge is post-V1. Workspace
+implementation remains Workspace-owned; these are consumer gates only.
+
+Clean-install chain: embedded schemas/baselines/migrations -> F1 service ->
+F2 discovery -> F3 EP attachment -> Workspace connection -> candidate and
+approvals -> F4 Action/receipt -> Forge reconciliation -> F9 Golden. The V1
+exit requires `SOURCE_REPOSITORY_RUNTIME_DEPENDENCIES = 0` and package,
+restart, negative-security, version-negotiation and cross-product consumer
+qualification.
+
+The following are advisory implementation Mission Candidates, never approved
+Missions: **Service Foundation** (F1; installation value; store/identity/restart
+evidence); **Canonical Forge Contracts** (F2; adapter safety; version/conflict
+evidence); **Project Attachment and Runtime Reconciliation** (F3/F4; bounded
+execution value; EP-gate/receipt evidence); **Portfolio Projections and
+Refinement Sessions** (F5/F6; governed planning value; provenance/audit
+evidence); and **Installed Control Plane Qualification** (F9; product release
+value; Golden evidence). Each requires its predecessor gate, has repository
+impact limited to its named capability, and may proceed only in its lane.
+
+`IMPLEMENTATION_CANDIDATES_ARE_ADVISORY = TRUE`
