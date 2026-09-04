@@ -1,7 +1,7 @@
 # Forge + Workspace V1 Product Model
 
 **Status:** proposed V1 architecture; not implementation authority.  
-**Review basis:** Forge PR #7 baseline `ee1eed8`, Workspace `4440332`, and the installed Engineering Platform working tree observed on 2026-09-04. This supersedes the pre-PR-#7 review. Cross-repository evidence is descriptive only: Forge remains the authority for Forge product semantics; Workspace and EP retain authority for their own products.
+**Review basis:** Forge PR #7 baseline `ee1eed8`, Forge Platform PR #14 head `31c6761`, Workspace `4440332`, and the installed Engineering Platform working tree observed on 2026-09-04. This supersedes the pre-PR-#7 review. Cross-repository evidence is descriptive only: Forge remains the authority for Forge product semantics; Workspace and EP retain authority for their own products.
 
 ## Decision standard and conclusion
 
@@ -115,6 +115,24 @@ V1 security is **single-installation, named-operator, least-privilege** only: di
 ## Source self-containment
 
 The release target is `SOURCE_REPOSITORY_RUNTIME_DEPENDENCIES = 0`: installed Forge, Workspace and EP artifacts must include their versioned schemas, baselines, migrations, contract renderers and qualification fixtures. Runtime may reference a configured repository under management, but never needs the Forge/Workspace/EP source checkout or `ai-development-contracts` checkout. Current local source imports and documentation-only projections are `STALE_OR_INSUFFICIENT_EVIDENCE` for this target and are tracked by `FWV1-G010`.
+
+## Forge Platform PR #14 reconciliation
+
+`DOCUMENTED_DECISION`: Forge Platform PR #14 (`31c6761`) explicitly supersedes
+its former learning-loop architecture in favour of Forge's canonical dual,
+quality and knowledge learning documents. This is **CONSISTENT** with the V1
+model: Forge owns planning and learning orchestration; Workspace governs human
+review; EP executes and produces evidence; the independent KB owns knowledge
+lifecycle and certification.
+
+PR #14 retains two material deployment constraints. The KB is currently a
+Git/CLI-backed repository capability, not an installable Forge Platform server
+role, and no product may invent a KB daemon/API merely for symmetry. Any future
+Forge Platform composition requires a separately qualified published artifact,
+persistence, backup, update, concurrency and operating-model contract. These
+constraints reinforce, rather than close, `FWV1-G012`: learning remains
+additive, must not block EP admission/execution, and cannot be treated as an
+installed V1 runtime dependency.
 
 ## Adversarial completeness pass
 
