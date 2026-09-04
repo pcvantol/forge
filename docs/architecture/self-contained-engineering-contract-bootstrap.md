@@ -2,62 +2,30 @@
 
 ## Status
 
-Canonical Forge target architecture for clean-install engineering-contract bootstrapping. This document defines future product behavior; it does not claim the capability is implemented.
+Canonical Forge target architecture for clean-install engineering-contract and Managed repository bootstrapping. This document defines future product behavior; it does not claim the capability is implemented.
 
-It sharpens the [Dual Engineering Learning System](dual-engineering-learning-system.md) and [Engineering Quality Learning Loop](engineering-quality-learning-loop.md) with one deployment invariant: a released Forge + Engineering Platform + Workspace installation must be able to create and govern a brand-new project without access to pcvantol development repositories or other source-authority repositories.
+It sharpens the Dual Engineering Learning System with one deployment invariant: a released Forge + Engineering Platform + Workspace installation must be able to create and govern a brand-new project without access to pcvantol development repositories or other source-authority repositories.
 
 ## Decision
 
 Development repositories are build-time/source authorities, not runtime dependencies of a customer installation.
 
-A clean installation must carry a qualified baseline engineering capability inside the released product artifacts. Creating a new project must bootstrap a project-owned engineering contract from that shipped baseline. Each Engineering Action then receives an immutable Effective DoR/DoD snapshot composed from the project contract.
+A clean installation carries a qualified baseline engineering capability inside the released product artifacts. Creating a new project bootstraps a project-owned engineering contract from that shipped baseline. For a Managed project with a supported repository host such as GitHub, the same bootstrap also applies a qualified Repository Governance Baseline before ordinary engineering begins. Each Engineering Action receives an immutable Effective DoR/DoD/Human-Gate snapshot composed from the project contract.
 
 ```text
 source/development contracts
-        |
-        | build-time materialization
-        v
+        -> build-time materialization
 qualified Forge / EP release artifacts
-        |
-        | install
-        v
+        -> install
 local baseline contract registry
-        |
-        | new project bootstrap
-        v
-project-owned engineering contract
-        |
-        | per-Action composition
-        v
+        -> new Managed project bootstrap
+project engineering contract + repository desired state
+        -> provision and qualify repository host
+        -> per-Action composition
 immutable Effective DoR / Effective DoD / Human Gates
 ```
 
-There must be no runtime dependency on:
-
-- `pcvantol/ai-development-contracts`;
-- `pcvantol/forge` source checkout;
-- `pcvantol/engineering-platform` source checkout;
-- any private pcvantol repository;
-- a network connection to a development-contract source repository.
-
-## Existing development projection pattern
-
-Forge and EP already use offline generated AI-development projections in their source repositories. Those projections are bound to a source repository/commit, profile, digest and materializer version and are committed into the product source tree.
-
-That pattern remains useful as a development-time provenance mechanism, but product distribution must carry the required executable baseline in the release artifact itself. A deployed product must never fetch its governing baseline from the original projection source at runtime.
-
-The desired supply chain is:
-
-```text
-AI-development source contracts
-        -> development-time projection/materialization
-        -> Forge/EP source trees
-        -> product build and qualification
-        -> signed/versioned release artifacts
-        -> installed local baseline registry
-```
-
-The source repository proves where a baseline came from. The installed artifact must be sufficient to execute it.
+There must be no runtime dependency on pcvantol development/source repositories or on a network connection to a development-contract source repository.
 
 ## Three contract layers
 
@@ -65,176 +33,140 @@ The architecture distinguishes three layers of engineering rules.
 
 ### 1. Product baseline contract
 
-Owned and versioned by the released Forge/EP product capability.
-
-It defines generic, qualified profiles and semantics required for a usable installation, for example:
-
-- `BASE`;
-- `DOCS`;
-- `UI`;
-- `API`;
-- `PLATFORM_COMPONENT`;
-- `TRANSPORT`;
-- `SECURITY`;
-- `INSTALLATION`;
-- `DATA_MIGRATION`.
-
-The exact profile set evolves by product version. The baseline is present locally after installation and is usable offline.
+Owned and versioned by the released Forge/EP product capability. It defines generic qualified profiles such as `BASE`, `DOCS`, `UI`, `API`, `PLATFORM_COMPONENT`, `TRANSPORT`, `SECURITY`, `INSTALLATION`, `DATA_MIGRATION`, and repository-governance profiles. The baseline is present locally after installation and usable offline.
 
 ### 2. Project engineering contract
 
-Created when Forge bootstraps a project and owned thereafter by that project.
-
-It may contain or reference:
-
-- project identity and baseline provenance;
-- enabled capability profiles;
-- project-specific Effective DoR/DoD overlays;
-- architecture invariants;
-- guards;
-- validation profiles;
-- Goldens;
-- Human Gate policy;
-- accepted Quality Learning hardening;
-- explicit project adoption of reusable Certified Knowledge where governed.
+Created when Forge bootstraps a project and owned thereafter by that project. It may contain baseline provenance, enabled profiles, project-specific DoR/DoD overlays, architecture invariants, guards, validation profiles, Goldens, Human Gate policy, repository governance overlays and accepted Quality Learning hardening.
 
 Accepted Quality Learning changes this project contract, never hidden Forge memory. EP and CI must be able to enforce the project contract without Forge being continuously present.
 
-The exact repository layout is an implementation decision, but project authority must be explicit and portable.
-
 ### 3. Action engineering contract
 
-For each Engineering Action, Forge/EP deterministically compose an immutable snapshot from:
-
-```text
-product baseline version
-+ project contract version
-+ applicable capability profiles
-+ explicit Action requirements
-= Effective Action Contract
-```
-
-The snapshot includes Effective DoR, Effective DoD and applicable Human Gates. It is durably attached to the Action for auditability.
-
-Later project-policy evolution must not retroactively alter the historical contract of an already admitted or completed Action.
+For each Engineering Action, Forge/EP deterministically compose an immutable snapshot from product baseline version + project contract version + applicable profiles + explicit Action requirements. The snapshot includes Effective DoR, Effective DoD and applicable Human Gates and is durably attached to the Action.
 
 ## Executable contract representation
 
-Engineering requirements must not exist only as prose and should not exist only as opaque hard-coded workflow branches.
+Engineering requirements must not exist only as prose and should not exist only as opaque hard-coded workflow branches. The target combines declarative contract data, qualified evaluation/provisioning code and human-readable documentation.
 
-The target representation combines three layers:
+The contract declares what is required. Qualified product code knows how proof/provisioning mechanisms are executed and verified. Documentation explains intent and governance.
 
-1. **declarative contract data** — stable criterion/profile identities, applicability, required proof and composition rules;
-2. **evaluation/execution code** — implementation of proof mechanisms and state transitions;
-3. **human-readable documentation** — intent, rationale, governance and operator guidance.
+## Managed Repository Governance Baseline
 
-Conceptual example:
+A Managed project is not Ready merely because a remote repository exists. Forge must bootstrap the repository into a qualified desired governance state appropriate to the selected repository host and project capabilities.
 
-```yaml
-criterion: LOCALIZATION_5_LOCALE
-profile: UI
-required: true
-proof:
-  - locale_key_parity
-  - strict_no_fallback
-  - five_locale_browser
+The baseline must be generic product policy, not a blind copy of settings from pcvantol repositories. During baseline definition, observed settings from Forge, EP, TDE, AI Development Contracts and other mature repositories must be classified as:
+
+- generic best practice;
+- capability-dependent;
+- organization/project-specific;
+- technically required by Forge/EP workflow semantics;
+- historical/incidental and therefore not baseline material.
+
+The first GitHub profile should be a versioned `MANAGED_GITHUB_BASELINE_V1` (name/version illustrative until implemented).
+
+### Baseline policy dimensions
+
+The GitHub Managed baseline must explicitly model, where supported/applicable:
+
+- canonical default branch (normally `main`);
+- prohibition of direct protected-main mutation by automation;
+- pull-request requirement for governed changes;
+- review/approval policy and stale-approval semantics where applicable;
+- conversation-resolution policy;
+- required status/check policy;
+- validation and security baseline checks;
+- CodeQL/security scanning policy where supported;
+- Trusted Delivery / owner-authorization integration when the project profile requires it;
+- CODEOWNERS/ownership policy where applicable;
+- allowed merge strategies and branch cleanup policy;
+- workflow permission/security policy;
+- dependency-update policy where supported;
+- repository visibility and feature defaults only when explicitly selected by project/org policy;
+- ruleset/branch-protection desired state;
+- repository-host capability/version limitations.
+
+The baseline must distinguish universal requirements from capability-derived checks. A UI project may add browser qualification; a Python project may add Python validation; a security-sensitive project may add stronger security gates. Required-check names must derive from the installed/project validation profile rather than being globally hard-coded.
+
+### Desired state, provisioning and qualification
+
+Repository governance is declarative desired state plus qualified provisioning and verification:
+
+```text
+Product repository-governance baseline
+        + project/org overlay
+        + capability profiles
+        = Repository Desired State
+                |
+                v
+        Forge provisions GitHub
+                |
+                v
+Repository Governance Qualification
+                |
+                v
+actual host state == expected governed state
 ```
 
-The contract declares what is required. Qualified product code knows how each proof mechanism is evaluated. Documentation explains why the requirement exists and how it is governed.
+A successful API call is not proof of compliance. Forge must read back the supported repository-host state and produce bounded qualification evidence.
 
-A Markdown statement such as "all UI is localized" without executable proof is not sufficient completion enforcement.
+Required target result:
+
+`REPOSITORY_GOVERNANCE = PASS`
+
+A Managed project must not become generally Ready while mandatory repository-governance requirements are failed or unknown. Unsupported host features must be represented explicitly as `N/A`, degraded policy, or a fail-closed incompatibility according to the profile; they must not silently disappear.
+
+### New Managed GitHub project flow
+
+Target flow:
+
+```text
+New Project -> Managed -> GitHub
+        -> create/attach repository
+        -> create bootstrap project tree
+        -> materialize project engineering contract
+        -> resolve capability profiles
+        -> resolve Repository Desired State
+        -> install required CI/security workflow assets
+        -> configure ruleset/branch protection
+        -> configure PR/review/merge policy
+        -> configure required checks and ownership policy
+        -> read back GitHub state
+        -> Repository Governance Qualification
+        -> READY only when required bootstrap/DoR evidence passes
+```
+
+This bootstrap is idempotent and must distinguish create, reconcile, drift detection and explicit governed policy evolution. It must not overwrite an existing project's intentional governance without an explicit reconciliation/adoption decision.
+
+### Existing repository adoption
+
+Attaching an existing repository is different from creating a new one. Forge must inspect actual governance, compare it with the applicable baseline/project policy and produce a drift/adoption plan. It must not silently rewrite repository settings merely because the repository differs from the current product baseline.
+
+Possible outcomes include `COMPLIANT`, `DRIFT_REVIEW_REQUIRED`, `INCOMPATIBLE`, and governed reconciliation. Historical project policy remains auditable.
+
+### Quality Learning relationship
+
+Repository-governance failures and human/CI escapes are valid Quality Learning signals. Forge may later propose strengthening or relaxing repository policy, but accepted changes follow normal project governance. A repeated failure in a supposedly enforced repository rule must trigger analysis of whether provisioning, read-back qualification or the baseline itself is ineffective.
 
 ## EP responsibility
 
-The Engineering Platform release artifact must contain the runtime primitives required to enforce its supported contract version, including where applicable:
-
-- Action capability/profile resolution contracts;
-- Effective DoR evaluation;
-- pre-dispatch readiness enforcement;
-- Effective DoD evaluation;
-- proof-state evaluation;
-- Human Gate state and completion blocking;
-- Action contract/evidence persistence;
-- workflow projection;
-- versioned baseline contract registry or equivalent packaged resource;
-- migration/compatibility handling when installed product baselines evolve.
-
-EP does not need access to Forge or development-contract source repositories to enforce an already composed Action contract.
+EP contains runtime primitives required to enforce supported Action contracts: Effective DoR/DoD, proof state, Human Gates, persistence, workflow projection and versioned baseline compatibility. EP consumes repository-governance evidence when it is part of an Action's DoR/DoD, but Forge owns new-project planning/bootstrap and repository desired-state orchestration. EP does not need source-repository access to enforce an already composed contract.
 
 ## Forge responsibility
 
-The Forge release artifact must carry the planning and learning semantics needed for a clean project, including where applicable:
-
-- project bootstrap rules;
-- baseline/project contract composition semantics;
-- Action capability classification;
-- planning-side DoR/DoD composition inputs;
-- Quality Observer schemas and rule identities;
-- Knowledge Observer schemas and evidence-envelope contracts;
-- quality-learning proposal types;
-- governance and bootstrap templates.
-
-Forge uses the installed product baseline to create a project contract. It must not clone a development repository merely to learn how to engineer a new project.
+Forge carries project bootstrap rules, baseline/project composition semantics, Action capability classification, Quality/Knowledge observer contracts, and repository-governance desired-state/provisioning/qualification semantics for supported repository hosts. Forge must not clone a development repository merely to learn how to engineer or govern a new project.
 
 ## Workspace responsibility
 
-Workspace presents the resulting local/project contracts and Action snapshots. It must be able to show:
-
-- product baseline/version provenance;
-- project contract version;
-- Effective DoR/DoD/Human Gates for running and historical Actions;
-- which rules are baseline versus project-specific;
-- proposed Quality Learning changes before acceptance.
-
-Workspace is not the authority that defines or evaluates the contract.
-
-## New-project bootstrap
-
-A brand-new project created from a clean installation follows this target flow:
-
-```text
-Install Forge + EP + Workspace
-        -> verify bundled baseline compatibility
-        -> create project
-        -> materialize/initialize project engineering contract
-        -> record baseline provenance/version
-        -> select/derive initial capability profiles
-        -> create first Engineering Action
-        -> compose Effective DoR
-        -> NOT_READY or READY
-        -> EP dispatch/execution preflight
-        -> execute
-        -> compose/evaluate Effective DoD and Human Gates
-        -> completion only when required proof passes
-        -> Quality/Knowledge learning evidence emitted
-```
-
-No private repository access is part of the flow.
+Workspace presents product baseline/version provenance, project contract version, Effective DoR/DoD/Human Gates, repository-governance state/drift and proposed Quality Learning changes. It is not the authority that defines or evaluates the contract.
 
 ## Updates and baseline evolution
 
-Product upgrades may ship newer baseline contract versions. An upgrade must not silently rewrite a project's accepted engineering policy.
-
-The future compatibility model must distinguish:
-
-- installed product baseline version;
-- project-pinned/adopted baseline version;
-- available newer baseline version;
-- required security/compatibility migration;
-- optional governed project adoption;
-- historical Action snapshots.
-
-Where a product upgrade must change a baseline for safety or compatibility, the migration must be explicit, auditable and covered by release compatibility policy.
-
-Quality Learning may propose project hardening independently of product baseline updates.
+Product upgrades may ship newer engineering and repository-governance baseline versions. An upgrade must not silently rewrite a project's accepted engineering or repository policy. The compatibility model distinguishes installed baseline, project-pinned/adopted baseline, available newer baseline, mandatory safety/compatibility migration, optional governed adoption and immutable historical Action snapshots.
 
 ## Relationship to Certified Knowledge
 
-The AI Platform Engineering Knowledge Base is deliberately not required for clean-install engineering execution.
-
-A fresh Forge/EP/Workspace installation must remain fully usable when no KB is installed or reachable. Certified Knowledge integration is additive planning/learning capability, not runtime contract bootstrap authority.
-
-Later distributions may consume a qualified versioned Certified Knowledge artifact or adapter, but only through an explicit KB productization/consumption contract. The system must not infer a dependency on a GitHub repository clone.
+The AI Platform Engineering Knowledge Base is deliberately not required for clean-install engineering execution or repository bootstrap. Certified Knowledge integration remains additive.
 
 ## Required clean-install invariant
 
@@ -245,30 +177,28 @@ AIR_GAPPED_BOOTSTRAP_GOLDEN
 
 clean machine
 no access to pcvantol private/source repositories
-no ai-development-contracts checkout
-no Forge source checkout
-no EP source checkout
-
 install released Forge + EP + Workspace
-create brand-new project
+create brand-new Managed project
 
 verify:
   product baseline available locally
   project engineering contract created
-  baseline provenance recorded
+  repository governance baseline available locally
+  repository desired state resolved
+  supported GitHub governance provisioned and read back
+  REPOSITORY_GOVERNANCE = PASS
   Effective DoR composed
-  NOT_READY Action is blocked before dispatch
-  READY Action can proceed to EP execution preflight
+  NOT_READY Action blocked before dispatch
+  READY Action can proceed
   Effective DoD composed
   automated proof mechanisms run
   Human Gate can block completion
-  Action history preserves DoR/DoD/Gate evidence
-  ActionQualityOutcome can be produced
+  Action history preserves contract/gate evidence
   project contract remains inspectable/portable
   no source-repository runtime dependency exists
 ```
 
-This Golden is a cross-product release qualification target. The exact execution boundary may be split between EP Engineering Contract qualification and later Installer/Release qualification, but the end-state invariant is non-negotiable.
+The no-source-repository part must be air-gapped; remote GitHub provisioning obviously requires connectivity to the selected repository host. Qualification must therefore separately prove offline baseline availability and online repository-host provisioning without access to development/source-authority repositories.
 
 ## Required invariants
 
@@ -278,18 +208,13 @@ This Golden is a cross-product release qualification target. The exact execution
 - `PROJECT_CONTRACT_PROJECT_OWNED = TRUE`
 - `ACTION_CONTRACT_IMMUTABLE_AFTER_ADMISSION = TRUE`
 - `DOR_DOD_PROOF_EXECUTABLE_NOT_DOCUMENTATION_ONLY = TRUE`
-- `EP_CAN_ENFORCE_WITHOUT_FORGE_SOURCE = TRUE`
-- `FORGE_CAN_BOOTSTRAP_WITHOUT_DEVELOPMENT_CONTRACT_SOURCE = TRUE`
+- `MANAGED_REPOSITORY_GOVERNANCE_DECLARATIVE = TRUE`
+- `REPOSITORY_GOVERNANCE_PROVISION_AND_READBACK = REQUIRED`
+- `NEW_MANAGED_PROJECT_REPOSITORY_GOVERNANCE = PASS_BEFORE_READY`
+- `EXISTING_REPOSITORY_POLICY_NOT_SILENTLY_REWRITTEN = TRUE`
 - `KB_NOT_REQUIRED_FOR_EXECUTION_BOOTSTRAP = TRUE`
 - `AIR_GAPPED_BOOTSTRAP_QUALIFICATION = REQUIRED`
 
 ## Roadmap relationship
 
-The Forge roadmap treats this as part of the earliest learning-system foundation rather than a late packaging concern:
-
-- L0 must define/enforce packaged baseline Effective DoR/DoD/Human Gate semantics in EP;
-- L1 must make baseline/project/Action contract provenance part of the learning evidence contract;
-- new-project bootstrap support must exist before Forge learning can be considered generic for arbitrary new projects;
-- Installer/Release qualification must prove the final clean-machine/no-source-repository invariant;
-- later Quality Learning evolves project rules on top of this baseline;
-- later Knowledge Learning remains additive and independent.
+L0 defines/enforces packaged Effective DoR/DoD/Human Gate semantics. L1 defines learning evidence and new-project bootstrap. L1-R adds the Managed Repository Governance Baseline, GitHub desired-state/provision/read-back qualification and existing-repository drift/adoption contract. Installer/Release qualification must prove the final clean-machine/no-source-authority invariant. Later Quality Learning may evolve project repository policy through governed hardening.
