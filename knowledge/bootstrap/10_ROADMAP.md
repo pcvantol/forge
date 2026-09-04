@@ -457,7 +457,9 @@ controls, including governance controls.
 
 **Owner:** Workspace. Show DoR/DoD/Human Gates, governance status/drift and
 Quality Learning Reviews; provide governed Accept/Modify/Reject and Managed
-hardening Actions.
+hardening Actions. This is a cross-product dependency marker, not a Forge
+allocation or schedule of Workspace work: Workspace must accept, sequence and
+qualify any corresponding capability in its own canonical roadmap.
 
 ### L5 — Knowledge Evidence Export Contract
 
@@ -477,7 +479,10 @@ promotes knowledge.
 
 **Owner:** Workspace + KB governance integration. Present observations,
 candidates, lineage, uncertainty, relationships and lifecycle state, with
-governed review actions.
+governed review actions. This is a cross-product dependency marker, not a
+Forge allocation or schedule of Workspace work: Workspace must accept,
+sequence and qualify any corresponding capability in its own canonical
+roadmap.
 
 ### L8 — Certified Knowledge Consumption in Forge
 
