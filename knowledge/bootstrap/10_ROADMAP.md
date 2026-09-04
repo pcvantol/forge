@@ -32,6 +32,9 @@ The versioned topology, attachment, API, operational-store, control-plane and
 qualification decisions are defined by
 [Forge V1 Productization Decision Contract](../../docs/architecture/FORGE_V1_PRODUCTIZATION_DECISION_CONTRACT.md).
 
+The derived, non-authoritative executable capability sequence and parallel
+lanes are in [Forge V1 Implementation DAG](../../docs/architecture/FORGE_V1_IMPLEMENTATION_DAG.md).
+
 ### L0 — Engineering Contract Foundation
 
 **Node type:** CAPABILITY_MILESTONE. **Implementation owner:** Engineering Platform through `EP::ENGINEERING_CONTRACT_FOUNDATION_V1`; Forge is consumer.
