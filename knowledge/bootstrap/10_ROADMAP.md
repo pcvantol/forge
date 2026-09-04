@@ -391,6 +391,167 @@ Every future direction depends on the Foundation, repository-first knowledge,
 explicit Capability boundaries, human governance, qualification evidence, and
 a separately authorized Engineering Intent.
 
+## Forge + Workspace V1 implementation programme (proposed)
+
+This is the canonical detailed implementation sequence formerly held in
+`docs/roadmap/0.1.md`. It does not approve a Mission, allocate a Mission ID, or
+authorize execution. Each increment requires its own approved Mission and must
+preserve the Forge/Workspace/EP ownership boundaries. The [V1 gap
+register](../../docs/architecture/FORGE_WORKSPACE_V1_GAP_REGISTER.md) records
+unresolved cross-product decisions.
+
+### Cross-product node terminology
+
+A **CAPABILITY_MILESTONE** names a consumer-visible outcome and can span
+products. An **IMPLEMENTATION_INCREMENT** has exactly one owning repository.
+A **QUALIFICATION_GATE** is producer evidence that makes a versioned capability
+available to a consumer. An **EXTERNAL_DEPENDENCY** is a reference to such a
+producer capability; it never allocates the producer's implementation work.
+The derived, non-authoritative [cross-product dependency view](../../docs/architecture/FORGE_WORKSPACE_V1_CROSS_PRODUCT_DEPENDENCIES.md)
+is the complete edge index.
+
+### L0 — Engineering Contract Foundation
+
+**Node type:** CAPABILITY_MILESTONE. **Implementation owner:** Engineering
+Platform through `EP::ENGINEERING_CONTRACT_FOUNDATION_V1`; Forge is its
+consumer, not its implementation owner. **External dependency:** the producer
+has passed `EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED`. `P-TRANSPORT`
+is deliberately not a predecessor: it was historical branch terminology, not
+a canonical EP roadmap node.
+
+Deliver capability classification, Effective DoR, pre-dispatch readiness,
+Effective DoD, proof requirements, Human Gates, live/historical workflow
+projection, completion enforcement, `ActionQualityOutcome`, packaged baseline
+contracts and immutable Action snapshots. **Exit:** the qualified installed EP
+can enforce why an Action is Ready and what makes it Done without
+source-repository access. This milestone unlocks Forge L1; it does not schedule
+EP work.
+
+### L1 — Learning Evidence + New-Project Bootstrap Contract
+
+**Owner:** Forge + EP contract boundary.
+
+Define the versioned Action learning-evidence envelope and self-contained
+bootstrap: installed baseline provenance, project-owned contract creation,
+baseline/project/Action versioning, inclusion/redaction/privacy/retention and
+clean-install behavior. **Exit:** a clean installation can create a
+project-owned contract and expose terminal Action evidence without coupling
+Forge to EP storage or source-authority repositories.
+
+### L1-R — Managed Repository Governance Baseline
+
+**Owner:** Forge, with repository-host adapters and EP/CI proof integration.
+**Predecessor:** L1; complete before Installer/Release qualification.
+
+Inventory mature repositories and classify settings as generic,
+capability-dependent, organization/project-specific, workflow-required or
+historical; never copy pcvantol settings blindly. Define a versioned generic
+GitHub baseline covering protected/default branch, PR/review/conversation
+policy, validation-derived required checks, security/CodeQL, trusted delivery,
+ownership, merge/cleanup, workflow permissions, dependency updates,
+rulesets and host limitations. Implement declarative desired state, idempotent
+provisioning/reconciliation, read-back qualification and bounded evidence.
+Existing repositories require inspect-and-propose adoption/drift handling, not
+silent overwrite. **Exit:** `New Project → Managed → GitHub` proves
+`REPOSITORY_GOVERNANCE = PASS` before general Ready without source authority.
+
+### L2 — Quality Observer v1
+
+**Owner:** Forge. Run lightweight post-Action analysis and persist traceable
+DoR misses, DoD escapes, late failures, human rejection, repair, security,
+documented-only requirements, manual checks and governance escapes. It makes
+zero automatic governance mutations.
+
+### L3 — Quality Learning Review + Hardening Proposals
+
+**Owner:** Forge. Implement N-Action/milestone reviews, defect → root cause →
+pattern → systemic hardening, requirement-to-enforcement audits,
+`QualityLearningRecord`, repeated-defect detection and regression/mutation
+proof proposals. Proposals may add, strengthen, merge, relax or retire
+controls, including governance controls.
+
+### L4 — Workspace Quality Governance
+
+**Owner:** Workspace. Show DoR/DoD/Human Gates, governance status/drift and
+Quality Learning Reviews; provide governed Accept/Modify/Reject and Managed
+hardening Actions. This is a cross-product dependency marker, not a Forge
+allocation or schedule of Workspace work: Workspace must accept, sequence and
+qualify any corresponding capability in its own canonical roadmap.
+
+### L5 — Knowledge Evidence Export Contract
+
+**Owner:** Forge + EP + KB boundary. Define the redacted Action/source evidence
+path to KB Engineering Observations with source identity, commit/version,
+evidence-vs-interpretation separation and read-only source semantics. No KB
+server/API is required.
+
+### L6 — Knowledge Observer v1
+
+**Owner:** Forge, preserving KB authority. Run lightweight post-Action
+extraction and propose observations, implications, links, classifications,
+relationships, duplicates, confidence and uncertainty. It never certifies or
+promotes knowledge.
+
+### L7 — Workspace Knowledge Governance
+
+**Owner:** Workspace + KB governance integration. Present observations,
+candidates, lineage, uncertainty, relationships and lifecycle state, with
+governed review actions. This is a cross-product dependency marker, not a
+Forge allocation or schedule of Workspace work: Workspace must accept,
+sequence and qualify any corresponding capability in its own canonical
+roadmap.
+
+### L8 — Certified Knowledge Consumption in Forge
+
+**Owner:** Forge + KB read-only consumer contract. Consume Certified Knowledge
+in planning with lineage/rationale. It remains additive and never becomes
+automatic project policy.
+
+### L9 — Continuous Dual Learning Automation
+
+**Owner:** Forge orchestration; Workspace governance; KB independent
+authority. Automate observers, milestone/release reviews, repeated-defect
+escalation, source/drift/gap triggers and bounded health/backlog projections.
+Automation proposes/prepares; it never self-approves.
+
+### L10 — Learning Effectiveness + Distribution Qualification
+
+**Owner:** Forge + EP/CI + Installer/Release qualification. Measure
+first-pass qualification, DoR misses, DoD escapes, human-review escape rate,
+repeated defects and time-to-Done; use negative/mutation qualification and
+qualify redundant-control retirement. **Exit:** clean machine, released
+Forge/EP/Workspace, local baselines, new contract, qualified Managed GitHub
+governance, enforced gates and no source-repository runtime dependency. Baseline
+availability is air-gapped; GitHub provisioning uses only the selected user's
+credentials/connectivity.
+
+### Dependency, milestone and parallelism rules
+
+```text
+EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED → L0 → L1 → L1-R → Installer/Release qualification
+Forge runtime/planning maturity → L2 → L3 → L4
+KB integration readiness → L5 → L6 → L7 → L8
+L2 + L6 stable → L9 → L10
+```
+
+Milestones are: **Executable Managed Engineering Contract** (L0/L1/L1-R),
+**Project Quality Learner** (L2–L4), **Reusable Knowledge Learner** (L5–L8),
+and **Continuous Learning Platform** (L9–L10). L5–L8 never block standalone
+engineering execution. Only work that does not mutate a shared schema/API is
+parallel-safe; each shared-contract predecessor must be reviewed and qualified
+before dependents start.
+
+Cross-product work not fully represented here—installation/named operator
+(`G001`), multi-repository lease/coordination (`G005`), history/attention
+recovery (`G007`), lifecycle retention (`G008/G009`), V1 security (`G011`) and
+responsive Workspace UI (`G013`)—requires separately bounded dependencies
+before a V1 implementation-ready claim.
+
+Forge does not become a second execution engine. EP does not autonomously
+rewrite project policy. Forge/EP/Workspace do not certify reusable knowledge.
+KB does not mutate source repositories or become an execution dependency.
+Product upgrades do not silently rewrite project/repository policy.
+
 ## Long-term vision
 
 ### Context

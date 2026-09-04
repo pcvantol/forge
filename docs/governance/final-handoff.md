@@ -22,7 +22,7 @@ behavior.
 - `docs/architecture/workspace-foundation.md`
 - `docs/governance/prototype-solo-local.md`
 - `docs/governance/final-handoff.md`
-- `docs/roadmap/0.1.md`
+- `knowledge/bootstrap/10_ROADMAP.md`
 - `docs/evidence/bootstrap-evidence.md`
 
 ## Validation and next increment
