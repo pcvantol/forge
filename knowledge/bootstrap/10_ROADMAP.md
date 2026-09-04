@@ -73,13 +73,71 @@ Forge may propose strengthening transition DoR/DoD profiles, retirement complete
 
 Workspace presents DoR/DoD/Human Gates and Quality Learning proposals. For transition Actions, the UX should expose consequence/retirement criteria, intentional compatibility exceptions and required human decisions without turning Workspace into execution authority.
 
+### L4-AI — AI Capability Exposure v1
+
+**Owner:** Forge. **Predecessors:** stable Forge application-service contracts plus L2/L3 quality-learning semantics; Workspace L4 is not required as runtime authority.
+
+Expose Forge's canonical project intelligence to external AI hosts and engineering agents through an interface-neutral AI capability boundary. MCP is the initial target adapter, but MCP does not become Forge's internal architecture, persistence model, governance authority or learning-loop transport.
+
+Required architecture:
+
+```text
+                         Forge application services
+                                   |
+                 +-----------------+-----------------+
+                 |                 |                 |
+              Workspace           CLI/HTTP          MCP
+                 |                 |                 |
+                 +-----------------+-----------------+
+                                   |
+                    canonical project intelligence
+```
+
+Forge capabilities must therefore be designed independently of Workspace-specific UI and independently of MCP protocol details. Workspace, CLI, HTTP and MCP are adapters over the same canonical application services.
+
+The first AI exposure profile is deliberately bounded to **read + explain + propose** capabilities. Candidate surfaces include project context, architecture, roadmap/backlog, Engineering Action history, Effective DoR/DoD/Human Gates, Quality Outcomes, Quality Learning records/proposals and other evidence-backed project context. Proposal tools may propose Actions or hardening, but cannot bypass ordinary Forge/Workspace governance.
+
+MCP/resource-style exposure should support selective retrieval of canonical context rather than requiring giant generated prompts. External AI clients must be able to consume structured project/quality evidence without directly understanding Forge repository/storage internals.
+
+Required authority invariants:
+
+- `MCP_IS_ADAPTER_NOT_AUTHORITY = TRUE`
+- `AI_CLIENT_DIRECT_PROJECT_POLICY_MUTATION = FALSE`
+- `AI_CLIENT_DIRECT_EXECUTION_AUTHORITY = FALSE`
+- `AI_CLIENT_BYPASSES_DOR_DOD = FALSE`
+- `AI_CLIENT_BYPASSES_HUMAN_GATES = FALSE`
+- `FORGE_CAPABILITIES_INTERFACE_NEUTRAL = TRUE`
+
+Identity, authorization, project permissions and governance remain Forge/product responsibilities; protocol annotations or client declarations never replace authorization.
+
+**Exit:** an authorized external AI host can discover/read/explain Forge project and Quality Learning context and create bounded proposals through the same canonical service contracts used by other adapters, with no alternate authority path.
+
 ### L5-L8 — Knowledge Learning
 
 L5 defines the governed evidence export boundary to the independent Knowledge Base; L6 adds Forge Knowledge Observer proposals; L7 is the Workspace knowledge-governance dependency; L8 consumes Certified Knowledge read-only in Forge planning. Project policy remains distinct from Certified Knowledge and KB availability never becomes an EP execution dependency.
 
+### L8-AI — Knowledge AI Exposure
+
+**Owner:** Forge + KB read-only consumer boundary. **Predecessor:** L8 Certified Knowledge consumption plus L4-AI's stable AI adapter/application-service boundary.
+
+Extend the AI-facing capability surface with governed Knowledge Learning access. External AI hosts may search/read Certified Knowledge with lineage and may propose Engineering Observations/knowledge candidates through the existing governed Knowledge Learning boundary. They may not certify, promote or mutate Certified Knowledge directly.
+
+This stage should allow an AI to distinguish explicitly between:
+
+- project-specific Quality Learning ("what this project learned about how to engineer itself"), and
+- reusable Certified Knowledge ("what has passed independent reusable-knowledge governance").
+
+Required:
+
+- `PROJECT_POLICY_IS_NOT_CERTIFIED_KNOWLEDGE = TRUE`
+- `CERTIFIED_KNOWLEDGE_IS_NOT_AUTOMATIC_PROJECT_POLICY = TRUE`
+- `AI_CLIENT_CAN_CERTIFY_KNOWLEDGE = FALSE`
+
 ### L9 — Continuous Dual Learning
 
 Run Quality and Knowledge observers after eligible Actions with bounded cost/health, milestone/release reviews, repeated-defect escalation and drift/gap triggers. Automation proposes/prepares; it never self-approves project governance or KB certification.
+
+AI exposure must consume these canonical outputs rather than creating a third learning loop.
 
 ### L10 — Learning Effectiveness + Distribution Qualification
 
@@ -88,6 +146,24 @@ Measure first-pass qualification, DoR misses, DoD escapes, human-review escapes,
 Transition effectiveness additionally measures whether accepted hardening prevents recurrence of incomplete authority transfer, dead legacy runtime paths, unexplained compatibility code, obsolete packaged assets/services and successor-phase assumption escapes.
 
 Permanent clean-install qualification proves local baseline contracts, project bootstrap, Managed repository governance, DoR/DoD/Human Gates and absence of source-repository runtime authority.
+
+AI capability distribution qualification must additionally prove that an installed Forge exposes only authorized capabilities, that read/explain/propose operations resolve through canonical services, and that an AI adapter cannot bypass governance or execution boundaries.
+
+## AI capability exposure architecture rule
+
+Forge may act as an AI capability **server/provider** through adapters such as MCP, and may later consume external specialist capabilities as an MCP/client where separately justified. Forge must never call itself through MCP for its internal Quality/Knowledge observers or ordinary application-service composition.
+
+```text
+GOOD:
+external AI -> MCP adapter -> Forge application service -> canonical authority
+
+BAD:
+Forge Quality Observer -> MCP -> Forge
+```
+
+MCP/provider evolution must therefore remain replaceable. Protocol changes may alter the adapter without redefining Project, Action, DoR/DoD, learning, evidence or governance semantics.
+
+Governed mutation through AI-facing protocols is explicitly deferred beyond the first exposure stage. If introduced later, it requires its own authorization/threat model and may only invoke the same governed mutation intents available to other authorized adapters.
 
 ## Consequence-driven transition quality requirement
 
@@ -120,13 +196,18 @@ EP migration/cutover prerequisites
   -> L1-R Managed repository governance
   -> L2/L3 Quality Learning
   -> Workspace L4 governance
+  -> L4-AI AI Capability Exposure v1
 
 Knowledge integration readiness
   -> L5 -> L6 -> L7 -> L8
+                     |      |
+                     +-------> L8-AI Knowledge AI Exposure
 
 Quality + Knowledge observers stable
   -> L9 -> L10
 ```
+
+L4-AI may be developed once canonical Forge application-service and Quality Learning contracts are stable; it must not force L5-L8 Knowledge Learning to complete first. L8-AI deliberately waits for Certified Knowledge consumption.
 
 Safe parallelism is determined by the canonical cross-product dependency graph and stable producer contracts, not roadmap prose alone.
 
@@ -139,3 +220,5 @@ Safe parallelism is determined by the canonical cross-product dependency graph a
 - KB does not mutate source repositories or become an execution dependency.
 - Product upgrades do not silently rewrite project/repository policy.
 - Transition hardening does not authorize blind deletion: historical evidence, migration tooling and intentional compatibility require explicit classification.
+- MCP is not internal Forge authority or persistence.
+- External AI clients do not receive implicit governed-mutation or execution authority.
