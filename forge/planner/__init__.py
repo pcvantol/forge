@@ -15,9 +15,12 @@ from .provider_adapter import (
     ProviderDerivationResponse,
     ProviderExecutor,
 )
-from .openai_responses import OpenAIPlanningProviderConfiguration, OpenAIResponsesPlanningProvider, ProviderSubmissionAmbiguous
+from .openai_responses import (OpenAIPlanningProviderConfiguration,
+    OpenAIResponsesPlanningProvider, ProviderSubmissionAmbiguous,
+    ProviderTokenPreflightBindingChanged, ProviderTokenPreflightFailed)
 
 __all__ = ["MissionPlanner", "AIMissionPlanner", "ActionDerivationProvider", "ActionDerivationValidator",
            "DerivationResult", "ProposalValidationError", "planner_input_from_derivation",
            "BoundedActionDerivationProvider", "ProviderDerivationRequest", "ProviderDerivationResponse", "ProviderExecutor",
-           "OpenAIPlanningProviderConfiguration", "OpenAIResponsesPlanningProvider", "ProviderSubmissionAmbiguous"]
+           "OpenAIPlanningProviderConfiguration", "OpenAIResponsesPlanningProvider", "ProviderSubmissionAmbiguous",
+           "ProviderTokenPreflightBindingChanged", "ProviderTokenPreflightFailed"]

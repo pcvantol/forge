@@ -9,6 +9,7 @@ from typing import Protocol, Callable
 import json
 import re
 import subprocess
+import uuid
 from urllib.parse import urlparse, parse_qsl, urlencode
 from .operator_identity import InstallationOperatorService, OperatorContext
 from .runtime.database import _timestamp
@@ -92,6 +93,18 @@ class ProviderSecurityHealth:
     ready: bool
     reference_fingerprint: str | None
 
+@dataclass(frozen=True)
+class PlanningProviderInvocationPolicy:
+    """Redacted G011 policy view consumed by a bounded provider adapter only."""
+    provider_id: str
+    model: str
+    secret_reference: SecretReference
+    timeout_seconds: int
+    input_token_bound: int
+    context_token_bound: int
+    output_token_bound: int
+    version: int
+
 class PlanningProviderSecurityService:
     """Runtime-DB-only config authority; all returned views are redacted."""
     def __init__(self, database, store: SecureStorePort, operator_service: InstallationOperatorService):
@@ -103,7 +116,8 @@ class PlanningProviderSecurityService:
             return None
         if (not isinstance(model, str) or not model
                 or not all(isinstance(value, int) and value > 0 for value in values[1:])
-                or input_token_bound > context_token_bound):
+                or input_token_bound > context_token_bound
+                or input_token_bound + output_token_bound > context_token_bound):
             raise ValueError('complete bounded invocation parameters are required')
         return values
 
@@ -121,6 +135,11 @@ class PlanningProviderSecurityService:
         if actual != expected_version: raise ValueError('stale provider security configuration write')
         new=actual+1
         with self.db._connection:
+            permits=self.db._connection.execute("SELECT permit_id,state FROM planning_provider_generation_permits WHERE provider_id=? AND state IN ('PENDING','TRANSPORT_COMMITTED')",(provider_id,)).fetchall()
+            if any(item['state']=='TRANSPORT_COMMITTED' for item in permits):
+                raise PermissionError('G011 generation transport is committed; configuration mutation is denied')
+            for item in permits:
+                self.db._connection.execute("UPDATE planning_provider_generation_permits SET state='INVALIDATED',updated_at=? WHERE permit_id=?",(occurred_at,item['permit_id']))
             fields = parameters or (None if row is None else row['model'], None if row is None else row['timeout_seconds'], None if row is None else row['input_token_bound'], None if row is None else row['context_token_bound'], None if row is None else row['output_token_bound'])
             if row is None: self.db._connection.execute('INSERT INTO planning_provider_security_config (configuration_id,provider_id,secret_reference,enabled,operator_id,version,created_at,updated_at,model,timeout_seconds,input_token_bound,context_token_bound,output_token_bound) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',(configuration_id,provider_id,reference.serialized,int(enabled),operator_id,new,occurred_at,occurred_at,*fields))
             else: self.db._connection.execute('UPDATE planning_provider_security_config SET secret_reference=?,enabled=?,operator_id=?,version=?,updated_at=?,model=?,timeout_seconds=?,input_token_bound=?,context_token_bound=?,output_token_bound=? WHERE provider_id=?',(reference.serialized,int(enabled),operator_id,new,occurred_at,*fields,provider_id))
@@ -135,3 +154,57 @@ class PlanningProviderSecurityService:
         result={'configuration_id':row['configuration_id'],'provider_id':provider_id,'enabled':bool(row['enabled']),'version':row['version'],'operator_id':row['operator_id'],'state':'READY' if state is SecretState.RESOLVABLE else state.value,'ready':state is SecretState.RESOLVABLE and bool(row['enabled']) and parameters is not None,'secret_reference':'[REDACTED]'}
         if parameters: result.update({'model':parameters[0],'timeout_seconds':parameters[1],'input_token_bound':parameters[2],'context_token_bound':parameters[3],'output_token_bound':parameters[4]})
         return result
+
+    def invocation_policy(self, provider_id: str) -> PlanningProviderInvocationPolicy:
+        """Load the sole supported adapter policy view from canonical G011 state.
+
+        This intentionally does not interrogate the secure store. Adapter
+        request construction and deterministic bounds validation must complete
+        before the separate transport-time secret resolution.
+        """
+        row=self.db._connection.execute('SELECT * FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
+        if row is None:
+            raise PermissionError('planning provider is not configured')
+        parameters=self._invocation_parameters(row['model'], row['timeout_seconds'], row['input_token_bound'], row['context_token_bound'], row['output_token_bound'])
+        if not row['enabled'] or parameters is None:
+            raise PermissionError('planning provider policy is not enabled and complete')
+        return PlanningProviderInvocationPolicy(provider_id, parameters[0], SecretReference.parse(row['secret_reference']), parameters[1], parameters[2], parameters[3], parameters[4], row['version'])
+
+    @staticmethod
+    def _same_policy(left, right):
+        return left == right
+
+    def _acquire_generation_permit(self, expected_policy, policy_digest, request_digest):
+        """Create a one-attempt, non-secret G011 guard owned by RuntimeDatabase."""
+        if not isinstance(expected_policy, PlanningProviderInvocationPolicy) or not all(isinstance(value,str) and value.startswith('sha256:') for value in (policy_digest,request_digest)):
+            raise PermissionError('canonical G011 transport binding is required')
+        now=_timestamp(); permit_id=str(uuid.uuid4()); connection=self.db._connection
+        connection.execute('BEGIN IMMEDIATE')
+        try:
+            actual=self.invocation_policy(expected_policy.provider_id)
+            if not self._same_policy(actual,expected_policy): raise PermissionError('canonical G011 policy changed before generation permit')
+            connection.execute("INSERT INTO planning_provider_generation_permits VALUES (?,?,?,?,?,?,?,?)",(permit_id,actual.provider_id,actual.version,policy_digest,request_digest,'PENDING',now,now))
+            connection.commit()
+        except Exception:
+            connection.rollback(); raise
+        return permit_id
+
+    def _commit_generation_transport(self, permit_id, expected_policy, policy_digest, request_digest):
+        """Atomically verify the permit and block G011 writes until transport ends."""
+        connection=self.db._connection; now=_timestamp()
+        connection.execute('BEGIN IMMEDIATE')
+        try:
+            row=connection.execute('SELECT * FROM planning_provider_generation_permits WHERE permit_id=?',(permit_id,)).fetchone()
+            actual=self.invocation_policy(expected_policy.provider_id)
+            if (row is None or row['state']!='PENDING' or row['policy_version']!=expected_policy.version
+                    or row['policy_digest']!=policy_digest or row['request_digest']!=request_digest
+                    or not self._same_policy(actual,expected_policy)):
+                raise PermissionError('canonical G011 generation permit is invalid')
+            connection.execute("UPDATE planning_provider_generation_permits SET state='TRANSPORT_COMMITTED',updated_at=? WHERE permit_id=?",(now,permit_id))
+            connection.commit()
+        except Exception:
+            connection.rollback(); raise
+
+    def _release_generation_permit(self, permit_id):
+        with self.db._connection:
+            self.db._connection.execute('DELETE FROM planning_provider_generation_permits WHERE permit_id=?',(permit_id,))

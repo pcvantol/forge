@@ -16,33 +16,88 @@ from urllib.request import Request, urlopen
 
 from forge.models.action_derivation import (DerivedActionProposal, GovernanceRefinementRequired,
     PlanningSnapshot, ProposalProvenance, ProviderInvocationEvidence, ProviderSideEffectState)
-from forge.provider_security import SecretReference, SecretState
+from forge.provider_security import (PlanningProviderInvocationPolicy,
+    PlanningProviderSecurityService, SecretReference, SecretState)
 from .provider_adapter import ProviderDerivationRequest, ProviderDerivationResponse
 
 OPENAI_RESPONSES_ADAPTER_VERSION = "1.0"
 _ENDPOINT = "https://api.openai.com/v1/responses"
+_INPUT_TOKENS_ENDPOINT = "https://api.openai.com/v1/responses/input_tokens"
 
 class ProviderSubmissionAmbiguous(RuntimeError):
     """The request may have reached OpenAI; operator reconciliation is required."""
+
+class ProviderTokenPreflightFailed(RuntimeError):
+    """Provider-authoritative token preflight did not yield a usable count."""
+
+class ProviderTokenPreflightBindingChanged(RuntimeError):
+    """Canonical policy or request changed after token preflight."""
 
 class SecretResolver(Protocol):
     def resolve(self, reference: SecretReference) -> tuple[SecretState, str | None]: ...
 
 @dataclass(frozen=True)
-class OpenAIPlanningProviderConfiguration:
+class _G011PolicySnapshot:
+    """Redacted, immutable authority snapshot bound to one token preflight."""
     provider_id: str
+    version: int
+    enabled: bool
     model: str
-    secret_reference: SecretReference
-    timeout_seconds: float = 20.0
-    max_input_characters: int = 12000
-    max_output_tokens: int = 1800
-    enabled: bool = False
+    secret_reference_fingerprint: str
+    timeout_seconds: int
+    input_token_bound: int
+    context_token_bound: int
+    output_token_bound: int
 
-    def __post_init__(self) -> None:
-        if not self.provider_id or not self.model:
-            raise ValueError("OpenAI planning provider requires explicit provider and model")
-        if self.timeout_seconds <= 0 or self.timeout_seconds > 120 or self.max_input_characters < 512 or self.max_output_tokens < 128:
-            raise ValueError("OpenAI planning provider bounds are invalid")
+    @classmethod
+    def from_policy(cls, policy: PlanningProviderInvocationPolicy) -> "_G011PolicySnapshot":
+        return cls(policy.provider_id, policy.version, True, policy.model,
+                   policy.secret_reference.fingerprint, policy.timeout_seconds,
+                   policy.input_token_bound, policy.context_token_bound,
+                   policy.output_token_bound)
+
+    @property
+    def digest(self) -> str:
+        return _digest({"provider_id": self.provider_id, "version": self.version,
+                        "enabled": self.enabled, "model": self.model,
+                        "secret_reference_fingerprint": self.secret_reference_fingerprint,
+                        "timeout_seconds": self.timeout_seconds,
+                        "input_token_bound": self.input_token_bound,
+                        "context_token_bound": self.context_token_bound,
+                        "output_token_bound": self.output_token_bound})
+
+@dataclass(frozen=True)
+class _TokenPreflightReceipt:
+    policy_snapshot: _G011PolicySnapshot
+    policy_digest: str
+    request_digest: str
+    input_tokens: int
+
+@dataclass(frozen=True, init=False)
+class OpenAIPlanningProviderConfiguration:
+    """Adapter configuration that can only be built from canonical G011 policy."""
+    policy_service: PlanningProviderSecurityService
+    provider_id: str
+
+    def __init__(self, policy_service: PlanningProviderSecurityService, provider_id: str,
+                 *, _from_canonical_g011: bool = False) -> None:
+        if not _from_canonical_g011:
+            raise TypeError("OpenAI planning configuration must be created from canonical G011 policy")
+        if not isinstance(policy_service, PlanningProviderSecurityService) or not provider_id:
+            raise ValueError("OpenAI planning provider requires canonical G011 authority")
+        object.__setattr__(self, "policy_service", policy_service)
+        object.__setattr__(self, "provider_id", provider_id)
+
+    @classmethod
+    def from_canonical_g011(cls, service: PlanningProviderSecurityService,
+                            provider_id: str) -> "OpenAIPlanningProviderConfiguration":
+        # Validate readiness at configuration construction, then obtain a fresh
+        # canonical policy snapshot immediately before every transport.
+        service.invocation_policy(provider_id)
+        return cls(service, provider_id, _from_canonical_g011=True)
+
+    def current_policy(self) -> PlanningProviderInvocationPolicy:
+        return self.policy_service.invocation_policy(self.provider_id)
 
 class OpenAIResponsesPlanningProvider:
     """One explicit OpenAI model; response data is untrusted proposal input."""
@@ -51,25 +106,50 @@ class OpenAIResponsesPlanningProvider:
         self.configuration, self._resolver, self._opener, self.adapter_version = configuration, resolver, opener, adapter_version
 
     def invoke(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse:
-        if not self.configuration.enabled:
-            raise PermissionError("OpenAI planning provider is disabled")
-        if request.provider_id != self.configuration.provider_id or request.model != self.configuration.model:
+        preflight_policy = self.configuration.current_policy()
+        if request.provider_id != preflight_policy.provider_id or request.model != preflight_policy.model:
             raise ValueError("OpenAI planning provider does not allow provider/model fallback")
-        state, secret = self._resolver.resolve(self.configuration.secret_reference)
-        if state is not SecretState.RESOLVABLE or not secret:
-            raise PermissionError("OpenAI planning provider secret is not resolvable")
-        started = _now()
-        body = self._body(request)
+        preflight_snapshot = _G011PolicySnapshot.from_policy(preflight_policy)
+        preflight_body = self._body(request, preflight_policy)
+        request_digest = _digest(preflight_body)
+        # OpenAI's input-token endpoint is the authority for the same
+        # Responses request semantics. Its authenticated preflight is not a
+        # generation invocation and cannot produce an Action proposal.
+        receipt = self._preflight_input_tokens(preflight_body, preflight_policy,
+                                               preflight_snapshot, request_digest)
+        self._enforce_token_policy(preflight_body, preflight_policy, receipt.input_tokens)
+
+        # Reload RuntimeDatabase authority after preflight.  A preflight can
+        # authorize only the exact policy and non-secret request it counted.
+        generation_policy = self.configuration.current_policy()
+        generation_snapshot = _G011PolicySnapshot.from_policy(generation_policy)
+        if (receipt.policy_digest != receipt.policy_snapshot.digest
+                or generation_snapshot != receipt.policy_snapshot
+                or generation_snapshot.digest != receipt.policy_digest):
+            raise ProviderTokenPreflightBindingChanged("canonical G011 policy changed after token preflight")
+        body = self._body(request, generation_policy)
+        if _digest(body) != receipt.request_digest:
+            raise ProviderTokenPreflightBindingChanged("Responses request changed after token preflight")
+        permit = self.configuration.policy_service._acquire_generation_permit(
+            generation_policy, receipt.policy_digest, receipt.request_digest)
         try:
-            http_request = Request(_ENDPOINT, data=json.dumps(body, separators=(",", ":")).encode(), headers={
-                "Authorization": "Bearer " + secret, "Content-Type": "application/json"}, method="POST")
-            with self._opener(http_request, timeout=self.configuration.timeout_seconds) as response:
-                document = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
-            # A request may have reached the provider; never retry automatically.
-            raise ProviderSubmissionAmbiguous("OpenAI submission may have happened; automatic retry is forbidden") from None
+            state, secret = self._resolver.resolve(generation_policy.secret_reference)
+            if state is not SecretState.RESOLVABLE or not secret:
+                raise PermissionError("OpenAI planning provider secret is not resolvable")
+            self.configuration.policy_service._commit_generation_transport(
+                permit, generation_policy, receipt.policy_digest, receipt.request_digest)
+            started = _now()
+            try:
+                http_request = Request(_ENDPOINT, data=json.dumps(body, separators=(",", ":")).encode(), headers={
+                    "Authorization": "Bearer " + secret, "Content-Type": "application/json"}, method="POST")
+                with self._opener(http_request, timeout=generation_policy.timeout_seconds) as response:
+                    document = json.loads(response.read().decode("utf-8"))
+            except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+                # A request may have reached the provider; never retry automatically.
+                raise ProviderSubmissionAmbiguous("OpenAI submission may have happened; automatic retry is forbidden") from None
         finally:
             secret = None
+            self.configuration.policy_service._release_generation_permit(permit)
         try:
             proposals, refinement = self._parse(request, document)
             return ProviderDerivationResponse(self._evidence(request, document, ProviderSideEffectState.HAPPENED_AND_CONFIRMED, started, str(document.get("status", "completed"))), proposals=proposals, governance_refinement=refinement)
@@ -80,12 +160,41 @@ class OpenAIResponsesPlanningProvider:
     def reconcile(self, request: ProviderDerivationRequest) -> ProviderSideEffectState:
         return ProviderSideEffectState.MAY_HAVE_HAPPENED
 
-    def _body(self, request: ProviderDerivationRequest) -> dict[str, object]:
+    def _body(self, request: ProviderDerivationRequest, policy: PlanningProviderInvocationPolicy | None = None) -> dict[str, object]:
+        policy = policy or self.configuration.current_policy()
         evidence = [{"kind": item.kind.value, "source_id": item.source_id, "revision": item.revision, "content_digest": item.content_digest} for item in request.snapshot.evidence]
         prompt = json.dumps({"contract":"Forge Action Derivation; propose only, never approve or execute.", "snapshot": request.snapshot.to_dict() | {"evidence": evidence}}, separators=(",", ":"))
-        if len(prompt) > self.configuration.max_input_characters:
-            raise ValueError("bounded planning evidence exceeds configured input limit")
-        return {"model": self.configuration.model, "store": False, "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": self.configuration.max_output_tokens, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _SCHEMA}}}
+        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _SCHEMA}}}
+
+    def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy,
+                                snapshot: _G011PolicySnapshot, request_digest: str) -> _TokenPreflightReceipt:
+        state, secret = self._resolver.resolve(policy.secret_reference)
+        if state is not SecretState.RESOLVABLE or not secret:
+            raise PermissionError("OpenAI planning provider secret is not resolvable for token preflight")
+        try:
+            request = Request(_INPUT_TOKENS_ENDPOINT, data=json.dumps(body, separators=(",", ":")).encode(), headers={
+                "Authorization": "Bearer " + secret, "Content-Type": "application/json"}, method="POST")
+            with self._opener(request, timeout=policy.timeout_seconds) as response:
+                document = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight did not complete") from None
+        finally:
+            secret = None
+        value = document.get("input_tokens") if isinstance(document, dict) else None
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned an invalid count")
+        return _TokenPreflightReceipt(snapshot, snapshot.digest, request_digest, value)
+
+    def _enforce_token_policy(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy, input_tokens: int) -> None:
+        output_tokens = body["max_output_tokens"]
+        if not isinstance(output_tokens, int) or isinstance(output_tokens, bool) or output_tokens > policy.output_token_bound:
+            raise ValueError("requested output exceeds canonical G011 output token bound")
+        if not isinstance(input_tokens, int) or isinstance(input_tokens, bool) or input_tokens < 0:
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned an invalid count")
+        if input_tokens > policy.input_token_bound:
+            raise ValueError("bounded planning evidence exceeds canonical G011 input token bound")
+        if input_tokens + output_tokens > policy.context_token_bound:
+            raise ValueError("bounded planning request exceeds canonical G011 context token bound")
 
     def _parse(self, request: ProviderDerivationRequest, document: dict[str, object]) -> tuple[tuple[DerivedActionProposal, ...] | None, GovernanceRefinementRequired | None]:
         if document.get("status") != "completed": raise ValueError("response was not completed")
