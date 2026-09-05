@@ -169,6 +169,12 @@ class MissionStateStore:
         from forge.runtime.database import RuntimeDatabase
         if not isinstance(runtime, RuntimeDatabase):
             raise TypeError("MissionStateStore requires the canonical RuntimeDatabase")
+        resolved = RuntimeDatabase(runtime.repository_root)
+        try:
+            if resolved.path.resolve() != runtime.path.resolve():
+                raise ValueError("MissionStateStore requires the resolved canonical RuntimeDatabase")
+        finally:
+            resolved.close()
         self._runtime = runtime
 
     @staticmethod
@@ -228,7 +234,7 @@ class MissionStateStore:
         except Exception as error:
             if not self._is_missing(error, mission_id):
                 raise MissionStateStoreError("canonical Mission state could not be read") from error
-            self._runtime.save_mission_state(document)
+            self._runtime.create_mission_state(document)
         else:
             raise MissionStateStoreError(f"mission state already exists: {mission_id}")
         return self.get(mission_id)
@@ -263,7 +269,7 @@ class MissionStateStore:
         except Exception as error:
             if not self._is_missing(error, mission_id):
                 raise MissionStateStoreError("canonical Mission state could not be read") from error
-            self._runtime.save_mission_state(document)
+            self._runtime.create_mission_state(document)
         else:
             raise MissionStateStoreError(f"mission state already exists: {mission_id}")
         return self.get(mission_id)

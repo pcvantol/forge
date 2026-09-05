@@ -103,7 +103,10 @@ class MissionIntake:
             "pause_reason": None, "approval_record": None, "delegations": [], "integration": None,
             "revision": 1, "admission_contract": contract,
         }
-        repository.database.save_mission_state(document)
+        try:
+            repository.database.create_mission_state(document)
+        except RuntimeDatabaseError as error:
+            raise MissionIntakeError("Mission Intake could not create canonical Mission state") from error
         return MissionStateStore._decode(json.dumps(document, sort_keys=True, separators=(",", ":")))
 
     def admit(

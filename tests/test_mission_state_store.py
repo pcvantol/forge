@@ -75,6 +75,14 @@ class MissionStateStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "canonical RuntimeDatabase"):
             MissionStateStore(self.runtime._connection)  # type: ignore[arg-type]  # noqa: SLF001
 
+    def test_store_rejects_an_alternate_runtime_database(self) -> None:
+        alternate = RuntimeDatabase(self.root, path=self.root / "alternate-runtime.db")
+        try:
+            with self.assertRaisesRegex(ValueError, "resolved canonical RuntimeDatabase"):
+                MissionStateStore(alternate)
+        finally:
+            alternate.close()
+
     def test_transitions_are_closed_and_persist_every_step(self) -> None:
         self.create()
         with self.assertRaisesRegex(MissionStateStoreError, "not permitted"):
