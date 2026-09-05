@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 18
+RUNTIME_SCHEMA_VERSION = 21
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -35,6 +35,7 @@ _TABLES = frozenset((
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
     "planning_provider_security_config", "planning_provider_security_audit",
+    "governance_authority", "governance_capability_grants", "governance_decisions",
 ))
 
 
@@ -99,6 +100,7 @@ class RuntimeDatabase:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(self.path)
         self._connection.row_factory = sqlite3.Row
+        self._governance_write_state = {"permitted": False}
         try:
             self._configure()
             self._migrate(forge_version)
@@ -112,6 +114,35 @@ class RuntimeDatabase:
         self._connection.execute("PRAGMA foreign_keys=ON")
         self._connection.execute("PRAGMA journal_mode=WAL")
         self._connection.execute("PRAGMA synchronous=FULL")
+        self._connection.create_function("forge_governance_write_permitted", 0, lambda: int(self._governance_write_state["permitted"]))
+
+    def _insert_governance_grant(self, grant_id: str, installation_id: str, operator_id: str, capability: str,
+                                 provenance: str, digest: str, occurred_at: str) -> None:
+        self._governance_write_state["permitted"] = True
+        try:
+            with self._connection:
+                self._connection.execute("INSERT INTO governance_capability_grants VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (grant_id, installation_id, operator_id, capability, provenance, digest, occurred_at))
+        finally: self._governance_write_state["permitted"] = False
+
+    def _insert_governance_authority(self, installation_id: str, operator_id: str, capability: str, occurred_at: str) -> None:
+        self._governance_write_state["permitted"] = True
+        try:
+            with self._connection:
+                self._connection.execute("INSERT INTO governance_authority VALUES (?, ?, ?, ?, ?)",
+                    (installation_id, operator_id, capability, 1, occurred_at))
+        finally: self._governance_write_state["permitted"] = False
+
+    def _insert_governance_decision(self, decision_id: str, installation_id: str, subject_id: str,
+                                    subject_revision: str, capability: str, predecessor_digest: str | None,
+                                    document: str, digest: str, occurred_at: str) -> None:
+        self._governance_write_state["permitted"] = True
+        try:
+            with self._connection:
+                self._connection.execute("INSERT INTO governance_decisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (decision_id, installation_id, subject_id, subject_revision, capability, predecessor_digest,
+                     document, digest, occurred_at))
+        finally: self._governance_write_state["permitted"] = False
 
     def _migrate(self, forge_version: str) -> None:
         version = self._connection.execute("PRAGMA user_version").fetchone()[0]
@@ -267,6 +298,18 @@ class RuntimeDatabase:
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
                     CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_delete BEFORE DELETE ON planning_provider_security_audit
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
+                    CREATE TABLE governance_authority (installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (installation_id, operator_id, capability));
+                    CREATE TABLE governance_capability_grants (grant_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, bootstrap_provenance TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, operator_id, capability));
+                    CREATE TABLE governance_decisions (decision_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, subject_id TEXT NOT NULL, subject_revision TEXT NOT NULL, capability TEXT NOT NULL, predecessor_digest TEXT, document TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, subject_id, subject_revision, capability));
+                    CREATE TRIGGER governance_authority_authorized_insert BEFORE INSERT ON governance_authority WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
+                    CREATE TRIGGER governance_authority_immutable_update BEFORE UPDATE ON governance_authority BEGIN SELECT RAISE(ABORT, 'governance authority is immutable'); END;
+                    CREATE TRIGGER governance_authority_immutable_delete BEFORE DELETE ON governance_authority BEGIN SELECT RAISE(ABORT, 'governance authority is immutable'); END;
+                    CREATE TRIGGER governance_capability_grants_authorized_insert BEFORE INSERT ON governance_capability_grants WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
+                    CREATE TRIGGER governance_capability_grants_immutable_update BEFORE UPDATE ON governance_capability_grants BEGIN SELECT RAISE(ABORT, 'governance grant is immutable'); END;
+                    CREATE TRIGGER governance_capability_grants_immutable_delete BEFORE DELETE ON governance_capability_grants BEGIN SELECT RAISE(ABORT, 'governance grant is immutable'); END;
+                    CREATE TRIGGER governance_decisions_authorized_insert BEFORE INSERT ON governance_decisions WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
+                    CREATE TRIGGER governance_decisions_immutable_update BEFORE UPDATE ON governance_decisions BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
+                    CREATE TRIGGER governance_decisions_immutable_delete BEFORE DELETE ON governance_decisions BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_delete BEFORE DELETE ON architecture_reviews
@@ -603,6 +646,70 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "18", "migration_version": "18", "last_migration": "18"})
                 self._connection.execute("PRAGMA user_version=18")
+            self._migrate(forge_version)
+        elif version == 18:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS governance_authority (
+                        installation_id TEXT NOT NULL, operator_id TEXT NOT NULL,
+                        capability TEXT NOT NULL, version INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        PRIMARY KEY (installation_id, operator_id, capability)
+                    );
+                    CREATE TABLE IF NOT EXISTS governance_decisions (
+                        decision_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL,
+                        subject_id TEXT NOT NULL, subject_revision TEXT NOT NULL,
+                        capability TEXT NOT NULL, predecessor_digest TEXT,
+                        document TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
+                        occurred_at TEXT NOT NULL,
+                        UNIQUE(installation_id, subject_id, subject_revision, capability)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS governance_decisions_immutable_update BEFORE UPDATE ON governance_decisions
+                    BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_decisions_immutable_delete BEFORE DELETE ON governance_decisions
+                    BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "19", "migration_version": "19", "last_migration": "19"})
+                self._connection.execute("PRAGMA user_version=19")
+            self._migrate(forge_version)
+        elif version == 19:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS governance_capability_grants (
+                        grant_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL,
+                        operator_id TEXT NOT NULL, capability TEXT NOT NULL,
+                        bootstrap_provenance TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
+                        occurred_at TEXT NOT NULL,
+                        UNIQUE(installation_id, operator_id, capability)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS governance_authority_authorized_insert BEFORE INSERT ON governance_authority
+                    WHEN forge_governance_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_capability_grants_authorized_insert BEFORE INSERT ON governance_capability_grants
+                    WHEN forge_governance_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_decisions_authorized_insert BEFORE INSERT ON governance_decisions
+                    WHEN forge_governance_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
+                """)
+                self._set_metadata({"schema_version": "20", "migration_version": "20", "last_migration": "20"})
+                self._connection.execute("PRAGMA user_version=20")
+            self._migrate(forge_version)
+        elif version == 20:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TRIGGER IF NOT EXISTS governance_authority_immutable_update BEFORE UPDATE ON governance_authority
+                    BEGIN SELECT RAISE(ABORT, 'governance authority is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_authority_immutable_delete BEFORE DELETE ON governance_authority
+                    BEGIN SELECT RAISE(ABORT, 'governance authority is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_capability_grants_immutable_update BEFORE UPDATE ON governance_capability_grants
+                    BEGIN SELECT RAISE(ABORT, 'governance grant is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_capability_grants_immutable_delete BEFORE DELETE ON governance_capability_grants
+                    BEGIN SELECT RAISE(ABORT, 'governance grant is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "21", "migration_version": "21", "last_migration": "21"})
+                self._connection.execute("PRAGMA user_version=21")
+            self._migrate(forge_version)
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 

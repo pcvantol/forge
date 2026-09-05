@@ -25,7 +25,19 @@ class ArchitectureMissionHistoryEntry:
 
 
 class ArchitectureWorkspace:
-    """Owns architecture governance only; it cannot plan, execute, or mutate repositories."""
+    """Legacy local workspace storage for offline/tests; not production authority.
+
+    Supported Forge governance mutations use :meth:`for_runtime`, which is
+    bound to the resolved Runtime Instance and canonical evidence repository.
+    """
+
+    @classmethod
+    def for_runtime(cls, database: object, repository: object, context: object) -> object:
+        """Return the canonical runtime-bound Architecture approval service."""
+        from forge.governance_authority import CanonicalArchitectureWorkspace
+        if getattr(repository, "database", None) is not database:
+            raise ArchitectureWorkspaceError("Architecture governance repository must use the resolved Runtime Instance")
+        return CanonicalArchitectureWorkspace(repository, context)
 
     def __init__(self, path: Path) -> None:
         self._connection = sqlite3.connect(path)

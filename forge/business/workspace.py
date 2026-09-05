@@ -24,7 +24,22 @@ class MissionCandidateHistoryEntry:
 
 
 class BusinessWorkspace:
-    """Owns Portfolio decisions. It cannot create a Mission, execute work, or mutate repositories."""
+    """Legacy local workspace storage for offline/tests; not production authority.
+
+    Supported Forge governance mutations use :meth:`for_runtime`, which is
+    bound to the resolved Runtime Instance and canonical evidence repository.
+    """
+
+    @classmethod
+    def for_runtime(cls, database: object, repository: object, context: object) -> object:
+        """Return the canonical runtime-bound Business approval service.
+
+        No filesystem path is accepted on this supported production route.
+        """
+        from forge.governance_authority import CanonicalBusinessWorkspace
+        if getattr(repository, "database", None) is not database:
+            raise BusinessWorkspaceError("Business governance repository must use the resolved Runtime Instance")
+        return CanonicalBusinessWorkspace(repository, context)
 
     def __init__(self, path: Path) -> None:
         self._connection = sqlite3.connect(path)
