@@ -6,7 +6,7 @@ import unittest
 
 from forge.generation_two import intake_portfolio_intelligence_foundation
 from forge.generation_two_execution import MISSION_ID, activate_and_plan_portfolio_intelligence
-from forge.runtime import RuntimeDatabase
+from forge.runtime import RUNTIME_SCHEMA_VERSION, RuntimeDatabase
 from forge.runtime.execution_context import project_execution_context
 
 
@@ -91,7 +91,7 @@ class ExecutionContextTests(unittest.TestCase):
         self.database._connection.commit()
         self.database.close()
         self.database = RuntimeDatabase(self.database.repository_root, path=path, forge_version="test")
-        self.assertEqual(self.database.metadata["schema_version"], "21")
+        self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         self.assertIn("execution_context_snapshots", {
             row["name"] for row in self.database._connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         })

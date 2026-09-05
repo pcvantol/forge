@@ -99,6 +99,18 @@ class RuntimeDatabaseTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.database.save_planning_state({"planner_version": "1"})
 
+    def test_action_derivation_is_durable_idempotent_and_mission_scoped(self) -> None:
+        self.database.save_mission_state(self._mission())
+        record = {"derivation_id": "derivation-1", "mission_id": "mission-1", "snapshot_digest": "sha256:snapshot",
+                  "contract_version": "1.0", "provider_configuration": "fixture-v1", "lifecycle": "SNAPSHOT_CREATED"}
+        self.database.save_action_derivation(record)
+        self.database.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertEqual(self.database.get_document("action_derivations", "derivation-1"), record)
+        self.database.save_action_derivation({**record, "lifecycle": "MATERIALIZED"})
+        with self.assertRaisesRegex(RuntimeError, "identical action derivation"):
+            self.database.save_action_derivation({**record, "derivation_id": "other"})
+
     def test_execution_receipts_are_immutable(self) -> None:
         self.database.save_mission_state(self._mission())
         self.database.record_execution_receipt(receipt_id="receipt-1", mission_id="mission-1", execution_host="host", execution_run_id="run", engineering_report_id="report", correlation_identity="correlation", executed_at="2026-08-04T00:00:00Z", outcome="complete")

@@ -65,6 +65,7 @@ class PlannedActionDefinition:
     priority: int = 100
     postponed: bool = False
     merge_key: str | None = None
+    dependencies: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.id or not self.objective or not self.expected_evidence or not self.validation_strategy or self.priority < 1:
@@ -76,6 +77,9 @@ class PlannedActionDefinition:
             object.__setattr__(self, name, tuple(sorted(values)))
         if self.merge_key == "":
             raise ValueError("planned action merge key must be non-empty when supplied")
+        if self.id in self.dependencies or len(self.dependencies) != len(set(self.dependencies)) or any(not item for item in self.dependencies):
+            raise ValueError("planned action dependencies must be unique, non-empty, and cannot include itself")
+        object.__setattr__(self, "dependencies", tuple(sorted(self.dependencies)))
 
 
 @dataclass(frozen=True, order=True)

@@ -96,25 +96,42 @@ class PlanningProviderSecurityService:
     """Runtime-DB-only config authority; all returned views are redacted."""
     def __init__(self, database, store: SecureStorePort, operator_service: InstallationOperatorService):
         self.db, self.store, self.operator_service = database, store, operator_service
-    def configure(self, *, configuration_id, provider_id, reference, operator_context: OperatorContext, expected_version=0, enabled=True):
+    @staticmethod
+    def _invocation_parameters(model, timeout_seconds, input_token_bound, context_token_bound, output_token_bound):
+        values = (model, timeout_seconds, input_token_bound, context_token_bound, output_token_bound)
+        if all(value is None for value in values):
+            return None
+        if (not isinstance(model, str) or not model
+                or not all(isinstance(value, int) and value > 0 for value in values[1:])
+                or input_token_bound > context_token_bound):
+            raise ValueError('complete bounded invocation parameters are required')
+        return values
+
+    def configure(self, *, configuration_id, provider_id, reference, operator_context: OperatorContext, expected_version=0, enabled=True,
+                  model=None, timeout_seconds=None, input_token_bound=None, context_token_bound=None, output_token_bound=None):
         if not self.operator_service.authorize(operator_context):
             raise PermissionError('trusted named operator context is required')
         if not isinstance(reference, SecretReference): raise TypeError('typed secret reference is required')
         reference=SecretReference(reference.scheme, reference.identifier)
+        parameters=self._invocation_parameters(model, timeout_seconds, input_token_bound, context_token_bound, output_token_bound)
         occurred_at = _timestamp()
         operator_id = sha256(operator_context.generated_uid.encode()).hexdigest()[:16]
-        row=self.db._connection.execute('SELECT version FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
+        row=self.db._connection.execute('SELECT * FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
         actual=0 if row is None else row['version']
         if actual != expected_version: raise ValueError('stale provider security configuration write')
         new=actual+1
         with self.db._connection:
-            if row is None: self.db._connection.execute('INSERT INTO planning_provider_security_config VALUES (?,?,?,?,?,?,?,?)',(configuration_id,provider_id,reference.serialized,int(enabled),operator_id,new,occurred_at,occurred_at))
-            else: self.db._connection.execute('UPDATE planning_provider_security_config SET secret_reference=?,enabled=?,operator_id=?,version=?,updated_at=? WHERE provider_id=?',(reference.serialized,int(enabled),operator_id,new,occurred_at,provider_id))
-            audit={'configuration_id':configuration_id,'operator_id':operator_id,'operation':'configured','version':new,'secret_reference_changed':True,'result':'accepted'}
+            fields = parameters or (None if row is None else row['model'], None if row is None else row['timeout_seconds'], None if row is None else row['input_token_bound'], None if row is None else row['context_token_bound'], None if row is None else row['output_token_bound'])
+            if row is None: self.db._connection.execute('INSERT INTO planning_provider_security_config (configuration_id,provider_id,secret_reference,enabled,operator_id,version,created_at,updated_at,model,timeout_seconds,input_token_bound,context_token_bound,output_token_bound) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',(configuration_id,provider_id,reference.serialized,int(enabled),operator_id,new,occurred_at,occurred_at,*fields))
+            else: self.db._connection.execute('UPDATE planning_provider_security_config SET secret_reference=?,enabled=?,operator_id=?,version=?,updated_at=?,model=?,timeout_seconds=?,input_token_bound=?,context_token_bound=?,output_token_bound=? WHERE provider_id=?',(reference.serialized,int(enabled),operator_id,new,occurred_at,*fields,provider_id))
+            audit={'configuration_id':configuration_id,'operator_id':operator_id,'operation':'configured','version':new,'secret_reference_changed':True,'invocation_parameters_configured':parameters is not None,'result':'accepted'}
             self.db._connection.execute('INSERT INTO planning_provider_security_audit VALUES (?,?,?,?,?,?)',(f'{configuration_id}:{new}',configuration_id,operator_id,'configured',occurred_at,json.dumps(audit,sort_keys=True)))
         return self.inspect(provider_id)
     def inspect(self, provider_id):
         row=self.db._connection.execute('SELECT * FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
         if row is None: return {'state':'NOT_CONFIGURED','ready':False}
-        state=self.store.status(SecretReference.parse(row['secret_reference'])) if row['enabled'] else SecretState.MISSING
-        return {'configuration_id':row['configuration_id'],'provider_id':provider_id,'enabled':bool(row['enabled']),'version':row['version'],'operator_id':row['operator_id'],'state':'READY' if state is SecretState.RESOLVABLE else state.value,'ready':state is SecretState.RESOLVABLE and bool(row['enabled']),'secret_reference':'[REDACTED]'}
+        parameters=self._invocation_parameters(row['model'], row['timeout_seconds'], row['input_token_bound'], row['context_token_bound'], row['output_token_bound'])
+        state=self.store.status(SecretReference.parse(row['secret_reference'])) if row['enabled'] and parameters else SecretState.MISSING
+        result={'configuration_id':row['configuration_id'],'provider_id':provider_id,'enabled':bool(row['enabled']),'version':row['version'],'operator_id':row['operator_id'],'state':'READY' if state is SecretState.RESOLVABLE else state.value,'ready':state is SecretState.RESOLVABLE and bool(row['enabled']) and parameters is not None,'secret_reference':'[REDACTED]'}
+        if parameters: result.update({'model':parameters[0],'timeout_seconds':parameters[1],'input_token_bound':parameters[2],'context_token_bound':parameters[3],'output_token_bound':parameters[4]})
+        return result

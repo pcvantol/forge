@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 21
+RUNTIME_SCHEMA_VERSION = 23
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -34,7 +34,7 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
-    "planning_provider_security_config", "planning_provider_security_audit",
+    "planning_provider_security_config", "planning_provider_security_audit", "action_derivations",
     "governance_authority", "governance_capability_grants", "governance_decisions",
 ))
 
@@ -356,6 +356,9 @@ class RuntimeDatabase:
                         secret_reference TEXT NOT NULL, enabled INTEGER NOT NULL,
                         operator_id TEXT NOT NULL, version INTEGER NOT NULL,
                         created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                        model TEXT, timeout_seconds INTEGER,
+                        input_token_bound INTEGER, context_token_bound INTEGER,
+                        output_token_bound INTEGER,
                         UNIQUE(provider_id)
                     );
                     CREATE TABLE IF NOT EXISTS planning_provider_security_audit (
@@ -380,6 +383,14 @@ class RuntimeDatabase:
                     CREATE TRIGGER governance_decisions_authorized_insert BEFORE INSERT ON governance_decisions WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
                     CREATE TRIGGER governance_decisions_immutable_update BEFORE UPDATE ON governance_decisions BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
                     CREATE TRIGGER governance_decisions_immutable_delete BEFORE DELETE ON governance_decisions BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
+                    CREATE TABLE IF NOT EXISTS action_derivations (
+                        derivation_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        snapshot_digest TEXT NOT NULL, contract_version TEXT NOT NULL,
+                        provider_configuration TEXT NOT NULL, lifecycle TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        UNIQUE (mission_id, snapshot_digest, contract_version, provider_configuration),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_delete BEFORE DELETE ON architecture_reviews
@@ -760,6 +771,33 @@ class RuntimeDatabase:
                 self._set_metadata({"schema_version": "21", "migration_version": "21", "last_migration": "21"})
                 self._connection.execute("PRAGMA user_version=21")
             self._migrate(forge_version)
+        elif version == 21:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS action_derivations (
+                        derivation_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        snapshot_digest TEXT NOT NULL, contract_version TEXT NOT NULL,
+                        provider_configuration TEXT NOT NULL, lifecycle TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        UNIQUE (mission_id, snapshot_digest, contract_version, provider_configuration),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                """)
+                self._set_metadata({"schema_version": "22", "migration_version": "22", "last_migration": "22"})
+                self._connection.execute("PRAGMA user_version=22")
+            self._migrate(forge_version)
+        elif version == 22:
+            # Legacy G011 rows have no invocation policy.  They remain
+            # explicitly incomplete until a trusted operator configures it.
+            with self._connection:
+                existing = {row["name"] for row in self._connection.execute("PRAGMA table_info(planning_provider_security_config)")}
+                for name, definition in (("model", "TEXT"), ("timeout_seconds", "INTEGER"),
+                                         ("input_token_bound", "INTEGER"), ("context_token_bound", "INTEGER"),
+                                         ("output_token_bound", "INTEGER")):
+                    if name not in existing:
+                        self._connection.execute(f"ALTER TABLE planning_provider_security_config ADD COLUMN {name} {definition}")
+                self._set_metadata({"schema_version": "23", "migration_version": "23", "last_migration": "23"})
+                self._connection.execute("PRAGMA user_version=23")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1172,6 +1210,26 @@ class RuntimeDatabase:
             )
         return document
 
+    def save_action_derivation(self, derivation: Any) -> dict[str, Any]:
+        """Persist one Forge-owned derivation lifecycle record, never provider secrets."""
+        document = _document(derivation, "action derivation")
+        required = ("derivation_id", "mission_id", "snapshot_digest", "contract_version",
+                    "provider_configuration", "lifecycle")
+        if any(not isinstance(document.get(item), str) or not document[item] for item in required):
+            raise RuntimeDatabaseError("action derivation requires stable identity, snapshot, provider configuration, and lifecycle")
+        with self._connection:
+            existing = self._connection.execute(
+                "SELECT derivation_id FROM action_derivations WHERE mission_id = ? AND snapshot_digest = ? AND contract_version = ? AND provider_configuration = ?",
+                tuple(document[item] for item in required[1:5]),
+            ).fetchone()
+            if existing is not None and existing["derivation_id"] != document["derivation_id"]:
+                raise RuntimeDatabaseError("identical action derivation identity already belongs to another record")
+            self._connection.execute(
+                "INSERT INTO action_derivations VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(derivation_id) DO UPDATE SET lifecycle=excluded.lifecycle, document=excluded.document",
+                tuple(document[item] for item in required) + (self._dump(document),),
+            )
+        return document
+
     def record_delegation_request(self, request: Any) -> dict[str, Any]:
         """Persist the Forge-owned delegation record, never provider execution data."""
         document = _document(request, "delegation request")
@@ -1247,7 +1305,8 @@ class RuntimeDatabase:
     def get_document(self, table: str, identifier: str) -> dict[str, Any]:
         lookup = {"mission_state": ("mission_id", "document"), "mission_runtime_projections": ("mission_id", "document"), "mission_intake_evidence": ("evidence_id", "document"), "architecture_reviews": ("review_id", "document"),
                   "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document"), "planning_state": ("singleton", "document"),
-                  "delegation_requests": ("delegation_id", "document"), "integration_evidence": ("integration_id", "document")}
+                  "delegation_requests": ("delegation_id", "document"), "integration_evidence": ("integration_id", "document"),
+                  "action_derivations": ("derivation_id", "document")}
         if table not in lookup:
             raise RuntimeDatabaseError("table is not a Forge document store")
         key, column = lookup[table]

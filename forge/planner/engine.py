@@ -34,7 +34,8 @@ class MissionPlanner:
                 action_id = definition.id if len(definitions) == 1 else f"{intent_id}:merged:{group_key}"
                 objective = definition.objective if len(definitions) == 1 else " / ".join(item.objective for item in definitions)
                 evidence = tuple(value for item in definitions for value in item.expected_evidence)
-                actions.append(EngineeringAction(order, action_id, intent_id, revision, objective, evidence,
+                dependencies = tuple(sorted({dependency for item in definitions for dependency in item.dependencies} - action_ids))
+                actions.append(EngineeringAction(order, action_id, intent_id, revision, objective, evidence, dependencies,
                                                  status=EngineeringActionStatus.BLOCKED if action_ids & set(planning_input.mission_state.blocked_action_ids) else EngineeringActionStatus.READY))
                 order += 1
             if actions:

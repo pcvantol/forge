@@ -15,15 +15,21 @@ class ProviderSecurityTests(unittest.TestCase):
  def test_reference_only_and_fail_closed(self):
   with tempfile.TemporaryDirectory() as d:
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); store=Store(); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,store,operator)
-   result=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//planning-key/account'),operator_context=context)
+   result=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//planning-key/account'),operator_context=context,model='gpt-5.6',timeout_seconds=120,input_token_bound=64000,context_token_bound=128000,output_token_bound=16000)
    self.assertTrue(result['ready']); self.assertEqual(result['secret_reference'],'[REDACTED]')
+   self.assertEqual((result['model'],result['timeout_seconds'],result['input_token_bound'],result['context_token_bound'],result['output_token_bound']),('gpt-5.6',120,64000,128000,16000))
    store.state=SecretState.REVOKED; self.assertFalse(svc.inspect('planning')['ready'])
    self.assertRaises(ValueError, SecretReference,'os','sk-secret')
  def test_stale_write_rejected(self):
   with tempfile.TemporaryDirectory() as d:
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
-   svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id'),operator_context=context)
+   svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id'),operator_context=context,model='gpt-5.6',timeout_seconds=120,input_token_bound=64000,context_token_bound=128000,output_token_bound=16000)
    with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id2'),operator_context=context)
+ def test_partial_invocation_parameters_are_denied(self):
+  with tempfile.TemporaryDirectory() as d:
+   db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
+   with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id'),operator_context=context,model='gpt-5.6',timeout_seconds=120)
+   self.assertEqual(svc.inspect('planning')['state'],'NOT_CONFIGURED')
  def test_raw_operator_strings_and_revoked_context_are_denied(self):
   with tempfile.TemporaryDirectory() as d:
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
@@ -33,10 +39,10 @@ class ProviderSecurityTests(unittest.TestCase):
  def test_rotation_restart_redaction_and_audit_immutability(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d); path=root/'runtime.db'; secret_a='G011_SYNTHETIC_A'; secret_b='G011_SYNTHETIC_B'; db=RuntimeDatabase(root,path=path); operator,context=self._operator(db); store=Store(); svc=PlanningProviderSecurityService(db,store,operator)
-   first=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-a'),operator_context=context)
-   second=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-b'),operator_context=context,expected_version=first['version'])
+   first=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-a'),operator_context=context,model='gpt-5.6',timeout_seconds=120,input_token_bound=64000,context_token_bound=128000,output_token_bound=16000)
+   second=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-b'),operator_context=context,expected_version=first['version'],model='gpt-5.6',timeout_seconds=120,input_token_bound=64000,context_token_bound=128000,output_token_bound=16000)
    self.assertEqual(second['version'],2)
-   with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-c'),operator_context=context,expected_version=1)
+   with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-c'),operator_context=context,expected_version=1,model='gpt-5.6',timeout_seconds=120,input_token_bound=64000,context_token_bound=128000,output_token_bound=16000)
    evidence=' '.join(str(tuple(row)) for row in db._connection.execute('SELECT * FROM planning_provider_security_config')) + ' ' + ' '.join(str(tuple(row)) for row in db._connection.execute('SELECT * FROM planning_provider_security_audit'))
    self.assertNotIn(secret_a,evidence); self.assertNotIn(secret_b,evidence); self.assertNotIn('account-b',second['secret_reference'])
    with self.assertRaises(sqlite3.DatabaseError): db._connection.execute('DELETE FROM planning_provider_security_audit')

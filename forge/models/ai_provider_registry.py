@@ -18,6 +18,7 @@ class ProviderCapability(str, Enum):
     ENGINEERING_INTENT_DRAFTING = "engineering_intent_drafting"
     KNOWLEDGE_DISTILLATION = "knowledge_distillation"
     ARCHITECTURE_REVIEW = "architecture_review"
+    ACTION_DERIVATION = "action_derivation"
 
 
 class ProviderQualificationState(str, Enum):
