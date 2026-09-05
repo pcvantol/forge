@@ -10,7 +10,8 @@ from forge.models import PlanningSnapshot
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.planner import (OpenAIPlanningProviderConfiguration,
     OpenAIResponsesPlanningProvider, ProviderDerivationRequest,
-    ProviderSubmissionAmbiguous, ProviderTokenPreflightFailed)
+    ProviderSubmissionAmbiguous, ProviderTokenPreflightBindingChanged,
+    ProviderTokenPreflightFailed)
 from forge.provider_security import (PlanningProviderInvocationPolicy,
     PlanningProviderSecurityService, SecretReference, SecretState)
 from forge.runtime.database import RuntimeDatabase
@@ -45,6 +46,17 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   resolver.status_calls=0; resolver.resolve_calls=0
   request=ProviderDerivationRequest('derive-1',self.snapshot,'openai-planning','gpt-5.6')
   return OpenAIResponsesPlanningProvider(configuration,resolver,opener=opener),resolver,configuration,request
+
+ def change_policy(self, configuration, **changes):
+  service=configuration.policy_service; current=configuration.current_policy()
+  service.configure(configuration_id='cfg',provider_id=current.provider_id,
+                    reference=changes.get('reference',current.secret_reference),
+                    operator_context=service.operator_service.context(),expected_version=current.version,
+                    enabled=changes.get('enabled',True),model=changes.get('model',current.model),
+                    timeout_seconds=changes.get('timeout_seconds',current.timeout_seconds),
+                    input_token_bound=changes.get('input_token_bound',current.input_token_bound),
+                    context_token_bound=changes.get('context_token_bound',current.context_token_bound),
+                    output_token_bound=changes.get('output_token_bound',current.output_token_bound))
 
  def test_provider_authoritative_preflight_precedes_generation_and_matches_body(self):
   captured=[]
@@ -86,6 +98,53 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,'context token bound'): adapter._enforce_token_policy(body,policy,112001)
   body['max_output_tokens']=16001
   with self.assertRaisesRegex(ValueError,'output token bound'): adapter._enforce_token_policy(body,configuration.current_policy(),1)
+
+ def test_policy_change_during_preflight_denies_generation_for_every_authority_field(self):
+  cases=(
+   {'model':'gpt-5.6-replacement'}, {'enabled':False},
+   {'reference':SecretReference('keychain','//forge.openai/rotated')},
+   {'timeout_seconds':121}, {'input_token_bound':63999},
+   {'context_token_bound':127999}, {'output_token_bound':15999}, {})
+  for change in cases:
+   with self.subTest(change=change):
+    calls=[]; changed=False
+    def opener(http_request, timeout):
+     nonlocal changed
+     calls.append(http_request.full_url)
+     if not changed:
+      changed=True; self.change_policy(configuration,**change)
+      return Response({'input_tokens':1})
+     self.fail('generation transport must not occur after G011 mutation')
+    adapter,resolver,configuration,request=self.adapter(opener)
+    with self.assertRaises((ProviderTokenPreflightBindingChanged,PermissionError)):
+     adapter.invoke(request)
+    self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens'])
+    self.assertEqual(resolver.resolve_calls,1)
+
+ def test_request_change_after_preflight_denies_generation(self):
+  calls=[]
+  def opener(http_request, timeout): calls.append(http_request.full_url); return Response({'input_tokens':1})
+  adapter,resolver,_,request=self.adapter(opener)
+  original=adapter._body; builds=0
+  def changed_body(*args,**kwargs):
+   nonlocal builds
+   builds+=1; body=original(*args,**kwargs)
+   if builds == 2: body['input'].append({'role':'user','content':[{'type':'input_text','text':'changed'}]})
+   return body
+  adapter._body=changed_body # type: ignore[method-assign]
+  with self.assertRaises(ProviderTokenPreflightBindingChanged): adapter.invoke(request)
+  self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens'])
+  self.assertEqual(resolver.resolve_calls,1)
+
+ def test_unchanged_preflight_binding_allows_one_generation_transport(self):
+  calls=[]
+  def opener(http_request, timeout):
+   calls.append(http_request.full_url)
+   return Response({'input_tokens':1}) if http_request.full_url.endswith('/input_tokens') else Response({'id':'resp','status':'completed','output':[{'content':[{'text':json.dumps(proposal())}]}]})
+  adapter,resolver,_,request=self.adapter(opener)
+  self.assertIsNotNone(adapter.invoke(request))
+  self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens','https://api.openai.com/v1/responses'])
+  self.assertEqual(resolver.resolve_calls,2)
 
  def test_no_caller_counter_or_encoding_override_and_no_local_estimate(self):
   adapter,_,configuration,_=self.adapter(lambda *args,**kwargs: None)
