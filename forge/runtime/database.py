@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 24
+RUNTIME_SCHEMA_VERSION = 25
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -37,6 +37,7 @@ _TABLES = frozenset((
     "planning_provider_security_config", "planning_provider_security_audit", "action_derivations",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
+    "mission_amendments",
 ))
 
 
@@ -397,6 +398,12 @@ class RuntimeDatabase:
                         installation_id TEXT NOT NULL, envelope_digest TEXT NOT NULL UNIQUE,
                         digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS mission_amendments (
+                        amendment_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        revision INTEGER NOT NULL, predecessor_digest TEXT NOT NULL,
+                        digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
+                        UNIQUE(mission_id, revision), FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
@@ -815,6 +822,16 @@ class RuntimeDatabase:
                     FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id))""")
                 self._set_metadata({"schema_version": "24", "migration_version": "24", "last_migration": "24"})
                 self._connection.execute("PRAGMA user_version=24")
+            self._migrate(forge_version)
+        elif version == 24:
+            with self._connection:
+                self._connection.execute("""CREATE TABLE IF NOT EXISTS mission_amendments (
+                    amendment_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                    revision INTEGER NOT NULL, predecessor_digest TEXT NOT NULL,
+                    digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
+                    UNIQUE(mission_id, revision), FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id))""")
+                self._set_metadata({"schema_version": "25", "migration_version": "25", "last_migration": "25"})
+                self._connection.execute("PRAGMA user_version=25")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1266,6 +1283,20 @@ class RuntimeDatabase:
                 tuple(document[item] for item in required) + (self._dump(document),))
         return document
 
+    def create_mission_amendment(self, amendment: Any) -> dict[str, Any]:
+        document = _document(amendment, "mission amendment")
+        required = ("amendment_id", "mission_id", "revision", "predecessor_digest", "digest")
+        if any(document.get(item) in (None, "") for item in required):
+            raise RuntimeDatabaseError("mission amendment requires complete lineage")
+        with self._connection:
+            existing = self._connection.execute("SELECT document FROM mission_amendments WHERE mission_id=? AND revision=?", (document["mission_id"], document["revision"])).fetchone()
+            if existing:
+                persisted = json.loads(existing["document"])
+                if persisted != document: raise RuntimeIntegrityError("Mission amendment conflicts with existing revision")
+                return persisted
+            self._connection.execute("INSERT INTO mission_amendments VALUES (?,?,?,?,?,?)", tuple(document[item] for item in required) + (self._dump(document),))
+        return document
+
     def record_delegation_request(self, request: Any) -> dict[str, Any]:
         """Persist the Forge-owned delegation record, never provider execution data."""
         document = _document(request, "delegation request")
@@ -1342,7 +1373,7 @@ class RuntimeDatabase:
         lookup = {"mission_state": ("mission_id", "document"), "mission_runtime_projections": ("mission_id", "document"), "mission_intake_evidence": ("evidence_id", "document"), "architecture_reviews": ("review_id", "document"),
                   "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document"), "planning_state": ("singleton", "document"),
                   "delegation_requests": ("delegation_id", "document"), "integration_evidence": ("integration_id", "document"),
-                  "action_derivations": ("derivation_id", "document"), "action_derivation_evidence_sets": ("evidence_set_id", "document")}
+                  "action_derivations": ("derivation_id", "document"), "action_derivation_evidence_sets": ("evidence_set_id", "document"), "mission_amendments": ("amendment_id", "document")}
         if table not in lookup:
             raise RuntimeDatabaseError("table is not a Forge document store")
         key, column = lookup[table]

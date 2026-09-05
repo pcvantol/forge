@@ -14,6 +14,7 @@ from forge.models.intent import IntentReference
 from forge.models.mission_planner import (ApprovedScope, MissionPlannerInput, MissionPlanningState,
     PlanningEvidence, PlanningInputKind)
 from forge.runtime.database import RuntimeDatabase, RuntimeIntegrityError
+from forge.mission_amendment import MissionAmendmentService
 
 
 def _digest(value: object) -> str:
@@ -37,7 +38,7 @@ class CanonicalActionDerivationEvidenceProducer:
 
     def produce(self, mission_id: str) -> dict[str, object]:
         state = self.database.get_document("mission_state", mission_id)
-        contract = state.get("admission_contract")
+        contract, _ = MissionAmendmentService(self.repository).effective_contract(mission_id)
         if not isinstance(contract, dict) or state.get("status") != "APPROVED_PLANNABLE":
             raise ActionDerivationEvidenceError("Mission is not canonically approved/plannable")
         required = ("installation_id", "candidate_id", "subject_revision", "business_decision_id",
