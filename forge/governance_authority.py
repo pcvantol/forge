@@ -10,13 +10,8 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from hashlib import sha256
 import json
-from typing import TYPE_CHECKING
-
 from forge.operator_identity import InstallationOperatorService, OperatorContext
-from forge.runtime.database import _timestamp
-
-if TYPE_CHECKING:
-    from forge.runtime.database import RuntimeDatabase
+from forge.runtime.database import RuntimeDatabase, _timestamp
 
 
 class GovernanceCapability(str, Enum):
@@ -48,27 +43,65 @@ def _digest(value: object) -> str:
     return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+class _LocalInstallationBootstrapAuthority:
+    """Unexported local-installation bootstrap capability; not an OperatorContext."""
+    def __init__(self, database: RuntimeDatabase) -> None:
+        self._database = database
+
+
 class CanonicalGovernanceRepository:
     """The only supported Forge application write path for governance evidence."""
 
     def __init__(self, database: RuntimeDatabase, operators: InstallationOperatorService) -> None:
+        resolved = RuntimeDatabase(database.repository_root)
+        try:
+            if resolved.path.resolve() != database.path.resolve():
+                raise ValueError("governance services require the resolved canonical Runtime Instance")
+        finally:
+            resolved.close()
         self.database, self.operators = database, operators
+
+    @classmethod
+    def _for_test(cls, database: RuntimeDatabase, operators: InstallationOperatorService) -> "CanonicalGovernanceRepository":
+        """Explicit isolated-fixture seam; not a supported production constructor."""
+        instance = cls.__new__(cls)
+        instance.database, instance.operators = database, operators
+        return instance
+
+    @classmethod
+    def open_canonical(cls, repository_root: str, identity_resolver: object) -> "CanonicalGovernanceRepository":
+        database = RuntimeDatabase(repository_root)
+        return cls(database, InstallationOperatorService(database, identity_resolver))
 
     @staticmethod
     def _operator_id(context: OperatorContext) -> str:
         return sha256(context.generated_uid.encode()).hexdigest()[:16]
 
-    def grant_current_operator(self, context: OperatorContext, capabilities: tuple[GovernanceCapability, ...]) -> None:
+    def _bootstrap_authority(self) -> _LocalInstallationBootstrapAuthority:
+        return _LocalInstallationBootstrapAuthority(self.database)
+
+    def bootstrap_grant(self, authority: _LocalInstallationBootstrapAuthority, context: OperatorContext,
+                        capabilities: tuple[GovernanceCapability, ...]) -> None:
+        if authority._database is not self.database:
+            raise PermissionError("local installation bootstrap authority is required")
         if not self.operators.authorize(context):
             raise PermissionError("trusted operator context is required")
         if not capabilities or len(set(capabilities)) != len(capabilities):
             raise ValueError("explicit unique capabilities required")
-        with self.database._connection:
-            for capability in capabilities:
-                self.database._connection.execute(
-                    "INSERT OR IGNORE INTO governance_authority VALUES (?, ?, ?, ?, ?)",
-                    (context.installation_id, self._operator_id(context), capability.value, 1, _timestamp()),
-                )
+        for capability in capabilities:
+            occurred_at = _timestamp()
+            provenance = {"kind": "LOCAL_INSTALLATION_BOOTSTRAP_V1", "installation_id": context.installation_id,
+                          "operator_id": self._operator_id(context), "capability": capability.value}
+            grant_digest = _digest(provenance)
+            self.database._persist_governance(
+                "INSERT INTO governance_capability_grants VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (grant_digest, context.installation_id, self._operator_id(context), capability.value,
+                 json.dumps(provenance, sort_keys=True, separators=(",", ":")), grant_digest, occurred_at),
+            )
+            self.database._persist_governance(
+                "INSERT INTO governance_authority VALUES (?, ?, ?, ?, ?)",
+                (context.installation_id, self._operator_id(context), capability.value, 1, occurred_at),
+            )
 
     def record(self, decision: GovernanceDecision, context: OperatorContext) -> str:
         if not self.operators.authorize(context):
@@ -82,13 +115,12 @@ class CanonicalGovernanceRepository:
             raise PermissionError("required governance capability is absent")
         document = decision.document(context.installation_id, operator_id, _timestamp())
         digest = _digest(document)
-        with self.database._connection:
-            self.database._connection.execute(
-                "INSERT INTO governance_decisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (decision.decision_id, context.installation_id, decision.subject_id, decision.subject_revision,
-                 decision.capability.value, decision.predecessor_digest,
-                 json.dumps(document, sort_keys=True, separators=(",", ":")), digest, document["occurred_at"]),
-            )
+        self.database._persist_governance(
+            "INSERT INTO governance_decisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (decision.decision_id, context.installation_id, decision.subject_id, decision.subject_revision,
+             decision.capability.value, decision.predecessor_digest,
+             json.dumps(document, sort_keys=True, separators=(",", ":")), digest, document["occurred_at"]),
+        )
         return digest
 
     def decision(self, decision_id: str) -> dict[str, object]:

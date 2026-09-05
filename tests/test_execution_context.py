@@ -91,7 +91,7 @@ class ExecutionContextTests(unittest.TestCase):
         self.database._connection.commit()
         self.database.close()
         self.database = RuntimeDatabase(self.database.repository_root, path=path, forge_version="test")
-        self.assertEqual(self.database.metadata["schema_version"], "19")
+        self.assertEqual(self.database.metadata["schema_version"], "20")
         self.assertIn("execution_context_snapshots", {
             row["name"] for row in self.database._connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         })

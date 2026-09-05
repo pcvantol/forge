@@ -30,7 +30,7 @@ class GovernanceAuthorityTests(unittest.TestCase):
         self.db = RuntimeDatabase(self.root, path=self.path)
         self.ops = InstallationOperatorService(self.db, lambda: NamedOperatorIdentity("operator-a", 501))
         self.context = self.ops.first_bind()
-        self.repository = CanonicalGovernanceRepository(self.db, self.ops)
+        self.repository = CanonicalGovernanceRepository._for_test(self.db, self.ops)
 
     def tearDown(self):
         self.db.close()
@@ -46,7 +46,7 @@ class GovernanceAuthorityTests(unittest.TestCase):
         )
 
     def grant(self, *capabilities):
-        self.repository.grant_current_operator(self.context, capabilities)
+        self.repository.bootstrap_grant(self.repository._bootstrap_authority(), self.context, capabilities)
 
     def test_runtime_bound_workspaces_persist_business_architecture_and_envelope(self):
         self.grant(GovernanceCapability.BUSINESS_APPROVAL, GovernanceCapability.ARCHITECTURE_APPROVAL)
@@ -73,6 +73,20 @@ class GovernanceAuthorityTests(unittest.TestCase):
                 ArchitectureWorkspace.for_runtime(other_db, self.repository, self.context)
             other_db.close()
 
+    def test_production_repository_requires_the_resolved_runtime_and_has_no_operator_grant_api(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical = RuntimeDatabase(root)
+            operators = InstallationOperatorService(canonical, lambda: NamedOperatorIdentity("operator-a", 501))
+            operators.first_bind()
+            repository = CanonicalGovernanceRepository(canonical, operators)
+            self.assertFalse(hasattr(repository, "grant_current_operator"))
+            alternate = RuntimeDatabase(root, path=root / "alternate-runtime.db")
+            with self.assertRaises(ValueError):
+                CanonicalGovernanceRepository(alternate, InstallationOperatorService(alternate, lambda: NamedOperatorIdentity("operator-a", 501)))
+            alternate.close()
+            canonical.close()
+
     def test_canonical_intake_cannot_allocate_before_envelope_validation(self):
         class Store:
             def __init__(self): self.calls = 0
@@ -95,6 +109,10 @@ class GovernanceAuthorityTests(unittest.TestCase):
             self.db._connection.execute("UPDATE governance_decisions SET subject_id='x'")
         with self.assertRaises(sqlite3.DatabaseError):
             self.db._connection.execute("DELETE FROM governance_decisions")
+        with self.assertRaises(sqlite3.DatabaseError):
+            self.db._connection.execute("INSERT INTO governance_decisions VALUES ('raw', 'x', 'x', '1', 'BUSINESS_APPROVAL', NULL, '{}', 'sha256:raw', 'now')")
+        with self.assertRaises(sqlite3.DatabaseError):
+            self.db._connection.execute("INSERT INTO governance_authority VALUES ('x', 'x', 'BUSINESS_APPROVAL', 1, 'now')")
         forged = type(self.context)(self.context.installation_id, "other", self.context.binding_version)
         with self.assertRaises(PermissionError):
             self.repository.record(replace(decision, decision_id="decision-2"), forged)
@@ -123,14 +141,14 @@ class GovernanceAuthorityTests(unittest.TestCase):
         self.db = RuntimeDatabase(self.root, path=self.path)
         self.ops = InstallationOperatorService(self.db, lambda: NamedOperatorIdentity("operator-a", 501))
         self.context = self.ops.context()
-        self.repository = CanonicalGovernanceRepository(self.db, self.ops)
+        self.repository = CanonicalGovernanceRepository._for_test(self.db, self.ops)
         self.assertEqual(envelope.validate(self.repository).digest, envelope.digest)
         with tempfile.TemporaryDirectory() as other:
             other_db = RuntimeDatabase(Path(other), path=Path(other) / "runtime.db")
             other_ops = InstallationOperatorService(other_db, lambda: NamedOperatorIdentity("operator-a", 501))
             other_ops.first_bind()
             with self.assertRaises(ValueError):
-                envelope.validate(CanonicalGovernanceRepository(other_db, other_ops))
+                envelope.validate(CanonicalGovernanceRepository._for_test(other_db, other_ops))
             other_db.close()
 
 
