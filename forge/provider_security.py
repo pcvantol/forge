@@ -77,7 +77,7 @@ class PlanningProviderSecurityService:
             raise PermissionError('trusted named operator context is required')
         if not isinstance(reference, SecretReference): raise TypeError('typed secret reference is required')
         occurred_at = _timestamp()
-        operator_id = operator_context.generated_uid
+        operator_id = sha256(operator_context.generated_uid.encode()).hexdigest()[:16]
         row=self.db._connection.execute('SELECT version FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
         actual=0 if row is None else row['version']
         if actual != expected_version: raise ValueError('stale provider security configuration write')

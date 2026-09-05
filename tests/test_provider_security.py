@@ -1,4 +1,4 @@
-import tempfile
+import sqlite3,tempfile
 import unittest
 from pathlib import Path
 from forge.runtime.database import RuntimeDatabase
@@ -30,6 +30,22 @@ class ProviderSecurityTests(unittest.TestCase):
    with self.assertRaises(PermissionError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('os','id'),operator_context='operator')
    operator.revoke(context)
    with self.assertRaises(PermissionError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('os','id'),operator_context=context)
+ def test_rotation_restart_redaction_and_audit_immutability(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); path=root/'runtime.db'; secret_a='G011_SYNTHETIC_A'; secret_b='G011_SYNTHETIC_B'; db=RuntimeDatabase(root,path=path); operator,context=self._operator(db); store=Store(); svc=PlanningProviderSecurityService(db,store,operator)
+   first=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-a'),operator_context=context)
+   second=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-b'),operator_context=context,expected_version=first['version'])
+   self.assertEqual(second['version'],2)
+   with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/account-c'),operator_context=context,expected_version=1)
+   evidence=' '.join(str(tuple(row)) for row in db._connection.execute('SELECT * FROM planning_provider_security_config')) + ' ' + ' '.join(str(tuple(row)) for row in db._connection.execute('SELECT * FROM planning_provider_security_audit'))
+   self.assertNotIn(secret_a,evidence); self.assertNotIn(secret_b,evidence); self.assertNotIn('account-b',second['secret_reference'])
+   with self.assertRaises(sqlite3.DatabaseError): db._connection.execute('DELETE FROM planning_provider_security_audit')
+   db.close(); reopened=RuntimeDatabase(root,path=path); restart=PlanningProviderSecurityService(reopened,store,InstallationOperatorService(reopened,lambda:NamedOperatorIdentity('generated-a',501)))
+   self.assertTrue(restart.inspect('planning')['ready']); store.state=SecretState.REVOKED; self.assertFalse(restart.inspect('planning')['ready']); reopened.close()
+ def test_keychain_reference_matrix_fails_closed(self):
+  adapter=MacOSKeychainSecureStoreAdapter(runner=lambda *args,**kwargs: (_ for _ in ()).throw(OSError()))
+  for reference in (SecretReference('keychain','//service/account?namespace=x&namespace=y'),SecretReference('keychain','//service'),SecretReference('other','//service/account')):
+   self.assertIn(adapter.status(reference),(SecretState.INVALID_REFERENCE,SecretState.STORE_UNAVAILABLE))
  def test_keychain_adapter_uses_explicit_argv_and_redacts_failures(self):
   calls=[]
   class Result:
