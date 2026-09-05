@@ -15,21 +15,21 @@ class ProviderSecurityTests(unittest.TestCase):
  def test_reference_only_and_fail_closed(self):
   with tempfile.TemporaryDirectory() as d:
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); store=Store(); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,store,operator)
-   result=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('os-keychain','planning-key'),operator_context=context)
+   result=svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//planning-key/account'),operator_context=context)
    self.assertTrue(result['ready']); self.assertEqual(result['secret_reference'],'[REDACTED]')
    store.state=SecretState.REVOKED; self.assertFalse(svc.inspect('planning')['ready'])
    self.assertRaises(ValueError, SecretReference,'os','sk-secret')
  def test_stale_write_rejected(self):
   with tempfile.TemporaryDirectory() as d:
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
-   svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('os','id'),operator_context=context)
-   with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('os','id2'),operator_context=context)
+   svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id'),operator_context=context)
+   with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id2'),operator_context=context)
  def test_raw_operator_strings_and_revoked_context_are_denied(self):
   with tempfile.TemporaryDirectory() as d:
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
-   with self.assertRaises(PermissionError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('os','id'),operator_context='operator')
+   with self.assertRaises(PermissionError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id'),operator_context='operator')
    operator.revoke(context)
-   with self.assertRaises(PermissionError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('os','id'),operator_context=context)
+   with self.assertRaises(PermissionError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id'),operator_context=context)
  def test_rotation_restart_redaction_and_audit_immutability(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d); path=root/'runtime.db'; secret_a='G011_SYNTHETIC_A'; secret_b='G011_SYNTHETIC_B'; db=RuntimeDatabase(root,path=path); operator,context=self._operator(db); store=Store(); svc=PlanningProviderSecurityService(db,store,operator)
@@ -44,8 +44,27 @@ class ProviderSecurityTests(unittest.TestCase):
    self.assertTrue(restart.inspect('planning')['ready']); store.state=SecretState.REVOKED; self.assertFalse(restart.inspect('planning')['ready']); reopened.close()
  def test_keychain_reference_matrix_fails_closed(self):
   adapter=MacOSKeychainSecureStoreAdapter(runner=lambda *args,**kwargs: (_ for _ in ()).throw(OSError()))
-  for reference in (SecretReference('keychain','//service/account?namespace=x&namespace=y'),SecretReference('keychain','//service'),SecretReference('other','//service/account')):
-   self.assertIn(adapter.status(reference),(SecretState.INVALID_REFERENCE,SecretState.STORE_UNAVAILABLE))
+  self.assertEqual(adapter.status(SecretReference('keychain','//service/account')),SecretState.STORE_UNAVAILABLE)
+  for scheme,identifier in (('keychain','//service/account?namespace=x&namespace=y'),('keychain','//service'),('other','//service/account')):
+   with self.assertRaises(ValueError): SecretReference(scheme,identifier)
+ def test_secret_bearing_or_unknown_references_are_rejected_before_persistence(self):
+  rejected=('unknown://service/account','env://service/account','file://service/account','keychain://user:password@service/account','keychain://service/account?password=G011_REJECTED_SECRET','keychain://service/account?token=G011_REJECTED_SECRET','keychain://service/account?api_key=G011_REJECTED_SECRET','keychain://service/account?secret=G011_REJECTED_SECRET','keychain://service/account?namespace=x&namespace=y','keychain://service/%2Faccount')
+  with tempfile.TemporaryDirectory() as d:
+   db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
+   before_config=db._connection.execute('SELECT COUNT(*) FROM planning_provider_security_config').fetchone()[0]
+   before_audit=db._connection.execute('SELECT COUNT(*) FROM planning_provider_security_audit').fetchone()[0]
+   for value in rejected:
+    scheme,identifier=value.split(':',1)
+    with self.assertRaises(ValueError) as error: svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference(scheme,identifier),operator_context=context)
+    self.assertNotIn('G011_REJECTED_SECRET',str(error.exception))
+   forged=object.__new__(SecretReference)
+   object.__setattr__(forged,'scheme','keychain')
+   object.__setattr__(forged,'identifier','//service/account?secret=G011_REJECTED_SECRET')
+   with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=forged,operator_context=context)
+   self.assertEqual(before_config,db._connection.execute('SELECT COUNT(*) FROM planning_provider_security_config').fetchone()[0])
+   self.assertEqual(before_audit,db._connection.execute('SELECT COUNT(*) FROM planning_provider_security_audit').fetchone()[0])
+   evidence=' '.join(str(row) for row in db._connection.execute('SELECT * FROM planning_provider_security_audit'))
+   self.assertNotIn('G011_REJECTED_SECRET',evidence)
  def test_keychain_adapter_uses_explicit_argv_and_redacts_failures(self):
   calls=[]
   class Result:
@@ -57,4 +76,4 @@ class ProviderSecurityTests(unittest.TestCase):
   self.assertEqual(calls[0][0],['/usr/bin/security','find-generic-password','-s','forge.test','-a','account','-w'])
   self.assertTrue(calls[0][1]['capture_output']); self.assertNotIn('synthetic-secret', repr(calls))
   self.assertEqual(adapter.status(SecretReference('keychain','//missing/account')),SecretState.RESOLVABLE)
-  self.assertEqual(adapter.resolve(SecretReference('keychain','//bad'))[0],SecretState.INVALID_REFERENCE)
+  with self.assertRaises(ValueError): SecretReference('keychain','//bad')

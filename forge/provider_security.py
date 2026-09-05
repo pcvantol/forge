@@ -7,6 +7,7 @@ from enum import Enum
 from hashlib import sha256
 from typing import Protocol, Callable
 import json
+import re
 import subprocess
 from urllib.parse import urlparse, parse_qsl
 from .operator_identity import InstallationOperatorService, OperatorContext
@@ -20,8 +21,21 @@ class SecretReference:
     scheme: str
     identifier: str
     def __post_init__(self):
-        if not self.scheme or not self.identifier or any(x in self.identifier.lower() for x in ('token=', 'bearer ', 'sk-', 'api_key')):
+        self.validate()
+    def validate(self):
+        if self.scheme != 'keychain' or not isinstance(self.identifier,str) or not self.identifier or len(self.identifier) > 512:
             raise ValueError('secret reference must be opaque and non-secret-bearing')
+        if any(ord(char) < 32 for char in self.identifier) or '%' in self.identifier:
+            raise ValueError('invalid keychain reference')
+        parsed=urlparse(self.identifier)
+        if parsed.scheme or parsed.username or parsed.password or parsed.port or not parsed.netloc:
+            raise ValueError('invalid keychain reference')
+        parts=parsed.path.split('/')
+        if len(parts) != 2 or not parts[1] or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',parsed.netloc) or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',parts[1]):
+            raise ValueError('invalid keychain reference')
+        query=parse_qsl(parsed.query,keep_blank_values=True,strict_parsing=True)
+        if len(query) != len({key for key,_ in query}) or any(key not in {'namespace','version'} or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',value) for key,value in query):
+            raise ValueError('invalid keychain reference')
     @property
     def fingerprint(self): return 'sha256:' + sha256(f'{self.scheme}:{self.identifier}'.encode()).hexdigest()
     @property
@@ -41,6 +55,7 @@ class MacOSKeychainSecureStoreAdapter:
         self._runner, self._timeout = runner, timeout
     @staticmethod
     def _parts(reference: SecretReference):
+        reference.validate()
         if reference.scheme != 'keychain': raise ValueError('unexpected secure-store scheme')
         parsed=urlparse(reference.identifier)
         if parsed.scheme or not parsed.netloc: raise ValueError('invalid keychain reference')
@@ -76,6 +91,7 @@ class PlanningProviderSecurityService:
         if not self.operator_service.authorize(operator_context):
             raise PermissionError('trusted named operator context is required')
         if not isinstance(reference, SecretReference): raise TypeError('typed secret reference is required')
+        reference.validate()
         occurred_at = _timestamp()
         operator_id = sha256(operator_context.generated_uid.encode()).hexdigest()[:16]
         row=self.db._connection.execute('SELECT version FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
