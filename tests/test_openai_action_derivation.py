@@ -4,7 +4,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from urllib.error import URLError
+from io import BytesIO
+from urllib.error import HTTPError, URLError
 
 from forge.models import PlanningSnapshot
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
@@ -92,6 +93,28 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   adapter,resolver,_,request=self.adapter(timeout)
   with self.assertRaises(ProviderTokenPreflightFailed): adapter.invoke(request)
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens']); self.assertEqual(resolver.resolve_calls,1)
+
+ def test_preflight_transport_failure_has_no_request_or_secret_material(self):
+  adapter,resolver,_,request=self.adapter(lambda request,timeout: (_ for _ in ()).throw(URLError(OSError(61,'refused'))))
+  with self.assertRaises(ProviderTokenPreflightFailed) as raised: adapter.invoke(request)
+  failure=raised.exception
+  self.assertEqual((failure.layer,failure.transport_errno),('TRANSPORT',61))
+  self.assertIn(failure.transport_kind,('ConnectionRefusedError','OSError'))
+  self.assertNotIn('refused',str(failure)); self.assertEqual(resolver.resolve_calls,1)
+
+ def test_preflight_http_rejection_exposes_only_bounded_safe_metadata(self):
+  calls=[]
+  def rejected(request, timeout):
+   calls.append(request.full_url)
+   raise HTTPError(request.full_url, 400, 'bad request', {'x-request-id':'req_safe'},
+                   BytesIO(b'{"error":{"type":"invalid_request_error","code":"unsupported_parameter","message":"ignored"}}'))
+  adapter,resolver,_,request=self.adapter(rejected)
+  with self.assertRaises(ProviderTokenPreflightFailed) as raised: adapter.invoke(request)
+  failure=raised.exception
+  self.assertEqual((failure.status,failure.provider_type,failure.provider_code,failure.request_id),
+                   (400,'invalid_request_error','unsupported_parameter','req_safe'))
+  self.assertNotIn('ignored',str(failure)); self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens'])
+  self.assertEqual(resolver.resolve_calls,1)
 
  def test_context_and_output_bounds_use_preflight_count(self):
   adapter,_,configuration,request=self.adapter(lambda *args,**kwargs: None)

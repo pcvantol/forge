@@ -30,6 +30,21 @@ class ProviderSubmissionAmbiguous(RuntimeError):
 class ProviderTokenPreflightFailed(RuntimeError):
     """Provider-authoritative token preflight did not yield a usable count."""
 
+    def __init__(self, message: str, *, status: int | None = None,
+                 provider_type: str | None = None, provider_code: str | None = None,
+                 request_id: str | None = None, layer: str = "OTHER",
+                 transport_kind: str | None = None, transport_errno: int | None = None) -> None:
+        super().__init__(message)
+        # This is deliberately bounded diagnostic metadata, never a request,
+        # response body, header value, or credential.
+        self.status = status
+        self.provider_type = provider_type
+        self.provider_code = provider_code
+        self.request_id = request_id
+        self.layer = layer
+        self.transport_kind = transport_kind
+        self.transport_errno = transport_errno
+
 class ProviderTokenPreflightBindingChanged(RuntimeError):
     """Canonical policy or request changed after token preflight."""
 
@@ -176,13 +191,19 @@ class OpenAIResponsesPlanningProvider:
                 "Authorization": "Bearer " + secret, "Content-Type": "application/json"}, method="POST")
             with self._opener(request, timeout=policy.timeout_seconds) as response:
                 document = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
-            raise ProviderTokenPreflightFailed("OpenAI input-token preflight did not complete") from None
+        except HTTPError as error:
+            raise _preflight_http_failure(error) from None
+        except (URLError, TimeoutError, OSError) as error:
+            raise _preflight_transport_failure(error) from None
+        except json.JSONDecodeError:
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned malformed JSON",
+                                               layer="RESPONSE_PARSING") from None
         finally:
             secret = None
         value = document.get("input_tokens") if isinstance(document, dict) else None
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned an invalid count")
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned an invalid count",
+                                               layer="RESPONSE_PARSING")
         return _TokenPreflightReceipt(snapshot, snapshot.digest, request_digest, value)
 
     def _enforce_token_policy(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy, input_tokens: int) -> None:
@@ -190,7 +211,8 @@ class OpenAIResponsesPlanningProvider:
         if not isinstance(output_tokens, int) or isinstance(output_tokens, bool) or output_tokens > policy.output_token_bound:
             raise ValueError("requested output exceeds canonical G011 output token bound")
         if not isinstance(input_tokens, int) or isinstance(input_tokens, bool) or input_tokens < 0:
-            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned an invalid count")
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned an invalid count",
+                                               layer="RESPONSE_PARSING")
         if input_tokens > policy.input_token_bound:
             raise ValueError("bounded planning evidence exceeds canonical G011 input token bound")
         if input_tokens + output_tokens > policy.context_token_bound:
@@ -212,6 +234,39 @@ class OpenAIResponsesPlanningProvider:
         return ProviderInvocationEvidence(request.provider_id, request.model, self.adapter_version, request.digest, request.snapshot.digest, _digest(document) if document else None, state, str(document.get("id")) if isinstance(document, dict) and document.get("id") else None, started, _now(), status, int(usage.get("input_tokens", 0)) if isinstance(usage, dict) else None, int(usage.get("output_tokens", 0)) if isinstance(usage, dict) else None)
 
 def _digest(value: object) -> str: return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+def _preflight_http_failure(error: HTTPError) -> ProviderTokenPreflightFailed:
+    """Classify a provider rejection without retaining its body or credentials."""
+    provider_type = provider_code = None
+    request_id = error.headers.get("x-request-id") if error.headers else None
+    try:
+        # The documented error envelope carries a small error object.  Read at
+        # most 4 KiB and retain only its type/code fields; a provider message
+        # can contain request-derived material and is intentionally discarded.
+        raw = error.read(4096)
+        document = json.loads(raw.decode("utf-8"))
+        details = document.get("error") if isinstance(document, dict) else None
+        if isinstance(details, dict):
+            candidate_type, candidate_code = details.get("type"), details.get("code")
+            provider_type = candidate_type if isinstance(candidate_type, str) and len(candidate_type) <= 128 else None
+            provider_code = candidate_code if isinstance(candidate_code, str) and len(candidate_code) <= 128 else None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        pass
+    finally:
+        error.close()
+    if not isinstance(request_id, str) or len(request_id) > 256:
+        request_id = None
+    return ProviderTokenPreflightFailed("OpenAI input-token preflight was rejected", status=error.code,
+                                        provider_type=provider_type, provider_code=provider_code,
+                                        request_id=request_id, layer="PROVIDER_AVAILABILITY")
+
+def _preflight_transport_failure(error: URLError | TimeoutError | OSError) -> ProviderTokenPreflightFailed:
+    """Expose only a bounded transport category, never a URL, header, or secret."""
+    reason = error.reason if isinstance(error, URLError) else error
+    errno = getattr(reason, "errno", None)
+    return ProviderTokenPreflightFailed("OpenAI input-token preflight transport failed", layer="TRANSPORT",
+                                        transport_kind=type(reason).__name__,
+                                        transport_errno=errno if isinstance(errno, int) else None)
 def _now() -> str: return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 def _refinement(snapshot, reason): return GovernanceRefinementRequired(tuple(item.source_id for item in snapshot.evidence), "deterministic validation required", "provider-output", "blocked", reason)
 _SCHEMA = {"type":"object","additionalProperties":False,"required":["kind","proposals"],"properties":{"kind":{"type":"string","enum":["proposals"]},"proposals":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":False,"required":["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"],"properties":{key: ({"type":"boolean"} if key == "postponed" else {"type":"integer","minimum":1} if key == "priority" else {"type":"array","items":{"type":"string"}} if key in {"dependencies","write_scopes","expected_evidence","validation_strategy","human_gates","risk_inputs","source_evidence_refs"} else {"type":"string","minLength":1}) for key in ["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"]}}}}}
