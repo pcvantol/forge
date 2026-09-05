@@ -39,6 +39,8 @@ class MacOSGeneratedUIDIdentityAdapter:
   uid=os.getuid(); name=pwd.getpwuid(uid).pw_name
   result=self.runner([self.executable,'.','-read',f'/Users/{name}','GeneratedUID'],capture_output=True,text=True,timeout=3,check=False)
   if result.returncode: raise PermissionError('trusted macOS identity unavailable')
-  parts=result.stdout.strip().split()
-  if len(parts)!=2 or parts[0]!='GeneratedUID' or len(parts[1])!=36: raise PermissionError('invalid macOS GeneratedUID')
-  return NamedOperatorIdentity(parts[1].lower(),uid)
+  label,separator,value=result.stdout.strip().partition(':')
+  if label!='GeneratedUID' or not separator: raise PermissionError('invalid macOS GeneratedUID')
+  try: generated_uid=str(uuid.UUID(value.strip())).lower()
+  except (AttributeError,ValueError): raise PermissionError('invalid macOS GeneratedUID') from None
+  return NamedOperatorIdentity(generated_uid,uid)
