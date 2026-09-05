@@ -19,14 +19,16 @@ from forge.models.action_derivation import (DerivedActionProposal, GovernanceRef
 from forge.provider_security import (PlanningProviderInvocationPolicy,
     PlanningProviderSecurityService, SecretReference, SecretState)
 from .provider_adapter import ProviderDerivationRequest, ProviderDerivationResponse
-from .token_accounting import (_CanonicalResponsesRequestTokenCounter,
-    TokenAccountingUnavailable)
 
 OPENAI_RESPONSES_ADAPTER_VERSION = "1.0"
 _ENDPOINT = "https://api.openai.com/v1/responses"
+_INPUT_TOKENS_ENDPOINT = "https://api.openai.com/v1/responses/input_tokens"
 
 class ProviderSubmissionAmbiguous(RuntimeError):
     """The request may have reached OpenAI; operator reconciliation is required."""
+
+class ProviderTokenPreflightFailed(RuntimeError):
+    """Provider-authoritative token preflight did not yield a usable count."""
 
 class SecretResolver(Protocol):
     def resolve(self, reference: SecretReference) -> tuple[SecretState, str | None]: ...
@@ -62,16 +64,17 @@ class OpenAIResponsesPlanningProvider:
     def __init__(self, configuration: OpenAIPlanningProviderConfiguration, resolver: SecretResolver,
                  *, opener: Callable[..., object] = urlopen, adapter_version: str = OPENAI_RESPONSES_ADAPTER_VERSION) -> None:
         self.configuration, self._resolver, self._opener, self.adapter_version = configuration, resolver, opener, adapter_version
-        self._token_counter = _CanonicalResponsesRequestTokenCounter()
 
     def invoke(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse:
         policy = self.configuration.current_policy()
         if request.provider_id != policy.provider_id or request.model != policy.model:
             raise ValueError("OpenAI planning provider does not allow provider/model fallback")
         body = self._body(request, policy)
-        # Count and reject before resolving any secret or constructing a
-        # transport request.  Unknown tokenizers are a local hard stop.
-        self._enforce_token_policy(body, policy)
+        # OpenAI's input-token endpoint is the authority for the same
+        # Responses request semantics. Its authenticated preflight is not a
+        # generation invocation and cannot produce an Action proposal.
+        input_tokens = self._preflight_input_tokens(body, policy)
+        self._enforce_token_policy(body, policy, input_tokens)
         state, secret = self._resolver.resolve(policy.secret_reference)
         if state is not SecretState.RESOLVABLE or not secret:
             raise PermissionError("OpenAI planning provider secret is not resolvable")
@@ -100,20 +103,32 @@ class OpenAIResponsesPlanningProvider:
         policy = policy or self.configuration.current_policy()
         evidence = [{"kind": item.kind.value, "source_id": item.source_id, "revision": item.revision, "content_digest": item.content_digest} for item in request.snapshot.evidence]
         prompt = json.dumps({"contract":"Forge Action Derivation; propose only, never approve or execute.", "snapshot": request.snapshot.to_dict() | {"evidence": evidence}}, separators=(",", ":"))
-        return {"model": policy.model, "store": False, "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _SCHEMA}}}
+        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _SCHEMA}}}
 
-    def _enforce_token_policy(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy) -> None:
+    def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy) -> int:
+        state, secret = self._resolver.resolve(policy.secret_reference)
+        if state is not SecretState.RESOLVABLE or not secret:
+            raise PermissionError("OpenAI planning provider secret is not resolvable for token preflight")
+        try:
+            request = Request(_INPUT_TOKENS_ENDPOINT, data=json.dumps(body, separators=(",", ":")).encode(), headers={
+                "Authorization": "Bearer " + secret, "Content-Type": "application/json"}, method="POST")
+            with self._opener(request, timeout=policy.timeout_seconds) as response:
+                document = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight did not complete") from None
+        finally:
+            secret = None
+        value = document.get("input_tokens") if isinstance(document, dict) else None
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned an invalid count")
+        return value
+
+    def _enforce_token_policy(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy, input_tokens: int) -> None:
         output_tokens = body["max_output_tokens"]
         if not isinstance(output_tokens, int) or isinstance(output_tokens, bool) or output_tokens > policy.output_token_bound:
             raise ValueError("requested output exceeds canonical G011 output token bound")
-        try:
-            input_tokens = self._token_counter.count(model=policy.model, request_body=body)
-        except TokenAccountingUnavailable:
-            raise
-        except Exception as error:
-            raise TokenAccountingUnavailable("canonical request accounting failed") from error
         if not isinstance(input_tokens, int) or isinstance(input_tokens, bool) or input_tokens < 0:
-            raise TokenAccountingUnavailable("canonical request accounting returned an invalid count")
+            raise ProviderTokenPreflightFailed("OpenAI input-token preflight returned an invalid count")
         if input_tokens > policy.input_token_bound:
             raise ValueError("bounded planning evidence exceeds canonical G011 input token bound")
         if input_tokens + output_tokens > policy.context_token_bound:
