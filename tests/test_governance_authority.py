@@ -18,7 +18,8 @@ from forge.governance_authority import (
 from forge.business import BusinessWorkspace
 from forge.architecture import ArchitectureWorkspace
 from forge.intake import MissionIntake, MissionIntakeError
-from forge.models.architecture_mission import ArchitectureMissionStatus
+from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.runtime.database import RuntimeDatabase
 
@@ -104,6 +105,36 @@ class GovernanceAuthorityTests(unittest.TestCase):
         with self.assertRaises(MissionIntakeError):
             intake.admit_canonical_approved_mission(mission, invalid, self.repository)
         self.assertEqual(store.calls, 0)
+
+    def test_canonical_intake_recovers_matching_allocation_without_a_standalone_state_store(self):
+        planning = self.planning()
+        CanonicalBusinessWorkspace(self.repository, self.context).approve(
+            decision_id="business-canonical", candidate_id="candidate-canonical", revision="1",
+            scope=planning.scope, gates=("business",),
+        )
+        CanonicalArchitectureWorkspace(self.repository, self.context).approve(
+            decision_id="architecture-canonical", candidate_id="candidate-canonical", revision="1", planning=planning,
+        )
+        envelope = MissionPlanningEvidenceEnvelope.compose(
+            self.repository, subject_id="candidate-canonical", subject_revision="1",
+            business_decision_id="business-canonical", architecture_decision_id="architecture-canonical", planning=planning,
+        )
+        source = "canonical-governance-envelope:" + envelope.digest
+        mission_id = self.db.allocate_next_mission_id(source=source, allocated_at="now")
+        mission = ArchitectureMission(
+            id=mission_id, candidate_id="candidate-canonical", title="Canonical intake", summary="bounded",
+            business_objective="qualify", business_value="evidence", architecture_review_reference="architecture-canonical",
+            mission_recommendation_reference="business-canonical", scope=("scope",), engineering_constraints=("NONE",),
+            acceptance_criteria=("no actions",), technical_assumptions=("runtime owned",), dependencies=("G001",),
+            required_capabilities=("planning",), required_disciplines=(RequiredDiscipline.PLATFORM_ARCHITECTURE,),
+            risks=("untrusted",), status=ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
+        )
+        intake = MissionIntake(None, lambda: "now")
+        state = intake.admit_canonical_approved_mission(mission, envelope, self.repository)
+        self.assertEqual(state.status.value, "APPROVED_PLANNABLE")
+        self.assertEqual(state.resume["evidence_digest"], envelope.digest)
+        self.assertEqual(intake.admit_canonical_approved_mission(mission, envelope, self.repository), state)
+        self.assertEqual(self.db.allocate_next_mission_id(source=source, allocated_at="later"), mission_id)
 
     def test_capability_identity_and_immutability_fail_closed(self):
         decision = GovernanceDecision("decision-1", "candidate-1", "1", GovernanceCapability.BUSINESS_APPROVAL, "approved", ("scope",), ("gate",))

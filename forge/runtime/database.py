@@ -871,7 +871,9 @@ class RuntimeDatabase:
         if not isinstance(mission_id, str) or not mission_id or not isinstance(lifecycle, str) or not lifecycle or any(value is None for value in required[2:]):
             raise RuntimeDatabaseError("mission state requires identity, lifecycle, status, progress, resume point, and execution policy")
         with self._connection:
-            self._connection.execute("""INSERT INTO mission_state VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            self._connection.execute("""INSERT INTO mission_state
+                (mission_id, lifecycle, status, current_intent, current_action, progress, resume_point, execution_policy, document)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(mission_id) DO UPDATE SET lifecycle=excluded.lifecycle, status=excluded.status,
                 current_intent=excluded.current_intent, current_action=excluded.current_action, progress=excluded.progress,
                 resume_point=excluded.resume_point, execution_policy=excluded.execution_policy, document=excluded.document""", (

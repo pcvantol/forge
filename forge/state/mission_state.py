@@ -28,6 +28,7 @@ class MissionExecutionStatus(str, Enum):
     """
 
     CREATED = "CREATED"
+    APPROVED_PLANNABLE = "APPROVED_PLANNABLE"
     READY = "READY"
     ACTIVE = "ACTIVE"
     WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"

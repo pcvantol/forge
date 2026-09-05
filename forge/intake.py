@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Callable, Sequence
 
 from forge.models.action import EngineeringAction
 from forge.models.intent import EngineeringIntent, IntentStatus
 from forge.models.mission import EngineeringMission, MissionStatus
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
-from forge.state import MissionExecutionState, MissionStateStore
+from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore, MissionStateStoreError
 from forge.governance_authority import CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope
 
 
@@ -51,9 +52,43 @@ class MissionIntake:
         self.validate_approved_evidence(envelope, repository)
         if mission.status is not ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING:
             raise MissionIntakeError("Mission Intake requires an engineering-approved Architecture Mission")
-        return self.store.create_pending(
-            mission, occurred_at=self.clock(), resume={"intake": "canonical-governance-envelope-v1", "evidence_digest": envelope.digest}
-        )
+        source = "canonical-governance-envelope:" + envelope.digest
+        allocation = repository.database._connection.execute(
+            "SELECT mission_id FROM mission_id_allocations WHERE source = ?", (source,)
+        ).fetchone()
+        if allocation is None or allocation["mission_id"] != mission.id:
+            raise MissionIntakeError("Mission Intake requires the matching canonical Mission allocation")
+        try:
+            existing = repository.database.get_document("mission_state", mission.id)
+        except Exception:
+            existing = None
+        if existing is not None:
+            resume = existing.get("resume", {})
+            if (existing.get("mission_id") != mission.id
+                    or resume.get("intake") != "canonical-governance-envelope-v1"
+                    or resume.get("evidence_digest") != envelope.digest):
+                raise MissionIntakeError("Mission Intake found a conflicting canonical Mission state")
+            try:
+                return MissionStateStore._decode(json.dumps(existing, sort_keys=True, separators=(",", ":")))
+            except (MissionStateStoreError, ValueError) as error:
+                raise MissionIntakeError("Mission Intake found a malformed canonical Mission state") from error
+        document = {
+            "schema_version": "1.4", "mission_id": mission.id, "mission": mission.to_dict(),
+            "intents": [], "actions": [], "status": MissionExecutionStatus.APPROVED_PLANNABLE.value,
+            "lifecycle": MissionExecutionStatus.APPROVED_PLANNABLE.value,
+            "progress": {"total_actions": 0, "completed_actions": 0, "remaining_action_ids": [], "percent_complete": 0},
+            "resume": {"intake": "canonical-governance-envelope-v1", "evidence_digest": envelope.digest},
+            "execution_correlation": None, "execution_evidence": None,
+            "current_engineering_intent": None, "current_engineering_action": None,
+            "execution_history": [], "waiting_reason": None, "repository_truth": None,
+            "completion": None,
+            "execution_policy": {"write_scope": "NONE", "runtime_action_executed": False,
+                                 "engineering_side_effects_allowed": False},
+            "pause_reason": None, "approval_record": None, "delegations": [], "integration": None,
+            "revision": 1,
+        }
+        repository.database.save_mission_state(document)
+        return MissionStateStore._decode(json.dumps(document, sort_keys=True, separators=(",", ":")))
 
     def admit(
         self,
