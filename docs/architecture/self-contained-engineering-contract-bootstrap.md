@@ -41,6 +41,86 @@ Created when Forge bootstraps a project and owned thereafter by that project. It
 
 Accepted Quality Learning changes this project contract, never hidden Forge memory. EP and CI must be able to enforce the project contract without Forge being continuously present.
 
+### Default project production-code coverage policy
+
+This section is the canonical Forge default-policy authority for project
+production-code coverage. It is a product-baseline rule inherited by every
+governed software project unless that project's governed contract records a
+stricter rule or an explicit exception. Quality Learning may propose a change
+to a project contract, but it does not create a second coverage-policy
+authority.
+
+#### Production scope
+
+`PROJECT_PRODUCTION_CODE_COVERAGE` is measured over the aggregate of **all**
+production code in the project. Production code includes code shipped or used
+as part of supported runtime, application, domain, infrastructure,
+persistence, security, and integration/adapter behavior. It is not limited to
+changed files, selected protected modules, or another reduced path subset.
+
+Tests, test fixtures, generated artifacts, browser/static assets, package
+metadata, and genuine build/packaging tooling may be outside the denominator
+when appropriate to the project's implementation and coverage tooling.
+Production code must not be excluded merely because it is difficult to test.
+Dead, unsupported code should be removed rather than excluded or tested solely
+to improve coverage figures.
+
+#### Default gate and governed evolution
+
+```text
+PROJECT_PRODUCTION_CODE_COVERAGE_THRESHOLD = 80.00%
+PROJECT_PRODUCTION_CODE_COVERAGE_GATE = REQUIRED
+```
+
+The project may inherit this Forge default unchanged, define a stricter
+aggregate threshold, or add stricter per-module thresholds. It may not
+silently weaken the default. Any exception below `80.00%` must be explicit in
+the governed project contract, justified, approved through the project's
+normal governance, time-bounded where appropriate, and visible as quality debt
+and a readiness impact.
+
+Where the project's coverage tooling supports branch coverage, canonical
+quality evidence also collects branch coverage. A project must not satisfy
+this policy by measuring only an artificially reduced subset of reachable
+production paths.
+
+#### Critical-module visibility and anti-gaming invariants
+
+An aggregate pass does not make severely under-tested critical production
+modules acceptable. Quality evidence must keep security, authority,
+persistence, orchestration, recovery, and other high-risk modules visible even
+when aggregate coverage passes. A project may impose stricter per-module gates
+for those modules.
+
+```text
+PRODUCTION_CODE_EXCLUDED_FOR_CONVENIENCE = FALSE
+COVERAGE_THRESHOLD_SILENTLY_LOWERED = FALSE
+BLANKET_NO_COVER_FOR_REACHABLE_PRODUCTION_CODE = FALSE
+MEANINGLESS_TESTS_FOR_PERCENTAGE_ONLY = FALSE
+```
+
+#### Qualification, CI, and readiness meaning
+
+Coverage evidence comes from the project's canonical qualification/test suite
+and, where the product installation model requires it, from a clean candidate.
+A stale installation, incomplete test collection, or contaminated candidate
+cannot produce authoritative coverage evidence.
+
+```text
+PROJECT_PRODUCTION_CODE_COVERAGE < 80.00%
+  -> quality gate FAIL
+  -> not qualification-ready / merge-ready where the gate applies
+
+PROJECT_PRODUCTION_CODE_COVERAGE >= 80.00%
+  -> coverage gate PASS
+  -> other quality, security, and readiness gates remain independent
+```
+
+For illustration only, an Engineering Platform measurement of `75.59%` across
+all of that project's production code would fail this default even if selected
+protected modules met stricter per-file gates. This does not make EP-specific
+modules or thresholds part of the generic Forge policy.
+
 ### 3. Action engineering contract
 
 For each Engineering Action, Forge/EP deterministically compose an immutable snapshot from product baseline version + project contract version + applicable profiles + explicit Action requirements. The snapshot includes Effective DoR, Effective DoD and applicable Human Gates and is durably attached to the Action.
@@ -206,6 +286,14 @@ The no-source-repository part must be air-gapped; remote GitHub provisioning obv
 - `CLEAN_INSTALL_ENGINEERING_BASELINE_LOCAL = TRUE`
 - `NEW_PROJECT_BOOTSTRAP_OFFLINE_CAPABLE = TRUE`
 - `PROJECT_CONTRACT_PROJECT_OWNED = TRUE`
+- `DEFAULT_PROJECT_PRODUCTION_COVERAGE_POLICY = DEFINED`
+- `DEFAULT_PROJECT_PRODUCTION_COVERAGE_THRESHOLD = 80.00%`
+- `PRODUCTION_SCOPE_AGGREGATE = ALL_PRODUCTION_CODE`
+- `PROJECT_CAN_DEFINE_STRICTER_THRESHOLD = TRUE`
+- `SILENT_WEAKENING_ALLOWED = FALSE`
+- `GOVERNED_EXCEPTION_REQUIRED_BELOW_DEFAULT = TRUE`
+- `CRITICAL_LOW_COVERAGE_REMAINS_VISIBLE = TRUE`
+- `DUPLICATE_QUALITY_POLICY_AUTHORITY = 0`
 - `ACTION_CONTRACT_IMMUTABLE_AFTER_ADMISSION = TRUE`
 - `DOR_DOD_PROOF_EXECUTABLE_NOT_DOCUMENTATION_ONLY = TRUE`
 - `MANAGED_REPOSITORY_GOVERNANCE_DECLARATIVE = TRUE`
