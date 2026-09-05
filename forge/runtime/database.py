@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 23
+RUNTIME_SCHEMA_VERSION = 24
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -36,6 +36,7 @@ _TABLES = frozenset((
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
     "planning_provider_security_config", "planning_provider_security_audit", "action_derivations",
     "governance_authority", "governance_capability_grants", "governance_decisions",
+    "action_derivation_evidence_sets",
 ))
 
 
@@ -389,6 +390,12 @@ class RuntimeDatabase:
                         provider_configuration TEXT NOT NULL, lifecycle TEXT NOT NULL,
                         document TEXT NOT NULL,
                         UNIQUE (mission_id, snapshot_digest, contract_version, provider_configuration),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS action_derivation_evidence_sets (
+                        evidence_set_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL UNIQUE,
+                        installation_id TEXT NOT NULL, envelope_digest TEXT NOT NULL UNIQUE,
+                        digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
@@ -798,6 +805,16 @@ class RuntimeDatabase:
                         self._connection.execute(f"ALTER TABLE planning_provider_security_config ADD COLUMN {name} {definition}")
                 self._set_metadata({"schema_version": "23", "migration_version": "23", "last_migration": "23"})
                 self._connection.execute("PRAGMA user_version=23")
+            self._migrate(forge_version)
+        elif version == 23:
+            with self._connection:
+                self._connection.execute("""CREATE TABLE IF NOT EXISTS action_derivation_evidence_sets (
+                    evidence_set_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL UNIQUE,
+                    installation_id TEXT NOT NULL, envelope_digest TEXT NOT NULL UNIQUE,
+                    digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
+                    FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id))""")
+                self._set_metadata({"schema_version": "24", "migration_version": "24", "last_migration": "24"})
+                self._connection.execute("PRAGMA user_version=24")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1230,6 +1247,25 @@ class RuntimeDatabase:
             )
         return document
 
+    def create_action_derivation_evidence_set(self, evidence: Any) -> dict[str, Any]:
+        """Insert one immutable, mission-bound Action-Derivation evidence set."""
+        document = _document(evidence, "action derivation evidence set")
+        required = ("evidence_set_id", "mission_id", "installation_id", "envelope_digest", "digest")
+        if any(not isinstance(document.get(item), str) or not document[item] for item in required):
+            raise RuntimeDatabaseError("action derivation evidence requires complete canonical bindings")
+        if not self._connection.execute("SELECT 1 FROM mission_state WHERE mission_id = ?", (document["mission_id"],)).fetchone():
+            raise RuntimeDatabaseError("action derivation evidence references an unknown Mission")
+        with self._connection:
+            existing = self._connection.execute("SELECT document FROM action_derivation_evidence_sets WHERE mission_id = ?", (document["mission_id"],)).fetchone()
+            if existing is not None:
+                persisted = json.loads(existing["document"])
+                if persisted != document:
+                    raise RuntimeIntegrityError("Mission has conflicting action derivation evidence")
+                return persisted
+            self._connection.execute("INSERT INTO action_derivation_evidence_sets VALUES (?, ?, ?, ?, ?, ?)",
+                tuple(document[item] for item in required) + (self._dump(document),))
+        return document
+
     def record_delegation_request(self, request: Any) -> dict[str, Any]:
         """Persist the Forge-owned delegation record, never provider execution data."""
         document = _document(request, "delegation request")
@@ -1306,7 +1342,7 @@ class RuntimeDatabase:
         lookup = {"mission_state": ("mission_id", "document"), "mission_runtime_projections": ("mission_id", "document"), "mission_intake_evidence": ("evidence_id", "document"), "architecture_reviews": ("review_id", "document"),
                   "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document"), "planning_state": ("singleton", "document"),
                   "delegation_requests": ("delegation_id", "document"), "integration_evidence": ("integration_id", "document"),
-                  "action_derivations": ("derivation_id", "document")}
+                  "action_derivations": ("derivation_id", "document"), "action_derivation_evidence_sets": ("evidence_set_id", "document")}
         if table not in lookup:
             raise RuntimeDatabaseError("table is not a Forge document store")
         key, column = lookup[table]
