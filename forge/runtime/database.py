@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 15
+RUNTIME_SCHEMA_VERSION = 16
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -33,7 +33,7 @@ _TABLES = frozenset((
     "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
-    "scheduler_submissions",
+    "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
 ))
 
 
@@ -243,6 +243,8 @@ class RuntimeDatabase:
                         UNIQUE (mission_id, action_id, iteration),
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
+                    CREATE TABLE installation_operator_binding (installation_id TEXT PRIMARY KEY, generated_uid TEXT NOT NULL, uid INTEGER NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
+                    CREATE TABLE installation_operator_audit (audit_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, generated_uid TEXT NOT NULL, operation TEXT NOT NULL, occurred_at TEXT NOT NULL, result TEXT NOT NULL);
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_delete BEFORE DELETE ON architecture_reviews
@@ -535,6 +537,15 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "15", "migration_version": "15", "last_migration": "15"})
                 self._connection.execute("PRAGMA user_version=15")
+            self._migrate(forge_version)
+        elif version == 15:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS installation_operator_binding (installation_id TEXT PRIMARY KEY, generated_uid TEXT NOT NULL, uid INTEGER NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
+                    CREATE TABLE IF NOT EXISTS installation_operator_audit (audit_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, generated_uid TEXT NOT NULL, operation TEXT NOT NULL, occurred_at TEXT NOT NULL, result TEXT NOT NULL);
+                """)
+                self._set_metadata({"schema_version":"16","migration_version":"16","last_migration":"16"})
+                self._connection.execute("PRAGMA user_version=16")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
