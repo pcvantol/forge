@@ -16,8 +16,10 @@ from .provider_adapter import (
     ProviderExecutor,
 )
 from .openai_responses import OpenAIPlanningProviderConfiguration, OpenAIResponsesPlanningProvider, ProviderSubmissionAmbiguous
+from .token_accounting import ModelTokenCounter, TiktokenModelTokenCounter, TokenCountingUnavailable
 
 __all__ = ["MissionPlanner", "AIMissionPlanner", "ActionDerivationProvider", "ActionDerivationValidator",
            "DerivationResult", "ProposalValidationError", "planner_input_from_derivation",
            "BoundedActionDerivationProvider", "ProviderDerivationRequest", "ProviderDerivationResponse", "ProviderExecutor",
-           "OpenAIPlanningProviderConfiguration", "OpenAIResponsesPlanningProvider", "ProviderSubmissionAmbiguous"]
+           "OpenAIPlanningProviderConfiguration", "OpenAIResponsesPlanningProvider", "ProviderSubmissionAmbiguous",
+           "ModelTokenCounter", "TiktokenModelTokenCounter", "TokenCountingUnavailable"]

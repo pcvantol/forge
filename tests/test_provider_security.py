@@ -30,6 +30,12 @@ class ProviderSecurityTests(unittest.TestCase):
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
    with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id'),operator_context=context,model='gpt-5.6',timeout_seconds=120)
    self.assertEqual(svc.inspect('planning')['state'],'NOT_CONFIGURED')
+ def test_malformed_or_missing_invocation_policy_is_denied(self):
+  with tempfile.TemporaryDirectory() as d:
+   db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
+   with self.assertRaises(PermissionError): svc.invocation_policy('planning')
+   with self.assertRaises(ValueError): svc.configure(configuration_id='cfg',provider_id='planning',reference=SecretReference('keychain','//service/id'),operator_context=context,model='gpt-5.6',timeout_seconds=120,input_token_bound=120001,context_token_bound=128000,output_token_bound=16000)
+   self.assertEqual(svc.inspect('planning')['state'],'NOT_CONFIGURED')
  def test_raw_operator_strings_and_revoked_context_are_denied(self):
   with tempfile.TemporaryDirectory() as d:
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)

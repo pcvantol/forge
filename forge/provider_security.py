@@ -92,6 +92,18 @@ class ProviderSecurityHealth:
     ready: bool
     reference_fingerprint: str | None
 
+@dataclass(frozen=True)
+class PlanningProviderInvocationPolicy:
+    """Redacted G011 policy view consumed by a bounded provider adapter only."""
+    provider_id: str
+    model: str
+    secret_reference: SecretReference
+    timeout_seconds: int
+    input_token_bound: int
+    context_token_bound: int
+    output_token_bound: int
+    version: int
+
 class PlanningProviderSecurityService:
     """Runtime-DB-only config authority; all returned views are redacted."""
     def __init__(self, database, store: SecureStorePort, operator_service: InstallationOperatorService):
@@ -103,7 +115,8 @@ class PlanningProviderSecurityService:
             return None
         if (not isinstance(model, str) or not model
                 or not all(isinstance(value, int) and value > 0 for value in values[1:])
-                or input_token_bound > context_token_bound):
+                or input_token_bound > context_token_bound
+                or input_token_bound + output_token_bound > context_token_bound):
             raise ValueError('complete bounded invocation parameters are required')
         return values
 
@@ -135,3 +148,18 @@ class PlanningProviderSecurityService:
         result={'configuration_id':row['configuration_id'],'provider_id':provider_id,'enabled':bool(row['enabled']),'version':row['version'],'operator_id':row['operator_id'],'state':'READY' if state is SecretState.RESOLVABLE else state.value,'ready':state is SecretState.RESOLVABLE and bool(row['enabled']) and parameters is not None,'secret_reference':'[REDACTED]'}
         if parameters: result.update({'model':parameters[0],'timeout_seconds':parameters[1],'input_token_bound':parameters[2],'context_token_bound':parameters[3],'output_token_bound':parameters[4]})
         return result
+
+    def invocation_policy(self, provider_id: str) -> PlanningProviderInvocationPolicy:
+        """Return the sole supported adapter policy view from canonical G011 state.
+
+        The typed secret reference is required only to resolve the secret at
+        transport time.  No secret material is returned or retained here.
+        """
+        row=self.db._connection.execute('SELECT * FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
+        if row is None:
+            raise PermissionError('planning provider is not configured')
+        parameters=self._invocation_parameters(row['model'], row['timeout_seconds'], row['input_token_bound'], row['context_token_bound'], row['output_token_bound'])
+        state=self.store.status(SecretReference.parse(row['secret_reference'])) if row['enabled'] and parameters else SecretState.MISSING
+        if not row['enabled'] or parameters is None or state is not SecretState.RESOLVABLE:
+            raise PermissionError('planning provider policy is not ready')
+        return PlanningProviderInvocationPolicy(provider_id, parameters[0], SecretReference.parse(row['secret_reference']), parameters[1], parameters[2], parameters[3], parameters[4], row['version'])
