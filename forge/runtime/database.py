@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 17
+RUNTIME_SCHEMA_VERSION = 18
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -34,6 +34,7 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
+    "planning_provider_security_config", "planning_provider_security_audit",
 ))
 
 
@@ -249,6 +250,23 @@ class RuntimeDatabase:
                     BEGIN SELECT RAISE(ABORT, 'installation operator audit is immutable'); END;
                     CREATE TRIGGER installation_operator_audit_immutable_delete BEFORE DELETE ON installation_operator_audit
                     BEGIN SELECT RAISE(ABORT, 'installation operator audit is immutable'); END;
+                    CREATE TABLE IF NOT EXISTS planning_provider_security_config (
+                        configuration_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL,
+                        secret_reference TEXT NOT NULL, enabled INTEGER NOT NULL,
+                        operator_id TEXT NOT NULL, version INTEGER NOT NULL,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                        UNIQUE(provider_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS planning_provider_security_audit (
+                        audit_id TEXT PRIMARY KEY, configuration_id TEXT NOT NULL,
+                        operator_id TEXT NOT NULL, operation TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL, document TEXT NOT NULL,
+                        FOREIGN KEY(configuration_id) REFERENCES planning_provider_security_config(configuration_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_update BEFORE UPDATE ON planning_provider_security_audit
+                    BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_delete BEFORE DELETE ON planning_provider_security_audit
+                    BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_delete BEFORE DELETE ON architecture_reviews
@@ -561,6 +579,30 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version":"17","migration_version":"17","last_migration":"17"})
                 self._connection.execute("PRAGMA user_version=17")
+            self._migrate(forge_version)
+        elif version == 17:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS planning_provider_security_config (
+                        configuration_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL,
+                        secret_reference TEXT NOT NULL, enabled INTEGER NOT NULL,
+                        operator_id TEXT NOT NULL, version INTEGER NOT NULL,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                        UNIQUE(provider_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS planning_provider_security_audit (
+                        audit_id TEXT PRIMARY KEY, configuration_id TEXT NOT NULL,
+                        operator_id TEXT NOT NULL, operation TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL, document TEXT NOT NULL,
+                        FOREIGN KEY(configuration_id) REFERENCES planning_provider_security_config(configuration_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_update BEFORE UPDATE ON planning_provider_security_audit
+                    BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_delete BEFORE DELETE ON planning_provider_security_audit
+                    BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "18", "migration_version": "18", "last_migration": "18"})
+                self._connection.execute("PRAGMA user_version=18")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
