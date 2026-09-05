@@ -9,6 +9,13 @@ from .action_derivation import (
     ProposalValidationError,
     planner_input_from_derivation,
 )
+from .provider_adapter import (
+    BoundedActionDerivationProvider,
+    ProviderDerivationRequest,
+    ProviderDerivationResponse,
+    ProviderExecutor,
+)
 
 __all__ = ["MissionPlanner", "AIMissionPlanner", "ActionDerivationProvider", "ActionDerivationValidator",
-           "DerivationResult", "ProposalValidationError", "planner_input_from_derivation"]
+           "DerivationResult", "ProposalValidationError", "planner_input_from_derivation",
+           "BoundedActionDerivationProvider", "ProviderDerivationRequest", "ProviderDerivationResponse", "ProviderExecutor"]

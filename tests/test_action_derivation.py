@@ -5,12 +5,13 @@ from __future__ import annotations
 import unittest
 
 from forge.models import (
-    ArchitectureMission, ArchitectureMissionStatus, DerivationLifecycle, DerivationPolicy, DerivationRecord, DerivedActionProposal,
+    ArchitectureMission, ArchitectureMissionStatus, DerivationLifecycle, DerivationPolicy, DerivationRecord, DerivedActionProposal, DerivedActionIdentityState,
     EngineeringEffort, IntentReference, MissionPlannerInput, MissionPlanningState,
-    PlanningEvidence, PlanningInputKind, PlanningSnapshot, ProposalProvenance,
-    RequiredDiscipline, ApprovedScope,
+    PlanningEvidence, PlanningInputKind, PlanningSnapshot, ProposalProvenance, ProviderInvocationEvidence, ProviderSideEffectState,
+    RequiredDiscipline, ApprovedScope, classify_replan_identity,
 )
-from forge.planner import AIMissionPlanner, ActionDerivationValidator, ProposalValidationError
+from forge.planner import (AIMissionPlanner, ActionDerivationValidator, BoundedActionDerivationProvider,
+                           ProposalValidationError, ProviderDerivationRequest, ProviderDerivationResponse)
 
 
 def _digest(char: str) -> str:
@@ -59,6 +60,21 @@ class FixtureProvider:
 
     def derive(self, snapshot: PlanningSnapshot) -> tuple[DerivedActionProposal, ...]:
         self.calls += 1
+        return self.response
+
+
+class FixtureExecutor:
+    def __init__(self, response: ProviderDerivationResponse | ProviderSideEffectState) -> None:
+        self.response = response
+        self.invocations = 0
+
+    def invoke(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse:
+        self.invocations += 1
+        if not isinstance(self.response, ProviderDerivationResponse):
+            raise RuntimeError("fixture cannot return ambiguity from invocation")
+        return self.response
+
+    def reconcile(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse | ProviderSideEffectState:
         return self.response
 
 
@@ -115,6 +131,27 @@ class ActionDerivationTests(unittest.TestCase):
         self.assertEqual(running.lifecycle, DerivationLifecycle.PROVIDER_RUNNING)
         with self.assertRaisesRegex(ValueError, "invalid"):
             record.transition(DerivationLifecycle.MATERIALIZED)
+
+    def test_provider_adapter_binds_bounded_evidence_and_never_retries_ambiguity(self) -> None:
+        request = ProviderDerivationRequest("derivation-1", self.snapshot, "fixture-provider", "fixture-1")
+        evidence = ProviderInvocationEvidence("fixture-provider", "fixture-1", "1.0", request.digest, self.snapshot.digest,
+                                              _digest("b"), ProviderSideEffectState.HAPPENED_AND_CONFIRMED)
+        response = ProviderDerivationResponse(evidence, proposals=(proposal(snapshot=self.snapshot),))
+        executor = FixtureExecutor(response)
+        adapter = BoundedActionDerivationProvider(executor)
+        self.assertEqual(adapter.invoke(request), response)
+        self.assertEqual(executor.invocations, 1)
+        ambiguous = BoundedActionDerivationProvider(FixtureExecutor(ProviderSideEffectState.MAY_HAVE_HAPPENED))
+        self.assertEqual(ambiguous.reconcile(request), ProviderSideEffectState.MAY_HAVE_HAPPENED)
+
+    def test_replan_identity_preserves_completed_history_and_avoids_churn(self) -> None:
+        current = proposal(snapshot=self.snapshot)
+        self.assertEqual(classify_replan_identity(current, current), DerivedActionIdentityState.UNCHANGED)
+        modified = DerivedActionProposal(**{**current.__dict__, "objective": "Changed implementation."})
+        self.assertEqual(classify_replan_identity(current, modified), DerivedActionIdentityState.MODIFIED_UNEXECUTED)
+        self.assertEqual(classify_replan_identity(current, modified, completed=True), DerivedActionIdentityState.SUPERSEDED)
+        deferred = DerivedActionProposal(**{**current.__dict__, "postponed": True})
+        self.assertEqual(classify_replan_identity(current, deferred), DerivedActionIdentityState.DEFERRED)
 
 
 if __name__ == "__main__":

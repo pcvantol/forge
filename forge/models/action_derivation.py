@@ -110,6 +110,29 @@ class DerivedActionProposal:
         if self.logical_action_id in self.dependencies:
             raise ValueError("derived action proposal cannot depend on itself")
 
+    def semantic_digest(self) -> str:
+        """Stable identity comparison excludes provider-specific provenance."""
+        return _digest({"logical_action_id": self.logical_action_id, "scope": self.scope,
+                        "objective": self.objective, "dependencies": self.dependencies,
+                        "write_scopes": self.write_scopes, "expected_evidence": self.expected_evidence,
+                        "validation_strategy": self.validation_strategy, "priority": self.priority,
+                        "postponed": self.postponed, "human_gates": self.human_gates,
+                        "risk_inputs": self.risk_inputs})
+
+
+def classify_replan_identity(previous: DerivedActionProposal | None, current: DerivedActionProposal,
+                              *, completed: bool = False) -> DerivedActionIdentityState:
+    """Classify one logical action without rewriting historical completed evidence."""
+    if previous is None:
+        return DerivedActionIdentityState.NEW
+    if previous.logical_action_id != current.logical_action_id:
+        return DerivedActionIdentityState.SUPERSEDED
+    if current.postponed:
+        return DerivedActionIdentityState.DEFERRED
+    if previous.semantic_digest() == current.semantic_digest():
+        return DerivedActionIdentityState.UNCHANGED
+    return DerivedActionIdentityState.SUPERSEDED if completed else DerivedActionIdentityState.MODIFIED_UNEXECUTED
+
 
 @dataclass(frozen=True)
 class GovernanceRefinementRequired:
@@ -145,6 +168,40 @@ class DerivationLifecycle(str, Enum):
     FAILED = "FAILED"
     STALE = "STALE"
     SUPERSEDED = "SUPERSEDED"
+
+
+class ProviderSideEffectState(str, Enum):
+    DID_NOT_HAPPEN = "DID_NOT_HAPPEN"
+    HAPPENED_AND_CONFIRMED = "HAPPENED_AND_CONFIRMED"
+    MAY_HAVE_HAPPENED = "MAY_HAVE_HAPPENED"
+
+
+class DerivedActionIdentityState(str, Enum):
+    UNCHANGED = "UNCHANGED"
+    MODIFIED_UNEXECUTED = "MODIFIED_UNEXECUTED"
+    SUPERSEDED = "SUPERSEDED"
+    DEFERRED = "DEFERRED"
+    NEW = "NEW"
+
+
+@dataclass(frozen=True)
+class ProviderInvocationEvidence:
+    """Bounded provider evidence; raw payloads and credentials never belong here."""
+
+    provider_id: str
+    model: str | None
+    adapter_version: str
+    request_digest: str
+    snapshot_digest: str
+    result_digest: str | None
+    side_effect_state: ProviderSideEffectState
+
+    def __post_init__(self) -> None:
+        if not all((self.provider_id, self.adapter_version, self.request_digest, self.snapshot_digest)):
+            raise ValueError("provider invocation evidence requires provider, adapter, request, and snapshot provenance")
+        for digest in (self.request_digest, self.snapshot_digest, self.result_digest):
+            if digest is not None and (not digest.startswith("sha256:") or len(digest) != 71):
+                raise ValueError("provider invocation evidence digests must be sha256 values")
 
 
 _LIFECYCLE_TRANSITIONS = {
