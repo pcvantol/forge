@@ -111,6 +111,52 @@ class RuntimeDatabaseTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "identical action derivation"):
             self.database.save_action_derivation({**record, "derivation_id": "other"})
 
+    def test_token_preflight_receipt_is_immutable_durable_and_single_use(self) -> None:
+        self.database.save_mission_state(self._mission())
+        receipt = {"receipt_id": "preflight-1", "mission_id": "mission-1", "main_head": "a" * 40,
+                   "policy_digest": "sha256:policy", "request_digest": "sha256:request",
+                   "evidence_digest": "sha256:evidence", "effective_contract_digest": "sha256:contract",
+                   "provider_id": "provider", "input_tokens": 10, "input_token_bound": 20,
+                   "context_token_bound": 30, "output_token_bound": 15,
+                   "context_with_requested_output": 25, "result": "PASS", "created_at": "2026-09-05T00:00:00Z"}
+        self.database.create_token_preflight_receipt(receipt)
+        self.database.close(); self.database = RuntimeDatabase(self.root, forge_version="test")
+        boundary = {key: receipt[key] for key in ("main_head", "policy_digest", "request_digest", "evidence_digest", "effective_contract_digest")}
+        self.assertEqual(self.database.consume_token_preflight_receipt("preflight-1", boundary), receipt)
+        with self.assertRaises(RuntimeIntegrityError):
+            self.database.consume_token_preflight_receipt("preflight-1", boundary)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute("UPDATE token_preflight_receipts SET result='FAIL' WHERE receipt_id='preflight-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute(
+                "INSERT INTO token_preflight_receipts SELECT 'forged', mission_id, main_head, policy_digest, request_digest, evidence_digest, effective_contract_digest, provider_id, input_tokens, input_token_bound, context_token_bound, output_token_bound, context_with_requested_output, result, created_at, document FROM token_preflight_receipts WHERE receipt_id='preflight-1'"
+            )
+        with self.assertRaises(RuntimeIntegrityError):
+            self.database.create_token_preflight_receipt({**receipt, "input_tokens": 11})
+        with self.assertRaises(RuntimeIntegrityError):
+            self.database.consume_token_preflight_receipt("preflight-1", {**boundary, "request_digest": "sha256:other"})
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute("DELETE FROM token_preflight_receipt_consumptions WHERE receipt_id='preflight-1'")
+        with self.assertRaisesRegex(RuntimeError, "secret material"):
+            self.database.create_token_preflight_receipt({**receipt, "receipt_id": "secret", "api_key": "forbidden"})
+
+    def test_schema26_migrates_token_preflight_receipts_before_restart(self) -> None:
+        self.database.close()
+        connection = sqlite3.connect(self.database.path)
+        for trigger in ("token_preflight_receipts_authorized_insert", "token_preflight_receipts_immutable_update", "token_preflight_receipts_immutable_delete",
+                        "token_preflight_receipt_consumptions_immutable_update", "token_preflight_receipt_consumptions_immutable_delete"):
+            connection.execute(f"DROP TRIGGER {trigger}")
+        connection.execute("DROP TABLE token_preflight_receipt_consumptions")
+        connection.execute("DROP TABLE token_preflight_receipts")
+        connection.execute("UPDATE runtime_metadata SET value='26' WHERE key IN ('schema_version','migration_version','last_migration')")
+        connection.execute("PRAGMA user_version=26")
+        connection.commit(); connection.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
+        self.assertTrue(self.database._connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='token_preflight_receipts'"
+        ).fetchone())
+
     def test_execution_receipts_are_immutable(self) -> None:
         self.database.save_mission_state(self._mission())
         self.database.record_execution_receipt(receipt_id="receipt-1", mission_id="mission-1", execution_host="host", execution_run_id="run", engineering_report_id="report", correlation_identity="correlation", executed_at="2026-08-04T00:00:00Z", outcome="complete")

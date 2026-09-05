@@ -10,14 +10,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 import json
+from pathlib import Path
+import subprocess
 from typing import Callable, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+import uuid
 
 from forge.models.action_derivation import (DerivedActionProposal, GovernanceRefinementRequired,
     PlanningSnapshot, ProposalProvenance, ProviderInvocationEvidence, ProviderSideEffectState)
 from forge.provider_security import (PlanningProviderInvocationPolicy,
     PlanningProviderSecurityService, SecretReference, SecretState)
+from forge.runtime import RuntimeDatabaseError
 from .provider_adapter import ProviderDerivationRequest, ProviderDerivationResponse
 
 OPENAI_RESPONSES_ADAPTER_VERSION = "1.0"
@@ -94,6 +98,69 @@ class _G011PolicySnapshot:
                         "output_token_bound": self.output_token_bound})
 
 @dataclass(frozen=True)
+class TokenPreflightBoundary:
+    """Runtime-derived, non-secret bindings that make one token count reusable once."""
+    main_head: str
+    evidence_digest: str
+    effective_contract_digest: str
+
+    def values(self, *, policy_digest: str, request_digest: str) -> dict[str, str]:
+        result = {"main_head": self.main_head, "policy_digest": policy_digest,
+                  "request_digest": request_digest, "evidence_digest": self.evidence_digest,
+                  "effective_contract_digest": self.effective_contract_digest}
+        if any(not isinstance(value, str) or not value for value in result.values()):
+            raise ValueError("complete canonical token-preflight boundary is required")
+        return result
+
+class CanonicalTokenPreflightAuthority:
+    """Read-only resolver for the canonical generation boundary.
+
+    The adapter never accepts these values from its caller.  This resolver
+    obtains the head, existing pinned evidence, and Mission amendment lineage
+    directly from the canonical RuntimeDatabase and repository.
+    """
+    def __init__(self, database, *, _head_reader: Callable[[Path], str] | None = None,
+                 _boundary_reader: Callable[[str], TokenPreflightBoundary] | None = None) -> None:
+        self._database = database
+        self._head_reader = _head_reader or _origin_main_head
+        self._boundary_reader = _boundary_reader
+
+    @classmethod
+    def _for_test(cls, database, boundary_reader: Callable[[str], TokenPreflightBoundary]) -> "CanonicalTokenPreflightAuthority":
+        return cls(database, _boundary_reader=boundary_reader)
+
+    def boundary_for(self, mission_id: str) -> TokenPreflightBoundary:
+        if self._boundary_reader is not None:
+            return self._boundary_reader(mission_id)
+        state = self._database.get_document("mission_state", mission_id)
+        if state.get("status") != "APPROVED_PLANNABLE":
+            raise PermissionError("canonical Mission is not approved/plannable")
+        evidence_row = self._database._connection.execute(
+            "SELECT digest, document FROM action_derivation_evidence_sets WHERE mission_id=?", (mission_id,)
+        ).fetchone()
+        if evidence_row is None:
+            raise PermissionError("canonical Action-Derivation evidence is missing")
+        evidence = json.loads(evidence_row["document"])
+        if evidence.get("mission_id") != mission_id or evidence.get("digest") != evidence_row["digest"]:
+            raise PermissionError("canonical Action-Derivation evidence is inconsistent")
+        contract = state.get("admission_contract")
+        if not isinstance(contract, dict):
+            raise PermissionError("canonical Mission admission contract is missing")
+        predecessor = _canonical_digest(contract)
+        rows = self._database._connection.execute(
+            "SELECT document FROM mission_amendments WHERE mission_id=? ORDER BY revision", (mission_id,)
+        ).fetchall()
+        for row in rows:
+            amendment = json.loads(row["document"])
+            if amendment.get("predecessor_digest") != predecessor:
+                raise PermissionError("canonical Mission amendment lineage is stale or conflicting")
+            predecessor = amendment.get("effective_contract_digest")
+            if not isinstance(predecessor, str) or not predecessor.startswith("sha256:"):
+                raise PermissionError("canonical Mission amendment digest is invalid")
+        return TokenPreflightBoundary(self._head_reader(self._database.repository_root),
+                                      str(evidence_row["digest"]), predecessor)
+
+@dataclass(frozen=True)
 class _TokenPreflightReceipt:
     policy_snapshot: _G011PolicySnapshot
     policy_digest: str
@@ -105,15 +172,18 @@ class OpenAIPlanningProviderConfiguration:
     """Adapter configuration that can only be built from canonical G011 policy."""
     policy_service: PlanningProviderSecurityService
     provider_id: str
+    preflight_authority: CanonicalTokenPreflightAuthority
 
     def __init__(self, policy_service: PlanningProviderSecurityService, provider_id: str,
-                 *, _from_canonical_g011: bool = False) -> None:
+                 *, _from_canonical_g011: bool = False,
+                 _preflight_authority: CanonicalTokenPreflightAuthority | None = None) -> None:
         if not _from_canonical_g011:
             raise TypeError("OpenAI planning configuration must be created from canonical G011 policy")
         if not isinstance(policy_service, PlanningProviderSecurityService) or not provider_id:
             raise ValueError("OpenAI planning provider requires canonical G011 authority")
         object.__setattr__(self, "policy_service", policy_service)
         object.__setattr__(self, "provider_id", provider_id)
+        object.__setattr__(self, "preflight_authority", _preflight_authority or CanonicalTokenPreflightAuthority(policy_service.db))
 
     @classmethod
     def from_canonical_g011(cls, service: PlanningProviderSecurityService,
@@ -122,6 +192,12 @@ class OpenAIPlanningProviderConfiguration:
         # canonical policy snapshot immediately before every transport.
         service.invocation_policy(provider_id)
         return cls(service, provider_id, _from_canonical_g011=True)
+
+    @classmethod
+    def _for_test(cls, service: PlanningProviderSecurityService, provider_id: str,
+                  authority: CanonicalTokenPreflightAuthority) -> "OpenAIPlanningProviderConfiguration":
+        """Explicit isolated-fixture seam; production always resolves canonical state."""
+        return cls(service, provider_id, _from_canonical_g011=True, _preflight_authority=authority)
 
     def current_policy(self) -> PlanningProviderInvocationPolicy:
         return self.policy_service.invocation_policy(self.provider_id)
@@ -132,7 +208,15 @@ class OpenAIResponsesPlanningProvider:
                  *, opener: Callable[..., object] = urlopen, adapter_version: str = OPENAI_RESPONSES_ADAPTER_VERSION) -> None:
         self.configuration, self._resolver, self._opener, self.adapter_version = configuration, resolver, opener, adapter_version
 
-    def invoke(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse:
+    def preflight(self, request: ProviderDerivationRequest, *, operator_context) -> dict[str, object]:
+        """Run one explicit provider count and durably record its PASS result.
+
+        This performs no generation transport.  A subsequent generation is
+        possible only through :meth:`invoke` with this exact persisted receipt.
+        """
+        if not self.configuration.policy_service.operator_service.authorize(operator_context):
+            raise PermissionError("trusted operator authorization is required for provider token preflight")
+        boundary = self.configuration.preflight_authority.boundary_for(request.snapshot.mission_id)
         preflight_policy = self.configuration.current_policy()
         if request.provider_id != preflight_policy.provider_id or request.model != preflight_policy.model:
             raise ValueError("OpenAI planning provider does not allow provider/model fallback")
@@ -145,26 +229,54 @@ class OpenAIResponsesPlanningProvider:
         receipt = self._preflight_input_tokens(preflight_body, preflight_policy,
                                                preflight_snapshot, request_digest)
         self._enforce_token_policy(preflight_body, preflight_policy, receipt.input_tokens)
+        bindings = boundary.values(policy_digest=receipt.policy_digest, request_digest=receipt.request_digest)
+        persisted = {"receipt_id": f"token-preflight-{uuid.uuid4()}", "mission_id": request.snapshot.mission_id,
+                     **bindings, "provider_id": preflight_policy.provider_id,
+                     "input_tokens": receipt.input_tokens,
+                     "input_token_bound": preflight_policy.input_token_bound,
+                     "context_token_bound": preflight_policy.context_token_bound,
+                     "output_token_bound": preflight_policy.output_token_bound,
+                     "context_with_requested_output": receipt.input_tokens + preflight_policy.output_token_bound,
+                     "result": "PASS", "created_at": _now()}
+        return self.configuration.policy_service.db.create_token_preflight_receipt(persisted)
 
-        # Reload RuntimeDatabase authority after preflight.  A preflight can
-        # authorize only the exact policy and non-secret request it counted.
+    def invoke(self, request: ProviderDerivationRequest, *, receipt_id: str) -> ProviderDerivationResponse:
+        """Generate once from an atomically consumed, exact PASS receipt.
+
+        There is intentionally no preflight fallback here: a missing, stale,
+        failed, or already consumed receipt denies generation before secrets or
+        generation transport are touched.
+        """
+        boundary = self.configuration.preflight_authority.boundary_for(request.snapshot.mission_id)
         generation_policy = self.configuration.current_policy()
+        if request.provider_id != generation_policy.provider_id or request.model != generation_policy.model:
+            raise ValueError("OpenAI planning provider does not allow provider/model fallback")
         generation_snapshot = _G011PolicySnapshot.from_policy(generation_policy)
-        if (receipt.policy_digest != receipt.policy_snapshot.digest
-                or generation_snapshot != receipt.policy_snapshot
-                or generation_snapshot.digest != receipt.policy_digest):
-            raise ProviderTokenPreflightBindingChanged("canonical G011 policy changed after token preflight")
         body = self._body(request, generation_policy)
-        if _digest(body) != receipt.request_digest:
-            raise ProviderTokenPreflightBindingChanged("Responses request changed after token preflight")
+        # Also fail closed if a future request field lacks a documented count
+        # projection.  No local estimate or implicit provider fallback exists.
+        _input_token_request_body(body)
+        policy_digest, request_digest = generation_snapshot.digest, _digest(body)
+        bindings = boundary.values(policy_digest=policy_digest, request_digest=request_digest)
+        try:
+            persisted = self.configuration.policy_service.db.consume_token_preflight_receipt(receipt_id, bindings)
+        except RuntimeDatabaseError as error:
+            raise ProviderTokenPreflightBindingChanged("persisted token-preflight receipt is missing, stale, or consumed") from error
+        if (persisted.get("mission_id") != request.snapshot.mission_id
+                or persisted.get("provider_id") != generation_policy.provider_id
+                or persisted.get("input_token_bound") != generation_policy.input_token_bound
+                or persisted.get("context_token_bound") != generation_policy.context_token_bound
+                or persisted.get("output_token_bound") != generation_policy.output_token_bound):
+            raise ProviderTokenPreflightBindingChanged("persisted token-preflight receipt does not bind generation authority")
+
         permit = self.configuration.policy_service._acquire_generation_permit(
-            generation_policy, receipt.policy_digest, receipt.request_digest)
+            generation_policy, policy_digest, request_digest)
         try:
             state, secret = self._resolver.resolve(generation_policy.secret_reference)
             if state is not SecretState.RESOLVABLE or not secret:
                 raise PermissionError("OpenAI planning provider secret is not resolvable")
             self.configuration.policy_service._commit_generation_transport(
-                permit, generation_policy, receipt.policy_digest, receipt.request_digest)
+                permit, generation_policy, policy_digest, request_digest)
             started = _now()
             try:
                 http_request = Request(_ENDPOINT, data=json.dumps(body, separators=(",", ":")).encode(), headers={
@@ -194,7 +306,7 @@ class OpenAIResponsesPlanningProvider:
         return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _SCHEMA}}}
 
     def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy,
-                                snapshot: _G011PolicySnapshot, request_digest: str) -> _TokenPreflightReceipt:
+                                snapshot: _G011PolicySnapshot, request_digest: str) -> "_TokenPreflightReceipt":
         preflight_body = _input_token_request_body(body)
         state, secret = self._resolver.resolve(policy.secret_reference)
         if state is not SecretState.RESOLVABLE or not secret:
@@ -247,6 +359,19 @@ class OpenAIResponsesPlanningProvider:
         return ProviderInvocationEvidence(request.provider_id, request.model, self.adapter_version, request.digest, request.snapshot.digest, _digest(document) if document else None, state, str(document.get("id")) if isinstance(document, dict) and document.get("id") else None, started, _now(), status, int(usage.get("input_tokens", 0)) if isinstance(usage, dict) else None, int(usage.get("output_tokens", 0)) if isinstance(usage, dict) else None)
 
 def _digest(value: object) -> str: return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+def _canonical_digest(value: object) -> str: return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+def _origin_main_head(root: Path) -> str:
+    """Resolve the repository's canonical main head; never silently use a branch."""
+    try:
+        result = subprocess.run(("git", "-C", str(root), "rev-parse", "origin/main"), check=True,
+                                capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        raise PermissionError("canonical origin/main head is unavailable for token preflight") from None
+    head = result.stdout.strip()
+    if len(head) != 40 or any(character not in "0123456789abcdef" for character in head):
+        raise PermissionError("canonical origin/main head is invalid for token preflight")
+    return head
 
 def _input_token_request_body(generation_body: dict[str, object]) -> dict[str, object]:
     """Project one known Responses request into the documented count endpoint.
