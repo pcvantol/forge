@@ -48,7 +48,7 @@ class ProviderSecurityTests(unittest.TestCase):
   for scheme,identifier in (('keychain','//service/account?namespace=x&namespace=y'),('keychain','//service'),('other','//service/account')):
    with self.assertRaises(ValueError): SecretReference(scheme,identifier)
  def test_secret_bearing_or_unknown_references_are_rejected_before_persistence(self):
-  rejected=('unknown://service/account','env://service/account','file://service/account','keychain://user:password@service/account','keychain://service/account?password=G011_REJECTED_SECRET','keychain://service/account?token=G011_REJECTED_SECRET','keychain://service/account?api_key=G011_REJECTED_SECRET','keychain://service/account?secret=G011_REJECTED_SECRET','keychain://service/account?namespace=x&namespace=y','keychain://service/%2Faccount')
+  rejected=('unknown://service/account','env://service/account','file://service/account','keychain://user@service/account','keychain://user:password@service/account','keychain://service:123/account','keychain://service/account/extra','keychain://service/account#G011_FRAGMENT_SECRET','keychain://service/account?namespace=x#G011_FRAGMENT_SECRET','keychain://service/account?password=G011_REJECTED_SECRET','keychain://service/account?token=G011_REJECTED_SECRET','keychain://service/account?api_key=G011_REJECTED_SECRET','keychain://service/account?secret=G011_REJECTED_SECRET','keychain://service/account?namespace=x&namespace=y','keychain://service/%2Faccount','keychain://service%40evil/account')
   with tempfile.TemporaryDirectory() as d:
    db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); operator,context=self._operator(db); svc=PlanningProviderSecurityService(db,Store(),operator)
    before_config=db._connection.execute('SELECT COUNT(*) FROM planning_provider_security_config').fetchone()[0]
@@ -65,6 +65,11 @@ class ProviderSecurityTests(unittest.TestCase):
    self.assertEqual(before_audit,db._connection.execute('SELECT COUNT(*) FROM planning_provider_security_audit').fetchone()[0])
    evidence=' '.join(str(row) for row in db._connection.execute('SELECT * FROM planning_provider_security_audit'))
    self.assertNotIn('G011_REJECTED_SECRET',evidence)
+   self.assertNotIn('G011_FRAGMENT_SECRET',evidence)
+ def test_reference_serialization_is_canonical(self):
+  reference=SecretReference('keychain','//service/account?version=v2&namespace=n1')
+  self.assertEqual(reference.serialized,'keychain://service/account?namespace=n1&version=v2')
+  self.assertEqual(reference.identifier,'//service/account?namespace=n1&version=v2')
  def test_keychain_adapter_uses_explicit_argv_and_redacts_failures(self):
   calls=[]
   class Result:
