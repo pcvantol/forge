@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 22
+RUNTIME_SCHEMA_VERSION = 23
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -356,6 +356,9 @@ class RuntimeDatabase:
                         secret_reference TEXT NOT NULL, enabled INTEGER NOT NULL,
                         operator_id TEXT NOT NULL, version INTEGER NOT NULL,
                         created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                        model TEXT, timeout_seconds INTEGER,
+                        input_token_bound INTEGER, context_token_bound INTEGER,
+                        output_token_bound INTEGER,
                         UNIQUE(provider_id)
                     );
                     CREATE TABLE IF NOT EXISTS planning_provider_security_audit (
@@ -782,6 +785,19 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "22", "migration_version": "22", "last_migration": "22"})
                 self._connection.execute("PRAGMA user_version=22")
+            self._migrate(forge_version)
+        elif version == 22:
+            # Legacy G011 rows have no invocation policy.  They remain
+            # explicitly incomplete until a trusted operator configures it.
+            with self._connection:
+                existing = {row["name"] for row in self._connection.execute("PRAGMA table_info(planning_provider_security_config)")}
+                for name, definition in (("model", "TEXT"), ("timeout_seconds", "INTEGER"),
+                                         ("input_token_bound", "INTEGER"), ("context_token_bound", "INTEGER"),
+                                         ("output_token_bound", "INTEGER")):
+                    if name not in existing:
+                        self._connection.execute(f"ALTER TABLE planning_provider_security_config ADD COLUMN {name} {definition}")
+                self._set_metadata({"schema_version": "23", "migration_version": "23", "last_migration": "23"})
+                self._connection.execute("PRAGMA user_version=23")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 

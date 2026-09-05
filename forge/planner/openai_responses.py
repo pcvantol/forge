@@ -41,7 +41,7 @@ class OpenAIPlanningProviderConfiguration:
     def __post_init__(self) -> None:
         if not self.provider_id or not self.model:
             raise ValueError("OpenAI planning provider requires explicit provider and model")
-        if self.timeout_seconds <= 0 or self.timeout_seconds > 60 or self.max_input_characters < 512 or self.max_output_tokens < 128:
+        if self.timeout_seconds <= 0 or self.timeout_seconds > 120 or self.max_input_characters < 512 or self.max_output_tokens < 128:
             raise ValueError("OpenAI planning provider bounds are invalid")
 
 class OpenAIResponsesPlanningProvider:

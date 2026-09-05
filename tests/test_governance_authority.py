@@ -21,7 +21,7 @@ from forge.intake import MissionIntake, MissionIntakeError
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
-from forge.runtime.database import RuntimeDatabase
+from forge.runtime.database import RUNTIME_SCHEMA_VERSION, RuntimeDatabase
 
 
 class GovernanceAuthorityTests(unittest.TestCase):
@@ -306,7 +306,7 @@ class GovernanceSchema19MigrationTests(unittest.TestCase):
             business_decision_id="legacy-business", architecture_decision_id="legacy-architecture", planning=planning,
         )
         self.assertEqual(MissionIntake(None, lambda: "now").validate_approved_evidence(envelope, repository), envelope)
-        self.assertEqual(self._schema_version(path)[0], 21)
+        self.assertEqual(self._schema_version(path)[0], RUNTIME_SCHEMA_VERSION)
         database.close()
 
     def test_schema19_partial_governance_fixture_recovers_without_manual_repair(self):
@@ -320,11 +320,11 @@ class GovernanceSchema19MigrationTests(unittest.TestCase):
 
         database = RuntimeDatabase(root, path=path)
         database.validate_integrity()
-        self.assertEqual(self._schema_version(path)[0], 21)
+        self.assertEqual(self._schema_version(path)[0], RUNTIME_SCHEMA_VERSION)
         database.close()
 
         reopened = RuntimeDatabase(root, path=path)
-        self.assertEqual(reopened.metadata["schema_version"], "21")
+        self.assertEqual(reopened.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         reopened.close()
 
     def test_schema19_migration_rejects_incompatible_partial_table_without_advancing_metadata(self):
@@ -366,7 +366,7 @@ class GovernanceSchema19MigrationTests(unittest.TestCase):
         connection.commit()
         connection.close()
         database = RuntimeDatabase(root, path=path)
-        self.assertEqual(database.metadata["schema_version"], "21")
+        self.assertEqual(database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         database.close()
 
     def test_schema19_migration_requires_existing_g001_binding_for_adoption(self):
