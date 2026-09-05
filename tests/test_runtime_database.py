@@ -30,6 +30,13 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         self.database.validate_integrity()
 
+    def test_insert_only_mission_state_creation_never_overwrites(self) -> None:
+        self.database.create_mission_state(self._mission())
+        conflicting = self._mission(); conflicting["status"] = "ACTIVE"
+        with self.assertRaisesRegex(Exception, "already exists"):
+            self.database.create_mission_state(conflicting)
+        self.assertEqual(self.database.get_document("mission_state", "mission-1")["status"], "READY")
+
     def test_mission_review_recommendation_decision_and_execution_receipt_persist(self) -> None:
         self.database.save_mission_state(self._mission())
         self.database.record_architecture_review(self._review())

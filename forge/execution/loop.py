@@ -292,7 +292,7 @@ class ExecutionLoop:
     def _pause_after_evidence(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...],
                               evidence: ExecutionHostEvidence, mission_complete: bool) -> MissionExecutionState | None:
         """Apply policy only after exact evidence, never by altering host execution."""
-        policy = ExecutionPolicy.from_dict(state.execution_policy or self._execution_policy.to_dict())
+        policy = ExecutionPolicy.from_dict(state.execution_policy if state.execution_policy and state.execution_policy.get("kind") else self._execution_policy.to_dict())
         current = next(item for item in actions if item.id == evidence.repository_evidence.action_id)
         boundary: PauseBoundary | None = None
         identity = current.id

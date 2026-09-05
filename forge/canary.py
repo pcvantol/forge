@@ -15,7 +15,7 @@ from forge.models import (
 from forge.models.execution_host import ExecutionEvidenceOutcome
 from forge.models.mission import EngineeringMission, MissionIntentMembership, MissionScope, MissionStatus
 from forge.prompts import CodexCliRuntimePromptRenderer
-from forge.runtime import BootstrapMissionRunner
+from forge.runtime import BootstrapMissionRunner, RuntimeDatabase
 from forge.scheduler import BootstrapMissionScheduler
 from forge.scheduler.adapter import (
     BootstrapExecutionHostAdapter, EngineeringPlatformInboxReceipt, EngineeringPlatformReport,
@@ -110,7 +110,7 @@ def run_bootstrap_mission_canary(state_path: Path) -> CanaryQualificationReport:
         ("repository evidence",), status=EngineeringActionStatus.READY)
     preflight, inbox = _Preflight(), _Inbox()
     adapter = BootstrapExecutionHostAdapter(_Configuration(), preflight, inbox, _Reports(inbox))
-    with MissionStateStore(state_path) as store:
+    with MissionStateStore(RuntimeDatabase(state_path.parent)) as store:
         intake = MissionIntake(store, lambda: "2026-08-03T23:29:30Z")
         intake.admit(mission, (intent,), (action,))
         def render(_intent: object, active: EngineeringAction):

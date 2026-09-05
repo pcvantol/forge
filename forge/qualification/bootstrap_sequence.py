@@ -170,7 +170,7 @@ def run_bootstrap_sequence_qualification(root: Path, evidence_source: Engineerin
     if runtime_report["qualified"]:
         runtime.close()
         return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(runtime.path), "Normal Business → Architecture → Mission lifecycle")
-    workspace = ArchitectureWorkspace(root / "architecture.sqlite"); states = MissionStateStore(root / "mission-state.sqlite"); dispatches = MissionDispatcherStore(root / "dispatcher.sqlite")
+    workspace = ArchitectureWorkspace(root / "architecture.sqlite"); states = MissionStateStore(runtime); dispatches = MissionDispatcherStore(root / "dispatcher.sqlite")
     try:
         for mission in portfolio:
             try: workspace.get(mission.identifier)

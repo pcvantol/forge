@@ -867,11 +867,13 @@ class RuntimeDatabase:
         document = _document(state, "mission state")
         mission_id = document.get("mission_id") or document.get("id")
         lifecycle = document.get("lifecycle") or document.get("status")
-        required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")), document.get("execution_policy"))
+        required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")))
         if not isinstance(mission_id, str) or not mission_id or not isinstance(lifecycle, str) or not lifecycle or any(value is None for value in required[2:]):
             raise RuntimeDatabaseError("mission state requires identity, lifecycle, status, progress, resume point, and execution policy")
         with self._connection:
-            self._connection.execute("""INSERT INTO mission_state VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            self._connection.execute("""INSERT INTO mission_state
+                (mission_id, lifecycle, status, current_intent, current_action, progress, resume_point, execution_policy, document)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(mission_id) DO UPDATE SET lifecycle=excluded.lifecycle, status=excluded.status,
                 current_intent=excluded.current_intent, current_action=excluded.current_action, progress=excluded.progress,
                 resume_point=excluded.resume_point, execution_policy=excluded.execution_policy, document=excluded.document""", (
@@ -879,6 +881,27 @@ class RuntimeDatabase:
                 self._dump(document.get("current_engineering_action")), self._dump(document.get("progress", {})),
                 self._dump(document.get("resume", document.get("resume_point", {}))), self._dump(document.get("execution_policy")), self._dump(document),
             ))
+        return document
+
+    def create_mission_state(self, state: Any) -> dict[str, Any]:
+        """Create one Mission state without replacing an existing record."""
+        document = _document(state, "mission state")
+        mission_id = document.get("mission_id") or document.get("id")
+        lifecycle = document.get("lifecycle") or document.get("status")
+        required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")))
+        if not isinstance(mission_id, str) or not mission_id or not isinstance(lifecycle, str) or not lifecycle or any(value is None for value in required[2:]):
+            raise RuntimeDatabaseError("mission state requires identity, lifecycle, status, progress, resume point, and execution policy")
+        try:
+            with self._connection:
+                self._connection.execute("""INSERT INTO mission_state
+                    (mission_id, lifecycle, status, current_intent, current_action, progress, resume_point, execution_policy, document)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                    mission_id, lifecycle, str(document.get("status", lifecycle)), self._dump(document.get("current_engineering_intent")),
+                    self._dump(document.get("current_engineering_action")), self._dump(document.get("progress", {})),
+                    self._dump(document.get("resume", document.get("resume_point", {}))), self._dump(document.get("execution_policy")), self._dump(document),
+                ))
+        except sqlite3.IntegrityError as error:
+            raise RuntimeDatabaseError(f"mission state already exists: {mission_id}") from error
         return document
 
     def save_mission_runtime_projection(self, projection: Any) -> dict[str, Any]:

@@ -18,6 +18,7 @@ from forge.prompts import CodexCliRuntimePromptRenderer
 from forge.runtime import BootstrapMissionRunner, MissionRunnerError
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state import MissionExecutionStatus, MissionStateStore
+from forge.runtime import RuntimeDatabase
 
 
 def intent(identifier: str) -> EngineeringIntent:
@@ -82,12 +83,11 @@ class Host:
 class BootstrapMissionRunnerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = TemporaryDirectory()
-        self.path = Path(self.directory.name) / "mission.sqlite3"
-        self.store = MissionStateStore(self.path)
+        self.runtime = RuntimeDatabase(Path(self.directory.name)); self.store = MissionStateStore(self.runtime)
         self.counter = 0
 
     def tearDown(self) -> None:
-        self.store.close()
+        self.runtime.close()
         self.directory.cleanup()
 
     def runner(self, host: Host) -> BootstrapMissionRunner:
@@ -138,7 +138,7 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         waiting = first.run("mission-1")
         self.assertEqual(waiting.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
         self.store.close()
-        self.store = MissionStateStore(self.path)
+        self.store = MissionStateStore(self.runtime)
         host.outcomes["one"] = ExecutionEvidenceOutcome.COMPLETE
         resumed = self.runner(host).resume("mission-1")
         self.assertEqual(resumed.status, MissionExecutionStatus.COMPLETED)
