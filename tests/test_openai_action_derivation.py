@@ -51,7 +51,8 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   resolver.status_calls=0; resolver.resolve_calls=0
   configuration=OpenAIPlanningProviderConfiguration._for_test(
    service,'openai-planning',CanonicalTokenPreflightAuthority._for_test(
-    db,lambda _: TokenPreflightBoundary('a' * 40,'sha256:evidence','sha256:contract')))
+    db,lambda _: TokenPreflightBoundary('a' * 40,'sha256:evidence','sha256:contract'),
+    lambda _: ('planner-contract',)))
   resolver.status_calls=0; resolver.resolve_calls=0
   request=ProviderDerivationRequest('derive-1',self.snapshot,'openai-planning','gpt-5.6')
   return OpenAIResponsesPlanningProvider(configuration,resolver,opener=opener),resolver,configuration,request
@@ -149,6 +150,12 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,'context token bound'): adapter._enforce_token_policy(body,policy,112001)
   body['max_output_tokens']=16001
   with self.assertRaisesRegex(ValueError,'output token bound'): adapter._enforce_token_policy(body,configuration.current_policy(),1)
+
+ def test_strict_schema_binds_scope_to_canonical_mission_scope(self):
+  adapter,_,_,request=self.adapter(lambda *args,**kwargs: None)
+  schema=adapter._body(request)['text']['format']['schema']
+  scope=schema['properties']['proposals']['items']['properties']['scope']
+  self.assertEqual(scope,{'type':'string','enum':['planner-contract']})
 
  def test_policy_change_during_preflight_denies_generation_for_every_authority_field(self):
   cases=(
