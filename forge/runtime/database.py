@@ -116,33 +116,33 @@ class RuntimeDatabase:
         self._connection.execute("PRAGMA synchronous=FULL")
         self._connection.create_function("forge_governance_write_permitted", 0, lambda: int(self._governance_write_state["permitted"]))
 
-    def _governance_write(self, operation: object) -> None:
-        """Private enablement used only by the three typed operations below."""
+    def _insert_governance_grant(self, grant_id: str, installation_id: str, operator_id: str, capability: str,
+                                 provenance: str, digest: str, occurred_at: str) -> None:
         self._governance_write_state["permitted"] = True
         try:
             with self._connection:
-                operation()
-        finally:
-            self._governance_write_state["permitted"] = False
-
-    def _insert_governance_grant(self, grant_id: str, installation_id: str, operator_id: str, capability: str,
-                                 provenance: str, digest: str, occurred_at: str) -> None:
-        self._governance_write(lambda: self._connection.execute(
-            "INSERT INTO governance_capability_grants VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (grant_id, installation_id, operator_id, capability, provenance, digest, occurred_at)))
+                self._connection.execute("INSERT INTO governance_capability_grants VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (grant_id, installation_id, operator_id, capability, provenance, digest, occurred_at))
+        finally: self._governance_write_state["permitted"] = False
 
     def _insert_governance_authority(self, installation_id: str, operator_id: str, capability: str, occurred_at: str) -> None:
-        self._governance_write(lambda: self._connection.execute(
-            "INSERT INTO governance_authority VALUES (?, ?, ?, ?, ?)",
-            (installation_id, operator_id, capability, 1, occurred_at)))
+        self._governance_write_state["permitted"] = True
+        try:
+            with self._connection:
+                self._connection.execute("INSERT INTO governance_authority VALUES (?, ?, ?, ?, ?)",
+                    (installation_id, operator_id, capability, 1, occurred_at))
+        finally: self._governance_write_state["permitted"] = False
 
     def _insert_governance_decision(self, decision_id: str, installation_id: str, subject_id: str,
                                     subject_revision: str, capability: str, predecessor_digest: str | None,
                                     document: str, digest: str, occurred_at: str) -> None:
-        self._governance_write(lambda: self._connection.execute(
-            "INSERT INTO governance_decisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (decision_id, installation_id, subject_id, subject_revision, capability, predecessor_digest,
-             document, digest, occurred_at)))
+        self._governance_write_state["permitted"] = True
+        try:
+            with self._connection:
+                self._connection.execute("INSERT INTO governance_decisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (decision_id, installation_id, subject_id, subject_revision, capability, predecessor_digest,
+                     document, digest, occurred_at))
+        finally: self._governance_write_state["permitted"] = False
 
     def _migrate(self, forge_version: str) -> None:
         version = self._connection.execute("PRAGMA user_version").fetchone()[0]

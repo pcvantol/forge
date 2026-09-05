@@ -79,11 +79,18 @@ class GovernanceAuthorityTests(unittest.TestCase):
             self.assertFalse(hasattr(repository, "grant_current_operator"))
             self.assertFalse(hasattr(repository, "bootstrap_grant"))
             self.assertFalse(hasattr(repository, "_bootstrap_authority"))
+            self.assertFalse(hasattr(canonical, "_governance_write"))
             alternate = RuntimeDatabase(root, path=root / "alternate-runtime.db")
             with self.assertRaises(ValueError):
                 CanonicalGovernanceRepository(alternate, InstallationOperatorService(alternate, lambda: NamedOperatorIdentity("operator-a", 501)))
             alternate.close()
             canonical.close()
+
+    def test_adoption_rejects_authority_without_matching_adoption_provenance(self):
+        # Fresh first-bind provenance is bootstrap, not adoption; an adoption replay
+        # must not silently bless mixed provenance.
+        with self.assertRaises(PermissionError):
+            self.ops.adopt_governance_capabilities(self.context)
 
     def test_canonical_intake_cannot_allocate_before_envelope_validation(self):
         class Store:
