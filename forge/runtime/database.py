@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 18
+RUNTIME_SCHEMA_VERSION = 19
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -35,6 +35,7 @@ _TABLES = frozenset((
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
     "planning_provider_security_config", "planning_provider_security_audit",
+    "governance_authority", "governance_decisions",
 ))
 
 
@@ -267,6 +268,10 @@ class RuntimeDatabase:
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
                     CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_delete BEFORE DELETE ON planning_provider_security_audit
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
+                    CREATE TABLE governance_authority (installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (installation_id, operator_id, capability));
+                    CREATE TABLE governance_decisions (decision_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, subject_id TEXT NOT NULL, subject_revision TEXT NOT NULL, capability TEXT NOT NULL, predecessor_digest TEXT, document TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, subject_id, subject_revision, capability));
+                    CREATE TRIGGER governance_decisions_immutable_update BEFORE UPDATE ON governance_decisions BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
+                    CREATE TRIGGER governance_decisions_immutable_delete BEFORE DELETE ON governance_decisions BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_update BEFORE UPDATE ON architecture_reviews
                     BEGIN SELECT RAISE(ABORT, 'architecture reviews are immutable'); END;
                     CREATE TRIGGER architecture_reviews_immutable_delete BEFORE DELETE ON architecture_reviews
@@ -603,6 +608,31 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "18", "migration_version": "18", "last_migration": "18"})
                 self._connection.execute("PRAGMA user_version=18")
+            self._migrate(forge_version)
+        elif version == 18:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS governance_authority (
+                        installation_id TEXT NOT NULL, operator_id TEXT NOT NULL,
+                        capability TEXT NOT NULL, version INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        PRIMARY KEY (installation_id, operator_id, capability)
+                    );
+                    CREATE TABLE IF NOT EXISTS governance_decisions (
+                        decision_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL,
+                        subject_id TEXT NOT NULL, subject_revision TEXT NOT NULL,
+                        capability TEXT NOT NULL, predecessor_digest TEXT,
+                        document TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
+                        occurred_at TEXT NOT NULL,
+                        UNIQUE(installation_id, subject_id, subject_revision, capability)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS governance_decisions_immutable_update BEFORE UPDATE ON governance_decisions
+                    BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_decisions_immutable_delete BEFORE DELETE ON governance_decisions
+                    BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "19", "migration_version": "19", "last_migration": "19"})
+                self._connection.execute("PRAGMA user_version=19")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 

@@ -10,6 +10,7 @@ from forge.models.intent import EngineeringIntent, IntentStatus
 from forge.models.mission import EngineeringMission, MissionStatus
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.state import MissionExecutionState, MissionStateStore
+from forge.governance_authority import CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope
 
 
 class MissionIntakeError(ValueError):
@@ -26,6 +27,33 @@ class MissionIntake:
 
     store: MissionStateStore
     clock: Callable[[], str]
+
+    def validate_approved_evidence(
+        self, envelope: MissionPlanningEvidenceEnvelope, repository: CanonicalGovernanceRepository
+    ) -> MissionPlanningEvidenceEnvelope:
+        """Validate canonical approvals before any Mission allocation is attempted."""
+        try:
+            return envelope.validate(repository)
+        except ValueError as error:
+            raise MissionIntakeError("Mission Intake requires valid canonical approval/planning evidence") from error
+
+    def admit_canonical_approved_mission(
+        self,
+        mission: ArchitectureMission,
+        envelope: MissionPlanningEvidenceEnvelope,
+        repository: CanonicalGovernanceRepository,
+    ) -> MissionExecutionState:
+        """Admit only after validating the complete canonical evidence envelope.
+
+        This is the canonical governance bridge.  It preserves the legacy
+        bootstrap admission method below for its separately-versioned contract.
+        """
+        self.validate_approved_evidence(envelope, repository)
+        if mission.status is not ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING:
+            raise MissionIntakeError("Mission Intake requires an engineering-approved Architecture Mission")
+        return self.store.create_pending(
+            mission, occurred_at=self.clock(), resume={"intake": "canonical-governance-envelope-v1", "evidence_digest": envelope.digest}
+        )
 
     def admit(
         self,
