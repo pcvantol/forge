@@ -120,14 +120,31 @@ class CanonicalTokenPreflightAuthority:
     directly from the canonical RuntimeDatabase and repository.
     """
     def __init__(self, database, *, _head_reader: Callable[[Path], str] | None = None,
-                 _boundary_reader: Callable[[str], TokenPreflightBoundary] | None = None) -> None:
+                 _boundary_reader: Callable[[str], TokenPreflightBoundary] | None = None,
+                 _scope_reader: Callable[[str], tuple[str, ...]] | None = None) -> None:
         self._database = database
         self._head_reader = _head_reader or _origin_main_head
         self._boundary_reader = _boundary_reader
+        self._scope_reader = _scope_reader
 
     @classmethod
-    def _for_test(cls, database, boundary_reader: Callable[[str], TokenPreflightBoundary]) -> "CanonicalTokenPreflightAuthority":
-        return cls(database, _boundary_reader=boundary_reader)
+    def _for_test(cls, database, boundary_reader: Callable[[str], TokenPreflightBoundary],
+                  scope_reader: Callable[[str], tuple[str, ...]]) -> "CanonicalTokenPreflightAuthority":
+        return cls(database, _boundary_reader=boundary_reader, _scope_reader=scope_reader)
+
+    def approved_scopes_for(self, mission_id: str) -> tuple[str, ...]:
+        if self._scope_reader is not None:
+            return self._scope_reader(mission_id)
+        state = self._database.get_document("mission_state", mission_id)
+        contract = state.get("admission_contract")
+        mission = contract.get("mission") if isinstance(contract, dict) else None
+        scopes = mission.get("scope") if isinstance(mission, dict) else None
+        if state.get("status") != "APPROVED_PLANNABLE" or not isinstance(scopes, list):
+            raise PermissionError("canonical approved Mission scopes are unavailable")
+        resolved = tuple(sorted(set(scope for scope in scopes if isinstance(scope, str) and scope)))
+        if not resolved or len(resolved) != len(scopes):
+            raise PermissionError("canonical approved Mission scopes are invalid")
+        return resolved
 
     def boundary_for(self, mission_id: str) -> TokenPreflightBoundary:
         if self._boundary_reader is not None:
@@ -303,7 +320,8 @@ class OpenAIResponsesPlanningProvider:
         policy = policy or self.configuration.current_policy()
         evidence = [{"kind": item.kind.value, "source_id": item.source_id, "revision": item.revision, "content_digest": item.content_digest} for item in request.snapshot.evidence]
         prompt = json.dumps({"contract":"Forge Action Derivation; propose only, never approve or execute.", "snapshot": request.snapshot.to_dict() | {"evidence": evidence}}, separators=(",", ":"))
-        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _SCHEMA}}}
+        scopes = self.configuration.preflight_authority.approved_scopes_for(request.snapshot.mission_id)
+        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_scopes(scopes)}}}
 
     def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy,
                                 snapshot: _G011PolicySnapshot, request_digest: str) -> "_TokenPreflightReceipt":
@@ -447,3 +465,13 @@ def _preflight_transport_failure(error: URLError | TimeoutError | OSError) -> Pr
 def _now() -> str: return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 def _refinement(snapshot, reason): return GovernanceRefinementRequired(tuple(item.source_id for item in snapshot.evidence), "deterministic validation required", "provider-output", "blocked", reason)
 _SCHEMA = {"type":"object","additionalProperties":False,"required":["kind","proposals"],"properties":{"kind":{"type":"string","enum":["proposals"]},"proposals":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":False,"required":["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"],"properties":{key: ({"type":"boolean"} if key == "postponed" else {"type":"integer","minimum":1} if key == "priority" else {"type":"array","items":{"type":"string"}} if key in {"dependencies","write_scopes","expected_evidence","validation_strategy","human_gates","risk_inputs","source_evidence_refs"} else {"type":"string","minLength":1}) for key in ["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"]}}}}}
+
+def _schema_for_scopes(scopes: tuple[str, ...]) -> dict[str, object]:
+    """Bind strict output schema to the canonical approved Mission scopes."""
+    if not scopes or any(not isinstance(scope, str) or not scope for scope in scopes):
+        raise ValueError("canonical approved Mission scopes are required")
+    schema = json.loads(json.dumps(_SCHEMA))
+    schema["properties"]["proposals"]["items"]["properties"]["scope"] = {
+        "type": "string", "enum": list(scopes),
+    }
+    return schema
