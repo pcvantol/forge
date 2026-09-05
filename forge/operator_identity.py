@@ -1,23 +1,24 @@
 """Trusted installation/operator binding; request strings are not authority."""
 from dataclasses import dataclass
-from datetime import UTC, datetime
 import hashlib
 import os,pwd,subprocess,uuid
+from .runtime.database import _timestamp
 @dataclass(frozen=True)
 class NamedOperatorIdentity: generated_uid:str; uid:int
 @dataclass(frozen=True)
 class OperatorContext: installation_id:str; generated_uid:str; binding_version:int
 class InstallationOperatorService:
- def __init__(self, db, resolver): self.db,self.resolver=db,resolver
+ def __init__(self, db, resolver, clock=_timestamp): self.db,self.resolver,self.clock=db,resolver,clock
  def installation_id(self):
   value=self.db.metadata.get('installation_id')
   if value:return value
   value=str(uuid.uuid4())
   with self.db._connection:self.db._set_metadata({'installation_id':value})
   return value
- def first_bind(self, occurred_at):
+ def first_bind(self):
   identity=self.resolver(); iid=self.installation_id()
   if not isinstance(identity,NamedOperatorIdentity) or not identity.generated_uid: raise PermissionError('trusted identity required')
+  occurred_at=self.clock()
   with self.db._connection:
    if self.db._connection.execute('SELECT 1 FROM installation_operator_binding WHERE installation_id=?',(iid,)).fetchone():raise PermissionError('already bound')
    self.db._connection.execute('INSERT INTO installation_operator_binding VALUES (?,?,?,?,?,?)',(iid,identity.generated_uid,identity.uid,1,'ACTIVE',occurred_at))
@@ -34,7 +35,7 @@ class InstallationOperatorService:
   if not self.authorize(context):raise PermissionError('denied')
   with self.db._connection:
    self.db._connection.execute("UPDATE installation_operator_binding SET status='REVOKED',version=version+1 WHERE installation_id=?",(context.installation_id,))
-   self._audit(context.installation_id,NamedOperatorIdentity(context.generated_uid,0),'REVOKE',datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00','Z'),'ALLOW')
+   self._audit(context.installation_id,NamedOperatorIdentity(context.generated_uid,0),'REVOKE',self.clock(),'ALLOW')
  def _audit(self, installation_id, identity, operation, occurred_at, result):
   fingerprint=hashlib.sha256(identity.generated_uid.encode()).hexdigest()[:16]
   audit_id=f'{installation_id}:{operation}:{uuid.uuid4()}'
