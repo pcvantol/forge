@@ -24,6 +24,18 @@ OPENAI_RESPONSES_ADAPTER_VERSION = "1.0"
 _ENDPOINT = "https://api.openai.com/v1/responses"
 _INPUT_TOKENS_ENDPOINT = "https://api.openai.com/v1/responses/input_tokens"
 
+# The provider's Input Tokens contract accepts this projection of a Responses
+# request.  ``store`` does not affect request token accounting and
+# ``max_output_tokens`` is rejected by that endpoint; the latter is instead
+# included in Forge's separate canonical context-bound calculation below.
+# Keep the allow-list closed: a future generation field could affect provider
+# accounting, so it must not be silently omitted from the authoritative
+# preflight request.
+_GENERATION_REQUEST_FIELDS = frozenset((
+    "model", "store", "truncation", "input", "max_output_tokens", "text",
+))
+_INPUT_TOKEN_REQUEST_FIELDS = frozenset(("model", "truncation", "input", "text"))
+
 class ProviderSubmissionAmbiguous(RuntimeError):
     """The request may have reached OpenAI; operator reconciliation is required."""
 
@@ -183,11 +195,12 @@ class OpenAIResponsesPlanningProvider:
 
     def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy,
                                 snapshot: _G011PolicySnapshot, request_digest: str) -> _TokenPreflightReceipt:
+        preflight_body = _input_token_request_body(body)
         state, secret = self._resolver.resolve(policy.secret_reference)
         if state is not SecretState.RESOLVABLE or not secret:
             raise PermissionError("OpenAI planning provider secret is not resolvable for token preflight")
         try:
-            request = Request(_INPUT_TOKENS_ENDPOINT, data=json.dumps(body, separators=(",", ":")).encode(), headers={
+            request = Request(_INPUT_TOKENS_ENDPOINT, data=json.dumps(preflight_body, separators=(",", ":")).encode(), headers={
                 "Authorization": "Bearer " + secret, "Content-Type": "application/json"}, method="POST")
             with self._opener(request, timeout=policy.timeout_seconds) as response:
                 document = json.loads(response.read().decode("utf-8"))
@@ -234,6 +247,17 @@ class OpenAIResponsesPlanningProvider:
         return ProviderInvocationEvidence(request.provider_id, request.model, self.adapter_version, request.digest, request.snapshot.digest, _digest(document) if document else None, state, str(document.get("id")) if isinstance(document, dict) and document.get("id") else None, started, _now(), status, int(usage.get("input_tokens", 0)) if isinstance(usage, dict) else None, int(usage.get("output_tokens", 0)) if isinstance(usage, dict) else None)
 
 def _digest(value: object) -> str: return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+def _input_token_request_body(generation_body: dict[str, object]) -> dict[str, object]:
+    """Project one known Responses request into the documented count endpoint.
+
+    This is not a local token estimate.  The provider receives every field
+    that can affect its input-token accounting, including the strict output
+    schema.  Unsupported output/persistence controls are deliberately absent.
+    """
+    if set(generation_body) != _GENERATION_REQUEST_FIELDS:
+        raise ValueError("Responses request cannot be bound to the token-count preflight contract")
+    return {key: generation_body[key] for key in sorted(_INPUT_TOKEN_REQUEST_FIELDS)}
 
 def _preflight_http_failure(error: HTTPError) -> ProviderTokenPreflightFailed:
     """Classify a provider rejection without retaining its body or credentials."""

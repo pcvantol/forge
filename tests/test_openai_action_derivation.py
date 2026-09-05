@@ -62,7 +62,7 @@ class OpenAIActionDerivationTests(unittest.TestCase):
                     context_token_bound=changes.get('context_token_bound',current.context_token_bound),
                     output_token_bound=changes.get('output_token_bound',current.output_token_bound))
 
- def test_provider_authoritative_preflight_precedes_generation_and_matches_body(self):
+ def test_provider_authoritative_preflight_precedes_generation_and_preserves_token_relevant_body(self):
   captured=[]
   def opener(request, timeout):
    captured.append(request)
@@ -73,8 +73,23 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   self.assertEqual(len(response.proposals or ()),1)
   self.assertEqual((configuration.current_policy().timeout_seconds,configuration.current_policy().input_token_bound,configuration.current_policy().context_token_bound,configuration.current_policy().output_token_bound),(120,64000,128000,16000))
   self.assertEqual([item.full_url for item in captured],['https://api.openai.com/v1/responses/input_tokens','https://api.openai.com/v1/responses'])
-  self.assertEqual(captured[0].data,captured[1].data); self.assertEqual(resolver.resolve_calls,2)
+  preflight_body,generation_body=(json.loads(item.data) for item in captured)
+  self.assertEqual(set(preflight_body),{'model','truncation','input','text'})
+  self.assertNotIn('store',preflight_body); self.assertNotIn('max_output_tokens',preflight_body)
+  for field in ('model','truncation','input','text'): self.assertEqual(preflight_body[field],generation_body[field])
+  self.assertEqual(resolver.resolve_calls,2)
   self.assertNotIn('test-secret',captured[0].data.decode())
+
+ def test_unknown_generation_field_fails_closed_before_secret_resolution_or_transport(self):
+  calls=[]
+  adapter,resolver,_,request=self.adapter(lambda http_request,timeout: calls.append(http_request.full_url))
+  original=adapter._body
+  def altered_body(*args,**kwargs):
+   body=original(*args,**kwargs); body['unaccounted_future_field']='forbidden'; return body
+  adapter._body=altered_body # type: ignore[method-assign]
+  with self.assertRaisesRegex(ValueError,'cannot be bound'):
+   adapter.invoke(request)
+  self.assertEqual(calls,[]); self.assertEqual(resolver.resolve_calls,0)
 
  def test_over_bound_or_failed_preflight_never_generates(self):
   calls=[]
