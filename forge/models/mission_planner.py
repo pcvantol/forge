@@ -21,6 +21,7 @@ class PlanningInputKind(str, Enum):
 
     MISSION_STATE = "mission_state"
     REPOSITORY_TRUTH = "repository_truth"
+    REPOSITORY_CONTEXT = "repository_context"
     ARCHITECTURE_REVIEW = "architecture_review"
     CAPABILITY_CATALOGUE = "capability_catalogue"
     ENGINEERING_HISTORY = "engineering_history"
@@ -90,9 +91,10 @@ class ApprovedScope:
     capability_id: str
     architecture_references: tuple[IntentReference, ...]
     actions: tuple[PlannedActionDefinition, ...]
+    allow_provider_derivation: bool = False
 
     def __post_init__(self) -> None:
-        if not self.scope or not self.capability_id or not self.architecture_references or not self.actions:
+        if not self.scope or not self.capability_id or not self.architecture_references or (not self.actions and not self.allow_provider_derivation):
             raise ValueError("approved scope requires scope, capability, architecture references, and actions")
         if len(self.architecture_references) != len(set(self.architecture_references)):
             raise ValueError("approved scope architecture references must be unique")
@@ -142,8 +144,9 @@ class MissionPlannerInput:
             raise ValueError("mission planner requires evidence and a complete approved scope map")
         if len(self.evidence) != len(set(self.evidence)):
             raise ValueError("mission planner evidence must be unique")
-        required = {PlanningInputKind.MISSION_STATE, PlanningInputKind.REPOSITORY_TRUTH, PlanningInputKind.ARCHITECTURE_REVIEW, PlanningInputKind.CAPABILITY_CATALOGUE}
-        if not required <= {item.kind for item in self.evidence}:
+        kinds = {item.kind for item in self.evidence}
+        required = {PlanningInputKind.MISSION_STATE, PlanningInputKind.ARCHITECTURE_REVIEW, PlanningInputKind.CAPABILITY_CATALOGUE}
+        if not required <= kinds or not ({PlanningInputKind.REPOSITORY_TRUTH, PlanningInputKind.REPOSITORY_CONTEXT} & kinds):
             raise ValueError("mission planner requires Mission State, Repository Truth, Architecture Review, and Capability Catalogue evidence")
         scopes = {item.scope for item in self.approved_scopes}
         if scopes != set(self.mission.scope):
@@ -160,7 +163,7 @@ class MissionPlannerInput:
         return {"schema_version": self.schema_version, "mission": self.mission.to_dict(),
                 "mission_state": asdict(self.mission_state), "evidence": [item.to_dict() for item in self.evidence],
                 "approved_scopes": [{"scope": item.scope, "capability_id": item.capability_id,
-                    "architecture_references": [reference.to_dict() for reference in item.architecture_references],
+                    "architecture_references": [reference.to_dict() for reference in item.architecture_references], "allow_provider_derivation": item.allow_provider_derivation,
                     "actions": [{**asdict(action), "expected_evidence": list(action.expected_evidence), "validation_strategy": list(action.validation_strategy)} for action in item.actions]} for item in self.approved_scopes]}
 
 
