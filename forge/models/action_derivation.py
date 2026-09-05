@@ -195,6 +195,12 @@ class ProviderInvocationEvidence:
     snapshot_digest: str
     result_digest: str | None
     side_effect_state: ProviderSideEffectState
+    response_id: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    status: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
     def __post_init__(self) -> None:
         if not all((self.provider_id, self.adapter_version, self.request_digest, self.snapshot_digest)):
@@ -202,6 +208,8 @@ class ProviderInvocationEvidence:
         for digest in (self.request_digest, self.snapshot_digest, self.result_digest):
             if digest is not None and (not digest.startswith("sha256:") or len(digest) != 71):
                 raise ValueError("provider invocation evidence digests must be sha256 values")
+        if any(value is not None and value < 0 for value in (self.input_tokens, self.output_tokens)):
+            raise ValueError("provider token usage cannot be negative")
 
 
 _LIFECYCLE_TRANSITIONS = {
