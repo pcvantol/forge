@@ -1,52 +1,39 @@
-"""Fail-closed token accounting for bounded planning-provider requests.
+"""Private, fail-closed Responses request accounting.
 
-The Responses API reports usage after submission, which is too late to enforce
-Forge's G011 admission limits.  This boundary counts the *exact text input
-items* constructed for one request before a secret is resolved or transport is
-attempted.  A concrete counter must be explicitly bound to the configured
-model; an unavailable or unknown tokenizer is never approximated with bytes or
-characters.
+Forge cannot use the provider's input-token endpoint here: that would itself
+be provider transport and require the configured secret. The bounded adapter
+therefore measures a deterministic conservative upper bound for the complete
+wire request before it resolves the secret.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol
+import json
 
 
-class TokenCountingUnavailable(RuntimeError):
-    """The configured model has no trusted deterministic local tokenizer."""
+class TokenAccountingUnavailable(RuntimeError):
+    """The adapter cannot prove a bounded input for the configured model."""
 
 
-class ModelTokenCounter(Protocol):
-    """Counts the exact submitted text items for one explicitly named model."""
+class _CanonicalResponsesRequestTokenCounter:
+    """Adapter-owned conservative accounting for the supported Responses model.
 
-    def count(self, *, model: str, input_texts: tuple[str, ...]) -> int: ...
-
-
-@dataclass(frozen=True)
-class TiktokenModelTokenCounter:
-    """Explicit model-to-encoding binding backed by the deterministic tiktoken codec.
-
-    The binding is deliberately supplied by the owning runtime integration.
-    Guessing an encoding from a model-family prefix would turn an unknown
-    tokenizer into an apparently valid count and is therefore forbidden.
+    The accounting unit is the UTF-8 byte length of the canonical, complete
+    request body. For text-only Responses input, every input token consumes at
+    least one UTF-8 byte; serializing the entire body additionally reserves
+    for all role/message, metadata, schema, and protocol representation. It is
+    therefore a deterministic upper bound, not a character-count proxy.
+    Unknown models fail closed rather than guessing a tokenizer or encoding.
     """
 
-    model_encodings: dict[str, str]
+    _SUPPORTED_MODELS = frozenset(("gpt-5.6",))
 
-    def count(self, *, model: str, input_texts: tuple[str, ...]) -> int:
-        encoding_name = self.model_encodings.get(model)
-        if not encoding_name:
-            raise TokenCountingUnavailable("configured model has no trusted tokenizer binding")
+    def count(self, *, model: str, request_body: dict[str, object]) -> int:
+        if model not in self._SUPPORTED_MODELS:
+            raise TokenAccountingUnavailable("configured model has no proven local request accounting")
         try:
-            import tiktoken  # type: ignore[import-not-found]
-            encoding = tiktoken.get_encoding(encoding_name)
-        except Exception as error:
-            raise TokenCountingUnavailable("configured tokenizer is unavailable") from error
-        try:
-            # Each string is exactly one Responses input_text item.  Keeping
-            # item boundaries avoids treating JSON/UTF-8 byte length as token
-            # accounting and lets a counter model any provider item overhead.
-            return sum(len(encoding.encode(text, disallowed_special=())) for text in input_texts)
-        except Exception as error:
-            raise TokenCountingUnavailable("configured tokenizer could not count request input") from error
+            # Match the transport's JSON escaping. Escaped multibyte text can
+            # only make this conservative upper bound larger.
+            serialized = json.dumps(request_body, sort_keys=True, separators=(",", ":"))
+            return len(serialized.encode("utf-8"))
+        except (TypeError, UnicodeError, ValueError) as error:
+            raise TokenAccountingUnavailable("request body cannot be accounted deterministically") from error

@@ -150,16 +150,16 @@ class PlanningProviderSecurityService:
         return result
 
     def invocation_policy(self, provider_id: str) -> PlanningProviderInvocationPolicy:
-        """Return the sole supported adapter policy view from canonical G011 state.
+        """Load the sole supported adapter policy view from canonical G011 state.
 
-        The typed secret reference is required only to resolve the secret at
-        transport time.  No secret material is returned or retained here.
+        This intentionally does not interrogate the secure store. Adapter
+        request construction and deterministic bounds validation must complete
+        before the separate transport-time secret resolution.
         """
         row=self.db._connection.execute('SELECT * FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
         if row is None:
             raise PermissionError('planning provider is not configured')
         parameters=self._invocation_parameters(row['model'], row['timeout_seconds'], row['input_token_bound'], row['context_token_bound'], row['output_token_bound'])
-        state=self.store.status(SecretReference.parse(row['secret_reference'])) if row['enabled'] and parameters else SecretState.MISSING
-        if not row['enabled'] or parameters is None or state is not SecretState.RESOLVABLE:
-            raise PermissionError('planning provider policy is not ready')
+        if not row['enabled'] or parameters is None:
+            raise PermissionError('planning provider policy is not enabled and complete')
         return PlanningProviderInvocationPolicy(provider_id, parameters[0], SecretReference.parse(row['secret_reference']), parameters[1], parameters[2], parameters[3], parameters[4], row['version'])

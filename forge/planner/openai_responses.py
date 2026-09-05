@@ -19,7 +19,8 @@ from forge.models.action_derivation import (DerivedActionProposal, GovernanceRef
 from forge.provider_security import (PlanningProviderInvocationPolicy,
     PlanningProviderSecurityService, SecretReference, SecretState)
 from .provider_adapter import ProviderDerivationRequest, ProviderDerivationResponse
-from .token_accounting import ModelTokenCounter, TokenCountingUnavailable
+from .token_accounting import (_CanonicalResponsesRequestTokenCounter,
+    TokenAccountingUnavailable)
 
 OPENAI_RESPONSES_ADAPTER_VERSION = "1.0"
 _ENDPOINT = "https://api.openai.com/v1/responses"
@@ -35,25 +36,23 @@ class OpenAIPlanningProviderConfiguration:
     """Adapter configuration that can only be built from canonical G011 policy."""
     policy_service: PlanningProviderSecurityService
     provider_id: str
-    token_counter: ModelTokenCounter
 
     def __init__(self, policy_service: PlanningProviderSecurityService, provider_id: str,
-                 token_counter: ModelTokenCounter, *, _from_canonical_g011: bool = False) -> None:
+                 *, _from_canonical_g011: bool = False) -> None:
         if not _from_canonical_g011:
             raise TypeError("OpenAI planning configuration must be created from canonical G011 policy")
         if not isinstance(policy_service, PlanningProviderSecurityService) or not provider_id:
             raise ValueError("OpenAI planning provider requires canonical G011 authority")
         object.__setattr__(self, "policy_service", policy_service)
         object.__setattr__(self, "provider_id", provider_id)
-        object.__setattr__(self, "token_counter", token_counter)
 
     @classmethod
-    def from_canonical_g011(cls, service: PlanningProviderSecurityService, provider_id: str,
-                            token_counter: ModelTokenCounter) -> "OpenAIPlanningProviderConfiguration":
+    def from_canonical_g011(cls, service: PlanningProviderSecurityService,
+                            provider_id: str) -> "OpenAIPlanningProviderConfiguration":
         # Validate readiness at configuration construction, then obtain a fresh
         # canonical policy snapshot immediately before every transport.
         service.invocation_policy(provider_id)
-        return cls(service, provider_id, token_counter, _from_canonical_g011=True)
+        return cls(service, provider_id, _from_canonical_g011=True)
 
     def current_policy(self) -> PlanningProviderInvocationPolicy:
         return self.policy_service.invocation_policy(self.provider_id)
@@ -63,6 +62,7 @@ class OpenAIResponsesPlanningProvider:
     def __init__(self, configuration: OpenAIPlanningProviderConfiguration, resolver: SecretResolver,
                  *, opener: Callable[..., object] = urlopen, adapter_version: str = OPENAI_RESPONSES_ADAPTER_VERSION) -> None:
         self.configuration, self._resolver, self._opener, self.adapter_version = configuration, resolver, opener, adapter_version
+        self._token_counter = _CanonicalResponsesRequestTokenCounter()
 
     def invoke(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse:
         policy = self.configuration.current_policy()
@@ -106,16 +106,14 @@ class OpenAIResponsesPlanningProvider:
         output_tokens = body["max_output_tokens"]
         if not isinstance(output_tokens, int) or isinstance(output_tokens, bool) or output_tokens > policy.output_token_bound:
             raise ValueError("requested output exceeds canonical G011 output token bound")
-        input_texts = tuple(part["text"] for item in body["input"] for part in item["content"]  # type: ignore[index]
-                            if part.get("type") == "input_text")
         try:
-            input_tokens = self.configuration.token_counter.count(model=policy.model, input_texts=input_texts)
-        except TokenCountingUnavailable:
+            input_tokens = self._token_counter.count(model=policy.model, request_body=body)
+        except TokenAccountingUnavailable:
             raise
         except Exception as error:
-            raise TokenCountingUnavailable("configured token counter failed") from error
+            raise TokenAccountingUnavailable("canonical request accounting failed") from error
         if not isinstance(input_tokens, int) or isinstance(input_tokens, bool) or input_tokens < 0:
-            raise TokenCountingUnavailable("configured token counter returned an invalid count")
+            raise TokenAccountingUnavailable("canonical request accounting returned an invalid count")
         if input_tokens > policy.input_token_bound:
             raise ValueError("bounded planning evidence exceeds canonical G011 input token bound")
         if input_tokens + output_tokens > policy.context_token_bound:
