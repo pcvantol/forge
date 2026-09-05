@@ -261,4 +261,15 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   with self.assertRaises(ProviderSubmissionAmbiguous): self.generate(adapter,request)
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens','https://api.openai.com/v1/responses'])
 
+ def test_reasoning_output_before_strict_message_is_not_a_parse_failure(self):
+  def response(request,timeout):
+   if request.full_url.endswith('/input_tokens'): return Response({'input_tokens':1})
+   return Response({'id':'resp_reasoning','status':'completed','output':[
+    {'type':'reasoning','summary':[]},
+    {'type':'message','content':[{'type':'output_text','text':json.dumps(proposal())}]},
+   ]})
+  adapter,_,_,request=self.adapter(response)
+  result=self.generate(adapter,request)
+  self.assertEqual(len(result.proposals or ()),1)
+
 if __name__ == '__main__': unittest.main()
