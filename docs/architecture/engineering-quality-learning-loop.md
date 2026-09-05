@@ -12,6 +12,12 @@ Forge must become better at engineering a project as evidence accumulates. Quali
 
 > Quality Learning is not remembering what went wrong; it is converting what went wrong into enforceable project capability.
 
+The inherited Forge default coverage policy is defined only in the canonical
+[Self-Contained Engineering Contract Bootstrap](self-contained-engineering-contract-bootstrap.md#default-project-production-code-coverage-policy).
+Quality Learning can use its evidence, propose governed project hardening, and
+surface debt; it does not redefine the threshold, production scope, or
+exception process.
+
 ## Responsibility boundary
 
 - **EP** executes and enforces the current Engineering Action contract and durable proof; it does not autonomously rewrite project policy.
@@ -227,6 +233,11 @@ Useful diagnostics include first-pass qualification rate, human-review escape ra
 Workspace presents learning proposals with evidence and enforcement impact and allows authorized `Accept`, `Modify` or `Reject`. For architecture transitions it should expose consequence/retirement criteria and unresolved compatibility exceptions where operator judgement is required.
 
 Forge never silently changes DoR, DoD, CI, Goldens, architecture policy or governance because the observer found a pattern.
+
+Aggregate production-code coverage and optional stricter protected-module or
+per-module coverage are complementary: selected-module passes never substitute
+for the aggregate project gate, while aggregate passes do not hide critically
+low-covered modules.
 
 ## Motivating lesson
 
