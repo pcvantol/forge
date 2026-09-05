@@ -24,7 +24,9 @@ class InstallationOperatorService:
    self.db._connection.execute('INSERT INTO installation_operator_binding VALUES (?,?,?,?,?,?)',(iid,identity.generated_uid,identity.uid,1,'ACTIVE',occurred_at))
    self._audit(iid,identity,'FIRST_BIND',occurred_at,'ALLOW')
   context=self.context()
-  self._bootstrap_governance_after_first_bind(context, occurred_at)
+  self._pending_governance_bootstrap=(context,occurred_at)
+  try:self._bootstrap_governance_after_first_bind()
+  finally:del self._pending_governance_bootstrap
   return context
  def context(self):
   identity=self.resolver(); iid=self.installation_id(); row=self.db._connection.execute('SELECT * FROM installation_operator_binding WHERE installation_id=?',(iid,)).fetchone()
@@ -50,8 +52,10 @@ class InstallationOperatorService:
    digest='sha256:'+hashlib.sha256(json.dumps(document,sort_keys=True,separators=(',',':')).encode()).hexdigest()
    self.db._insert_governance_grant(digest,context.installation_id,operator,capability,json.dumps(document,sort_keys=True,separators=(',',':')),digest,now)
    self.db._insert_governance_authority(context.installation_id,operator,capability,now)
- def _bootstrap_governance_after_first_bind(self, context, occurred_at):
+ def _bootstrap_governance_after_first_bind(self):
   """Private G001 first-bind continuation; no caller-supplied identity values."""
+  try:context,occurred_at=self._pending_governance_bootstrap
+  except AttributeError:raise PermissionError('governance bootstrap is only available during first bind') from None
   self._persist_governance_capabilities(context,'LOCAL_INSTALLATION_BOOTSTRAP_V1',{'first_bind_at':occurred_at,'binding_version':context.binding_version})
  def adopt_governance_capabilities(self, context):
   """One-time adoption for a pre-governance, already-bound G001 installation."""
