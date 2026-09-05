@@ -83,12 +83,10 @@ class CanonicalGovernanceRepository:
             raise PermissionError("required governance capability is absent")
         document = decision.document(context.installation_id, operator_id, _timestamp())
         digest = _digest(document)
-        self.database._persist_governance(
-            "INSERT INTO governance_decisions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (decision.decision_id, context.installation_id, decision.subject_id, decision.subject_revision,
-             decision.capability.value, decision.predecessor_digest,
-             json.dumps(document, sort_keys=True, separators=(",", ":")), digest, document["occurred_at"]),
-        )
+        self.database._insert_governance_decision(
+            decision.decision_id, context.installation_id, decision.subject_id, decision.subject_revision,
+            decision.capability.value, decision.predecessor_digest,
+            json.dumps(document, sort_keys=True, separators=(",", ":")), digest, document["occurred_at"])
         return digest
 
     def decision(self, decision_id: str) -> dict[str, object]:
