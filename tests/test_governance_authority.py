@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+from hashlib import sha256
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -155,6 +156,160 @@ class GovernanceAuthorityTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 envelope.validate(CanonicalGovernanceRepository._for_test(other_db, other_ops))
             other_db.close()
+
+
+class GovernanceSchema19MigrationTests(unittest.TestCase):
+    """Regression coverage for G001-bound schema-19 runtime recovery."""
+
+    identity = NamedOperatorIdentity("operator-a", 501)
+
+    @staticmethod
+    def _drop_governance_objects(database):
+        rows = database._connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'governance_%'"
+        ).fetchall()
+        for row in rows:
+            database._connection.execute(f"DROP TRIGGER {row['name']}")
+        for table in ("governance_decisions", "governance_capability_grants", "governance_authority"):
+            database._connection.execute(f"DROP TABLE {table}")
+
+    def _schema19_fixture(self, *, partial=False, bind=True):
+        temporary = tempfile.TemporaryDirectory()
+        root = Path(temporary.name)
+        path = root / "runtime.db"
+        database = RuntimeDatabase(root, path=path)
+        if bind:
+            InstallationOperatorService(database, lambda: self.identity).first_bind()
+        self._drop_governance_objects(database)
+        if partial:
+            database._connection.execute("""
+                CREATE TABLE governance_capability_grants (
+                    grant_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL,
+                    operator_id TEXT NOT NULL, capability TEXT NOT NULL,
+                    bootstrap_provenance TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
+                    occurred_at TEXT NOT NULL,
+                    UNIQUE(installation_id, operator_id, capability)
+                )
+            """)
+        database._set_metadata({"schema_version": "19", "migration_version": "19", "last_migration": "19"})
+        database._connection.execute("PRAGMA user_version=19")
+        database._connection.commit()
+        database.close()
+        self.addCleanup(temporary.cleanup)
+        return root, path
+
+    @staticmethod
+    def _schema_version(path):
+        connection = sqlite3.connect(path)
+        try:
+            return (connection.execute("PRAGMA user_version").fetchone()[0],
+                    dict(connection.execute("SELECT key, value FROM runtime_metadata")))
+        finally:
+            connection.close()
+
+    def test_schema19_pre_governance_fixture_migrates_and_adopts_existing_g001(self):
+        root, path = self._schema19_fixture()
+        version, metadata = self._schema_version(path)
+        self.assertEqual(version, 19)
+        self.assertEqual(metadata["schema_version"], "19")
+        connection = sqlite3.connect(path)
+        self.assertEqual(connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('governance_authority', 'governance_decisions')").fetchone()[0], 0)
+        self.assertEqual(connection.execute("SELECT COUNT(*) FROM installation_operator_binding").fetchone()[0], 1)
+        connection.close()
+
+        database = RuntimeDatabase(root, path=path)
+        operators = InstallationOperatorService(database, lambda: self.identity)
+        context = operators.context()
+        operators.adopt_governance_capabilities(context)
+        capabilities = tuple(row["capability"] for row in database._connection.execute(
+            "SELECT capability FROM governance_authority ORDER BY capability"
+        ))
+        self.assertEqual(capabilities, ("ARCHITECTURE_APPROVAL", "BUSINESS_APPROVAL", "SECURITY_APPROVAL"))
+        repository = CanonicalGovernanceRepository._for_test(database, operators)
+        planning = GovernanceAuthorityTests.planning("legacy-19")
+        CanonicalBusinessWorkspace(repository, context).approve(
+            decision_id="legacy-business", candidate_id="legacy-candidate", revision="legacy-19",
+            scope=planning.scope, gates=("business",),
+        )
+        CanonicalArchitectureWorkspace(repository, context).approve(
+            decision_id="legacy-architecture", candidate_id="legacy-candidate", revision="legacy-19",
+            planning=planning,
+        )
+        envelope = MissionPlanningEvidenceEnvelope.compose(
+            repository, subject_id="legacy-candidate", subject_revision="legacy-19",
+            business_decision_id="legacy-business", architecture_decision_id="legacy-architecture", planning=planning,
+        )
+        self.assertEqual(MissionIntake(None, lambda: "now").validate_approved_evidence(envelope, repository), envelope)
+        self.assertEqual(self._schema_version(path)[0], 21)
+        database.close()
+
+    def test_schema19_partial_governance_fixture_recovers_without_manual_repair(self):
+        root, path = self._schema19_fixture(partial=True)
+        version, metadata = self._schema_version(path)
+        self.assertEqual((version, metadata["schema_version"]), (19, "19"))
+        connection = sqlite3.connect(path)
+        self.assertEqual(connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='governance_capability_grants'").fetchone()[0], 1)
+        self.assertEqual(connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('governance_authority', 'governance_decisions')").fetchone()[0], 0)
+        connection.close()
+
+        database = RuntimeDatabase(root, path=path)
+        database.validate_integrity()
+        self.assertEqual(self._schema_version(path)[0], 21)
+        database.close()
+
+        reopened = RuntimeDatabase(root, path=path)
+        self.assertEqual(reopened.metadata["schema_version"], "21")
+        reopened.close()
+
+    def test_schema19_migration_rejects_incompatible_partial_table_without_advancing_metadata(self):
+        root, path = self._schema19_fixture(partial=True)
+        connection = sqlite3.connect(path)
+        connection.execute("DROP TABLE governance_capability_grants")
+        connection.execute("CREATE TABLE governance_capability_grants (grant_id TEXT PRIMARY KEY, malformed TEXT NOT NULL)")
+        connection.commit()
+        connection.close()
+        with self.assertRaisesRegex(Exception, "incompatible governance_capability_grants table"):
+            RuntimeDatabase(root, path=path)
+        version, metadata = self._schema_version(path)
+        self.assertEqual((version, metadata["schema_version"], metadata["migration_version"]), (19, "19", "19"))
+        connection = sqlite3.connect(path)
+        self.assertEqual(connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('governance_authority', 'governance_decisions')").fetchone()[0], 0)
+        connection.close()
+
+    def test_schema19_migration_rejects_conflicting_preexisting_authority_during_adoption(self):
+        root, path = self._schema19_fixture()
+        connection = sqlite3.connect(path)
+        installation_id = connection.execute("SELECT installation_id FROM installation_operator_binding").fetchone()[0]
+        operator_id = sha256(self.identity.generated_uid.encode()).hexdigest()[:16]
+        connection.execute("CREATE TABLE governance_authority (installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (installation_id, operator_id, capability))")
+        connection.execute("INSERT INTO governance_authority VALUES (?, ?, 'BUSINESS_APPROVAL', 1, 'now')", (installation_id, operator_id))
+        connection.commit()
+        connection.close()
+        database = RuntimeDatabase(root, path=path)
+        operators = InstallationOperatorService(database, lambda: self.identity)
+        with self.assertRaises(PermissionError):
+            operators.adopt_governance_capabilities(operators.context())
+        database.close()
+
+    def test_schema19_migration_accepts_correct_preexisting_guard_trigger(self):
+        root, path = self._schema19_fixture(partial=True)
+        connection = sqlite3.connect(path)
+        connection.execute("CREATE TABLE governance_authority (installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (installation_id, operator_id, capability))")
+        connection.execute("CREATE TABLE governance_decisions (decision_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, subject_id TEXT NOT NULL, subject_revision TEXT NOT NULL, capability TEXT NOT NULL, predecessor_digest TEXT, document TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, subject_id, subject_revision, capability))")
+        connection.execute("CREATE TRIGGER governance_authority_authorized_insert BEFORE INSERT ON governance_authority WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END")
+        connection.commit()
+        connection.close()
+        database = RuntimeDatabase(root, path=path)
+        self.assertEqual(database.metadata["schema_version"], "21")
+        database.close()
+
+    def test_schema19_migration_requires_existing_g001_binding_for_adoption(self):
+        root, path = self._schema19_fixture(bind=False)
+        database = RuntimeDatabase(root, path=path)
+        operators = InstallationOperatorService(database, lambda: self.identity)
+        with self.assertRaises(PermissionError):
+            operators.context()
+        database.close()
 
 
 if __name__ == "__main__":

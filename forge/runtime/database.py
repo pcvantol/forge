@@ -144,6 +144,76 @@ class RuntimeDatabase:
                      document, digest, occurred_at))
         finally: self._governance_write_state["permitted"] = False
 
+    _GOVERNANCE_TABLE_SHAPES = {
+        "governance_authority": (
+            ("installation_id", "TEXT", 1, 1), ("operator_id", "TEXT", 1, 2),
+            ("capability", "TEXT", 1, 3), ("version", "INTEGER", 1, 0),
+            ("created_at", "TEXT", 1, 0),
+        ),
+        "governance_capability_grants": (
+            ("grant_id", "TEXT", 0, 1), ("installation_id", "TEXT", 1, 0),
+            ("operator_id", "TEXT", 1, 0), ("capability", "TEXT", 1, 0),
+            ("bootstrap_provenance", "TEXT", 1, 0), ("digest", "TEXT", 1, 0),
+            ("occurred_at", "TEXT", 1, 0),
+        ),
+        "governance_decisions": (
+            ("decision_id", "TEXT", 0, 1), ("installation_id", "TEXT", 1, 0),
+            ("subject_id", "TEXT", 1, 0), ("subject_revision", "TEXT", 1, 0),
+            ("capability", "TEXT", 1, 0), ("predecessor_digest", "TEXT", 0, 0),
+            ("document", "TEXT", 1, 0), ("digest", "TEXT", 1, 0),
+            ("occurred_at", "TEXT", 1, 0),
+        ),
+    }
+
+    def _require_governance_table_shape(self, table: str) -> None:
+        columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                        for row in self._connection.execute(f"PRAGMA table_info({table})"))
+        if columns != self._GOVERNANCE_TABLE_SHAPES[table]:
+            raise RuntimeIntegrityError(f"governance migration found incompatible {table} table")
+
+    def _require_governance_trigger(self, name: str, table: str, *fragments: str) -> None:
+        row = self._connection.execute(
+            "SELECT tbl_name, sql FROM sqlite_master WHERE type = 'trigger' AND name = ?", (name,)
+        ).fetchone()
+        sql = "" if row is None or row["sql"] is None else " ".join(row["sql"].lower().split())
+        if row is None or row["tbl_name"] != table or any(fragment.lower() not in sql for fragment in fragments):
+            raise RuntimeIntegrityError(f"governance migration found incompatible {name} trigger")
+
+    def _migrate_governance_19_to_20(self, forge_version: str) -> None:
+        """Create and verify all governance objects before advancing schema metadata.
+
+        Some pre-governance installations reported schema 19 before PR #19's
+        governance tables existed.  The complete object set is deliberately
+        reconciled here so an interrupted earlier attempt (grants table only)
+        is safely recoverable without a manual SQLite repair.
+        """
+        statements = (
+            "CREATE TABLE IF NOT EXISTS governance_authority (installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (installation_id, operator_id, capability))",
+            "CREATE TABLE IF NOT EXISTS governance_capability_grants (grant_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, bootstrap_provenance TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, operator_id, capability))",
+            "CREATE TABLE IF NOT EXISTS governance_decisions (decision_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, subject_id TEXT NOT NULL, subject_revision TEXT NOT NULL, capability TEXT NOT NULL, predecessor_digest TEXT, document TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, subject_id, subject_revision, capability))",
+        )
+        triggers = (
+            ("governance_authority_authorized_insert", "CREATE TRIGGER IF NOT EXISTS governance_authority_authorized_insert BEFORE INSERT ON governance_authority WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;", "governance_authority", ("forge_governance_write_permitted() != 1", "canonical governance repository required")),
+            ("governance_capability_grants_authorized_insert", "CREATE TRIGGER IF NOT EXISTS governance_capability_grants_authorized_insert BEFORE INSERT ON governance_capability_grants WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;", "governance_capability_grants", ("forge_governance_write_permitted() != 1", "canonical governance repository required")),
+            ("governance_decisions_authorized_insert", "CREATE TRIGGER IF NOT EXISTS governance_decisions_authorized_insert BEFORE INSERT ON governance_decisions WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;", "governance_decisions", ("forge_governance_write_permitted() != 1", "canonical governance repository required")),
+        )
+        self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            for statement in statements:
+                self._connection.execute(statement)
+            for table in self._GOVERNANCE_TABLE_SHAPES:
+                self._require_governance_table_shape(table)
+            for _, statement, _, _ in triggers:
+                self._connection.execute(statement)
+            for name, _, table, fragments in triggers:
+                self._require_governance_trigger(name, table, *fragments)
+            self._set_metadata({"schema_version": "20", "migration_version": "20", "last_migration": "20", "forge_version": forge_version})
+            self._connection.execute("PRAGMA user_version=20")
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
+
     def _migrate(self, forge_version: str) -> None:
         version = self._connection.execute("PRAGMA user_version").fetchone()[0]
         if version > RUNTIME_SCHEMA_VERSION:
@@ -673,27 +743,7 @@ class RuntimeDatabase:
                 self._connection.execute("PRAGMA user_version=19")
             self._migrate(forge_version)
         elif version == 19:
-            with self._connection:
-                self._connection.executescript("""
-                    CREATE TABLE IF NOT EXISTS governance_capability_grants (
-                        grant_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL,
-                        operator_id TEXT NOT NULL, capability TEXT NOT NULL,
-                        bootstrap_provenance TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
-                        occurred_at TEXT NOT NULL,
-                        UNIQUE(installation_id, operator_id, capability)
-                    );
-                    CREATE TRIGGER IF NOT EXISTS governance_authority_authorized_insert BEFORE INSERT ON governance_authority
-                    WHEN forge_governance_write_permitted() != 1
-                    BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
-                    CREATE TRIGGER IF NOT EXISTS governance_capability_grants_authorized_insert BEFORE INSERT ON governance_capability_grants
-                    WHEN forge_governance_write_permitted() != 1
-                    BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
-                    CREATE TRIGGER IF NOT EXISTS governance_decisions_authorized_insert BEFORE INSERT ON governance_decisions
-                    WHEN forge_governance_write_permitted() != 1
-                    BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
-                """)
-                self._set_metadata({"schema_version": "20", "migration_version": "20", "last_migration": "20"})
-                self._connection.execute("PRAGMA user_version=20")
+            self._migrate_governance_19_to_20(forge_version)
             self._migrate(forge_version)
         elif version == 20:
             with self._connection:
