@@ -5,8 +5,10 @@ This module deliberately cannot invoke a provider or retain secret material.
 from dataclasses import dataclass
 from enum import Enum
 from hashlib import sha256
-from typing import Protocol
+from typing import Protocol, Callable
 import json
+import subprocess
+from urllib.parse import urlparse, parse_qsl
 
 class SecretState(str, Enum):
     RESOLVABLE='RESOLVABLE'; MISSING='MISSING'; REVOKED='REVOKED'; ROTATED_INVALID='ROTATED_INVALID'; STORE_UNAVAILABLE='STORE_UNAVAILABLE'; INVALID_REFERENCE='INVALID_REFERENCE'
@@ -29,6 +31,34 @@ class SecretReference:
 
 class SecureStorePort(Protocol):
     def status(self, reference: SecretReference) -> SecretState: ...
+
+class MacOSKeychainSecureStoreAdapter:
+    """Explicit-reference-only adapter; it never enumerates Keychain items."""
+    executable = '/usr/bin/security'
+    def __init__(self, runner: Callable[..., object] = subprocess.run, timeout: float = 5.0):
+        self._runner, self._timeout = runner, timeout
+    @staticmethod
+    def _parts(reference: SecretReference):
+        if reference.scheme != 'keychain': raise ValueError('unexpected secure-store scheme')
+        parsed=urlparse(reference.identifier)
+        if parsed.scheme or not parsed.netloc: raise ValueError('invalid keychain reference')
+        path=[parsed.netloc, *[item for item in parsed.path.split('/') if item]]
+        query=parse_qsl(parsed.query, keep_blank_values=True)
+        if len(path) != 2 or not all(path) or len(query) != len(set(query)) or any(k not in {'namespace','version'} or not v for k,v in query):
+            raise ValueError('invalid keychain reference')
+        return path[0], path[1]
+    def resolve(self, reference: SecretReference) -> tuple[SecretState, str | None]:
+        try: service, account = self._parts(reference)
+        except ValueError: return SecretState.INVALID_REFERENCE, None
+        try:
+            result=self._runner([self.executable, 'find-generic-password', '-s', service, '-a', account, '-w'], capture_output=True, text=True, timeout=self._timeout, check=False)
+        except (OSError, subprocess.TimeoutExpired): return SecretState.STORE_UNAVAILABLE, None
+        if result.returncode == 0: return SecretState.RESOLVABLE, result.stdout.rstrip('\n')
+        error=(result.stderr or '').lower()
+        if 'could not be found' in error or 'item not found' in error: return SecretState.MISSING, None
+        if 'not allowed' in error or 'user interaction is not allowed' in error: return SecretState.ACCESS_DENIED, None
+        return SecretState.STORE_UNAVAILABLE, None
+    def status(self, reference): return self.resolve(reference)[0]
 
 @dataclass(frozen=True)
 class ProviderSecurityHealth:
