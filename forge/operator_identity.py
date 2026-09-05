@@ -1,5 +1,6 @@
 """Trusted installation/operator binding; request strings are not authority."""
 from dataclasses import dataclass
+import hashlib
 import os,pwd,subprocess,uuid
 @dataclass(frozen=True)
 class NamedOperatorIdentity: generated_uid:str; uid:int
@@ -19,7 +20,7 @@ class InstallationOperatorService:
   with self.db._connection:
    if self.db._connection.execute('SELECT 1 FROM installation_operator_binding WHERE installation_id=?',(iid,)).fetchone():raise PermissionError('already bound')
    self.db._connection.execute('INSERT INTO installation_operator_binding VALUES (?,?,?,?,?,?)',(iid,identity.generated_uid,identity.uid,1,'ACTIVE',occurred_at))
-   self.db._connection.execute('INSERT INTO installation_operator_audit VALUES (?,?,?,?,?,?)',(iid+':bind',iid,identity.generated_uid,'FIRST_BIND',occurred_at,'ALLOW'))
+   self._audit(iid,identity,'FIRST_BIND',occurred_at,'ALLOW')
   return self.context()
  def context(self):
   identity=self.resolver(); iid=self.installation_id(); row=self.db._connection.execute('SELECT * FROM installation_operator_binding WHERE installation_id=?',(iid,)).fetchone()
@@ -30,7 +31,13 @@ class InstallationOperatorService:
   except PermissionError:return False
  def revoke(self, context):
   if not self.authorize(context):raise PermissionError('denied')
-  with self.db._connection:self.db._connection.execute("UPDATE installation_operator_binding SET status='REVOKED',version=version+1 WHERE installation_id=?",(context.installation_id,))
+  with self.db._connection:
+   self.db._connection.execute("UPDATE installation_operator_binding SET status='REVOKED',version=version+1 WHERE installation_id=?",(context.installation_id,))
+   self._audit(context.installation_id,NamedOperatorIdentity(context.generated_uid,0),'REVOKE','SYSTEM','ALLOW')
+ def _audit(self, installation_id, identity, operation, occurred_at, result):
+  fingerprint=hashlib.sha256(identity.generated_uid.encode()).hexdigest()[:16]
+  audit_id=f'{installation_id}:{operation}:{uuid.uuid4()}'
+  self.db._connection.execute('INSERT INTO installation_operator_audit VALUES (?,?,?,?,?,?)',(audit_id,installation_id,fingerprint,operation,occurred_at,result))
 
 class MacOSGeneratedUIDIdentityAdapter:
  executable='/usr/bin/dscl'

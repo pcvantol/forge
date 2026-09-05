@@ -1,6 +1,6 @@
-import tempfile,unittest
+import os,shutil,tempfile,unittest
 from pathlib import Path
-from forge.runtime.database import RuntimeDatabase
+from forge.runtime.database import RuntimeDatabase,RuntimeIntegrityError
 from forge.operator_identity import InstallationOperatorService,MacOSGeneratedUIDIdentityAdapter,NamedOperatorIdentity
 class T(unittest.TestCase):
  def test_trusted_binding_rejects_strings_wrong_and_revoked(self):
@@ -22,3 +22,15 @@ class T(unittest.TestCase):
    db=RuntimeDatabase(root,path=path); context=InstallationOperatorService(db,lambda:identity).first_bind('t'); db.close()
    reopened=RuntimeDatabase(root,path=path); service=InstallationOperatorService(reopened,lambda:identity)
    self.assertTrue(service.authorize(context));self.assertFalse(service.authorize('generated-a'));reopened.close()
+ def test_clone_fails_closed_for_a_different_runtime_root(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); source=root/'source'; clone=root/'clone'; source.mkdir();clone.mkdir(); path=source/'runtime.db'
+   db=RuntimeDatabase(source,path=path); InstallationOperatorService(db,lambda:NamedOperatorIdentity('generated-a',501)).first_bind('t'); db.close()
+   shutil.copy2(path,clone/'runtime.db')
+   with self.assertRaises(RuntimeIntegrityError): RuntimeDatabase(clone,path=clone/'runtime.db')
+ def test_environment_cannot_change_trusted_identity(self):
+  class Result: returncode=0; stdout='GeneratedUID: 123E4567-E89B-42D3-A456-426614174000'
+  adapter=MacOSGeneratedUIDIdentityAdapter(runner=lambda *args,**kwargs:Result())
+  from unittest.mock import patch
+  with patch('forge.operator_identity.os.getuid',return_value=501),patch('forge.operator_identity.pwd.getpwuid',return_value=type('P',(),{'pw_name':'operator'})()),patch.dict(os.environ,{'USER':'forged','LOGNAME':'forged','HOME':'/forged','PWD':'/forged'}):
+   self.assertEqual(adapter.resolve().generated_uid,'123e4567-e89b-42d3-a456-426614174000')
