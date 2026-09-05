@@ -9,9 +9,11 @@ from typing import Protocol, Callable
 import json
 import subprocess
 from urllib.parse import urlparse, parse_qsl
+from .operator_identity import InstallationOperatorService, OperatorContext
+from .runtime.database import _timestamp
 
 class SecretState(str, Enum):
-    RESOLVABLE='RESOLVABLE'; MISSING='MISSING'; REVOKED='REVOKED'; ROTATED_INVALID='ROTATED_INVALID'; STORE_UNAVAILABLE='STORE_UNAVAILABLE'; INVALID_REFERENCE='INVALID_REFERENCE'
+    RESOLVABLE='RESOLVABLE'; MISSING='MISSING'; REVOKED='REVOKED'; ROTATED_INVALID='ROTATED_INVALID'; STORE_UNAVAILABLE='STORE_UNAVAILABLE'; INVALID_REFERENCE='INVALID_REFERENCE'; ACCESS_DENIED='ACCESS_DENIED'
 
 @dataclass(frozen=True)
 class SecretReference:
@@ -68,10 +70,14 @@ class ProviderSecurityHealth:
 
 class PlanningProviderSecurityService:
     """Runtime-DB-only config authority; all returned views are redacted."""
-    def __init__(self, database, store: SecureStorePort): self.db, self.store = database, store
-    def configure(self, *, configuration_id, provider_id, reference, operator_id, expected_version=0, enabled=True, occurred_at):
-        if not operator_id: raise PermissionError('named operator is required')
+    def __init__(self, database, store: SecureStorePort, operator_service: InstallationOperatorService):
+        self.db, self.store, self.operator_service = database, store, operator_service
+    def configure(self, *, configuration_id, provider_id, reference, operator_context: OperatorContext, expected_version=0, enabled=True):
+        if not self.operator_service.authorize(operator_context):
+            raise PermissionError('trusted named operator context is required')
         if not isinstance(reference, SecretReference): raise TypeError('typed secret reference is required')
+        occurred_at = _timestamp()
+        operator_id = operator_context.generated_uid
         row=self.db._connection.execute('SELECT version FROM planning_provider_security_config WHERE provider_id=?',(provider_id,)).fetchone()
         actual=0 if row is None else row['version']
         if actual != expected_version: raise ValueError('stale provider security configuration write')
