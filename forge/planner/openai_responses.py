@@ -345,7 +345,7 @@ class OpenAIResponsesPlanningProvider:
 
     def _parse(self, request: ProviderDerivationRequest, document: dict[str, object]) -> tuple[tuple[DerivedActionProposal, ...] | None, GovernanceRefinementRequired | None]:
         if document.get("status") != "completed": raise ValueError("response was not completed")
-        text = document["output"][0]["content"][0]["text"]  # type: ignore[index]
+        text = _structured_output_text(document)
         parsed = json.loads(text)
         if parsed.get("kind") == "governance_refinement":
             return None, _refinement(request.snapshot, str(parsed["reason"]))
@@ -360,6 +360,34 @@ class OpenAIResponsesPlanningProvider:
 
 def _digest(value: object) -> str: return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 def _canonical_digest(value: object) -> str: return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+def _structured_output_text(document: dict[str, object]) -> str:
+    """Extract exactly one strict output-text part from a Responses result.
+
+    Responses may place non-message output (for example reasoning) before the
+    final message.  It is never valid to assume that array position zero is
+    the schema-bearing message; conversely, multiple text parts are rejected
+    rather than concatenated into a new, unvalidated representation.
+    """
+    output = document.get("output")
+    if not isinstance(output, list):
+        raise ValueError("response output is missing")
+    texts: list[str] = []
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") not in (None, "message"):
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            text = part.get("text")
+            if part.get("type") in (None, "output_text") and isinstance(text, str):
+                texts.append(text)
+    if len(texts) != 1:
+        raise ValueError("response has no unambiguous strict structured output")
+    return texts[0]
 
 def _origin_main_head(root: Path) -> str:
     """Resolve the repository's canonical main head; never silently use a branch."""
