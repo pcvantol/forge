@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 26
+RUNTIME_SCHEMA_VERSION = 27
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -34,7 +34,7 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
-    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "action_derivations",
+    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "action_derivations",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments",
@@ -75,6 +75,14 @@ def _document(value: Any, label: str) -> dict[str, Any]:
         raise RuntimeDatabaseError(f"{label} must be a mapping or Forge value object")
     return result
 
+def _contains_secret_field(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        return any(any(token in str(key).lower() for token in ("secret", "authorization", "api_key", "password"))
+                   or _contains_secret_field(item) for key, item in value.items())
+    if isinstance(value, (tuple, list)):
+        return any(_contains_secret_field(item) for item in value)
+    return False
+
 
 class RuntimeDatabase:
     """The sole Forge runtime database owner.
@@ -103,6 +111,7 @@ class RuntimeDatabase:
         self._connection = sqlite3.connect(self.path)
         self._connection.row_factory = sqlite3.Row
         self._governance_write_state = {"permitted": False}
+        self._token_preflight_write_state = {"permitted": False}
         try:
             self._configure()
             self._migrate(forge_version)
@@ -117,6 +126,7 @@ class RuntimeDatabase:
         self._connection.execute("PRAGMA journal_mode=WAL")
         self._connection.execute("PRAGMA synchronous=FULL")
         self._connection.create_function("forge_governance_write_permitted", 0, lambda: int(self._governance_write_state["permitted"]))
+        self._connection.create_function("forge_token_preflight_write_permitted", 0, lambda: int(self._token_preflight_write_state["permitted"]))
 
     def _insert_governance_grant(self, grant_id: str, installation_id: str, operator_id: str, capability: str,
                                  provenance: str, digest: str, occurred_at: str) -> None:
@@ -375,6 +385,32 @@ class RuntimeDatabase:
                         request_digest TEXT NOT NULL, state TEXT NOT NULL,
                         created_at TEXT NOT NULL, updated_at TEXT NOT NULL
                     );
+                    CREATE TABLE IF NOT EXISTS token_preflight_receipts (
+                        receipt_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        main_head TEXT NOT NULL, policy_digest TEXT NOT NULL,
+                        request_digest TEXT NOT NULL, evidence_digest TEXT NOT NULL,
+                        effective_contract_digest TEXT NOT NULL, provider_id TEXT NOT NULL,
+                        input_tokens INTEGER NOT NULL, input_token_bound INTEGER NOT NULL,
+                        context_token_bound INTEGER NOT NULL, output_token_bound INTEGER NOT NULL,
+                        context_with_requested_output INTEGER NOT NULL, result TEXT NOT NULL,
+                        created_at TEXT NOT NULL, document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS token_preflight_receipt_consumptions (
+                        receipt_id TEXT PRIMARY KEY, consumed_at TEXT NOT NULL,
+                        FOREIGN KEY (receipt_id) REFERENCES token_preflight_receipts(receipt_id)
+                    );
+                    CREATE TRIGGER token_preflight_receipts_authorized_insert BEFORE INSERT ON token_preflight_receipts
+                    WHEN forge_token_preflight_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical token preflight producer required'); END;
+                    CREATE TRIGGER token_preflight_receipts_immutable_update BEFORE UPDATE ON token_preflight_receipts
+                    BEGIN SELECT RAISE(ABORT, 'token preflight receipts are immutable'); END;
+                    CREATE TRIGGER token_preflight_receipts_immutable_delete BEFORE DELETE ON token_preflight_receipts
+                    BEGIN SELECT RAISE(ABORT, 'token preflight receipts are immutable'); END;
+                    CREATE TRIGGER token_preflight_receipt_consumptions_immutable_update BEFORE UPDATE ON token_preflight_receipt_consumptions
+                    BEGIN SELECT RAISE(ABORT, 'token preflight receipt consumptions are immutable'); END;
+                    CREATE TRIGGER token_preflight_receipt_consumptions_immutable_delete BEFORE DELETE ON token_preflight_receipt_consumptions
+                    BEGIN SELECT RAISE(ABORT, 'token preflight receipt consumptions are immutable'); END;
                     CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_update BEFORE UPDATE ON planning_provider_security_audit
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
                     CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_delete BEFORE DELETE ON planning_provider_security_audit
@@ -849,6 +885,39 @@ class RuntimeDatabase:
                 )""")
                 self._set_metadata({"schema_version": "26", "migration_version": "26", "last_migration": "26"})
                 self._connection.execute("PRAGMA user_version=26")
+            self._migrate(forge_version)
+        elif version == 26:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS token_preflight_receipts (
+                        receipt_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        main_head TEXT NOT NULL, policy_digest TEXT NOT NULL,
+                        request_digest TEXT NOT NULL, evidence_digest TEXT NOT NULL,
+                        effective_contract_digest TEXT NOT NULL, provider_id TEXT NOT NULL,
+                        input_tokens INTEGER NOT NULL, input_token_bound INTEGER NOT NULL,
+                        context_token_bound INTEGER NOT NULL, output_token_bound INTEGER NOT NULL,
+                        context_with_requested_output INTEGER NOT NULL, result TEXT NOT NULL,
+                        created_at TEXT NOT NULL, document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS token_preflight_receipt_consumptions (
+                        receipt_id TEXT PRIMARY KEY, consumed_at TEXT NOT NULL,
+                        FOREIGN KEY (receipt_id) REFERENCES token_preflight_receipts(receipt_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS token_preflight_receipts_authorized_insert BEFORE INSERT ON token_preflight_receipts
+                    WHEN forge_token_preflight_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical token preflight producer required'); END;
+                    CREATE TRIGGER IF NOT EXISTS token_preflight_receipts_immutable_update BEFORE UPDATE ON token_preflight_receipts
+                    BEGIN SELECT RAISE(ABORT, 'token preflight receipts are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS token_preflight_receipts_immutable_delete BEFORE DELETE ON token_preflight_receipts
+                    BEGIN SELECT RAISE(ABORT, 'token preflight receipts are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS token_preflight_receipt_consumptions_immutable_update BEFORE UPDATE ON token_preflight_receipt_consumptions
+                    BEGIN SELECT RAISE(ABORT, 'token preflight receipt consumptions are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS token_preflight_receipt_consumptions_immutable_delete BEFORE DELETE ON token_preflight_receipt_consumptions
+                    BEGIN SELECT RAISE(ABORT, 'token preflight receipt consumptions are immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "27", "migration_version": "27", "last_migration": "27"})
+                self._connection.execute("PRAGMA user_version=27")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1280,6 +1349,70 @@ class RuntimeDatabase:
                 tuple(document[item] for item in required) + (self._dump(document),),
             )
         return document
+
+    def create_token_preflight_receipt(self, receipt: Any) -> dict[str, Any]:
+        """Persist one immutable provider-authoritative token-preflight PASS."""
+        document = _document(receipt, "token preflight receipt")
+        if _contains_secret_field(document):
+            raise RuntimeDatabaseError("token preflight receipt must not contain secret material")
+        required = ("receipt_id", "mission_id", "main_head", "policy_digest", "request_digest",
+                    "evidence_digest", "effective_contract_digest", "provider_id", "input_tokens",
+                    "input_token_bound", "context_token_bound", "output_token_bound",
+                    "context_with_requested_output", "result", "created_at")
+        if any(item not in document for item in required) or document["result"] != "PASS":
+            raise RuntimeDatabaseError("token preflight receipt requires a complete successful boundary")
+        if any(not isinstance(document[item], str) or not document[item] for item in required[:8]):
+            raise RuntimeDatabaseError("token preflight receipt identity is invalid")
+        if any(not isinstance(document[item], int) or isinstance(document[item], bool) or document[item] < 0
+               for item in required[8:13]):
+            raise RuntimeDatabaseError("token preflight receipt bounds are invalid")
+        if document["input_tokens"] > document["input_token_bound"] or document["context_with_requested_output"] > document["context_token_bound"]:
+            raise RuntimeDatabaseError("token preflight receipt bounds do not pass")
+        if not self._connection.execute("SELECT 1 FROM mission_state WHERE mission_id=?", (document["mission_id"],)).fetchone():
+            raise RuntimeDatabaseError("token preflight receipt references an unknown Mission")
+        self._token_preflight_write_state["permitted"] = True
+        try:
+            with self._connection:
+                existing = self._connection.execute("SELECT document FROM token_preflight_receipts WHERE receipt_id=?", (document["receipt_id"],)).fetchone()
+                if existing is not None:
+                    persisted = json.loads(existing["document"])
+                    if persisted != document: raise RuntimeIntegrityError("token preflight receipt rewrite is denied")
+                    return persisted
+                self._connection.execute("INSERT INTO token_preflight_receipts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    tuple(document[item] for item in required) + (self._dump(document),))
+        finally:
+            self._token_preflight_write_state["permitted"] = False
+        return document
+
+    def consume_token_preflight_receipt(self, receipt_id: str, boundary: Mapping[str, str]) -> dict[str, Any]:
+        """Atomically reserve one exact PASS receipt for at most one generation."""
+        required = ("main_head", "policy_digest", "request_digest", "evidence_digest", "effective_contract_digest")
+        if not receipt_id or any(not isinstance(boundary.get(item), str) or not boundary[item] for item in required):
+            raise RuntimeDatabaseError("complete token preflight boundary is required")
+        connection = self._connection; connection.execute("BEGIN IMMEDIATE")
+        try:
+            row = connection.execute("SELECT document FROM token_preflight_receipts WHERE receipt_id=?", (receipt_id,)).fetchone()
+            if row is None: raise RuntimeDatabaseError("token preflight receipt is missing")
+            document = json.loads(row["document"])
+            if document.get("result") != "PASS" or any(document.get(item) != boundary[item] for item in required):
+                raise RuntimeIntegrityError("token preflight receipt boundary is stale or conflicting")
+            try:
+                connection.execute("INSERT INTO token_preflight_receipt_consumptions VALUES (?,?)", (receipt_id, _timestamp()))
+            except sqlite3.IntegrityError as error:
+                raise RuntimeIntegrityError("token preflight receipt was already consumed") from error
+            connection.commit()
+            return document
+        except Exception:
+            connection.rollback(); raise
+
+    def token_preflight_receipt(self, receipt_id: str) -> dict[str, Any]:
+        """Read a bounded receipt; callers still need atomic consumption to generate."""
+        row = self._connection.execute(
+            "SELECT document FROM token_preflight_receipts WHERE receipt_id=?", (receipt_id,)
+        ).fetchone()
+        if row is None:
+            raise RuntimeDatabaseError("token preflight receipt is missing")
+        return json.loads(row["document"])
 
     def create_action_derivation_evidence_set(self, evidence: Any) -> dict[str, Any]:
         """Insert one immutable, mission-bound Action-Derivation evidence set."""
