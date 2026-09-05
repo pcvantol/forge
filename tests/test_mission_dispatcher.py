@@ -12,6 +12,7 @@ from forge.dispatcher import ApprovedMissionQueue, DispatcherStatus, MissionDisp
 from forge.intake import MissionIntake
 from forge.models import EngineeringEffort, MissionCandidate, MissionCandidateMaturity, MissionCandidateStatus, RecommendationConfidenceLevel, RequiredDiscipline
 from forge.state import MissionExecutionStatus, MissionStateStore
+from forge.runtime import RuntimeDatabase
 
 
 def candidate(identifier: str) -> MissionCandidate:
@@ -27,12 +28,12 @@ class MissionDispatcherTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = TemporaryDirectory(); root = Path(self.directory.name)
         self.workspace = ArchitectureWorkspace(root / "architecture.sqlite")
-        self.state_store = MissionStateStore(root / "state.sqlite")
+        self.runtime = RuntimeDatabase(root); self.state_store = MissionStateStore(self.runtime)
         self.dispatch_store = MissionDispatcherStore(root / "dispatcher.sqlite")
         self.states, self.tick = States(), 0
 
     def tearDown(self) -> None:
-        self.workspace.close(); self.state_store.close(); self.dispatch_store.close(); self.directory.cleanup()
+        self.workspace.close(); self.runtime.close(); self.dispatch_store.close(); self.directory.cleanup()
 
     def clock(self) -> str:
         self.tick += 1; return f"2026-08-04T10:00:{self.tick:02d}Z"

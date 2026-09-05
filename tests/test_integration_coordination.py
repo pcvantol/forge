@@ -8,6 +8,7 @@ import unittest
 
 from forge.integration import IntegrationCoordinator, IntegrationEvidenceRepository
 from forge.models.integration import IntegrationEventKind, IntegrationUnit
+from forge.runtime import RuntimeDatabase
 from forge.state import MissionExecutionStatus, MissionStateStore
 
 
@@ -23,7 +24,8 @@ class IntegrationCoordinationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = TemporaryDirectory()
         root = Path(self.directory.name)
-        self.states = MissionStateStore(root / "mission-state.sqlite")
+        self.runtime = RuntimeDatabase(root)
+        self.states = MissionStateStore(self.runtime)
         self.states.create({"id": "mission-integration"}, ({"id": "intent"},), ({"id": "action", "status": "COMPLETE"},), occurred_at="2026-08-05T08:00:00Z")
         self.states.transition("mission-integration", MissionExecutionStatus.READY, occurred_at="2026-08-05T08:00:00Z", reason="planned")
         self.states.transition("mission-integration", MissionExecutionStatus.ACTIVE, occurred_at="2026-08-05T08:00:00Z", reason="execution_complete")
@@ -31,7 +33,7 @@ class IntegrationCoordinationTests(unittest.TestCase):
         self.coordinator = IntegrationCoordinator(self.evidence, integration_id_factory=lambda mission_id, units: f"integration-{mission_id}-{'-'.join(item.id for item in units)}")
 
     def tearDown(self) -> None:
-        self.evidence.close(); self.states.close(); self.directory.cleanup()
+        self.evidence.close(); self.runtime.close(); self.directory.cleanup()
 
     def test_parallel_units_are_ordered_merge_ready_and_persist_immutable_evidence(self) -> None:
         result = self.coordinator.coordinate(self.states, "mission-integration", (unit("b", scope=("docs",)), unit("a", scope=("forge",))), timestamp="2026-08-05T08:01:00Z")

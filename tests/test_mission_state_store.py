@@ -11,6 +11,7 @@ from forge.models.action import EngineeringAction, EngineeringActionStatus
 from forge.models.intent import EngineeringIntent, IntentCategory, IntentReference, IntentTraceability
 from forge.models.mission import EngineeringMission, MissionIntentMembership, MissionScope
 from forge.state import MissionExecutionStatus, MissionStateStore, MissionStateStoreError
+from forge.runtime import RuntimeDatabase
 
 
 def mission() -> EngineeringMission:
@@ -36,11 +37,11 @@ def action(status: EngineeringActionStatus = EngineeringActionStatus.READY) -> E
 class MissionStateStoreTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = TemporaryDirectory()
-        self.path = Path(self.directory.name) / "mission-state.sqlite3"
-        self.store = MissionStateStore(self.path)
+        self.root = Path(self.directory.name); self.runtime = RuntimeDatabase(self.root)
+        self.store = MissionStateStore(self.runtime)
 
     def tearDown(self) -> None:
-        self.store.close()
+        self.runtime.close()
         self.directory.cleanup()
 
     def create(self) -> None:
@@ -68,6 +69,12 @@ class MissionStateStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(MissionStateStoreError, "already exists"):
             self.create()
 
+    def test_store_requires_a_runtime_database_not_a_path_or_connection(self) -> None:
+        with self.assertRaisesRegex(TypeError, "canonical RuntimeDatabase"):
+            MissionStateStore(self.root / "standalone-mission-state.sqlite")  # type: ignore[arg-type]
+        with self.assertRaisesRegex(TypeError, "canonical RuntimeDatabase"):
+            MissionStateStore(self.runtime._connection)  # type: ignore[arg-type]  # noqa: SLF001
+
     def test_transitions_are_closed_and_persist_every_step(self) -> None:
         self.create()
         with self.assertRaisesRegex(MissionStateStoreError, "not permitted"):
@@ -82,7 +89,7 @@ class MissionStateStoreTests(unittest.TestCase):
     def test_restart_and_resume_use_persisted_state_not_process_memory(self) -> None:
         self.advance_to_waiting_evidence()
         self.store.close()
-        self.store = MissionStateStore(self.path)
+        self.runtime = RuntimeDatabase(self.root); self.store = MissionStateStore(self.runtime)
         state = self.store.resumable()[0]
         self.assertEqual(state.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
         self.assertEqual(state.execution_correlation["host_run_id"], "run-1")  # type: ignore[index]
@@ -97,7 +104,7 @@ class MissionStateStoreTests(unittest.TestCase):
         self.store.transition("mission-1", MissionExecutionStatus.WAITING_FOR_EVIDENCE, occurred_at="2026-08-01T20:04:00Z", reason="acknowledged")
         paused = self.store.transition("mission-1", MissionExecutionStatus.AWAITING_APPROVAL, occurred_at="2026-08-01T20:05:00Z", reason="execution_policy_pause", pause_reason={"boundary": "engineering_action"})
         self.assertEqual(paused.execution_policy["kind"], "engineering_action_review")  # type: ignore[index]
-        self.store.close(); self.store = MissionStateStore(self.path)
+        self.runtime.close(); self.runtime = RuntimeDatabase(self.root); self.store = MissionStateStore(self.runtime)
         restarted = self.store.get("mission-1")
         self.assertEqual(restarted.status, MissionExecutionStatus.AWAITING_APPROVAL)
         self.assertEqual(restarted.pause_reason["boundary"], "engineering_action")  # type: ignore[index]
@@ -143,8 +150,7 @@ class MissionStateStoreTests(unittest.TestCase):
         self.store.transition("mission-1", MissionExecutionStatus.READY, occurred_at="2026-08-01T20:01:00Z", reason="planned")
         history = self.store.history("mission-1")
         self.assertEqual([(item.sequence, item.reason) for item in history], [(1, "created"), (2, "planned")])
-        with self.assertRaisesRegex(Exception, "append-only"):
-            self.store._connection.execute("UPDATE mission_state_history SET reason = 'rewritten' WHERE mission_id = 'mission-1'")  # noqa: SLF001
+        self.assertFalse(hasattr(self.store, "_connection"))
 
 
 if __name__ == "__main__":

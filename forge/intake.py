@@ -12,6 +12,7 @@ from forge.models.mission import EngineeringMission, MissionStatus
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore, MissionStateStoreError
 from forge.governance_authority import CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope
+from forge.runtime.database import RuntimeDatabaseError
 
 
 class MissionIntakeError(ValueError):
@@ -60,18 +61,33 @@ class MissionIntake:
             raise MissionIntakeError("Mission Intake requires the matching canonical Mission allocation")
         try:
             existing = repository.database.get_document("mission_state", mission.id)
-        except Exception:
+        except RuntimeDatabaseError as error:
+            if str(error) != f"unknown mission_state record: {mission.id}":
+                raise MissionIntakeError("Mission Intake could not read canonical Mission state") from error
             existing = None
+        except Exception as error:
+            raise MissionIntakeError("Mission Intake could not read canonical Mission state") from error
         if existing is not None:
             resume = existing.get("resume", {})
-            if (existing.get("mission_id") != mission.id
+            contract = {"installation_id": envelope.installation_id, "candidate_id": mission.candidate_id,
+                        "subject_revision": envelope.subject_revision, "business_decision_id": envelope.business_decision_id,
+                        "architecture_decision_id": envelope.architecture_decision_id,
+                        "planning": envelope.planning.to_dict(), "envelope_digest": envelope.digest,
+                        "mission": mission.to_dict(), "write_scope": "NONE", "admission_version": "canonical-governance-envelope-v1"}
+            if (existing.get("mission_id") != mission.id or existing.get("status") != MissionExecutionStatus.APPROVED_PLANNABLE.value
+                    or existing.get("lifecycle") != MissionExecutionStatus.APPROVED_PLANNABLE.value
                     or resume.get("intake") != "canonical-governance-envelope-v1"
-                    or resume.get("evidence_digest") != envelope.digest):
+                    or resume.get("evidence_digest") != envelope.digest or existing.get("admission_contract") != contract):
                 raise MissionIntakeError("Mission Intake found a conflicting canonical Mission state")
             try:
                 return MissionStateStore._decode(json.dumps(existing, sort_keys=True, separators=(",", ":")))
             except (MissionStateStoreError, ValueError) as error:
                 raise MissionIntakeError("Mission Intake found a malformed canonical Mission state") from error
+        contract = {"installation_id": envelope.installation_id, "candidate_id": mission.candidate_id,
+                    "subject_revision": envelope.subject_revision, "business_decision_id": envelope.business_decision_id,
+                    "architecture_decision_id": envelope.architecture_decision_id,
+                    "planning": envelope.planning.to_dict(), "envelope_digest": envelope.digest,
+                    "mission": mission.to_dict(), "write_scope": "NONE", "admission_version": "canonical-governance-envelope-v1"}
         document = {
             "schema_version": "1.4", "mission_id": mission.id, "mission": mission.to_dict(),
             "intents": [], "actions": [], "status": MissionExecutionStatus.APPROVED_PLANNABLE.value,
@@ -85,7 +101,7 @@ class MissionIntake:
             "execution_policy": {"write_scope": "NONE", "runtime_action_executed": False,
                                  "engineering_side_effects_allowed": False},
             "pause_reason": None, "approval_record": None, "delegations": [], "integration": None,
-            "revision": 1,
+            "revision": 1, "admission_contract": contract,
         }
         repository.database.save_mission_state(document)
         return MissionStateStore._decode(json.dumps(document, sort_keys=True, separators=(",", ":")))

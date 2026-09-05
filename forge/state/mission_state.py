@@ -11,8 +11,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
 import json
-from pathlib import Path
-import sqlite3
 from typing import Any, Mapping, Sequence
 
 
@@ -80,6 +78,7 @@ class MissionExecutionState:
     current_engineering_intent: Mapping[str, Any] | None = None
     current_engineering_action: Mapping[str, Any] | None = None
     execution_history: tuple[Mapping[str, Any], ...] = ()
+    state_history: tuple[Mapping[str, Any], ...] = ()
     waiting_reason: str | None = None
     repository_truth: Mapping[str, Any] | None = None
     completion: Mapping[str, Any] | None = None
@@ -161,47 +160,24 @@ def _current_work(actions: Sequence[Mapping[str, Any]], intents: Sequence[Mappin
 
 
 class MissionStateStore:
-    """A local SQLite store with atomic snapshots and append-only history."""
+    """Runtime-bound domain service; RuntimeDatabase is the sole persistence authority."""
 
-    def __init__(self, path: Path) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(self.path)
-        self._connection.row_factory = sqlite3.Row
-        self._connection.execute("PRAGMA journal_mode=WAL")
-        self._connection.execute("PRAGMA synchronous=FULL")
-        self._connection.execute("PRAGMA foreign_keys=ON")
-        self._connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS mission_state (
-                mission_id TEXT PRIMARY KEY,
-                schema_version TEXT NOT NULL,
-                revision INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                document TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS mission_state_history (
-                mission_id TEXT NOT NULL,
-                sequence INTEGER NOT NULL,
-                from_status TEXT,
-                to_status TEXT NOT NULL,
-                occurred_at TEXT NOT NULL,
-                reason TEXT NOT NULL,
-                PRIMARY KEY (mission_id, sequence),
-                FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
-            );
-            CREATE TRIGGER IF NOT EXISTS mission_state_history_no_update
-            BEFORE UPDATE ON mission_state_history
-            BEGIN SELECT RAISE(ABORT, 'mission state history is append-only'); END;
-            CREATE TRIGGER IF NOT EXISTS mission_state_history_no_delete
-            BEFORE DELETE ON mission_state_history
-            BEGIN SELECT RAISE(ABORT, 'mission state history is append-only'); END;
-            """
-        )
-        self._connection.commit()
+    def __init__(self, runtime: Any) -> None:
+        # Keep the import local: RuntimeDatabase imports adjacent runtime modules
+        # during package initialization, while this domain abstraction is imported
+        # by those callers.
+        from forge.runtime.database import RuntimeDatabase
+        if not isinstance(runtime, RuntimeDatabase):
+            raise TypeError("MissionStateStore requires the canonical RuntimeDatabase")
+        self._runtime = runtime
+
+    @staticmethod
+    def _is_missing(error: Exception, mission_id: str) -> bool:
+        from forge.runtime.database import RuntimeDatabaseError
+        return isinstance(error, RuntimeDatabaseError) and str(error) == f"unknown mission_state record: {mission_id}"
 
     def close(self) -> None:
-        self._connection.close()
+        pass
 
     def __enter__(self) -> "MissionStateStore":
         return self
@@ -245,15 +221,16 @@ class MissionStateStore:
             "integration": None,
             "revision": 1,
         }
+        document["lifecycle"] = MissionExecutionStatus.CREATED.value
+        document["state_history"] = [{"sequence": 1, "from_status": None, "to_status": MissionExecutionStatus.CREATED.value, "occurred_at": occurred_at, "reason": "created"}]
         try:
-            with self._connection:
-                self._connection.execute(
-                    "INSERT INTO mission_state VALUES (?, ?, ?, ?, ?)",
-                    (mission_id, MISSION_STATE_SCHEMA_VERSION, 1, MissionExecutionStatus.CREATED.value, self._encode(document)),
-                )
-                self._append_history(mission_id, 1, None, MissionExecutionStatus.CREATED, occurred_at, "created")
-        except sqlite3.IntegrityError as error:
-            raise MissionStateStoreError(f"mission state already exists: {mission_id}") from error
+            self._runtime.get_document("mission_state", mission_id)
+        except Exception as error:
+            if not self._is_missing(error, mission_id):
+                raise MissionStateStoreError("canonical Mission state could not be read") from error
+            self._runtime.save_mission_state(document)
+        else:
+            raise MissionStateStoreError(f"mission state already exists: {mission_id}")
         return self.get(mission_id)
 
     def create_pending(self, mission: Any, *, occurred_at: str, resume: Mapping[str, Any] | None = None,
@@ -279,22 +256,21 @@ class MissionStateStore:
             "pause_reason": None, "approval_record": None, "revision": 1,
             "delegations": [], "integration": None,
         }
+        document["lifecycle"] = MissionExecutionStatus.CREATED.value
+        document["state_history"] = [{"sequence": 1, "from_status": None, "to_status": MissionExecutionStatus.CREATED.value, "occurred_at": occurred_at, "reason": "dispatcher_intake"}]
         try:
-            with self._connection:
-                self._connection.execute(
-                    "INSERT INTO mission_state VALUES (?, ?, ?, ?, ?)",
-                    (mission_id, MISSION_STATE_SCHEMA_VERSION, 1, MissionExecutionStatus.CREATED.value, self._encode(document)),
-                )
-                self._append_history(mission_id, 1, None, MissionExecutionStatus.CREATED, occurred_at, "dispatcher_intake")
-        except sqlite3.IntegrityError as error:
-            raise MissionStateStoreError(f"mission state already exists: {mission_id}") from error
+            self._runtime.get_document("mission_state", mission_id)
+        except Exception as error:
+            if not self._is_missing(error, mission_id):
+                raise MissionStateStoreError("canonical Mission state could not be read") from error
+            self._runtime.save_mission_state(document)
+        else:
+            raise MissionStateStoreError(f"mission state already exists: {mission_id}")
         return self.get(mission_id)
 
     def get(self, mission_id: str) -> MissionExecutionState:
-        row = self._connection.execute("SELECT document FROM mission_state WHERE mission_id = ?", (mission_id,)).fetchone()
-        if row is None:
-            raise MissionStateStoreError(f"unknown mission state: {mission_id}")
-        return self._decode(row["document"])
+        try: return self._decode(self._encode(self._runtime.get_document("mission_state", mission_id)))
+        except Exception as error: raise MissionStateStoreError(f"unknown mission state: {mission_id}") from error
 
     def transition(
         self,
@@ -367,55 +343,36 @@ class MissionStateStore:
                 raise MissionStateStoreError("completed mission state requires correlated complete host evidence")
             if document["progress"]["percent_complete"] != 100:
                 raise MissionStateStoreError("completed mission state requires every action to be complete")
-        with self._connection:
-            self._connection.execute(
-                "UPDATE mission_state SET revision = ?, status = ?, document = ? WHERE mission_id = ?",
-                (document["revision"], status.value, self._encode(document), mission_id),
-            )
-            self._append_history(mission_id, document["revision"], current.status, status, occurred_at, reason)
+        document["lifecycle"] = status.value
+        document.setdefault("state_history", []).append({"sequence": document["revision"], "from_status": current.status.value, "to_status": status.value, "occurred_at": occurred_at, "reason": reason})
+        self._runtime.save_mission_state(document)
         return self.get(mission_id)
 
     def set_execution_policy(self, mission_id: str, policy: Mapping[str, Any], *, occurred_at: str) -> MissionExecutionState:
         """Persist the resolved policy once before planning or execution progresses."""
         state = self.get(mission_id)
-        if state.execution_policy is not None:
+        if state.execution_policy:
             return state
         document = self._as_document(state)
         document["execution_policy"] = _document(policy, "execution policy")
         document["revision"] = state.revision + 1
-        with self._connection:
-            self._connection.execute("UPDATE mission_state SET revision = ?, document = ? WHERE mission_id = ?",
-                                     (document["revision"], self._encode(document), mission_id))
-            self._append_history(mission_id, document["revision"], state.status, state.status,
-                                 occurred_at, "execution_policy_resolved")
+        document["lifecycle"] = state.status.value
+        document.setdefault("state_history", []).append({"sequence": document["revision"], "from_status": state.status.value, "to_status": state.status.value, "occurred_at": occurred_at, "reason": "execution_policy_resolved"})
+        self._runtime.save_mission_state(document)
         return self.get(mission_id)
 
     def history(self, mission_id: str) -> tuple[MissionStateHistoryEntry, ...]:
         self.get(mission_id)
-        rows = self._connection.execute(
-            "SELECT sequence, from_status, to_status, occurred_at, reason FROM mission_state_history WHERE mission_id = ? ORDER BY sequence",
-            (mission_id,),
-        ).fetchall()
+        rows = self._runtime.get_document("mission_state", mission_id).get("state_history", [])
         return tuple(
             MissionStateHistoryEntry(
-                row["sequence"],
-                None if row["from_status"] is None else MissionExecutionStatus(row["from_status"]),
-                MissionExecutionStatus(row["to_status"]), row["occurred_at"], row["reason"],
+                row["sequence"], None if row["from_status"] is None else MissionExecutionStatus(row["from_status"]), MissionExecutionStatus(row["to_status"]), row["occurred_at"], row["reason"],
             ) for row in rows
         )
 
     def resumable(self) -> tuple[MissionExecutionState, ...]:
-        rows = self._connection.execute(
-            "SELECT document FROM mission_state WHERE status NOT IN (?, ?) ORDER BY mission_id",
-            (MissionExecutionStatus.COMPLETED.value, MissionExecutionStatus.ARCHIVED.value),
-        ).fetchall()
+        rows = self._runtime._connection.execute("SELECT document FROM mission_state WHERE status NOT IN (?, ?) ORDER BY mission_id", (MissionExecutionStatus.COMPLETED.value, MissionExecutionStatus.ARCHIVED.value)).fetchall()
         return tuple(self._decode(row["document"]) for row in rows)
-
-    def _append_history(self, mission_id: str, sequence: int, from_status: MissionExecutionStatus | None, to_status: MissionExecutionStatus, occurred_at: str, reason: str) -> None:
-        self._connection.execute(
-            "INSERT INTO mission_state_history VALUES (?, ?, ?, ?, ?, ?)",
-            (mission_id, sequence, None if from_status is None else from_status.value, to_status.value, occurred_at, reason),
-        )
 
     @staticmethod
     def _encode(document: Mapping[str, Any]) -> str:
@@ -432,6 +389,7 @@ class MissionStateStore:
             "current_engineering_intent": None if state.current_engineering_intent is None else dict(state.current_engineering_intent),
             "current_engineering_action": None if state.current_engineering_action is None else dict(state.current_engineering_action),
             "execution_history": [dict(item) for item in state.execution_history],
+            "state_history": [dict(item) for item in state.state_history],
             "waiting_reason": state.waiting_reason,
             "repository_truth": None if state.repository_truth is None else dict(state.repository_truth),
             "completion": None if state.completion is None else dict(state.completion), "revision": state.revision,
@@ -455,6 +413,7 @@ class MissionStateStore:
             revision=document["revision"], current_engineering_intent=document.get("current_engineering_intent"),
             current_engineering_action=document.get("current_engineering_action"),
             execution_history=tuple(document.get("execution_history", ())), waiting_reason=document.get("waiting_reason"),
+            state_history=tuple(document.get("state_history", ())),
             repository_truth=document.get("repository_truth"), completion=document.get("completion"),
             execution_policy=document.get("execution_policy"), pause_reason=document.get("pause_reason"),
             approval_record=document.get("approval_record"),

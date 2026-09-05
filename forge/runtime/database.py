@@ -867,7 +867,7 @@ class RuntimeDatabase:
         document = _document(state, "mission state")
         mission_id = document.get("mission_id") or document.get("id")
         lifecycle = document.get("lifecycle") or document.get("status")
-        required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")), document.get("execution_policy"))
+        required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")))
         if not isinstance(mission_id, str) or not mission_id or not isinstance(lifecycle, str) or not lifecycle or any(value is None for value in required[2:]):
             raise RuntimeDatabaseError("mission state requires identity, lifecycle, status, progress, resume point, and execution policy")
         with self._connection:

@@ -20,6 +20,7 @@ from forge.models import (
 )
 from forge.planner import MissionPlanner
 from forge.state import MissionExecutionStatus, MissionStateStore
+from forge.runtime import RuntimeDatabase
 
 
 def digest(letter: str) -> str:
@@ -98,12 +99,12 @@ class Host:
 
 class ExecutionLoopTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.directory = TemporaryDirectory(); self.path = Path(self.directory.name) / "state.sqlite"
-        self.store = MissionStateStore(self.path); self.store.create_pending(mission(), occurred_at="2026-08-04T10:00:00Z")
+        self.directory = TemporaryDirectory(); self.root = Path(self.directory.name); self.runtime = RuntimeDatabase(self.root)
+        self.store = MissionStateStore(self.runtime); self.store.create_pending(mission(), occurred_at="2026-08-04T10:00:00Z")
         self.dispatcher, self.counter, self.planning_calls = Dispatcher(), 0, 0
 
     def tearDown(self) -> None:
-        self.store.close(); self.directory.cleanup()
+        self.runtime.close(); self.directory.cleanup()
 
     def loop(self, host: Host, policy: ExecutionPolicy | None = None, profile: str = "solo", registry: CapabilityRegistry | None = None) -> ExecutionLoop:
         def correlation() -> str:
@@ -147,7 +148,7 @@ class ExecutionLoopTests(unittest.TestCase):
         self.assertEqual(first.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
         projection = self.loop(host).observability("mission-loop")
         self.assertEqual((projection.current_action_id, projection.percent_complete), ("contract-action", 0))
-        self.store.close(); self.store = MissionStateStore(self.path)
+        self.runtime.close(); self.runtime = RuntimeDatabase(self.root); self.store = MissionStateStore(self.runtime)
         host.outcomes["contract-action"] = ExecutionEvidenceOutcome.COMPLETE
         state = self.loop(host).resume("mission-loop")
         self.assertEqual(state.status, MissionExecutionStatus.COMPLETED)
@@ -159,7 +160,7 @@ class ExecutionLoopTests(unittest.TestCase):
         paused = loop.run(); assert paused is not None
         self.assertEqual(paused.status, MissionExecutionStatus.AWAITING_APPROVAL)
         self.assertEqual(paused.pause_reason["boundary"], "engineering_action")  # type: ignore[index]
-        self.store.close(); self.store = MissionStateStore(self.path)
+        self.runtime.close(); self.runtime = RuntimeDatabase(self.root); self.store = MissionStateStore(self.runtime)
         resumed = self.loop(host, ExecutionPolicy(ExecutionPolicyKind.ENGINEERING_ACTION_REVIEW)).resume(
             "mission-loop", approval=ApprovalRecord("approval-1", "architect", "2026-08-04T10:01:00Z", "review-1"))
         self.assertEqual(resumed.status, MissionExecutionStatus.AWAITING_APPROVAL)
@@ -171,9 +172,11 @@ class ExecutionLoopTests(unittest.TestCase):
         expectations = ((ExecutionPolicyKind.ENGINEERING_INTENT_REVIEW, "engineering_intent"),
                         (ExecutionPolicyKind.CAPABILITY_REVIEW, "capability"),
                         (ExecutionPolicyKind.MISSION_REVIEW, "mission"))
-        for policy_kind, boundary in expectations:
+        for index, (policy_kind, boundary) in enumerate(expectations, 1):
             with self.subTest(policy=policy_kind):
-                self.store.close(); self.path.unlink(); self.store = MissionStateStore(self.path)
+                self.runtime.close()
+                self.runtime = RuntimeDatabase(self.root / f"policy-{index}")
+                self.store = MissionStateStore(self.runtime)
                 self.store.create_pending(mission(), occurred_at="2026-08-04T10:00:00Z")
                 paused = self.loop(Host(outcomes), ExecutionPolicy(policy_kind)).run(); assert paused is not None
                 self.assertEqual(paused.status, MissionExecutionStatus.AWAITING_APPROVAL)
