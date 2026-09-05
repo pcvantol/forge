@@ -1,5 +1,6 @@
 """Trusted installation/operator binding; request strings are not authority."""
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import hashlib
 import os,pwd,subprocess,uuid
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class InstallationOperatorService:
   if not self.authorize(context):raise PermissionError('denied')
   with self.db._connection:
    self.db._connection.execute("UPDATE installation_operator_binding SET status='REVOKED',version=version+1 WHERE installation_id=?",(context.installation_id,))
-   self._audit(context.installation_id,NamedOperatorIdentity(context.generated_uid,0),'REVOKE','SYSTEM','ALLOW')
+   self._audit(context.installation_id,NamedOperatorIdentity(context.generated_uid,0),'REVOKE',datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00','Z'),'ALLOW')
  def _audit(self, installation_id, identity, operation, occurred_at, result):
   fingerprint=hashlib.sha256(identity.generated_uid.encode()).hexdigest()[:16]
   audit_id=f'{installation_id}:{operation}:{uuid.uuid4()}'

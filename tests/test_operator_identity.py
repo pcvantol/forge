@@ -1,4 +1,4 @@
-import os,shutil,tempfile,unittest
+import os,shutil,sqlite3,tempfile,unittest
 from pathlib import Path
 from forge.runtime.database import RuntimeDatabase,RuntimeIntegrityError
 from forge.operator_identity import InstallationOperatorService,MacOSGeneratedUIDIdentityAdapter,NamedOperatorIdentity
@@ -34,3 +34,16 @@ class T(unittest.TestCase):
   from unittest.mock import patch
   with patch('forge.operator_identity.os.getuid',return_value=501),patch('forge.operator_identity.pwd.getpwuid',return_value=type('P',(),{'pw_name':'operator'})()),patch.dict(os.environ,{'USER':'forged','LOGNAME':'forged','HOME':'/forged','PWD':'/forged'}):
    self.assertEqual(adapter.resolve().generated_uid,'123e4567-e89b-42d3-a456-426614174000')
+ def test_audit_is_append_only_and_survives_restart(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); path=root/'runtime.db'; identity=NamedOperatorIdentity('generated-a',501); db=RuntimeDatabase(root,path=path); service=InstallationOperatorService(db,lambda:identity); context=service.first_bind('2026-01-01T00:00:00Z'); service.revoke(context)
+   rows=db._connection.execute('SELECT * FROM installation_operator_audit ORDER BY operation').fetchall(); self.assertEqual([row['operation'] for row in rows],['FIRST_BIND','REVOKE']); self.assertTrue(rows[1]['occurred_at'].endswith('Z'))
+   with self.assertRaises(sqlite3.DatabaseError): db._connection.execute("UPDATE installation_operator_audit SET result='FORGED'")
+   with self.assertRaises(sqlite3.DatabaseError): db._connection.execute('DELETE FROM installation_operator_audit')
+   db.close(); reopened=RuntimeDatabase(root,path=path); self.assertEqual(reopened._connection.execute('SELECT COUNT(*) FROM installation_operator_audit').fetchone()[0],2); reopened.close()
+ def test_v16_audit_rows_are_preserved_when_immutability_migrates(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); path=root/'runtime.db'; db=RuntimeDatabase(root,path=path); db._connection.execute('DROP TRIGGER installation_operator_audit_immutable_update'); db._connection.execute('DROP TRIGGER installation_operator_audit_immutable_delete'); db._connection.execute("INSERT INTO installation_operator_audit VALUES ('legacy','installation','fingerprint','FIRST_BIND','2026-01-01T00:00:00Z','ALLOW')"); db._set_metadata({'schema_version':'16','migration_version':'16','last_migration':'16'}); db._connection.execute('PRAGMA user_version=16'); db._connection.commit(); db.close()
+   reopened=RuntimeDatabase(root,path=path); self.assertEqual(reopened._connection.execute("SELECT operation FROM installation_operator_audit WHERE audit_id='legacy'").fetchone()[0],'FIRST_BIND');
+   with self.assertRaises(sqlite3.DatabaseError): reopened._connection.execute("DELETE FROM installation_operator_audit WHERE audit_id='legacy'")
+   reopened.close()
