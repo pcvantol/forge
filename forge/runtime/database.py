@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 20
+RUNTIME_SCHEMA_VERSION = 21
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -100,7 +100,7 @@ class RuntimeDatabase:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(self.path)
         self._connection.row_factory = sqlite3.Row
-        self._governance_write_permitted = False
+        self._governance_write_state = {"permitted": False}
         try:
             self._configure()
             self._migrate(forge_version)
@@ -114,16 +114,43 @@ class RuntimeDatabase:
         self._connection.execute("PRAGMA foreign_keys=ON")
         self._connection.execute("PRAGMA journal_mode=WAL")
         self._connection.execute("PRAGMA synchronous=FULL")
-        self._connection.create_function("forge_governance_write_permitted", 0, lambda: int(self._governance_write_permitted))
+        self._connection.create_function("forge_governance_write_permitted", 0, lambda: int(self._governance_write_state["permitted"]))
 
     def _persist_governance(self, statement: str, values: tuple[object, ...]) -> None:
         """Internal persistence seam; raw SQLite writes are rejected by triggers."""
-        self._governance_write_permitted = True
+        self._governance_write_state["permitted"] = True
         try:
             with self._connection:
                 self._connection.execute(statement, values)
         finally:
-            self._governance_write_permitted = False
+            self._governance_write_state["permitted"] = False
+
+    def _bootstrap_governance_capabilities(self, installation_id: str, generated_uid: str) -> None:
+        """One-time local-installation bootstrap, called only by G001 first-bind."""
+        from hashlib import sha256
+        operator_id = sha256(generated_uid.encode()).hexdigest()[:16]
+        capabilities = ("BUSINESS_APPROVAL", "ARCHITECTURE_APPROVAL", "SECURITY_APPROVAL")
+        existing = self._connection.execute(
+            "SELECT capability FROM governance_authority WHERE installation_id = ? AND operator_id = ? ORDER BY capability",
+            (installation_id, operator_id),
+        ).fetchall()
+        if existing:
+            if tuple(row["capability"] for row in existing) != capabilities:
+                raise RuntimeIntegrityError("conflicting governance bootstrap authority")
+            return
+        for capability in capabilities:
+            occurred_at = _timestamp()
+            provenance = {"kind": "LOCAL_INSTALLATION_BOOTSTRAP_V1", "installation_id": installation_id,
+                          "operator_id": operator_id, "capability": capability}
+            digest = "sha256:" + __import__("hashlib").sha256(json.dumps(provenance, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            self._persist_governance(
+                "INSERT INTO governance_capability_grants VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (digest, installation_id, operator_id, capability, json.dumps(provenance, sort_keys=True, separators=(",", ":")), digest, occurred_at),
+            )
+            self._persist_governance(
+                "INSERT INTO governance_authority VALUES (?, ?, ?, ?, ?)",
+                (installation_id, operator_id, capability, 1, occurred_at),
+            )
 
     def _migrate(self, forge_version: str) -> None:
         version = self._connection.execute("PRAGMA user_version").fetchone()[0]
@@ -283,7 +310,11 @@ class RuntimeDatabase:
                     CREATE TABLE governance_capability_grants (grant_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, bootstrap_provenance TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, operator_id, capability));
                     CREATE TABLE governance_decisions (decision_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, subject_id TEXT NOT NULL, subject_revision TEXT NOT NULL, capability TEXT NOT NULL, predecessor_digest TEXT, document TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, subject_id, subject_revision, capability));
                     CREATE TRIGGER governance_authority_authorized_insert BEFORE INSERT ON governance_authority WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
+                    CREATE TRIGGER governance_authority_immutable_update BEFORE UPDATE ON governance_authority BEGIN SELECT RAISE(ABORT, 'governance authority is immutable'); END;
+                    CREATE TRIGGER governance_authority_immutable_delete BEFORE DELETE ON governance_authority BEGIN SELECT RAISE(ABORT, 'governance authority is immutable'); END;
                     CREATE TRIGGER governance_capability_grants_authorized_insert BEFORE INSERT ON governance_capability_grants WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
+                    CREATE TRIGGER governance_capability_grants_immutable_update BEFORE UPDATE ON governance_capability_grants BEGIN SELECT RAISE(ABORT, 'governance grant is immutable'); END;
+                    CREATE TRIGGER governance_capability_grants_immutable_delete BEFORE DELETE ON governance_capability_grants BEGIN SELECT RAISE(ABORT, 'governance grant is immutable'); END;
                     CREATE TRIGGER governance_decisions_authorized_insert BEFORE INSERT ON governance_decisions WHEN forge_governance_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical governance repository required'); END;
                     CREATE TRIGGER governance_decisions_immutable_update BEFORE UPDATE ON governance_decisions BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
                     CREATE TRIGGER governance_decisions_immutable_delete BEFORE DELETE ON governance_decisions BEGIN SELECT RAISE(ABORT, 'governance decision is immutable'); END;
@@ -671,6 +702,21 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "20", "migration_version": "20", "last_migration": "20"})
                 self._connection.execute("PRAGMA user_version=20")
+            self._migrate(forge_version)
+        elif version == 20:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TRIGGER IF NOT EXISTS governance_authority_immutable_update BEFORE UPDATE ON governance_authority
+                    BEGIN SELECT RAISE(ABORT, 'governance authority is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_authority_immutable_delete BEFORE DELETE ON governance_authority
+                    BEGIN SELECT RAISE(ABORT, 'governance authority is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_capability_grants_immutable_update BEFORE UPDATE ON governance_capability_grants
+                    BEGIN SELECT RAISE(ABORT, 'governance grant is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS governance_capability_grants_immutable_delete BEFORE DELETE ON governance_capability_grants
+                    BEGIN SELECT RAISE(ABORT, 'governance grant is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "21", "migration_version": "21", "last_migration": "21"})
+                self._connection.execute("PRAGMA user_version=21")
             self._migrate(forge_version)
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")

@@ -43,12 +43,6 @@ def _digest(value: object) -> str:
     return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-class _LocalInstallationBootstrapAuthority:
-    """Unexported local-installation bootstrap capability; not an OperatorContext."""
-    def __init__(self, database: RuntimeDatabase) -> None:
-        self._database = database
-
-
 class CanonicalGovernanceRepository:
     """The only supported Forge application write path for governance evidence."""
 
@@ -76,32 +70,6 @@ class CanonicalGovernanceRepository:
     @staticmethod
     def _operator_id(context: OperatorContext) -> str:
         return sha256(context.generated_uid.encode()).hexdigest()[:16]
-
-    def _bootstrap_authority(self) -> _LocalInstallationBootstrapAuthority:
-        return _LocalInstallationBootstrapAuthority(self.database)
-
-    def bootstrap_grant(self, authority: _LocalInstallationBootstrapAuthority, context: OperatorContext,
-                        capabilities: tuple[GovernanceCapability, ...]) -> None:
-        if authority._database is not self.database:
-            raise PermissionError("local installation bootstrap authority is required")
-        if not self.operators.authorize(context):
-            raise PermissionError("trusted operator context is required")
-        if not capabilities or len(set(capabilities)) != len(capabilities):
-            raise ValueError("explicit unique capabilities required")
-        for capability in capabilities:
-            occurred_at = _timestamp()
-            provenance = {"kind": "LOCAL_INSTALLATION_BOOTSTRAP_V1", "installation_id": context.installation_id,
-                          "operator_id": self._operator_id(context), "capability": capability.value}
-            grant_digest = _digest(provenance)
-            self.database._persist_governance(
-                "INSERT INTO governance_capability_grants VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (grant_digest, context.installation_id, self._operator_id(context), capability.value,
-                 json.dumps(provenance, sort_keys=True, separators=(",", ":")), grant_digest, occurred_at),
-            )
-            self.database._persist_governance(
-                "INSERT INTO governance_authority VALUES (?, ?, ?, ?, ?)",
-                (context.installation_id, self._operator_id(context), capability.value, 1, occurred_at),
-            )
 
     def record(self, decision: GovernanceDecision, context: OperatorContext) -> str:
         if not self.operators.authorize(context):

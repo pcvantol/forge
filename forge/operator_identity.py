@@ -23,6 +23,7 @@ class InstallationOperatorService:
    if self.db._connection.execute('SELECT 1 FROM installation_operator_binding WHERE installation_id=?',(iid,)).fetchone():raise PermissionError('already bound')
    self.db._connection.execute('INSERT INTO installation_operator_binding VALUES (?,?,?,?,?,?)',(iid,identity.generated_uid,identity.uid,1,'ACTIVE',occurred_at))
    self._audit(iid,identity,'FIRST_BIND',occurred_at,'ALLOW')
+   self.db._bootstrap_governance_capabilities(iid,identity.generated_uid)
   return self.context()
  def context(self):
   identity=self.resolver(); iid=self.installation_id(); row=self.db._connection.execute('SELECT * FROM installation_operator_binding WHERE installation_id=?',(iid,)).fetchone()

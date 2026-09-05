@@ -45,11 +45,7 @@ class GovernanceAuthorityTests(unittest.TestCase):
             context_input_bound=64, context_output_bound=16, provenance_revision=revision,
         )
 
-    def grant(self, *capabilities):
-        self.repository.bootstrap_grant(self.repository._bootstrap_authority(), self.context, capabilities)
-
     def test_runtime_bound_workspaces_persist_business_architecture_and_envelope(self):
-        self.grant(GovernanceCapability.BUSINESS_APPROVAL, GovernanceCapability.ARCHITECTURE_APPROVAL)
         business = BusinessWorkspace.for_runtime(self.db, self.repository, self.context)
         architecture = ArchitectureWorkspace.for_runtime(self.db, self.repository, self.context)
         business.approve(decision_id="business-1", candidate_id="candidate-1", revision="1", scope=("bounded planning qualification",), gates=("business",))
@@ -81,6 +77,8 @@ class GovernanceAuthorityTests(unittest.TestCase):
             operators.first_bind()
             repository = CanonicalGovernanceRepository(canonical, operators)
             self.assertFalse(hasattr(repository, "grant_current_operator"))
+            self.assertFalse(hasattr(repository, "bootstrap_grant"))
+            self.assertFalse(hasattr(repository, "_bootstrap_authority"))
             alternate = RuntimeDatabase(root, path=root / "alternate-runtime.db")
             with self.assertRaises(ValueError):
                 CanonicalGovernanceRepository(alternate, InstallationOperatorService(alternate, lambda: NamedOperatorIdentity("operator-a", 501)))
@@ -101,9 +99,6 @@ class GovernanceAuthorityTests(unittest.TestCase):
 
     def test_capability_identity_and_immutability_fail_closed(self):
         decision = GovernanceDecision("decision-1", "candidate-1", "1", GovernanceCapability.BUSINESS_APPROVAL, "approved", ("scope",), ("gate",))
-        with self.assertRaises(PermissionError):
-            self.repository.record(decision, self.context)
-        self.grant(GovernanceCapability.BUSINESS_APPROVAL)
         self.repository.record(decision, self.context)
         with self.assertRaises(sqlite3.DatabaseError):
             self.db._connection.execute("UPDATE governance_decisions SET subject_id='x'")
@@ -113,19 +108,23 @@ class GovernanceAuthorityTests(unittest.TestCase):
             self.db._connection.execute("INSERT INTO governance_decisions VALUES ('raw', 'x', 'x', '1', 'BUSINESS_APPROVAL', NULL, '{}', 'sha256:raw', 'now')")
         with self.assertRaises(sqlite3.DatabaseError):
             self.db._connection.execute("INSERT INTO governance_authority VALUES ('x', 'x', 'BUSINESS_APPROVAL', 1, 'now')")
+        with self.assertRaises(sqlite3.DatabaseError):
+            self.db._connection.execute("UPDATE governance_authority SET capability='SECURITY_APPROVAL'")
+        with self.assertRaises(sqlite3.DatabaseError):
+            self.db._connection.execute("DELETE FROM governance_authority")
+        with self.assertRaises(sqlite3.DatabaseError):
+            self.db._connection.execute("UPDATE governance_capability_grants SET capability='SECURITY_APPROVAL'")
+        with self.assertRaises(sqlite3.DatabaseError):
+            self.db._connection.execute("DELETE FROM governance_capability_grants")
         forged = type(self.context)(self.context.installation_id, "other", self.context.binding_version)
         with self.assertRaises(PermissionError):
             self.repository.record(replace(decision, decision_id="decision-2"), forged)
 
     def test_wrong_capability_conflict_stale_and_tampered_envelope_fail_closed(self):
-        self.grant(GovernanceCapability.BUSINESS_APPROVAL)
-        with self.assertRaises(PermissionError):
-            self.repository.record(GovernanceDecision("architecture", "candidate-1", "1", GovernanceCapability.ARCHITECTURE_APPROVAL, "approved", ("scope",), ("gate",)), self.context)
+        self.repository.record(GovernanceDecision("architecture", "candidate-1", "1", GovernanceCapability.ARCHITECTURE_APPROVAL, "approved", ("scope",), ("gate",)), self.context)
         self.repository.record(GovernanceDecision("business", "candidate-1", "1", GovernanceCapability.BUSINESS_APPROVAL, "approved", ("scope",), ("gate",)), self.context)
         with self.assertRaises(sqlite3.IntegrityError):
             self.repository.record(GovernanceDecision("conflict", "candidate-1", "1", GovernanceCapability.BUSINESS_APPROVAL, "rejected", ("scope",), ("gate",)), self.context)
-        self.grant(GovernanceCapability.ARCHITECTURE_APPROVAL)
-        self.repository.record(GovernanceDecision("architecture", "candidate-1", "1", GovernanceCapability.ARCHITECTURE_APPROVAL, "approved", ("scope",), ("gate",)), self.context)
         with self.assertRaises(ValueError):
             MissionPlanningEvidenceEnvelope.compose(self.repository, subject_id="candidate-1", subject_revision="1", business_decision_id="business", architecture_decision_id="architecture", planning=self.planning("2"))
         envelope = MissionPlanningEvidenceEnvelope.compose(self.repository, subject_id="candidate-1", subject_revision="1", business_decision_id="business", architecture_decision_id="architecture", planning=self.planning())
@@ -133,7 +132,6 @@ class GovernanceAuthorityTests(unittest.TestCase):
             MissionIntake(None, lambda: "now").validate_approved_evidence(replace(envelope, digest="sha256:tampered"), self.repository)
 
     def test_cross_installation_replay_and_restart_fail_closed(self):
-        self.grant(GovernanceCapability.BUSINESS_APPROVAL, GovernanceCapability.ARCHITECTURE_APPROVAL)
         CanonicalBusinessWorkspace(self.repository, self.context).approve(decision_id="business", candidate_id="candidate", revision="1", scope=("scope",), gates=("gate",))
         CanonicalArchitectureWorkspace(self.repository, self.context).approve(decision_id="architecture", candidate_id="candidate", revision="1", planning=self.planning())
         envelope = MissionPlanningEvidenceEnvelope.compose(self.repository, subject_id="candidate", subject_revision="1", business_decision_id="business", architecture_decision_id="architecture", planning=self.planning())
