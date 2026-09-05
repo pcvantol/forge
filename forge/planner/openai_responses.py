@@ -130,20 +130,26 @@ class OpenAIResponsesPlanningProvider:
         body = self._body(request, generation_policy)
         if _digest(body) != receipt.request_digest:
             raise ProviderTokenPreflightBindingChanged("Responses request changed after token preflight")
-        state, secret = self._resolver.resolve(generation_policy.secret_reference)
-        if state is not SecretState.RESOLVABLE or not secret:
-            raise PermissionError("OpenAI planning provider secret is not resolvable")
-        started = _now()
+        permit = self.configuration.policy_service._acquire_generation_permit(
+            generation_policy, receipt.policy_digest, receipt.request_digest)
         try:
-            http_request = Request(_ENDPOINT, data=json.dumps(body, separators=(",", ":")).encode(), headers={
-                "Authorization": "Bearer " + secret, "Content-Type": "application/json"}, method="POST")
-            with self._opener(http_request, timeout=generation_policy.timeout_seconds) as response:
-                document = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
-            # A request may have reached the provider; never retry automatically.
-            raise ProviderSubmissionAmbiguous("OpenAI submission may have happened; automatic retry is forbidden") from None
+            state, secret = self._resolver.resolve(generation_policy.secret_reference)
+            if state is not SecretState.RESOLVABLE or not secret:
+                raise PermissionError("OpenAI planning provider secret is not resolvable")
+            self.configuration.policy_service._commit_generation_transport(
+                permit, generation_policy, receipt.policy_digest, receipt.request_digest)
+            started = _now()
+            try:
+                http_request = Request(_ENDPOINT, data=json.dumps(body, separators=(",", ":")).encode(), headers={
+                    "Authorization": "Bearer " + secret, "Content-Type": "application/json"}, method="POST")
+                with self._opener(http_request, timeout=generation_policy.timeout_seconds) as response:
+                    document = json.loads(response.read().decode("utf-8"))
+            except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+                # A request may have reached the provider; never retry automatically.
+                raise ProviderSubmissionAmbiguous("OpenAI submission may have happened; automatic retry is forbidden") from None
         finally:
             secret = None
+            self.configuration.policy_service._release_generation_permit(permit)
         try:
             proposals, refinement = self._parse(request, document)
             return ProviderDerivationResponse(self._evidence(request, document, ProviderSideEffectState.HAPPENED_AND_CONFIRMED, started, str(document.get("status", "completed"))), proposals=proposals, governance_refinement=refinement)

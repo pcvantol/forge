@@ -19,9 +19,12 @@ from tests.test_action_derivation import input_model
 
 
 class Resolver:
- def __init__(self, secret='test-secret'): self.secret=secret; self.status_calls=0; self.resolve_calls=0
+ def __init__(self, secret='test-secret'): self.secret=secret; self.status_calls=0; self.resolve_calls=0; self.on_generation_resolve=None
  def status(self, reference): self.status_calls+=1; return SecretState.RESOLVABLE
- def resolve(self, reference): self.resolve_calls+=1; return SecretState.RESOLVABLE,self.secret
+ def resolve(self, reference):
+  self.resolve_calls+=1
+  if self.resolve_calls == 2 and self.on_generation_resolve: self.on_generation_resolve()
+  return SecretState.RESOLVABLE,self.secret
 
 class Response:
  def __init__(self, body): self.body=body
@@ -135,6 +138,23 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   with self.assertRaises(ProviderTokenPreflightBindingChanged): adapter.invoke(request)
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens'])
   self.assertEqual(resolver.resolve_calls,1)
+
+ def test_policy_change_after_final_validation_denies_generation_for_every_authority_field(self):
+  cases=(
+   {'model':'gpt-5.6-replacement'}, {'enabled':False},
+   {'reference':SecretReference('keychain','//forge.openai/rotated')},
+   {'timeout_seconds':121}, {'input_token_bound':63999},
+   {'context_token_bound':127999}, {'output_token_bound':15999}, {})
+  for change in cases:
+   with self.subTest(change=change):
+    calls=[]
+    def opener(http_request, timeout):
+     calls.append(http_request.full_url); return Response({'input_tokens':1})
+    adapter,resolver,configuration,request=self.adapter(opener)
+    resolver.on_generation_resolve=lambda: self.change_policy(configuration,**change)
+    with self.assertRaises(PermissionError): adapter.invoke(request)
+    self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens'])
+    self.assertEqual(resolver.resolve_calls,2)
 
  def test_unchanged_preflight_binding_allows_one_generation_transport(self):
   calls=[]

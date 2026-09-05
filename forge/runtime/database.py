@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 25
+RUNTIME_SCHEMA_VERSION = 26
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -34,7 +34,7 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
-    "planning_provider_security_config", "planning_provider_security_audit", "action_derivations",
+    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "action_derivations",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments",
@@ -368,6 +368,12 @@ class RuntimeDatabase:
                         operator_id TEXT NOT NULL, operation TEXT NOT NULL,
                         occurred_at TEXT NOT NULL, document TEXT NOT NULL,
                         FOREIGN KEY(configuration_id) REFERENCES planning_provider_security_config(configuration_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS planning_provider_generation_permits (
+                        permit_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL,
+                        policy_version INTEGER NOT NULL, policy_digest TEXT NOT NULL,
+                        request_digest TEXT NOT NULL, state TEXT NOT NULL,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
                     );
                     CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_update BEFORE UPDATE ON planning_provider_security_audit
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
@@ -832,6 +838,17 @@ class RuntimeDatabase:
                     UNIQUE(mission_id, revision), FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id))""")
                 self._set_metadata({"schema_version": "25", "migration_version": "25", "last_migration": "25"})
                 self._connection.execute("PRAGMA user_version=25")
+            self._migrate(forge_version)
+        elif version == 25:
+            with self._connection:
+                self._connection.execute("""CREATE TABLE IF NOT EXISTS planning_provider_generation_permits (
+                    permit_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL,
+                    policy_version INTEGER NOT NULL, policy_digest TEXT NOT NULL,
+                    request_digest TEXT NOT NULL, state TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                )""")
+                self._set_metadata({"schema_version": "26", "migration_version": "26", "last_migration": "26"})
+                self._connection.execute("PRAGMA user_version=26")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
