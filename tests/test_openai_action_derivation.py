@@ -12,7 +12,7 @@ from forge.operator_identity import InstallationOperatorService, NamedOperatorId
 from forge.planner import (OpenAIPlanningProviderConfiguration,
     OpenAIResponsesPlanningProvider, ProviderDerivationRequest,
     ProviderSubmissionAmbiguous, ProviderTokenPreflightBindingChanged,
-    ProviderTokenPreflightFailed, TokenPreflightBoundary)
+    ProviderTokenPreflightFailed, CanonicalTokenPreflightAuthority, TokenPreflightBoundary)
 from forge.provider_security import (PlanningProviderInvocationPolicy,
     PlanningProviderSecurityService, SecretReference, SecretState)
 from forge.runtime.database import RuntimeDatabase
@@ -49,7 +49,9 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   service=PlanningProviderSecurityService(db,resolver,operators)
   service.configure(configuration_id='cfg',provider_id='openai-planning',reference=SecretReference('keychain','//forge.openai/planning'),operator_context=operators.first_bind(),model='gpt-5.6',timeout_seconds=120,input_token_bound=input_bound,context_token_bound=context_bound,output_token_bound=output_bound)
   resolver.status_calls=0; resolver.resolve_calls=0
-  configuration=OpenAIPlanningProviderConfiguration.from_canonical_g011(service,'openai-planning')
+  configuration=OpenAIPlanningProviderConfiguration._for_test(
+   service,'openai-planning',CanonicalTokenPreflightAuthority._for_test(
+    db,lambda _: TokenPreflightBoundary('a' * 40,'sha256:evidence','sha256:contract')))
   resolver.status_calls=0; resolver.resolve_calls=0
   request=ProviderDerivationRequest('derive-1',self.snapshot,'openai-planning','gpt-5.6')
   return OpenAIResponsesPlanningProvider(configuration,resolver,opener=opener),resolver,configuration,request
@@ -65,12 +67,10 @@ class OpenAIActionDerivationTests(unittest.TestCase):
                     context_token_bound=changes.get('context_token_bound',current.context_token_bound),
                     output_token_bound=changes.get('output_token_bound',current.output_token_bound))
 
- def boundary(self):
-  return TokenPreflightBoundary('a' * 40, 'sha256:evidence', 'sha256:contract')
-
  def generate(self, adapter, request):
-  receipt=adapter.preflight(request,boundary=self.boundary())
-  return adapter.invoke(request,receipt_id=receipt['receipt_id'],boundary=self.boundary())
+  context=adapter.configuration.policy_service.operator_service.context()
+  receipt=adapter.preflight(request,operator_context=context)
+  return adapter.invoke(request,receipt_id=receipt['receipt_id'])
 
  def test_provider_authoritative_preflight_precedes_generation_and_preserves_token_relevant_body(self):
   captured=[]
@@ -105,23 +105,23 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   calls=[]
   def over(request, timeout): calls.append(request.full_url); return Response({'input_tokens':64001})
   adapter,resolver,_,request=self.adapter(over)
-  with self.assertRaisesRegex(ValueError,'input token bound'): adapter.preflight(request,boundary=self.boundary())
+  with self.assertRaisesRegex(ValueError,'input token bound'): adapter.preflight(request,operator_context=adapter.configuration.policy_service.operator_service.context())
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens']); self.assertEqual(resolver.resolve_calls,1)
   calls.clear()
   adapter,resolver,_,request=self.adapter(lambda request,timeout: (calls.append(request.full_url) or Response({'wrong':1})))
-  with self.assertRaises(ProviderTokenPreflightFailed): adapter.preflight(request,boundary=self.boundary())
+  with self.assertRaises(ProviderTokenPreflightFailed): adapter.preflight(request,operator_context=adapter.configuration.policy_service.operator_service.context())
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens']); self.assertEqual(resolver.resolve_calls,1)
 
  def test_preflight_timeout_never_generates_or_retries(self):
   calls=[]
   def timeout(request, timeout): calls.append(request.full_url); raise URLError('timeout')
   adapter,resolver,_,request=self.adapter(timeout)
-  with self.assertRaises(ProviderTokenPreflightFailed): adapter.preflight(request,boundary=self.boundary())
+  with self.assertRaises(ProviderTokenPreflightFailed): adapter.preflight(request,operator_context=adapter.configuration.policy_service.operator_service.context())
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens']); self.assertEqual(resolver.resolve_calls,1)
 
  def test_preflight_transport_failure_has_no_request_or_secret_material(self):
   adapter,resolver,_,request=self.adapter(lambda request,timeout: (_ for _ in ()).throw(URLError(OSError(61,'refused'))))
-  with self.assertRaises(ProviderTokenPreflightFailed) as raised: adapter.preflight(request,boundary=self.boundary())
+  with self.assertRaises(ProviderTokenPreflightFailed) as raised: adapter.preflight(request,operator_context=adapter.configuration.policy_service.operator_service.context())
   failure=raised.exception
   self.assertEqual((failure.layer,failure.transport_errno),('TRANSPORT',61))
   self.assertIn(failure.transport_kind,('ConnectionRefusedError','OSError'))
@@ -134,7 +134,7 @@ class OpenAIActionDerivationTests(unittest.TestCase):
    raise HTTPError(request.full_url, 400, 'bad request', {'x-request-id':'req_safe'},
                    BytesIO(b'{"error":{"type":"invalid_request_error","code":"unsupported_parameter","message":"ignored"}}'))
   adapter,resolver,_,request=self.adapter(rejected)
-  with self.assertRaises(ProviderTokenPreflightFailed) as raised: adapter.preflight(request,boundary=self.boundary())
+  with self.assertRaises(ProviderTokenPreflightFailed) as raised: adapter.preflight(request,operator_context=adapter.configuration.policy_service.operator_service.context())
   failure=raised.exception
   self.assertEqual((failure.status,failure.provider_type,failure.provider_code,failure.request_id),
                    (400,'invalid_request_error','unsupported_parameter','req_safe'))
@@ -222,19 +222,20 @@ class OpenAIActionDerivationTests(unittest.TestCase):
    return Response({'id':'resp','status':'completed','output':[{'content':[{'text':json.dumps(proposal())}]}]})
   adapter,resolver,configuration,request=self.adapter(opener)
   with self.assertRaises(ProviderTokenPreflightBindingChanged):
-   adapter.invoke(request,receipt_id='missing',boundary=self.boundary())
+   adapter.invoke(request,receipt_id='missing')
   self.assertEqual((calls,resolver.resolve_calls),([],0))
-  receipt=adapter.preflight(request,boundary=self.boundary())
+  receipt=adapter.preflight(request,operator_context=configuration.policy_service.operator_service.context())
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens'])
   self.assertEqual(configuration.policy_service.db._connection.execute('SELECT COUNT(*) FROM action_derivations').fetchone()[0],0)
-  changed=TokenPreflightBoundary('a' * 40,'sha256:changed','sha256:contract')
+  adapter.configuration.preflight_authority._boundary_reader=lambda _: TokenPreflightBoundary('a' * 40,'sha256:changed','sha256:contract')
   with self.assertRaises(ProviderTokenPreflightBindingChanged):
-   adapter.invoke(request,receipt_id=receipt['receipt_id'],boundary=changed)
+   adapter.invoke(request,receipt_id=receipt['receipt_id'])
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens'])
-  adapter.invoke(request,receipt_id=receipt['receipt_id'],boundary=self.boundary())
+  adapter.configuration.preflight_authority._boundary_reader=lambda _: TokenPreflightBoundary('a' * 40,'sha256:evidence','sha256:contract')
+  adapter.invoke(request,receipt_id=receipt['receipt_id'])
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens','https://api.openai.com/v1/responses'])
   with self.assertRaises(ProviderTokenPreflightBindingChanged):
-   adapter.invoke(request,receipt_id=receipt['receipt_id'],boundary=self.boundary())
+   adapter.invoke(request,receipt_id=receipt['receipt_id'])
   self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens','https://api.openai.com/v1/responses'])
 
  def test_no_caller_counter_or_encoding_override_and_no_local_estimate(self):

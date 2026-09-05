@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 import json
-from typing import Protocol
+from typing import Any, Protocol
 
 from forge.models.action_derivation import (
     DerivedActionProposal, GovernanceRefinementRequired, PlanningSnapshot,
@@ -48,7 +48,7 @@ class ProviderDerivationResponse:
 
 
 class ProviderExecutor(Protocol):
-    def invoke(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse: ...
+    def invoke(self, request: ProviderDerivationRequest, **authority: Any) -> ProviderDerivationResponse: ...
     def reconcile(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse | ProviderSideEffectState: ...
 
 
@@ -59,8 +59,8 @@ class BoundedActionDerivationProvider:
         self._executor = executor
         self.adapter_version = adapter_version
 
-    def invoke(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse:
-        response = self._executor.invoke(request)
+    def invoke(self, request: ProviderDerivationRequest, **authority: Any) -> ProviderDerivationResponse:
+        response = self._executor.invoke(request, **authority)
         evidence = response.evidence
         if evidence.adapter_version != self.adapter_version or evidence.request_digest != request.digest:
             raise ValueError("provider response does not bind the requested adapter/version/digest")

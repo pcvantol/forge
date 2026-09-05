@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 import json
-from typing import Callable, Mapping, Protocol
+from pathlib import Path
+import subprocess
+from typing import Callable, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import uuid
@@ -97,11 +99,7 @@ class _G011PolicySnapshot:
 
 @dataclass(frozen=True)
 class TokenPreflightBoundary:
-    """Non-secret canonical bindings that make one token count reusable once.
-
-    These values are deliberately supplied by the canonical admission/evidence
-    layer, never inferred from a provider response or a write scope.
-    """
+    """Runtime-derived, non-secret bindings that make one token count reusable once."""
     main_head: str
     evidence_digest: str
     effective_contract_digest: str
@@ -113,6 +111,54 @@ class TokenPreflightBoundary:
         if any(not isinstance(value, str) or not value for value in result.values()):
             raise ValueError("complete canonical token-preflight boundary is required")
         return result
+
+class CanonicalTokenPreflightAuthority:
+    """Read-only resolver for the canonical generation boundary.
+
+    The adapter never accepts these values from its caller.  This resolver
+    obtains the head, existing pinned evidence, and Mission amendment lineage
+    directly from the canonical RuntimeDatabase and repository.
+    """
+    def __init__(self, database, *, _head_reader: Callable[[Path], str] | None = None,
+                 _boundary_reader: Callable[[str], TokenPreflightBoundary] | None = None) -> None:
+        self._database = database
+        self._head_reader = _head_reader or _origin_main_head
+        self._boundary_reader = _boundary_reader
+
+    @classmethod
+    def _for_test(cls, database, boundary_reader: Callable[[str], TokenPreflightBoundary]) -> "CanonicalTokenPreflightAuthority":
+        return cls(database, _boundary_reader=boundary_reader)
+
+    def boundary_for(self, mission_id: str) -> TokenPreflightBoundary:
+        if self._boundary_reader is not None:
+            return self._boundary_reader(mission_id)
+        state = self._database.get_document("mission_state", mission_id)
+        if state.get("status") != "APPROVED_PLANNABLE":
+            raise PermissionError("canonical Mission is not approved/plannable")
+        evidence_row = self._database._connection.execute(
+            "SELECT digest, document FROM action_derivation_evidence_sets WHERE mission_id=?", (mission_id,)
+        ).fetchone()
+        if evidence_row is None:
+            raise PermissionError("canonical Action-Derivation evidence is missing")
+        evidence = json.loads(evidence_row["document"])
+        if evidence.get("mission_id") != mission_id or evidence.get("digest") != evidence_row["digest"]:
+            raise PermissionError("canonical Action-Derivation evidence is inconsistent")
+        contract = state.get("admission_contract")
+        if not isinstance(contract, dict):
+            raise PermissionError("canonical Mission admission contract is missing")
+        predecessor = _canonical_digest(contract)
+        rows = self._database._connection.execute(
+            "SELECT document FROM mission_amendments WHERE mission_id=? ORDER BY revision", (mission_id,)
+        ).fetchall()
+        for row in rows:
+            amendment = json.loads(row["document"])
+            if amendment.get("predecessor_digest") != predecessor:
+                raise PermissionError("canonical Mission amendment lineage is stale or conflicting")
+            predecessor = amendment.get("effective_contract_digest")
+            if not isinstance(predecessor, str) or not predecessor.startswith("sha256:"):
+                raise PermissionError("canonical Mission amendment digest is invalid")
+        return TokenPreflightBoundary(self._head_reader(self._database.repository_root),
+                                      str(evidence_row["digest"]), predecessor)
 
 @dataclass(frozen=True)
 class _TokenPreflightReceipt:
@@ -126,15 +172,18 @@ class OpenAIPlanningProviderConfiguration:
     """Adapter configuration that can only be built from canonical G011 policy."""
     policy_service: PlanningProviderSecurityService
     provider_id: str
+    preflight_authority: CanonicalTokenPreflightAuthority
 
     def __init__(self, policy_service: PlanningProviderSecurityService, provider_id: str,
-                 *, _from_canonical_g011: bool = False) -> None:
+                 *, _from_canonical_g011: bool = False,
+                 _preflight_authority: CanonicalTokenPreflightAuthority | None = None) -> None:
         if not _from_canonical_g011:
             raise TypeError("OpenAI planning configuration must be created from canonical G011 policy")
         if not isinstance(policy_service, PlanningProviderSecurityService) or not provider_id:
             raise ValueError("OpenAI planning provider requires canonical G011 authority")
         object.__setattr__(self, "policy_service", policy_service)
         object.__setattr__(self, "provider_id", provider_id)
+        object.__setattr__(self, "preflight_authority", _preflight_authority or CanonicalTokenPreflightAuthority(policy_service.db))
 
     @classmethod
     def from_canonical_g011(cls, service: PlanningProviderSecurityService,
@@ -143,6 +192,12 @@ class OpenAIPlanningProviderConfiguration:
         # canonical policy snapshot immediately before every transport.
         service.invocation_policy(provider_id)
         return cls(service, provider_id, _from_canonical_g011=True)
+
+    @classmethod
+    def _for_test(cls, service: PlanningProviderSecurityService, provider_id: str,
+                  authority: CanonicalTokenPreflightAuthority) -> "OpenAIPlanningProviderConfiguration":
+        """Explicit isolated-fixture seam; production always resolves canonical state."""
+        return cls(service, provider_id, _from_canonical_g011=True, _preflight_authority=authority)
 
     def current_policy(self) -> PlanningProviderInvocationPolicy:
         return self.policy_service.invocation_policy(self.provider_id)
@@ -153,12 +208,15 @@ class OpenAIResponsesPlanningProvider:
                  *, opener: Callable[..., object] = urlopen, adapter_version: str = OPENAI_RESPONSES_ADAPTER_VERSION) -> None:
         self.configuration, self._resolver, self._opener, self.adapter_version = configuration, resolver, opener, adapter_version
 
-    def preflight(self, request: ProviderDerivationRequest, *, boundary: TokenPreflightBoundary) -> dict[str, object]:
+    def preflight(self, request: ProviderDerivationRequest, *, operator_context) -> dict[str, object]:
         """Run one explicit provider count and durably record its PASS result.
 
         This performs no generation transport.  A subsequent generation is
         possible only through :meth:`invoke` with this exact persisted receipt.
         """
+        if not self.configuration.policy_service.operator_service.authorize(operator_context):
+            raise PermissionError("trusted operator authorization is required for provider token preflight")
+        boundary = self.configuration.preflight_authority.boundary_for(request.snapshot.mission_id)
         preflight_policy = self.configuration.current_policy()
         if request.provider_id != preflight_policy.provider_id or request.model != preflight_policy.model:
             raise ValueError("OpenAI planning provider does not allow provider/model fallback")
@@ -182,14 +240,14 @@ class OpenAIResponsesPlanningProvider:
                      "result": "PASS", "created_at": _now()}
         return self.configuration.policy_service.db.create_token_preflight_receipt(persisted)
 
-    def invoke(self, request: ProviderDerivationRequest, *, receipt_id: str,
-               boundary: TokenPreflightBoundary) -> ProviderDerivationResponse:
+    def invoke(self, request: ProviderDerivationRequest, *, receipt_id: str) -> ProviderDerivationResponse:
         """Generate once from an atomically consumed, exact PASS receipt.
 
         There is intentionally no preflight fallback here: a missing, stale,
         failed, or already consumed receipt denies generation before secrets or
         generation transport are touched.
         """
+        boundary = self.configuration.preflight_authority.boundary_for(request.snapshot.mission_id)
         generation_policy = self.configuration.current_policy()
         if request.provider_id != generation_policy.provider_id or request.model != generation_policy.model:
             raise ValueError("OpenAI planning provider does not allow provider/model fallback")
@@ -301,6 +359,19 @@ class OpenAIResponsesPlanningProvider:
         return ProviderInvocationEvidence(request.provider_id, request.model, self.adapter_version, request.digest, request.snapshot.digest, _digest(document) if document else None, state, str(document.get("id")) if isinstance(document, dict) and document.get("id") else None, started, _now(), status, int(usage.get("input_tokens", 0)) if isinstance(usage, dict) else None, int(usage.get("output_tokens", 0)) if isinstance(usage, dict) else None)
 
 def _digest(value: object) -> str: return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+def _canonical_digest(value: object) -> str: return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+def _origin_main_head(root: Path) -> str:
+    """Resolve the repository's canonical main head; never silently use a branch."""
+    try:
+        result = subprocess.run(("git", "-C", str(root), "rev-parse", "origin/main"), check=True,
+                                capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        raise PermissionError("canonical origin/main head is unavailable for token preflight") from None
+    head = result.stdout.strip()
+    if len(head) != 40 or any(character not in "0123456789abcdef" for character in head):
+        raise PermissionError("canonical origin/main head is invalid for token preflight")
+    return head
 
 def _input_token_request_body(generation_body: dict[str, object]) -> dict[str, object]:
     """Project one known Responses request into the documented count endpoint.
