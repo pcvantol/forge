@@ -24,19 +24,22 @@ class SecretReference:
         self.validate()
         object.__setattr__(self, 'identifier', self._canonical_identifier())
     def validate(self):
-        if self.scheme != 'keychain' or not isinstance(self.identifier,str) or not self.identifier or len(self.identifier) > 512:
-            raise ValueError('secret reference must be opaque and non-secret-bearing')
-        if any(ord(char) < 32 for char in self.identifier) or '%' in self.identifier:
-            raise ValueError('invalid keychain reference')
-        parsed=urlparse(self.identifier)
-        if parsed.scheme or parsed.username or parsed.password or parsed.port or parsed.fragment or not parsed.netloc:
-            raise ValueError('invalid keychain reference')
-        parts=parsed.path.split('/')
-        if len(parts) != 2 or not parts[1] or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',parsed.netloc) or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',parts[1]):
-            raise ValueError('invalid keychain reference')
-        query=parse_qsl(parsed.query,keep_blank_values=True,strict_parsing=True)
-        if len(query) != len({key for key,_ in query}) or any(key not in {'namespace','version'} or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',value) for key,value in query):
-            raise ValueError('invalid keychain reference')
+        try:
+            if self.scheme != 'keychain' or not isinstance(self.identifier,str) or not self.identifier or len(self.identifier) > 512:
+                raise ValueError
+            if any(ord(char) < 32 for char in self.identifier) or '%' in self.identifier:
+                raise ValueError
+            parsed=urlparse(self.identifier)
+            if parsed.scheme or parsed.username or parsed.password or parsed.port or parsed.fragment or not parsed.netloc:
+                raise ValueError
+            parts=parsed.path.split('/')
+            if len(parts) != 2 or not parts[1] or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',parsed.netloc) or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',parts[1]):
+                raise ValueError
+            query=parse_qsl(parsed.query,keep_blank_values=True,strict_parsing=True)
+            if len(query) != len({key for key,_ in query}) or any(key not in {'namespace','version'} or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',value) for key,value in query):
+                raise ValueError
+        except (UnicodeError, ValueError):
+            raise ValueError('invalid secret reference') from None
     def _canonical_identifier(self):
         parsed=urlparse(self.identifier)
         query=dict(parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True))

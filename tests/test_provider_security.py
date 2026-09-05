@@ -70,6 +70,12 @@ class ProviderSecurityTests(unittest.TestCase):
   reference=SecretReference('keychain','//service/account?version=v2&namespace=n1')
   self.assertEqual(reference.serialized,'keychain://service/account?namespace=n1&version=v2')
   self.assertEqual(reference.identifier,'//service/account?namespace=n1&version=v2')
+ def test_parser_failures_are_normalized_and_redacted(self):
+  malformed=('//service:PORT_SECRET_MARKER/account','//service:999999999999999999999/account','//[bad/account','//user:PORT_SECRET_MARKER@service/account','//service/account?namespace=n1#PORT_SECRET_MARKER','//service/%2Faccount')
+  for identifier in malformed:
+   with self.assertRaises(ValueError) as error: SecretReference('keychain',identifier)
+   self.assertEqual(str(error.exception),'invalid secret reference')
+   self.assertNotIn('PORT_SECRET_MARKER',str(error.exception))
  def test_keychain_adapter_uses_explicit_argv_and_redacts_failures(self):
   calls=[]
   class Result:
