@@ -1422,11 +1422,20 @@ class RuntimeDatabase:
             "SELECT document FROM action_derivations WHERE derivation_id = ?", (document["derivation_id"],)
         ).fetchone()
         if existing is not None:
-            if json.loads(existing["document"]) != document:
-                if json.loads(existing["document"]).get("lifecycle") == "FAILED":
-                    raise RuntimeIntegrityError("failed action derivation records are immutable")
-            else:
+            persisted = json.loads(existing["document"])
+            if persisted == document:
                 return document
+            if any(persisted.get(item) != document[item] for item in required[1:5]):
+                raise RuntimeIntegrityError("action derivation lineage is immutable")
+            from forge.models.action_derivation import DerivationLifecycle, _LIFECYCLE_TRANSITIONS
+            try:
+                previous, current = DerivationLifecycle(persisted["lifecycle"]), DerivationLifecycle(document["lifecycle"])
+            except (KeyError, ValueError) as error:
+                raise RuntimeIntegrityError("action derivation lifecycle is invalid") from error
+            if previous is DerivationLifecycle.FAILED:
+                raise RuntimeIntegrityError("failed action derivation records are immutable")
+            if current not in _LIFECYCLE_TRANSITIONS[previous]:
+                raise RuntimeIntegrityError("action derivation lifecycle transition is invalid")
         if existing is None:
             identity = self._connection.execute(
                 "SELECT derivation_id FROM action_derivations WHERE mission_id = ? AND snapshot_digest = ? AND contract_version = ? AND provider_configuration = ?",

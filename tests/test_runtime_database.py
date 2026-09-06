@@ -107,7 +107,11 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.database.close()
         self.database = RuntimeDatabase(self.root, forge_version="test")
         self.assertEqual(self.database.get_document("action_derivations", "derivation-1"), record)
-        self.database.save_action_derivation({**record, "lifecycle": "MATERIALIZED"})
+        for lifecycle in ("DERIVATION_REQUESTED", "PROVIDER_RUNNING", "PROPOSAL_RECEIVED",
+                          "VALIDATION_RUNNING", "VALIDATED", "MATERIALIZED"):
+            self.database.save_action_derivation({**record, "lifecycle": lifecycle})
+        with self.assertRaisesRegex(RuntimeIntegrityError, "lifecycle transition"):
+            self.database.save_action_derivation({**record, "lifecycle": "FAILED"})
         with self.assertRaisesRegex(RuntimeError, "identical action derivation"):
             self.database.save_action_derivation({**record, "derivation_id": "other"})
         with self.assertRaises(sqlite3.IntegrityError):
@@ -197,7 +201,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         triggers = {row["name"] for row in self.database._connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
         self.assertTrue({"action_derivations_authorized_insert", "action_derivations_failed_immutable_update", "action_derivations_failed_immutable_delete"} <= triggers)
-        self.database.save_action_derivation({**in_flight, "lifecycle": "MATERIALIZED"})
+        self.database.save_action_derivation({**in_flight, "lifecycle": "DERIVATION_REQUESTED"})
 
     def test_schema27_migrates_bounded_token_preflight_failures_before_restart(self) -> None:
         self.database.close()
