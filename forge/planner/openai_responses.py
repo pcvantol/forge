@@ -268,8 +268,13 @@ class OpenAIResponsesPlanningProvider:
         # OpenAI's input-token endpoint is the authority for the same
         # Responses request semantics. Its authenticated preflight is not a
         # generation invocation and cannot produce an Action proposal.
-        receipt = self._preflight_input_tokens(preflight_body, preflight_policy,
-                                               preflight_snapshot, request_digest)
+        try:
+            receipt = self._preflight_input_tokens(preflight_body, preflight_policy,
+                                                   preflight_snapshot, request_digest)
+        except ProviderTokenPreflightFailed as error:
+            self._record_preflight_failure(request.snapshot.mission_id, preflight_policy.provider_id,
+                                           boundary, preflight_snapshot.digest, request_digest, error)
+            raise
         self._enforce_token_policy(preflight_body, preflight_policy, receipt.input_tokens)
         bindings = boundary.values(policy_digest=receipt.policy_digest, request_digest=receipt.request_digest)
         persisted = {"receipt_id": f"token-preflight-{uuid.uuid4()}", "mission_id": request.snapshot.mission_id,
@@ -281,6 +286,19 @@ class OpenAIResponsesPlanningProvider:
                      "context_with_requested_output": receipt.input_tokens + preflight_policy.output_token_bound,
                      "result": "PASS", "created_at": _now()}
         return self.configuration.policy_service.db.create_token_preflight_receipt(persisted)
+
+    def _record_preflight_failure(self, mission_id: str, provider_id: str, boundary: TokenPreflightBoundary,
+                                  policy_digest: str, request_digest: str,
+                                  error: ProviderTokenPreflightFailed) -> None:
+        """Record only bounded error classification; never provider text or credentials."""
+        self.configuration.policy_service.db.record_token_preflight_failure({
+            "failure_id": f"token-preflight-failure-{uuid.uuid4()}", "mission_id": mission_id,
+            "provider_id": provider_id, **boundary.values(policy_digest=policy_digest, request_digest=request_digest),
+            "layer": error.layer, "status": error.status, "provider_type": error.provider_type,
+            "provider_code": error.provider_code, "request_id": error.request_id,
+            "transport_kind": error.transport_kind, "transport_errno": error.transport_errno,
+            "occurred_at": _now(),
+        })
 
     def invoke(self, request: ProviderDerivationRequest, *, receipt_id: str) -> ProviderDerivationResponse:
         """Generate once from an atomically consumed, exact PASS receipt.

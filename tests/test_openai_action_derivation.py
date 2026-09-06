@@ -142,6 +142,10 @@ class OpenAIActionDerivationTests(unittest.TestCase):
                    (400,'invalid_request_error','unsupported_parameter','req_safe'))
   self.assertNotIn('ignored',str(failure)); self.assertEqual(calls,['https://api.openai.com/v1/responses/input_tokens'])
   self.assertEqual(resolver.resolve_calls,1)
+  row=adapter.configuration.policy_service.db._connection.execute('SELECT document FROM token_preflight_failures').fetchone()
+  recorded=json.loads(row['document'])
+  self.assertEqual((recorded['status'],recorded['provider_type'],recorded['provider_code'],recorded['request_id']),(400,'invalid_request_error','unsupported_parameter','req_safe'))
+  self.assertNotIn('ignored',json.dumps(recorded))
 
  def test_context_and_output_bounds_use_preflight_count(self):
   adapter,_,configuration,request=self.adapter(lambda *args,**kwargs: None)

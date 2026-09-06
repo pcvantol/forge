@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 27
+RUNTIME_SCHEMA_VERSION = 28
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -34,7 +34,7 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
-    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "action_derivations",
+    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments",
@@ -400,6 +400,11 @@ class RuntimeDatabase:
                         receipt_id TEXT PRIMARY KEY, consumed_at TEXT NOT NULL,
                         FOREIGN KEY (receipt_id) REFERENCES token_preflight_receipts(receipt_id)
                     );
+                    CREATE TABLE IF NOT EXISTS token_preflight_failures (
+                        failure_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        provider_id TEXT NOT NULL, occurred_at TEXT NOT NULL,
+                        document TEXT NOT NULL, FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
                     CREATE TRIGGER token_preflight_receipts_authorized_insert BEFORE INSERT ON token_preflight_receipts
                     WHEN forge_token_preflight_write_permitted() != 1
                     BEGIN SELECT RAISE(ABORT, 'canonical token preflight producer required'); END;
@@ -411,6 +416,13 @@ class RuntimeDatabase:
                     BEGIN SELECT RAISE(ABORT, 'token preflight receipt consumptions are immutable'); END;
                     CREATE TRIGGER token_preflight_receipt_consumptions_immutable_delete BEFORE DELETE ON token_preflight_receipt_consumptions
                     BEGIN SELECT RAISE(ABORT, 'token preflight receipt consumptions are immutable'); END;
+                    CREATE TRIGGER token_preflight_failures_authorized_insert BEFORE INSERT ON token_preflight_failures
+                    WHEN forge_token_preflight_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical token preflight producer required'); END;
+                    CREATE TRIGGER token_preflight_failures_immutable_update BEFORE UPDATE ON token_preflight_failures
+                    BEGIN SELECT RAISE(ABORT, 'token preflight failures are immutable'); END;
+                    CREATE TRIGGER token_preflight_failures_immutable_delete BEFORE DELETE ON token_preflight_failures
+                    BEGIN SELECT RAISE(ABORT, 'token preflight failures are immutable'); END;
                     CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_update BEFORE UPDATE ON planning_provider_security_audit
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
                     CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_delete BEFORE DELETE ON planning_provider_security_audit
@@ -918,6 +930,25 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "27", "migration_version": "27", "last_migration": "27"})
                 self._connection.execute("PRAGMA user_version=27")
+            self._migrate(forge_version)
+        elif version == 27:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS token_preflight_failures (
+                        failure_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        provider_id TEXT NOT NULL, occurred_at TEXT NOT NULL,
+                        document TEXT NOT NULL, FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS token_preflight_failures_authorized_insert BEFORE INSERT ON token_preflight_failures
+                    WHEN forge_token_preflight_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical token preflight producer required'); END;
+                    CREATE TRIGGER IF NOT EXISTS token_preflight_failures_immutable_update BEFORE UPDATE ON token_preflight_failures
+                    BEGIN SELECT RAISE(ABORT, 'token preflight failures are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS token_preflight_failures_immutable_delete BEFORE DELETE ON token_preflight_failures
+                    BEGIN SELECT RAISE(ABORT, 'token preflight failures are immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "28", "migration_version": "28", "last_migration": "28"})
+                self._connection.execute("PRAGMA user_version=28")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1413,6 +1444,26 @@ class RuntimeDatabase:
         if row is None:
             raise RuntimeDatabaseError("token preflight receipt is missing")
         return json.loads(row["document"])
+
+    def record_token_preflight_failure(self, failure: Any) -> dict[str, Any]:
+        """Persist bounded, immutable diagnostics for one failed token preflight."""
+        document = _document(failure, "token preflight failure")
+        if _contains_secret_field(document):
+            raise RuntimeDatabaseError("token preflight failure must not contain secret material")
+        required = ("failure_id", "mission_id", "provider_id", "occurred_at", "main_head", "policy_digest",
+                    "request_digest", "evidence_digest", "effective_contract_digest", "layer")
+        if any(not isinstance(document.get(item), str) or not document[item] for item in required):
+            raise RuntimeDatabaseError("token preflight failure requires complete bounded provenance")
+        if not self._connection.execute("SELECT 1 FROM mission_state WHERE mission_id=?", (document["mission_id"],)).fetchone():
+            raise RuntimeDatabaseError("token preflight failure references an unknown Mission")
+        self._token_preflight_write_state["permitted"] = True
+        try:
+            with self._connection:
+                self._connection.execute("INSERT INTO token_preflight_failures VALUES (?,?,?,?,?)",
+                    (document["failure_id"], document["mission_id"], document["provider_id"], document["occurred_at"], self._dump(document)))
+        finally:
+            self._token_preflight_write_state["permitted"] = False
+        return document
 
     def create_action_derivation_evidence_set(self, evidence: Any) -> dict[str, Any]:
         """Insert one immutable, mission-bound Action-Derivation evidence set."""
