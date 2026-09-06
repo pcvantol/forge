@@ -473,10 +473,12 @@ class RuntimeDatabase:
                     CREATE TRIGGER IF NOT EXISTS action_derivations_authorized_insert BEFORE INSERT ON action_derivations
                     WHEN forge_action_derivation_write_permitted() != 1
                     BEGIN SELECT RAISE(ABORT, 'canonical action derivation producer required'); END;
-                    CREATE TRIGGER IF NOT EXISTS action_derivations_immutable_update BEFORE UPDATE ON action_derivations
-                    BEGIN SELECT RAISE(ABORT, 'action derivation records are immutable'); END;
-                    CREATE TRIGGER IF NOT EXISTS action_derivations_immutable_delete BEFORE DELETE ON action_derivations
-                    BEGIN SELECT RAISE(ABORT, 'action derivation records are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_update BEFORE UPDATE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_delete BEFORE DELETE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
                     CREATE TABLE IF NOT EXISTS action_derivation_evidence_sets (
                         evidence_set_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL UNIQUE,
                         installation_id TEXT NOT NULL, envelope_digest TEXT NOT NULL UNIQUE,
@@ -983,13 +985,17 @@ class RuntimeDatabase:
         elif version == 28:
             with self._connection:
                 self._connection.executescript("""
+                    DROP TRIGGER IF EXISTS action_derivations_immutable_update;
+                    DROP TRIGGER IF EXISTS action_derivations_immutable_delete;
                     CREATE TRIGGER IF NOT EXISTS action_derivations_authorized_insert BEFORE INSERT ON action_derivations
                     WHEN forge_action_derivation_write_permitted() != 1
                     BEGIN SELECT RAISE(ABORT, 'canonical action derivation producer required'); END;
-                    CREATE TRIGGER IF NOT EXISTS action_derivations_immutable_update BEFORE UPDATE ON action_derivations
-                    BEGIN SELECT RAISE(ABORT, 'action derivation records are immutable'); END;
-                    CREATE TRIGGER IF NOT EXISTS action_derivations_immutable_delete BEFORE DELETE ON action_derivations
-                    BEGIN SELECT RAISE(ABORT, 'action derivation records are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_update BEFORE UPDATE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_delete BEFORE DELETE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
                 """)
                 self._set_metadata({"schema_version": "29", "migration_version": "29", "last_migration": "29"})
                 self._connection.execute("PRAGMA user_version=29")
@@ -1406,7 +1412,7 @@ class RuntimeDatabase:
         return document
 
     def save_action_derivation(self, derivation: Any) -> dict[str, Any]:
-        """Persist one immutable Forge-owned derivation lifecycle record, never provider secrets."""
+        """Persist one Forge-owned derivation lifecycle record, never provider secrets."""
         document = _document(derivation, "action derivation")
         required = ("derivation_id", "mission_id", "snapshot_digest", "contract_version",
                     "provider_configuration", "lifecycle")
@@ -1417,19 +1423,22 @@ class RuntimeDatabase:
         ).fetchone()
         if existing is not None:
             if json.loads(existing["document"]) != document:
-                raise RuntimeIntegrityError("action derivation records are immutable")
-            return document
-        identity = self._connection.execute(
-            "SELECT derivation_id FROM action_derivations WHERE mission_id = ? AND snapshot_digest = ? AND contract_version = ? AND provider_configuration = ?",
-            tuple(document[item] for item in required[1:5]),
-        ).fetchone()
-        if identity is not None:
-            raise RuntimeDatabaseError("identical action derivation identity already belongs to another record")
+                if json.loads(existing["document"]).get("lifecycle") == "FAILED":
+                    raise RuntimeIntegrityError("failed action derivation records are immutable")
+            else:
+                return document
+        if existing is None:
+            identity = self._connection.execute(
+                "SELECT derivation_id FROM action_derivations WHERE mission_id = ? AND snapshot_digest = ? AND contract_version = ? AND provider_configuration = ?",
+                tuple(document[item] for item in required[1:5]),
+            ).fetchone()
+            if identity is not None:
+                raise RuntimeDatabaseError("identical action derivation identity already belongs to another record")
         self._action_derivation_write_state["permitted"] = True
         try:
             with self._connection:
                 self._connection.execute(
-                    "INSERT INTO action_derivations VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO action_derivations VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(derivation_id) DO UPDATE SET lifecycle=excluded.lifecycle, document=excluded.document",
                     tuple(document[item] for item in required) + (self._dump(document),),
                 )
         finally:
