@@ -1,148 +1,179 @@
 # Forge V1 Implementation DAG
 
-**AUTHORITY = DERIVED.** Source authority is the Product Model, Productization Reconciliation, V1 Decision Contract, canonical Forge roadmap and product-owned cross-product producer contracts. This document never allocates EP or Workspace work.
+**AUTHORITY = DERIVED.** Source authority is the canonical Forge roadmap and product-owned EP/Workspace contracts. This document never allocates EP or Workspace work.
 
 ## Current bootstrap reconciliation — 2026-09-06
-
-The shortest safe route to Forge autonomy is now explicit:
 
 ```text
 Forge Action-Derivation foundation (qualified)
   -> EP P-NEUTRAL closure
-  -> EP minimal installed execution-path qualification using existing runtime
+  -> DJConnect declaration + CENTRAL attachment
+  -> first real DJConnect EP Action
   -> EP::STANDALONE_EP_VERIFIED
-  -> Forge F3/F4 binding to canonical EP HTTP submission + status/evidence contracts
-  -> first Forge -> EP -> Forge governed execution canary
+  -> real EP self-development Action through CENTRAL
+  -> EP::SELF_HOSTED_ENGINEERING_VERIFIED
+  -> Forge repository direct-EP dogfood Action
+  -> Forge F3/F4 materialization/admission
+  -> canonical EP P-TRANSPORT HTTP submission
+  -> EP run/finalization/result evidence
+  -> Forge observation/reconciliation
+  -> first Forge -> EP -> Forge governed canary
   -> autonomous next-Mission loop
 ```
 
-Important consequences:
+## Critical corrections
 
-- P-TRANSPORT is merged/closed and already provides three canonical submission transports: HTTP, installed CLI and Server-owned File Inbox. Forge should reuse the canonical HTTP submission ingress rather than wait for or invent a second mutation transport.
-- The older Phase-1 Local Consumer API read-only qualification and the later P-TRANSPORT HTTP submission ingress are distinct contracts. Describing all installed EP HTTP integration as read-only is stale.
-- Workspace is not a runtime prerequisite for the first Forge autonomy canary. Workspace remains the human/project control plane and later consumer of qualified Forge/EP projections.
-- B8R supersedes the older assumption that Workspace manufactures EP logical project identity. Durable project/repository identity is declared by the Canonical Project Authority Repository in `.engineering-platform/repository.json`; Workspace may project it and own human-facing state.
-- Broader Project-Agent separation, generalized Agent dispatch, multi-host scheduling and multi-repository parallelism are not prerequisites for the first `EP::STANDALONE_EP_VERIFIED` canary when the existing installed EP execution path can prove one governed execution. They remain follow-on EP productization.
-- Do not make full P-QUEUE/generalized dispatch or the whole B8E product programme artificial prerequisites for the first standalone canary. Only concrete capabilities required to execute, finalize, retain evidence and observe one governed run are on the bootstrap critical path. Any remaining B8E/queue/Agent gaps stay explicit follow-on nodes unless a qualification failure proves them necessary.
+- P-TRANSPORT is merged/closed and provides HTTP, installed CLI and Server-owned File Inbox submission transports. Forge reuses HTTP.
+- The earlier read-only Local Consumer API and later P-TRANSPORT HTTP mutation ingress are distinct.
+- B8R identity comes from committed `.engineering-platform/repository.json`, not Workspace/runtime/path inference.
+- Workspace is not a runtime prerequisite for first standalone or Forge autonomy canaries.
+- General Agent separation, generalized dispatch, multi-host scheduling and multi-repository parallel mutation are follow-on unless a real canary proves a concrete dependency.
+- Broad P-QUEUE/B8E labels are not blanket blockers; only concrete execution/finalization/evidence gaps discovered by the canaries block progress.
+- Real-project proofs deliberately separate execution-product qualification from Forge orchestration: DJConnect proves standalone, EP proves self-development, Forge direct dogfood proves EP can engineer Forge, then Forge orchestrates EP.
 
 `P_TRANSPORT_STATUS = MERGED_CLOSED`
-
 `WORKSPACE_ON_FIRST_FORGE_AUTONOMY_CRITICAL_PATH = FALSE`
-
 `GENERAL_AGENT_SEPARATION_ON_STANDALONE_CRITICAL_PATH = FALSE`
-
 `P_TRANSPORT_HTTP_SUBMISSION_REUSED_BY_FORGE = TRUE`
 
-## Capability inventory and dispositions
+## Capability inventory
 
-| Capability | Current evidence classification | V1 disposition |
+| Capability | Current status | Disposition |
 | --- | --- | --- |
-| Governance, Mission Intake/amendments, Action-Derivation evidence/provider boundary | QUALIFIED bootstrap foundation | KEEP; do not reopen except regression. |
-| Action-Derivation canary closure | QUALIFIED / PR #40 merged | KEEP; administrative qualification authority only. |
-| Product Vision, Portfolio, Roadmap DAG, Forecast | CONTRACT_ONLY / PARTIAL | F2/F5. |
-| Mission Candidates/Recommendations, Business/Architecture refinement | PARTIALLY_IMPLEMENTED | KEEP/HARDEN; F2/F6. |
-| AI Mission Planner, Living Mission Graph, Mission State/Scheduler | PARTIALLY_IMPLEMENTED / proven local segments | KEEP/HARDEN; F4. |
-| Action materialization + execution admission | FORGE_GAP | First executable F4 slice. |
-| EP submission transport | EXTERNAL PRODUCER AVAILABLE at P-TRANSPORT transport layer | Reuse canonical HTTP ingress; do not duplicate. |
-| EP installed one-run execution/finalization/evidence | EXTERNAL QUALIFICATION GAP | EP critical path to `STANDALONE_EP_VERIFIED`. |
-| Forge EP result observation/reconciliation | FORGE_GAP | F4 immediately after installed EP producer is usable. |
-| Broader Agent separation/general dispatch/multi-host | EP FOLLOW_ON | Not a first-canary blocker unless evidence proves otherwise. |
-| Workspace control plane | WORKSPACE-OWNED FUTURE | Not a first autonomy-canary blocker. |
-| Quality Observer/Learning | CONTRACT_ONLY | F7 optional V1. |
-| Knowledge Observer/Learning | EXTERNAL / POST_V1 | F8 post-V1. |
+| Forge governance/Mission/Action-Derivation foundation | QUALIFIED | KEEP; on hold for live execution integration. |
+| EP P-TRANSPORT submission transport | AVAILABLE | Reuse HTTP; no duplicate transport. |
+| EP P-NEUTRAL | ACTIVE | Current EP critical path. |
+| DJConnect real-project standalone canary | REQUIRED NEXT | Earns `EP::STANDALONE_EP_VERIFIED`. |
+| EP self-development through CENTRAL | REQUIRED POST-STANDALONE PRODUCER PROOF | Earns `EP::SELF_HOSTED_ENGINEERING_VERIFIED`. |
+| Forge direct-EP repository dogfood | REQUIRED BEFORE/DURING FORGE INTEGRATION | Proves EP can engineer Forge without Forge orchestration. |
+| Forge Action materialization + execution admission | FORGE GAP | Resume after producer proofs. |
+| Forge EP observation/reconciliation | FORGE GAP | Resume with live installed producer. |
+| Workspace direct EP dogfood | FOLLOW-ON | Useful but non-blocking for first Forge autonomy. |
+| General Agent/dispatch/multi-host/multi-repo | EP FOLLOW-ON | Not first-canary blockers by default. |
 
 ## Critical DAG
 
 ```text
-F1/F2 Forge service + contracts
-        |
-        +------------------------------+
-        |                              |
-        v                              v
-Forge planning/derivation        EP standalone bootstrap
-(already strongly proven)        P-NEUTRAL
-        |                              |
-        |                              v
-        |                       minimal installed execution
-        |                       submission -> run -> finalization
-        |                       -> receipt/result
-        |                              |
-        |                              v
-        |                    EP::STANDALONE_EP_VERIFIED
-        |                              |
-        +---------------+--------------+
-                        v
-              Forge F3/F4 executable slice
-              materialize -> admit
-              -> HTTP submit -> observe
-              -> reconcile
-                        |
-                        v
-              first Forge -> EP -> Forge canary
-                        |
-                        v
-              autonomous next-Mission loop
+                         EP P-NEUTRAL
+                              |
+                              v
+                  DJConnect B8R declaration
+                              |
+                              v
+                 real DJConnect EP Action
+                              |
+                              v
+                  STANDALONE_EP_VERIFIED
+                              |
+                              v
+                 real EP self-development
+                              |
+                              v
+               SELF_HOSTED_ENGINEERING_VERIFIED
+                              |
+                              v
+                  Forge direct EP dogfood
+                              |
+       +----------------------+------------------+
+       |                                         |
+       v                                         v
+Forge planning/derivation                 installed EP producer
+(already qualified)                       proven on real repos
+       |                                         |
+       +----------------------+------------------+
+                              v
+                 Forge materialize + admit
+                              |
+                              v
+                    P-TRANSPORT HTTP
+                              |
+                              v
+                   EP execute/finalize
+                              |
+                              v
+                  Forge reconcile result
+                              |
+                              v
+                first Forge -> EP -> Forge
+                              |
+                              v
+                  autonomous next Mission
 ```
 
-The first Forge execution canary must use one repository, one bounded Action, one canonical submission identity and no automatic resubmission. Forge persists the intended immutable Action/submission key before the EP call; EP owns submission/admission/run/finalization evidence; Forge reconciles by canonical correlation/run identity.
+## Real-project qualification contracts
 
-## Cross-product authority boundaries
+### DJConnect standalone canary
 
-| Boundary | Owner | Bootstrap meaning |
-| --- | --- | --- |
-| Mission, Action intent, planning/governance | Forge | Forge decides why/what. |
-| Project/repository declaration | Canonical Project Authority Repository, validated by EP | No path/name/Workspace-runtime-derived identity. |
-| Submission/admission/run/finalization/receipt | EP | EP decides how execution proceeds. |
-| HTTP submission transport | EP P-TRANSPORT | Existing canonical mutation ingress; Forge is a consumer. |
-| Run/status/evidence projection | EP | Forge consumes, never reconstructs from logs/Console. |
-| Human/project UX and cross-product projections | Workspace | Not execution authority and not required for first canary. |
+Required chain: committed declaration -> attachment -> submission -> admission -> real mutation -> canonical validation -> finalization -> immutable receipt/result/provenance -> observation. One project, one Action, serial execution.
 
-## Readiness chains
+### EP self-hosted engineering canary
 
-| Readiness chain | Current edge sequence |
+A real bounded change to `pcvantol/engineering-platform` is executed by the installed CENTRAL EP. This proves the execution product can maintain its own source repository without Forge and without legacy DJConnect execution authority.
+
+### Forge direct-EP dogfood
+
+A real bounded change to `pcvantol/forge` is executed through EP directly, before or during Forge's orchestration integration. This avoids circular evidence: Forge does not prove its own ability to call EP using an EP path that has never independently engineered Forge.
+
+### Workspace dogfood
+
+A real Workspace development Action may be added after the above. It is not a prerequisite for the first Forge autonomy loop.
+
+## Authority boundaries
+
+| Boundary | Owner |
 | --- | --- |
-| Autonomous Mission execution | approved Mission -> Planner/Living Graph **PROVEN** -> Action materialization/admission **FORGE GAP** -> P-TRANSPORT HTTP submission **AVAILABLE TRANSPORT** -> installed EP execution/finalization/receipt **EP QUALIFICATION GAP** -> Forge observation/reconciliation **FORGE GAP** -> first canary -> next-Mission automation. |
-| Portfolio intelligence | repository/completed Mission -> Review/Recommendation **PROVEN** -> F5 Roadmap/Forecast/ranking -> advisory candidate -> Business review. |
-| Quality learning | Action/EP outcome -> F7 observer/proposal -> governed hardening. |
-| Knowledge learning | evidence -> F8 observer/export -> KB certification -> read-only consumption; post-V1. |
+| Mission/Action intent/planning/governance | Forge |
+| Project/repository declaration | Canonical Project Authority Repository, validated by EP |
+| Submission/admission/run/finalization/receipt | EP |
+| HTTP submission transport | EP P-TRANSPORT |
+| Run/status/evidence projection | EP |
+| Human/project UX | Workspace |
 
-## Build lanes and safe parallelism
+## Readiness chain
 
-| Lane | May proceed now | Must wait for |
-| --- | --- | --- |
-| Forge Action materialization/admission contract fixtures | Yes | Live integration completion waits for installed EP evidence. |
-| EP P-NEUTRAL | Yes; current EP critical path | Its own exact-head/host qualification. |
-| EP minimal installed execution canary | After required P-NEUTRAL closure | Only concrete execution prerequisites discovered by the canary. |
-| Forge HTTP submission/status/result adapter | Contract-first against existing P-TRANSPORT/status evidence | Integration-complete claim waits for installed EP producer qualification. |
-| Workspace onboarding/control plane | Fixture/design work only | Qualified producer contracts; not needed for first Forge autonomy canary. |
-| Broader Agent separation/dispatch/multi-host | Follow-on | Not a bootstrap prerequisite by default. |
-| Quality/Knowledge | Parallel/post-V1 as already classified | Their named predecessors. |
+Autonomous Mission execution is now:
 
-`UNSAFE_PARALLEL_LANES = 0`
+```text
+approved Mission + Planner/Living Graph       PROVEN
+EP P-TRANSPORT HTTP                           AVAILABLE
+P-NEUTRAL                                     ACTIVE EP GAP
+DJConnect real execution                      EP QUALIFICATION GAP
+STANDALONE_EP_VERIFIED                        EP GATE
+EP self-development                           EP PRODUCER CONFIDENCE GAP
+Forge direct EP dogfood                       CROSS-BOUNDARY QUALIFICATION GAP
+Action materialization/admission              FORGE GAP
+EP observation/reconciliation                 FORGE GAP
+first Forge -> EP -> Forge canary             QUALIFICATION GAP
+autonomous next-Mission repetition            FINAL AUTONOMY GAP
+```
 
-## Installed execution and Forge F4 completion
+No unknown edge remains.
 
-`EP::STANDALONE_EP_VERIFIED` for this bootstrap means the installed EP instance has proven the minimum real execution chain needed by consumers: canonical submission, bounded admission, one governed execution through the current installed execution path, finalization, immutable receipt/result evidence and stable observation. It does not by itself require the future generalized Agent topology or multi-project scheduler.
+## Safe parallelism
 
-After that gate, Forge F3/F4 should take the shortest integration route:
+- Forge may maintain contract fixtures while on hold, but should not invent live EP readiness/execution contracts ahead of real installed evidence.
+- P-NEUTRAL proceeds now.
+- DJConnect/EP/Forge declarations and real Actions are serial qualification proofs; this does not require multi-project concurrent scheduling.
+- Workspace onboarding/control-plane work may remain separate and non-blocking.
+- General Agent separation/dispatch/multi-host/multi-repository productization follows the first real loops unless a canary proves it necessary.
+
+## First Forge execution canary
+
+After the real-project producer proofs:
 
 1. create/select one new low-risk executable Mission;
 2. materialize one immutable Action snapshot;
-3. persist one execution-admission/submission intent with idempotency/correlation;
-4. POST through the existing canonical P-TRANSPORT HTTP submission ingress;
-5. observe the canonical EP run/result projection without resubmitting;
-6. reconcile the terminal evidence into Forge;
+3. persist execution-admission/submission intent with idempotency/correlation;
+4. POST once through existing P-TRANSPORT HTTP;
+5. observe exact canonical EP run/result evidence;
+6. reconcile idempotently;
 7. stop after the first canary;
-8. only then activate automatic next-Mission selection in a separate final autonomy increment.
+8. only then activate automatic next-Mission selection.
 
-## Workspace position
+Forge never writes the target repository directly and never reconstructs EP authority from logs, Console state, filesystem state or direct Agent control.
 
-Workspace V1 remains a consumer/control-plane programme. It may later present project topology, Forge planning, EP queue/run/result state and permitted lifecycle actions, but it is not needed to prove the first machine-to-machine Forge -> EP -> Forge execution loop. Its roadmap remains authoritative for Workspace-owned implementation.
+## Roadmap-to-action rule
 
-## Roadmap-to-action readiness contract
+A derived node becomes ready only when its actual producer evidence exists. Historical phase labels cannot create artificial blockers, and transport availability cannot be promoted to execution qualification. Owner gates apply at genuine authority expansion points rather than every engineering repair/validation iteration.
 
-The canonical Forge roadmap remains strategic authority. A derived node can become `READY_FOR_MISSION_CANDIDATE` only when its Forge predecessors and real external producer gates are satisfied. Derived documentation must not reintroduce stale producer assumptions, convert follow-on productization into artificial blockers, or silently promote a transport-level capability into execution qualification.
-
-A passing DoR creates/refines an advisory Candidate; it does not self-approve execution. Owner/human gates apply at genuine authority expansion points, not every engineering repair/validation sub-step.
-
-Regenerate/reconcile this DAG whenever the canonical Forge roadmap, EP roadmap/qualification state, Workspace roadmap or cross-product producer contracts change.
+Reconcile this DAG whenever canonical Forge, EP or Workspace roadmap authority changes.
