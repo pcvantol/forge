@@ -53,6 +53,11 @@ class ActionDerivationCanaryClosureTests(unittest.TestCase):
     def _close(self) -> dict[str, object]:
         return self._service().close(mission_id="mission", successor_attempt_id="successor", qualification_decision_id=self.qualification_id, operator_context=self.context)
 
+    def _closure_document(self) -> dict[str, object]:
+        with patch.object(self.db, "create_action_derivation_canary_closure", side_effect=lambda value: value) as writer:
+            self._close()
+        return writer.call_args.args[0]
+
     def test_closure_is_immutable_idempotent_and_survives_reopen(self) -> None:
         closure = self._close()
         self.assertEqual(closure["qualified_capability"], "ACTION_DERIVATION")
@@ -114,6 +119,24 @@ class ActionDerivationCanaryClosureTests(unittest.TestCase):
         with patch.object(self.db, "consumed_token_preflight_receipt", side_effect=RuntimeIntegrityError("missing")):
             with self.assertRaises(RuntimeIntegrityError):
                 self._close()
+
+    def test_direct_canonical_writer_rejects_unresolved_security_and_secret_identifiers(self) -> None:
+        document = self._closure_document()
+        def revised(**changes):
+            value = {**document, **changes}
+            value["digest"] = "sha256:" + sha256(json.dumps(
+                {key: item for key, item in value.items() if key != "digest"}, sort_keys=True, separators=(",", ":")
+            ).encode()).hexdigest()
+            return value
+        for changes in (
+            {"qualification_decision_id": "missing"},
+            {"reattempt_authorization_id": "missing"},
+            {"reattempt_authorization_id": "sk-proj-test-marker-not-a-real-secret"},
+            {"effective_contract_digest": self.digest("9")},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(RuntimeDatabaseError):
+                self.db.create_action_derivation_canary_closure(revised(**changes))
+        self.assertEqual(self.db.create_action_derivation_canary_closure(document), document)
         decision = self.repository.decision(self.qualification_id)
         with patch.object(self.repository, "decision", return_value={**decision, "decision": "denied"}):
             with self.assertRaises(PermissionError):
