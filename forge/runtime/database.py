@@ -260,15 +260,7 @@ class RuntimeDatabase:
         expected_foreign_keys = {("mission_state", "mission_id", "mission_id"),
                                  ("action_derivations", "successor_attempt_id", "derivation_id"),
                                  ("action_derivations", "predecessor_attempt_id", "derivation_id")}
-        # Older migration fixtures rebuild ``action_derivations`` in-place;
-        # SQLite retains the temporary table name in pre-existing future-table
-        # foreign-key metadata.  It is repaired by the v29 rebuild, but is not
-        # an authority-changing closure object.
-        temporary_fk_sets = ({("mission_state", "mission_id", "mission_id"),
-                              (f"action_derivations_v{version}", "successor_attempt_id", "derivation_id"),
-                              (f"action_derivations_v{version}", "predecessor_attempt_id", "derivation_id")}
-                             for version in (29, 30))
-        if foreign_keys != expected_foreign_keys and foreign_keys not in temporary_fk_sets:
+        if foreign_keys != expected_foreign_keys:
             raise RuntimeIntegrityError("canary closure migration found incompatible foreign references")
         for name, fragments in (
             ("action_derivation_canary_closures_authorized_insert", ("before insert", "forge_action_derivation_canary_closure_write_permitted() != 1", "canonical action derivation canary closure authority required")),
@@ -1188,9 +1180,22 @@ class RuntimeDatabase:
                 self._connection.execute("PRAGMA user_version=30")
             self._migrate(forge_version)
         elif version == 30:
-            with self._connection:
-                self._connection.executescript("""
-                    CREATE TABLE IF NOT EXISTS action_derivation_canary_closures (
+            # Schema 30 has no closure objects.  A same-named pre-existing
+            # table or trigger is therefore untrusted future state, not a
+            # partial migration to reconcile.  Refuse it before *any* DDL so
+            # malformed databases remain byte-for-byte operationally intact
+            # (apart from SQLite's normal read-only open bookkeeping).
+            closure_objects = tuple(self._connection.execute(
+                "SELECT type, name FROM sqlite_master WHERE name IN (?,?,?,?)",
+                ("action_derivation_canary_closures",
+                 "action_derivation_canary_closures_authorized_insert",
+                 "action_derivation_canary_closures_immutable_update",
+                 "action_derivation_canary_closures_immutable_delete"),
+            ))
+            if closure_objects:
+                raise RuntimeIntegrityError("schema-30 migration found pre-existing canary closure objects")
+            statements = (
+                """CREATE TABLE action_derivation_canary_closures (
                         closure_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
                         successor_attempt_id TEXT NOT NULL UNIQUE, predecessor_attempt_id TEXT NOT NULL,
                         qualification_decision_id TEXT NOT NULL, qualification_decision_digest TEXT NOT NULL,
@@ -1204,21 +1209,29 @@ class RuntimeDatabase:
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id),
                         FOREIGN KEY (successor_attempt_id) REFERENCES action_derivations(derivation_id),
                         FOREIGN KEY (predecessor_attempt_id) REFERENCES action_derivations(derivation_id)
-                    );
-                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_authorized_insert
+                    )""",
+                """CREATE TRIGGER action_derivation_canary_closures_authorized_insert
                     BEFORE INSERT ON action_derivation_canary_closures
                     WHEN forge_action_derivation_canary_closure_write_permitted() != 1
-                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation canary closure authority required'); END;
-                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_immutable_update
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation canary closure authority required'); END""",
+                """CREATE TRIGGER action_derivation_canary_closures_immutable_update
                     BEFORE UPDATE ON action_derivation_canary_closures
-                    BEGIN SELECT RAISE(ABORT, 'action derivation canary closures are immutable'); END;
-                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_immutable_delete
+                    BEGIN SELECT RAISE(ABORT, 'action derivation canary closures are immutable'); END""",
+                """CREATE TRIGGER action_derivation_canary_closures_immutable_delete
                     BEFORE DELETE ON action_derivation_canary_closures
-                    BEGIN SELECT RAISE(ABORT, 'action derivation canary closures are immutable'); END;
-                """)
+                    BEGIN SELECT RAISE(ABORT, 'action derivation canary closures are immutable'); END""",
+            )
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                for statement in statements:
+                    self._connection.execute(statement)
                 self._require_canary_closure_structure()
                 self._set_metadata({"schema_version": "31", "migration_version": "31", "last_migration": "31"})
                 self._connection.execute("PRAGMA user_version=31")
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 

@@ -27,6 +27,16 @@ class RuntimeDatabaseTests(unittest.TestCase):
     def _review(self) -> dict[str, object]:
         return {"id": "review-1", "mission_id": "mission-1", "input_digest": "sha256:review", "repository_maturity": [], "pressure": {"architecture": "low", "implementation": "low"}, "confidence": "high", "reviewed_at": "2026-08-04T00:00:00Z"}
 
+    @staticmethod
+    def _remove_schema31_closure_objects(connection: sqlite3.Connection) -> None:
+        """Make an older-schema fixture honest: schema 31 objects did not exist."""
+        connection.executescript("""
+            DROP TRIGGER IF EXISTS action_derivation_canary_closures_authorized_insert;
+            DROP TRIGGER IF EXISTS action_derivation_canary_closures_immutable_update;
+            DROP TRIGGER IF EXISTS action_derivation_canary_closures_immutable_delete;
+            DROP TABLE IF EXISTS action_derivation_canary_closures;
+        """)
+
     def test_creation_uses_canonical_runtime_path_and_versioned_metadata(self) -> None:
         self.assertEqual(self.database.path, RuntimeResolver(self.root).default_location)
         self.assertTrue(self.database.path.exists())
@@ -64,6 +74,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
     def test_newer_schema_and_missing_metadata_are_rejected(self) -> None:
         self.database.close()
         connection = sqlite3.connect(self.database.path)
+        self._remove_schema31_closure_objects(connection)
         connection.execute("PRAGMA user_version=99")
         connection.commit(); connection.close()
         with self.assertRaises(RuntimeIntegrityError):
@@ -72,6 +83,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
     def test_version_three_execution_references_migrate_to_immutable_receipts(self) -> None:
         self.database.close()
         connection = sqlite3.connect(self.database.path)
+        self._remove_schema31_closure_objects(connection)
         connection.execute("DROP TRIGGER execution_receipts_immutable_update")
         connection.execute("DROP TRIGGER execution_receipts_immutable_delete")
         connection.execute("DROP TABLE execution_receipts")
@@ -154,6 +166,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
     def test_schema26_migrates_token_preflight_receipts_before_restart(self) -> None:
         self.database.close()
         connection = sqlite3.connect(self.database.path)
+        self._remove_schema31_closure_objects(connection)
         for trigger in ("token_preflight_receipts_authorized_insert", "token_preflight_receipts_immutable_update", "token_preflight_receipts_immutable_delete",
                         "token_preflight_receipt_consumptions_immutable_update", "token_preflight_receipt_consumptions_immutable_delete"):
             connection.execute(f"DROP TRIGGER {trigger}")
@@ -195,6 +208,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.database.save_action_derivation(in_flight)
         self.database.close()
         connection = sqlite3.connect(self.database.path)
+        self._remove_schema31_closure_objects(connection)
         for trigger in ("action_derivations_authorized_insert", "action_derivations_failed_immutable_update", "action_derivations_failed_immutable_delete"):
             connection.execute(f"DROP TRIGGER {trigger}")
         connection.execute("UPDATE runtime_metadata SET value='28' WHERE key IN ('schema_version','migration_version','last_migration')")
@@ -270,6 +284,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.database.save_action_derivation(record)
         self.database.close()
         connection = sqlite3.connect(self.database.path)
+        self._remove_schema31_closure_objects(connection)
         for trigger in ("action_derivation_reattempt_authorizations_authorized_insert", "action_derivation_reattempt_authorizations_immutable_update", "action_derivation_reattempt_authorizations_immutable_delete", "action_derivation_reattempt_consumptions_immutable_update", "action_derivation_reattempt_consumptions_immutable_delete"):
             connection.execute(f"DROP TRIGGER {trigger}")
         connection.execute("DROP TABLE action_derivation_reattempt_consumptions")
@@ -292,6 +307,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
     def test_schema27_migrates_bounded_token_preflight_failures_before_restart(self) -> None:
         self.database.close()
         connection = sqlite3.connect(self.database.path)
+        self._remove_schema31_closure_objects(connection)
         for trigger in ("token_preflight_failures_authorized_insert", "token_preflight_failures_immutable_update",
                         "token_preflight_failures_immutable_delete"):
             connection.execute(f"DROP TRIGGER {trigger}")

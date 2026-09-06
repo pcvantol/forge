@@ -58,6 +58,50 @@ class ActionDerivationCanaryClosureTests(unittest.TestCase):
             self._close()
         return writer.call_args.args[0]
 
+    def _schema30_fixture(self) -> Path:
+        """Build a schema-30 runtime with canonical evidence and no v31 objects.
+
+        The fixture deliberately removes only the schema-31 DDL with explicit
+        SQL.  Its Mission, failed/successor derivation attempts, consumed
+        reattempt and preflight evidence, and Security qualification are all
+        produced through their canonical writers in ``_seed_validated_successor``.
+        That makes this a real schema-30 migration input rather than a mocked
+        database or a hand-written approximation of evidence rows.
+        """
+        path = Path(self.directory.name) / "schema30-runtime.db"
+        destination = sqlite3.connect(path)
+        self.db._connection.backup(destination)
+        destination.close()
+        connection = sqlite3.connect(path)
+        connection.executescript("""
+            DROP TRIGGER action_derivation_canary_closures_authorized_insert;
+            DROP TRIGGER action_derivation_canary_closures_immutable_update;
+            DROP TRIGGER action_derivation_canary_closures_immutable_delete;
+            DROP TABLE action_derivation_canary_closures;
+            UPDATE runtime_metadata SET value='30'
+            WHERE key IN ('schema_version', 'migration_version', 'last_migration');
+            PRAGMA user_version=30;
+        """)
+        connection.close()
+        return path
+
+    @staticmethod
+    def _schema30_state(path: Path) -> tuple[int, dict[str, str], tuple[tuple[str, str, str | None], ...], tuple[tuple[str, str], ...]]:
+        connection = sqlite3.connect(path)
+        try:
+            metadata = dict(connection.execute("SELECT key, value FROM runtime_metadata"))
+            objects = tuple(connection.execute(
+                "SELECT type, name, sql FROM sqlite_master WHERE name LIKE 'action_derivation_canary_closures%' ORDER BY type, name"
+            ))
+            evidence = tuple(connection.execute(
+                "SELECT derivation_id, document FROM action_derivations ORDER BY derivation_id"
+            )) + tuple(connection.execute(
+                "SELECT decision_id, document FROM governance_decisions ORDER BY decision_id"
+            ))
+            return connection.execute("PRAGMA user_version").fetchone()[0], metadata, objects, evidence
+        finally:
+            connection.close()
+
     def test_closure_is_immutable_idempotent_and_survives_reopen(self) -> None:
         closure = self._close()
         self.assertEqual(closure["qualified_capability"], "ACTION_DERIVATION")
@@ -146,20 +190,8 @@ class ActionDerivationCanaryClosureTests(unittest.TestCase):
                 self._close()
 
     def test_schema30_migrates_the_bounded_closure_store_before_reopen(self) -> None:
-        self.db.close()
-        connection = sqlite3.connect(self.db.path)
-        for trigger in (
-            "action_derivation_canary_closures_authorized_insert",
-            "action_derivation_canary_closures_immutable_update",
-            "action_derivation_canary_closures_immutable_delete",
-        ):
-            connection.execute(f"DROP TRIGGER {trigger}")
-        connection.execute("DROP TABLE action_derivation_canary_closures")
-        connection.execute("UPDATE runtime_metadata SET value='30' WHERE key IN ('schema_version', 'migration_version', 'last_migration')")
-        connection.execute("PRAGMA user_version=30")
-        connection.commit()
-        connection.close()
-        self.db = RuntimeDatabase(Path(self.directory.name), forge_version="test")
+        path = self._schema30_fixture()
+        self.db = RuntimeDatabase(Path(self.directory.name), path=path, forge_version="test")
         self.assertEqual(self.db.metadata["schema_version"], "31")
         tables = {row["name"] for row in self.db._connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         triggers = {row["name"] for row in self.db._connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
@@ -169,3 +201,38 @@ class ActionDerivationCanaryClosureTests(unittest.TestCase):
             "action_derivation_canary_closures_immutable_update",
             "action_derivation_canary_closures_immutable_delete",
         } <= triggers)
+
+    def test_schema30_malformed_preexisting_closure_objects_fail_closed_without_repair(self) -> None:
+        cases = (
+            ("malformed_table", "CREATE TABLE action_derivation_canary_closures (closure_id TEXT PRIMARY KEY, forged TEXT NOT NULL)"),
+            ("legacy_fk_target", """CREATE TABLE action_derivation_canary_closures (
+                closure_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL, successor_attempt_id TEXT NOT NULL UNIQUE,
+                predecessor_attempt_id TEXT NOT NULL, qualification_decision_id TEXT NOT NULL,
+                qualification_decision_digest TEXT NOT NULL, effective_contract_digest TEXT NOT NULL,
+                evidence_digest TEXT NOT NULL, g011_policy_digest TEXT NOT NULL, provider_request_digest TEXT NOT NULL,
+                preflight_receipt_id TEXT NOT NULL, reattempt_authorization_id TEXT NOT NULL, main_head TEXT NOT NULL,
+                qualified_capability TEXT NOT NULL, not_qualified_capabilities TEXT NOT NULL, installation_id TEXT NOT NULL,
+                operator_id TEXT NOT NULL, runtime_id TEXT NOT NULL, closed_at TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
+                document TEXT NOT NULL, FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id),
+                FOREIGN KEY (successor_attempt_id) REFERENCES action_derivations_v30(derivation_id),
+                FOREIGN KEY (predecessor_attempt_id) REFERENCES action_derivations_v30(derivation_id))"""),
+            ("stray_authority_trigger", """CREATE TRIGGER action_derivation_canary_closures_authorized_insert
+                BEFORE INSERT ON action_derivations BEGIN SELECT 1; END"""),
+            ("stray_immutability_trigger", """CREATE TRIGGER action_derivation_canary_closures_immutable_delete
+                BEFORE DELETE ON action_derivations BEGIN SELECT 1; END"""),
+        )
+        for label, ddl in cases:
+            with self.subTest(label):
+                source = self._schema30_fixture()
+                path = source.with_name(f"{label}.db")
+                origin, target = sqlite3.connect(source), sqlite3.connect(path)
+                origin.backup(target); target.close(); origin.close()
+                connection = sqlite3.connect(path)
+                connection.execute(ddl)
+                connection.commit(); connection.close()
+                before = self._schema30_state(path)
+                with self.assertRaisesRegex(RuntimeIntegrityError, "pre-existing canary closure objects"):
+                    RuntimeDatabase(Path(self.directory.name), path=path, forge_version="test")
+                after = self._schema30_state(path)
+                self.assertEqual(after, before)
+                self.assertEqual((after[0], after[1]["schema_version"], after[1]["migration_version"]), (30, "30", "30"))

@@ -85,6 +85,12 @@ class ExecutionContextTests(unittest.TestCase):
 
     def test_schema_thirteen_migrates_to_the_immutable_context_history(self) -> None:
         path = self.database.path
+        self.database._connection.executescript("""
+            DROP TRIGGER action_derivation_canary_closures_authorized_insert;
+            DROP TRIGGER action_derivation_canary_closures_immutable_update;
+            DROP TRIGGER action_derivation_canary_closures_immutable_delete;
+            DROP TABLE action_derivation_canary_closures;
+        """)
         self.database._connection.execute("DROP TABLE execution_context_snapshots")
         self.database._connection.execute("PRAGMA user_version=13")
         self.database._connection.execute("UPDATE runtime_metadata SET value = '13' WHERE key IN ('schema_version', 'migration_version', 'last_migration')")
