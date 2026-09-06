@@ -380,23 +380,51 @@ class OpenAIResponsesPlanningProvider:
         return ProviderSideEffectState.MAY_HAVE_HAPPENED
 
     def invoke_and_validate(self, request: ProviderDerivationRequest, *, receipt_id: str,
-                            governance_repository):
+                            governance_repository, reattempt_authorization_id: str | None = None):
         """Perform the one permitted generation and its canonical non-executing validation boundary."""
         database = self.configuration.policy_service.db
-        policy_digest = _G011PolicySnapshot.from_policy(self.configuration.current_policy()).digest
-        existing = database._connection.execute(
-            "SELECT 1 FROM action_derivations WHERE derivation_id=? OR "
-            "(mission_id=? AND snapshot_digest=? AND contract_version='1.0' AND provider_configuration=?)",
-            (request.derivation_id, request.snapshot.mission_id, request.snapshot.digest, policy_digest),
+        policy = self.configuration.current_policy()
+        policy_digest = _G011PolicySnapshot.from_policy(policy).digest
+        request_digest = _digest(self._body(request, policy))
+        existing_id = database._connection.execute("SELECT 1 FROM action_derivations WHERE derivation_id=?", (request.derivation_id,)).fetchone()
+        exact = database._connection.execute(
+            "SELECT 1 FROM action_derivations WHERE mission_id=? AND snapshot_digest=? AND contract_version='1.0' AND provider_configuration=? AND generation_request_digest=?",
+            (request.snapshot.mission_id, request.snapshot.digest, policy_digest, request_digest),
         ).fetchone()
-        if existing is not None:
+        if existing_id is not None or exact is not None:
             raise PermissionError("canonical Action Derivation identity is already resolved")
+        related = database._connection.execute(
+            "SELECT 1 FROM action_derivations WHERE mission_id=? AND snapshot_digest=? AND contract_version='1.0' AND provider_configuration=?",
+            (request.snapshot.mission_id, request.snapshot.digest, policy_digest),
+        ).fetchone()
+        reattempt = None
+        if related is not None:
+            if reattempt_authorization_id is None:
+                raise PermissionError("changed Action Derivation request requires an explicit governed successor authorization")
+            boundary = self.configuration.preflight_authority.boundary_for(request.snapshot.mission_id)
+            row = database._connection.execute(
+                "SELECT document FROM action_derivation_reattempt_authorizations WHERE authorization_id=?",
+                (reattempt_authorization_id,),
+            ).fetchone()
+            if row is None:
+                raise PermissionError("canonical Action-Derivation successor authorization is missing")
+            authorization = json.loads(row["document"])
+            reattempt = database.consume_action_derivation_reattempt_authorization(reattempt_authorization_id, {
+                "successor_attempt_id": request.derivation_id, "mission_id": request.snapshot.mission_id,
+                "predecessor_attempt_id": authorization.get("predecessor_attempt_id"),
+                "planning_snapshot_digest": request.snapshot.digest,
+                "effective_contract_digest": boundary.effective_contract_digest,
+                "evidence_digest": boundary.evidence_digest, "g011_policy_digest": policy_digest,
+                "provider_request_digest": request_digest, "main_head": boundary.main_head,
+            })
+        elif reattempt_authorization_id is not None:
+            raise PermissionError("successor authorization requires a canonical predecessor attempt")
         response = self.invoke(request, receipt_id=receipt_id)
         return self._validate_and_record(request, response, receipt_id=receipt_id,
-                                         governance_repository=governance_repository)
+                                         governance_repository=governance_repository, reattempt=reattempt)
 
     def _validate_and_record(self, request: ProviderDerivationRequest, response: ProviderDerivationResponse,
-                             *, receipt_id: str, governance_repository):
+                             *, receipt_id: str, governance_repository, reattempt: dict[str, object] | None = None):
         """Validate one confirmed response against canonical state and record only a bounded rejection.
 
         This post-generation boundary deliberately has no materialization or
@@ -442,11 +470,13 @@ class OpenAIResponsesPlanningProvider:
                 database, request, policy_digest=snapshot.digest, evidence_digest=boundary.evidence_digest,
                 effective_contract_digest=boundary.effective_contract_digest,
                 provider_result_digest=result_digest, preflight_receipt=receipt, error=error,
+                reattempt_lineage=reattempt,
             )
         _record_deterministic_validation_success(
             database, request, policy_digest=snapshot.digest, evidence_digest=boundary.evidence_digest,
             effective_contract_digest=boundary.effective_contract_digest,
             provider_result_digest=result_digest, preflight_receipt=receipt, validated=validated,
+            reattempt_lineage=reattempt,
         )
         return validated
 
