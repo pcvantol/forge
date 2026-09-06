@@ -169,7 +169,12 @@ class OpenAIActionDerivationTests(unittest.TestCase):
 
  def test_strict_schema_binds_proposal_authority_to_canonical_mission_contract(self):
   adapter,_,_,request=self.adapter(lambda *args,**kwargs: None)
-  schema=adapter._body(request)['text']['format']['schema']
+  body=adapter._body(request)
+  schema=body['text']['format']['schema']
+  instruction=body['input'][0]['content'][0]['text']
+  self.assertIn('logical_action_id of another proposal in the same proposals array',instruction)
+  self.assertIn('empty dependencies array',instruction)
+  self.assertIn('never use a scope, capability, evidence reference, or undeclared label',instruction)
   properties=schema['properties']['proposals']['items']['properties']
   scope=properties['scope']
   self.assertEqual(scope,{'type':'string','enum':['planner-contract']})

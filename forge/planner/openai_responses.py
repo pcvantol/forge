@@ -51,6 +51,11 @@ _PERSISTABLE_REQUEST_ID = re.compile(r"req_[A-Za-z0-9]{1,128}\Z")
 _PERSISTABLE_TRANSPORT_KINDS = frozenset((
     "ConnectionRefusedError", "ConnectionResetError", "ConnectionAbortedError", "TimeoutError", "OSError", "gaierror",
 ))
+_DEPENDENCY_CONTRACT_INSTRUCTION = (
+    "Each dependencies item must exactly equal the logical_action_id of another proposal in the same "
+    "proposals array. Use an empty dependencies array when no such proposal exists; never use a scope, "
+    "capability, evidence reference, or undeclared label as a dependency."
+)
 
 class ProviderSubmissionAmbiguous(RuntimeError):
     """The request may have reached OpenAI; operator reconciliation is required."""
@@ -451,7 +456,7 @@ class OpenAIResponsesPlanningProvider:
         prompt = json.dumps({"contract":"Forge Action Derivation; propose only, never approve or execute.", "snapshot": request.snapshot.to_dict() | {"evidence": evidence}}, separators=(",", ":"))
         scopes = self.configuration.preflight_authority.approved_scopes_for(request.snapshot.mission_id)
         write_scopes, human_gates, risk_inputs = self.configuration.preflight_authority.approved_derivation_policy_for(request.snapshot.mission_id)
-        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_approved_contract(scopes, write_scopes, human_gates, risk_inputs)}}}
+        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority. " + _DEPENDENCY_CONTRACT_INSTRUCTION}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_approved_contract(scopes, write_scopes, human_gates, risk_inputs)}}}
 
     def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy,
                                 snapshot: _G011PolicySnapshot, request_digest: str) -> "_TokenPreflightReceipt":
