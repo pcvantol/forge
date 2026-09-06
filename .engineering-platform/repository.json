@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "id": "forge",
+    "authority_repository_id": "forge"
+  },
+  "repository": {
+    "id": "forge",
+    "role": "authority"
+  },
+  "validation": {
+    "kind": "script",
+    "entrypoint": "bash scripts/validate.sh",
+    "description": "Forge repository and architecture contract validation"
+  }
+}
