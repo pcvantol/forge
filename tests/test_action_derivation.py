@@ -182,6 +182,19 @@ class ActionDerivationTests(unittest.TestCase):
         self.assertEqual(deterministic_validation_failure_code(ProposalValidationError("untrusted sk-proj-value")),
                          "DETERMINISTIC_VALIDATION_REJECTED")
 
+    def test_validation_failure_rejects_incomplete_digest_bindings(self) -> None:
+        request = ProviderDerivationRequest("derivation-invalid-binding", self.snapshot,
+                                            "fixture-provider", "fixture-1")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = RuntimeDatabase(root, path=root / "runtime.db")
+            self.addCleanup(database.close)
+            with self.assertRaisesRegex(ValueError, "complete canonical"):
+                record_deterministic_validation_failure(
+                    database, request, policy_digest="sha256:not-a-digest", evidence_digest=_digest("c"),
+                    effective_contract_digest=_digest("d"), error=ProposalValidationError("untrusted"),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
