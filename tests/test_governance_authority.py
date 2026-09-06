@@ -238,6 +238,12 @@ class GovernanceSchema19MigrationTests(unittest.TestCase):
             database._connection.execute(f"DROP TRIGGER {row['name']}")
         for table in ("governance_decisions", "governance_capability_grants", "governance_authority"):
             database._connection.execute(f"DROP TABLE {table}")
+        database._connection.executescript("""
+            DROP TRIGGER IF EXISTS action_derivation_canary_closures_authorized_insert;
+            DROP TRIGGER IF EXISTS action_derivation_canary_closures_immutable_update;
+            DROP TRIGGER IF EXISTS action_derivation_canary_closures_immutable_delete;
+            DROP TABLE IF EXISTS action_derivation_canary_closures;
+        """)
 
     def _schema19_fixture(self, *, partial=False, bind=True):
         temporary = tempfile.TemporaryDirectory()
