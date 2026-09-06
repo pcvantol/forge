@@ -22,6 +22,7 @@ Forge is intentionally **on hold for execution integration** while EP proves the
 
 ```text
 EP P-NEUTRAL closure
+  -> EP P-INSTALLER-V1 server-only installed-product qualification
   -> DJConnect real-project declaration + CENTRAL attachment
   -> one real governed DJConnect EP Action
   -> EP::STANDALONE_EP_VERIFIED
@@ -38,31 +39,60 @@ EP P-NEUTRAL closure
 
 ### Critical-path corrections
 
-1. **P-TRANSPORT is merged/closed.** EP already owns three canonical submission transports: HTTP, installed CLI and Server-owned File Inbox. Forge must reuse canonical HTTP submission ingress; it must not invent a second mutation transport.
+1. **P-TRANSPORT is merged/closed.** EP already owns three canonical submission transports: HTTP, installed CLI and Server-owned File Inbox. Forge must reuse canonical HTTP submission ingress.
 2. **Local Consumer API read-only foundation and P-TRANSPORT submission HTTP are distinct.** Describing all installed EP HTTP integration as read-only is stale.
-3. **Workspace is not required for the first autonomy canary.** Workspace remains human/project control plane and later projection/onboarding consumer.
-4. **B8R project identity supersedes the older Workspace-ID assumption.** Durable identity is declared in `.engineering-platform/repository.json` and validated by EP.
-5. **Broader Agent separation/generalized dispatch is follow-on work.** Multi-host, multi-Agent and generalized dispatch/scheduling are not default prerequisites.
-6. **Queue/B8E work is evidence-driven, not blanket blocking.** Only concrete capabilities required by the installed real-project canary are immediate prerequisites.
-7. **Real-project dogfooding precedes Forge orchestration.** DJConnect proves standalone; EP then proves self-development; Forge then proves it can be engineered directly by EP before Forge itself orchestrates EP.
-8. **Owner gates are reserved for genuine authority expansion.** Engineering repair/validation/re-review inside an approved boundary should run autonomously.
+3. **P-INSTALLER-V1 is now a required producer gate.** It qualifies only the standalone EP Server-side installed product required by the first real canary. It excludes Forge, Workspace and generalized Agent productization.
+4. **Workspace is not required for the first autonomy canary.** Workspace remains human/project control plane and later projection/onboarding consumer.
+5. **B8R project identity supersedes the older Workspace-ID assumption.** Durable identity is declared in `.engineering-platform/repository.json` and validated by EP.
+6. **Broader Agent separation/generalized dispatch is follow-on work.** Multi-host, multi-Agent and generalized dispatch/scheduling are not default prerequisites.
+7. **Queue/B8E work is evidence-driven, not blanket blocking.** Only concrete capabilities required by the installed real-project canary are immediate prerequisites.
+8. **Real-project dogfooding precedes Forge orchestration.** DJConnect proves standalone; EP proves self-development; Forge then proves it can be engineered directly by EP before Forge itself orchestrates EP.
+9. **Owner gates are reserved for genuine authority expansion.** Engineering repair/validation/re-review inside an approved boundary should run autonomously.
 
 `P_TRANSPORT_STATUS = MERGED_CLOSED`
+`P_INSTALLER_V1_ON_CRITICAL_PATH = TRUE`
+`P_INSTALLER_V1_SERVER_ONLY = TRUE`
 `WORKSPACE_ON_FIRST_AUTONOMY_CRITICAL_PATH = FALSE`
 `GENERAL_AGENT_SEPARATION_ON_FIRST_AUTONOMY_CRITICAL_PATH = FALSE`
 `P_TRANSPORT_HTTP_IS_CANONICAL_FORGE_SUBMISSION_TARGET = TRUE`
 `FORGE_EXECUTION_INTEGRATION_ON_HOLD_UNTIL_EP_REAL_PROJECT_PROOFS = TRUE`
 
+## Governance-minimal producer bootstrap
+
+Forge expects EP to run steps from P-NEUTRAL through self-hosted engineering under a single bounded bootstrap authority envelope wherever repository policy permits.
+
+That means no owner micro-gates between:
+
+```text
+P-NEUTRAL implementation/qualification
+  -> P-INSTALLER-V1 implementation/installed qualification
+  -> DJConnect declaration/attachment
+  -> DJConnect real Action
+  -> STANDALONE_EP_VERIFIED evidence
+  -> EP declaration/attachment
+  -> EP self-development real Action
+  -> SELF_HOSTED_ENGINEERING_VERIFIED evidence
+```
+
+Implementation defects, CI failures, installer issues, schema/host findings and Human Security findings inside the pre-approved boundary are engineering repair loops, not owner decisions. Evidence milestones are not owner approvals by themselves. Manual owner input is reserved for actual authority expansion, destructive operation, wider write scope, weakened security invariants or a repository merge policy that explicitly requires owner merge authorization.
+
+`BOOTSTRAP_MICRO_APPROVALS_EXPECTED = FALSE`
+`EP_ENGINEERING_REPAIR_LOOP_AUTONOMOUS = TRUE`
+`SECURITY_REVIEW_IS_QUALIFICATION_NOT_OWNER_GATE = TRUE`
+
 ## EP real-project producer proof required by Forge
 
-Forge must not treat repository-local protocols or synthetic adapters as installed EP execution evidence. Before Forge resumes live execution integration, EP should provide these real-project proofs:
+### Gate 0 — `EP::P_INSTALLER_V1_QUALIFIED`
+
+Before trusting real-project execution evidence, EP must prove a reproducible installed Server product: canonical runtime/CENTRAL, Server lifecycle, canonical HTTP/CLI/File-Inbox submission transports and applicable Console/relay components. P-INSTALLER-V1 does not install Forge, Workspace or generalized Project-Agent productization.
 
 ### Gate A — `EP::STANDALONE_EP_VERIFIED`
 
 DJConnect is the mandatory first physical project canary:
 
 ```text
-committed DJConnect .engineering-platform/repository.json
+P-INSTALLER-V1-qualified installed EP
+  -> committed DJConnect .engineering-platform/repository.json
   -> EP validates + attaches repository to CENTRAL
   -> canonical P-TRANSPORT submission
   -> admission/run
@@ -75,11 +105,11 @@ committed DJConnect .engineering-platform/repository.json
 
 ### Gate B — `EP::SELF_HOSTED_ENGINEERING_VERIFIED`
 
-Immediately after standalone, the installed EP must execute one real bounded Engineering Platform repository change through CENTRAL. This proves EP can maintain its own product source through the same authority it exposes to consumers. This is the preferred producer-confidence gate before Forge depends on EP for normal engineering execution.
+Immediately after standalone, the installed EP executes one real bounded Engineering Platform repository change through CENTRAL. This proves EP can maintain its own product source through the same authority it exposes to consumers.
 
 ### Gate C — Forge repository direct-EP dogfood
 
-Before or during Forge's execution-integration increment, the Forge repository receives its own committed B8R declaration and one real direct EP-governed development Action. This proves “EP can engineer Forge” independently from “Forge can orchestrate EP”, avoiding circular qualification.
+Before or during Forge's execution-integration increment, the Forge repository receives its own committed B8R declaration and one real direct EP-governed development Action. This proves “EP can engineer Forge” independently from “Forge can orchestrate EP”.
 
 Workspace may receive the same real-project dogfood later, but it is not blocking for the first Forge autonomy loop.
 
@@ -87,7 +117,7 @@ Workspace may receive the same real-project dogfood later, but it is not blockin
 
 After the EP producer proofs above, Forge should implement/qualify one narrow F3/F4 slice:
 
-1. one new low-risk Mission; do not reuse the Action-Derivation-only canary Mission;
+1. one new low-risk Mission;
 2. one immutable Action snapshot/materialization;
 3. one execution-admission record with exact repository/write-scope/human-gate bindings;
 4. persist intended submission identity/idempotency/correlation before the EP call;
@@ -139,6 +169,7 @@ AI exposure, Knowledge Learning, continuous dual learning and effectiveness/dist
 ```text
 CURRENT EP PRODUCER BOOTSTRAP:
 P-NEUTRAL
+  -> P-INSTALLER-V1
   -> DJConnect real Action
   -> STANDALONE_EP_VERIFIED
   -> EP self-development real Action
@@ -165,6 +196,7 @@ Workspace dogfood/control plane; L1/L1-R hardening; Quality/AI/Knowledge maturit
 - EP does not become a planner or autonomously rewrite Forge policy.
 - Workspace does not become execution authority.
 - Forge must not duplicate the existing P-TRANSPORT submission transport.
+- P-INSTALLER-V1 must not absorb Forge, Workspace or generalized Agent productization.
 - Broader Agent/queue architecture must not be inserted onto the bootstrap critical path without evidence that the minimum installed canary needs it.
 - Real-project dogfood does not authorize parallel multi-project mutation; serial execution is sufficient for these proofs.
 - Product upgrades do not silently rewrite project/repository policy.
