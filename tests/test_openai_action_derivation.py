@@ -52,7 +52,8 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   configuration=OpenAIPlanningProviderConfiguration._for_test(
    service,'openai-planning',CanonicalTokenPreflightAuthority._for_test(
     db,lambda _: TokenPreflightBoundary('a' * 40,'sha256:evidence','sha256:contract'),
-    lambda _: ('planner-contract',)))
+    lambda _: ('planner-contract',),
+    lambda _: (('NONE',), ('architecture-review',), ('scope-drift',))))
   resolver.status_calls=0; resolver.resolve_calls=0
   request=ProviderDerivationRequest('derive-1',self.snapshot,'openai-planning','gpt-5.6')
   return OpenAIResponsesPlanningProvider(configuration,resolver,opener=opener),resolver,configuration,request
@@ -151,11 +152,23 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   body['max_output_tokens']=16001
   with self.assertRaisesRegex(ValueError,'output token bound'): adapter._enforce_token_policy(body,configuration.current_policy(),1)
 
- def test_strict_schema_binds_scope_to_canonical_mission_scope(self):
+ def test_strict_schema_binds_proposal_authority_to_canonical_mission_contract(self):
   adapter,_,_,request=self.adapter(lambda *args,**kwargs: None)
   schema=adapter._body(request)['text']['format']['schema']
-  scope=schema['properties']['proposals']['items']['properties']['scope']
+  properties=schema['properties']['proposals']['items']['properties']
+  scope=properties['scope']
   self.assertEqual(scope,{'type':'string','enum':['planner-contract']})
+  self.assertEqual(properties['write_scopes'],{'type':'array','maxItems':0})
+  self.assertEqual(properties['human_gates'],{'type':'array','items':{'type':'string','enum':['architecture-review']},'minItems':1,'maxItems':1})
+  self.assertEqual(properties['risk_inputs'],{'type':'array','items':{'type':'string','enum':['scope-drift']},'minItems':1,'maxItems':1})
+
+ def test_invalid_canonical_derivation_policy_fails_closed_before_transport(self):
+  calls=[]
+  adapter,resolver,configuration,request=self.adapter(lambda http_request,timeout: calls.append(http_request.full_url))
+  configuration.preflight_authority._policy_reader=lambda _: (('NONE',), (), ('scope-drift',))
+  with self.assertRaisesRegex(ValueError,'derivation policy'):
+   adapter.preflight(request,operator_context=configuration.policy_service.operator_service.context())
+  self.assertEqual((calls,resolver.resolve_calls),([],0))
 
  def test_policy_change_during_preflight_denies_generation_for_every_authority_field(self):
   cases=(

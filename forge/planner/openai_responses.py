@@ -121,16 +121,20 @@ class CanonicalTokenPreflightAuthority:
     """
     def __init__(self, database, *, _head_reader: Callable[[Path], str] | None = None,
                  _boundary_reader: Callable[[str], TokenPreflightBoundary] | None = None,
-                 _scope_reader: Callable[[str], tuple[str, ...]] | None = None) -> None:
+                 _scope_reader: Callable[[str], tuple[str, ...]] | None = None,
+                 _policy_reader: Callable[[str], tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] | None = None) -> None:
         self._database = database
         self._head_reader = _head_reader or _origin_main_head
         self._boundary_reader = _boundary_reader
         self._scope_reader = _scope_reader
+        self._policy_reader = _policy_reader
 
     @classmethod
     def _for_test(cls, database, boundary_reader: Callable[[str], TokenPreflightBoundary],
-                  scope_reader: Callable[[str], tuple[str, ...]]) -> "CanonicalTokenPreflightAuthority":
-        return cls(database, _boundary_reader=boundary_reader, _scope_reader=scope_reader)
+                  scope_reader: Callable[[str], tuple[str, ...]],
+                  policy_reader: Callable[[str], tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]]) -> "CanonicalTokenPreflightAuthority":
+        return cls(database, _boundary_reader=boundary_reader, _scope_reader=scope_reader,
+                   _policy_reader=policy_reader)
 
     def approved_scopes_for(self, mission_id: str) -> tuple[str, ...]:
         if self._scope_reader is not None:
@@ -145,6 +149,27 @@ class CanonicalTokenPreflightAuthority:
         if not resolved or len(resolved) != len(scopes):
             raise PermissionError("canonical approved Mission scopes are invalid")
         return resolved
+
+    def approved_derivation_policy_for(self, mission_id: str) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        """Return only the persisted no-write derivation constraints for a Mission."""
+        if self._policy_reader is not None:
+            return self._policy_reader(mission_id)
+        state = self._database.get_document("mission_state", mission_id)
+        contract = state.get("admission_contract")
+        planning = contract.get("planning") if isinstance(contract, dict) else None
+        if state.get("status") != "APPROVED_PLANNABLE" or not isinstance(planning, dict):
+            raise PermissionError("canonical approved Mission derivation policy is unavailable")
+        raw_values = tuple(planning.get(field) for field in ("write_scopes", "human_gates", "risk_inputs"))
+        if any(not isinstance(items, list) for items in raw_values):
+            raise PermissionError("canonical approved Mission derivation policy is invalid")
+        values = tuple(tuple(sorted(set(item for item in items if isinstance(item, str) and item)))
+                       for items in raw_values)
+        if any(not item for item in values) or any(len(item) != len(items)
+                                                    for item, items in zip(values, raw_values)):
+            raise PermissionError("canonical approved Mission derivation policy is invalid")
+        if values[0] != ("NONE",):
+            raise PermissionError("provider Action Derivation supports only canonical NONE write scope")
+        return values
 
     def boundary_for(self, mission_id: str) -> TokenPreflightBoundary:
         if self._boundary_reader is not None:
@@ -321,7 +346,8 @@ class OpenAIResponsesPlanningProvider:
         evidence = [{"kind": item.kind.value, "source_id": item.source_id, "revision": item.revision, "content_digest": item.content_digest} for item in request.snapshot.evidence]
         prompt = json.dumps({"contract":"Forge Action Derivation; propose only, never approve or execute.", "snapshot": request.snapshot.to_dict() | {"evidence": evidence}}, separators=(",", ":"))
         scopes = self.configuration.preflight_authority.approved_scopes_for(request.snapshot.mission_id)
-        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_scopes(scopes)}}}
+        write_scopes, human_gates, risk_inputs = self.configuration.preflight_authority.approved_derivation_policy_for(request.snapshot.mission_id)
+        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_approved_contract(scopes, write_scopes, human_gates, risk_inputs)}}}
 
     def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy,
                                 snapshot: _G011PolicySnapshot, request_digest: str) -> "_TokenPreflightReceipt":
@@ -466,12 +492,28 @@ def _now() -> str: return datetime.now(UTC).replace(microsecond=0).isoformat().r
 def _refinement(snapshot, reason): return GovernanceRefinementRequired(tuple(item.source_id for item in snapshot.evidence), "deterministic validation required", "provider-output", "blocked", reason)
 _SCHEMA = {"type":"object","additionalProperties":False,"required":["kind","proposals"],"properties":{"kind":{"type":"string","enum":["proposals"]},"proposals":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":False,"required":["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"],"properties":{key: ({"type":"boolean"} if key == "postponed" else {"type":"integer","minimum":1} if key == "priority" else {"type":"array","items":{"type":"string"}} if key in {"dependencies","write_scopes","expected_evidence","validation_strategy","human_gates","risk_inputs","source_evidence_refs"} else {"type":"string","minLength":1}) for key in ["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"]}}}}}
 
-def _schema_for_scopes(scopes: tuple[str, ...]) -> dict[str, object]:
-    """Bind strict output schema to the canonical approved Mission scopes."""
+def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[str, ...],
+                                  human_gates: tuple[str, ...], risk_inputs: tuple[str, ...]) -> dict[str, object]:
+    """Bind strict output to canonical Mission scope and no-write governance constraints."""
     if not scopes or any(not isinstance(scope, str) or not scope for scope in scopes):
         raise ValueError("canonical approved Mission scopes are required")
+    if write_scopes != ("NONE",) or not human_gates or not risk_inputs:
+        raise ValueError("canonical no-write derivation policy is required")
     schema = json.loads(json.dumps(_SCHEMA))
-    schema["properties"]["proposals"]["items"]["properties"]["scope"] = {
+    properties = schema["properties"]["proposals"]["items"]["properties"]
+    properties["scope"] = {
         "type": "string", "enum": list(scopes),
     }
+    # ``NONE`` is a governance state, never a provider grant to a write path.
+    properties["write_scopes"] = {"type": "array", "maxItems": 0}
+    properties["human_gates"] = _required_enum_array(human_gates)
+    properties["risk_inputs"] = _required_enum_array(risk_inputs)
     return schema
+
+
+def _required_enum_array(values: tuple[str, ...]) -> dict[str, object]:
+    """Require exactly a finite canonical set using basic strict-schema keywords."""
+    if not values or len(values) != len(set(values)) or any(not isinstance(value, str) or not value for value in values):
+        raise ValueError("canonical derivation constraint set is invalid")
+    return {"type": "array", "items": {"type": "string", "enum": list(values)},
+            "minItems": len(values), "maxItems": len(values)}
