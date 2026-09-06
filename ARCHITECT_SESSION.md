@@ -104,7 +104,74 @@ the branch that owns the active governed proposal; keep it explicitly
 in prose. If `main` conflicts with the intended transition, record the
 transition as a proposal rather than rewriting authority by implication.
 
-## Reconstructing the present Project Context and critical path
+For every open architecture/roadmap PR, record:
+
+```text
+PR =
+HEAD =
+OWNING_PRODUCT =
+PROPOSED_CHANGE =
+CURRENT_CANONICAL_CONFLICT =
+EVIDENCE_SUPPORT =
+RECOMMENDED_DISPOSITION = MERGE_WHEN_GREEN | UPDATE_BEFORE_MERGE | SUPERSEDE |
+                            REQUIRES_ARCHITECT_DECISION | WAIT_FOR_PEER_EVIDENCE
+```
+
+Pending work is therefore neither ignored nor treated as canonical.
+
+## Two-pass bootstrap
+
+Perform these passes in order. The second pass does not rewrite the results of
+the first; it makes disagreements and stale projections visible.
+
+### Pass 1 — authority reconstruction
+
+Reconstruct faithfully, without reinterpretation:
+
+- merged canonical Forge architecture, roadmap, DAG and governance;
+- current implementation and qualification evidence, classified as evidence;
+- open Forge and peer architecture/roadmap proposals;
+- peer-product authorities and the Project Context they contribute.
+
+Label the result `CANONICAL_AS_DOCUMENTED`. Implementation evidence is not
+automatically architecture authority, and a pending PR is not merged authority.
+
+### Pass 2 — architecture reconciliation
+
+Test whether the sources reconstructed in Pass 1 remain mutually coherent.
+Do not automatically mutate a roadmap, DAG, or peer truth from this analysis.
+Classify a finding first, investigate repository evidence where it can resolve
+the question, and route only the appropriate durable result to its owner.
+
+For every important reported critical-path dependency, answer:
+
+```text
+DEPENDENCY =
+CONSUMER =
+REQUIRED_CAPABILITY =
+EVIDENCE =
+DOCUMENTED_STATUS =
+IMPLEMENTED =
+QUALIFIED =
+AVAILABLE_TO_CONSUMER =
+CLASSIFICATION =
+RATIONALE =
+```
+
+Ask what exact capability the node represents, which downstream capability
+consumes it, and which producer evidence proves it. Then determine whether the
+edge is structurally required, historically inherited, partially required,
+already satisfied by implementation, superseded, contradicted by another
+canonical source, or proposed for change in a pending PR. Ask whether the whole
+umbrella gate is needed or only a bounded producer capability inside it, and
+whether the edge is an authority requirement rather than historic sequencing.
+
+Always distinguish `ARCHITECTURE_REQUIRED`, `IMPLEMENTED`, `QUALIFIED`,
+`AVAILABLE_TO_CONSUMER`, and `DOCUMENTED_STATUS`. None implies another. For
+example, a capability may be required but implemented, implemented but not
+qualified, or qualified while a roadmap projection remains stale.
+
+## Reconstructing Project Context and analyzing the primary objective
 
 Build Project Context from approved roadmap/DAG state, architecture/ADRs,
 topology, governance gates, active/completed Missions, canonical EP terminal
@@ -125,28 +192,43 @@ Keep these concepts distinct:
 The current bootstrap objective is to remove the human owner as the message
 bus by proving the first real Forge -> EP -> Forge loop, not to finish every
 EP migration or cross-product feature. `AUTONOMY_BOOTSTRAP_DONE` requires:
-Forge selects real work; materializes a bounded Action; submits through the
-installed canonical EP boundary; EP admits, executes, validates and finalizes
-a real repository mutation; EP exposes terminal result/evidence; Forge exactly
-reconciles it; Forge selects/unlocks a successor; and repairable bounded
-failures and successor work proceed without owner prompt/result relay.
+Forge selects governed work; materializes a bounded Action; submits through
+installed EP; EP admits, executes, validates/reviews and finalizes a real
+repository mutation; EP exposes terminal evidence; Forge exactly reconciles it;
+Forge selects/unlocks a successor; and bounded repair/successor work proceeds
+without owner prompt/result relay. Its material dogfood proof is
+`FORGE_CAUSES_REAL_FORGE_REPOSITORY_CHANGE_VIA_EP = TRUE`.
 
-Use the roadmap and DAG as the current critical-path evidence. For every
-predecessor ask: “Does its absence physically prevent the first real Forge ->
-EP -> Forge loop?” Classify `YES` as `AUTONOMY_CRITICAL`; otherwise classify it
-`POST_AUTONOMY` or `PARALLEL_NON_BLOCKING`. Do not preserve historical ordering
-without this test. Current direction is explicit that P-TRANSPORT has three
-EP-owned ingresses (HTTP JSON, installed CLI and Server-owned File Inbox),
-which converge through EP Submission Service/CENTRAL; Forge reuses canonical
-HTTP rather than Local Consumer API, direct CENTRAL reads or a new transport.
+The primary-objective question for every predecessor is: “Does absence of this
+exact capability physically or authoritatively prevent this loop?” “Is this
+listed before a historical umbrella gate?” is only evidence about documented
+sequencing, not the answer.
 
-The current derived path keeps P-NEUTRAL, the server-only P-INSTALLER-V1
-qualification and real-project execution proofs critical when their owning EP
-canonical evidence says they remain unsatisfied. Workspace implementation,
-generalized Agent separation, generalized dispatch, multi-host execution,
-broad queue/B8E productization, learning productization, historical cleanup
-and source retirement are not first-loop blockers unless new concrete evidence
-shows otherwise. Re-evaluate rather than assume.
+Classify each predecessor for this objective as:
+
+| Classification | Meaning |
+| --- | --- |
+| `AUTONOMY_CRITICAL` | Its absence prevents the first real loop. |
+| `PARTIALLY_AUTONOMY_CRITICAL` | Only a bounded sub-capability is required, not completion of the whole historical umbrella gate. |
+| `PARALLEL_NON_BLOCKING` | Valuable independent work that does not block the loop. |
+| `POST_AUTONOMY` | Valid work intentionally deferred until the loop exists. |
+| `SUPERSEDED` | A historic edge no longer represents the current target architecture. |
+| `UNRESOLVED_AUTHORITY_CONFLICT` | Authoritative sources disagree and no safe resolution exists without a governed decision. |
+
+Do not treat broad labels—such as `P-QUEUE`, `B8E`, `P-INSTALLER`,
+`P-NEUTRAL`, `P-RELEASE`, or `STANDALONE_EP_VERIFIED`—as atomic dependencies.
+Decompose each to the exact consumer capability and evidence. A full umbrella
+gate can be `POST_AUTONOMY` while a bounded capability inside it is
+`AUTONOMY_CRITICAL`; do not assert any particular example without current
+repository evidence.
+
+Compare Forge, EP, Workspace and Forge Platform authorities when reconciling
+an edge. Classify the comparison as `NO_CONFLICT`, `STALE_PROJECTION_SUSPECTED`,
+`PENDING_RECONCILIATION`, or `REAL_AUTHORITY_CONFLICT`. For example, a Forge
+roadmap may expect a peer capability, the peer roadmap may call it unavailable,
+implementation may show a subset exists, and a pending Forge PR may propose a
+new consumer dependency. Record this as a reconciliation finding; do not
+resolve peer capability truth by editing Forge documentation alone.
 
 ## Governance and parallel work
 
@@ -158,6 +240,14 @@ it is not automatically an authority change. Pause for `BUSINESS_SCOPE_CHANGE`,
 `ARCHITECTURE_AUTHORITY_CHANGE`, `DESTRUCTIVE_OR_IRREVERSIBLE_DECISION`,
 `SECURITY_AUTHORITY_EXPANSION`, or materially ambiguous product decisions.
 Preserve required security and governance controls.
+
+Distinguish `MISSION_APPROVAL` from `ACTION_ITERATION_INSIDE_APPROVED_MISSION`.
+An approved immutable Mission/envelope can authorize Forge to derive and
+sequence Actions, repair bounded implementation failures, requalify exact
+heads, reconcile results and activate successor Actions without repeated
+Business/Architecture approval, provided it does not expand the authority
+boundary. If current canonical governance actually requires repeated approval,
+report it as a concrete autonomy blocker rather than silently assuming it away.
 
 Express independent work as a DAG. Forge, EP, Workspace and Forge Platform may
 advance concurrently when producer contracts, repository scopes and applicable
@@ -176,6 +266,9 @@ Route durable findings to the owning canonical record:
 | Governance change | governance documentation |
 | Contract change | owning contract/design document |
 | Bootstrap/read-order change | this file |
+| Factual status drift | owning status/roadmap projection, when authority permits |
+| Peer-product capability truth | peer authority; update only Forge's consumer dependency as appropriate |
+| Pending proposal | existing architecture/roadmap PR |
 | Transient reasoning | do not persist |
 
 After any durable update, reconcile affected roadmap, DAG, ADR, governance and
@@ -194,3 +287,35 @@ dependencies without chat history.
 `ARCHITECT_SESSION_ENTRYPOINT_COMPLETE = TRUE`
 `ARCHITECT_CONTEXT_REPRODUCIBLE_FROM_REPOSITORY = TRUE`
 `CHAT_HISTORY_REQUIRED_FOR_ARCHITECT_CONTINUITY = FALSE`
+
+## Required bootstrap report
+
+End a clean-session bootstrap with an auditable report that separates what the
+repositories state from the reconciliation conclusion:
+
+```text
+ARCHITECT_BOOTSTRAP = PASS | BLOCKED
+MERGED_CANONICAL_STATE =
+PENDING_ARCHITECTURE_PROPOSALS =
+CURRENT_PRIMARY_OBJECTIVE = AUTONOMY_BOOTSTRAP_DONE
+CURRENT_CRITICAL_PATH_AS_DOCUMENTED =
+CURRENT_CRITICAL_PATH_AFTER_EVIDENCE_RECONCILIATION =
+AUTONOMY_CRITICAL =
+PARTIALLY_AUTONOMY_CRITICAL =
+PARALLEL_NON_BLOCKING =
+POST_AUTONOMY =
+UNRESOLVED_AUTHORITY_CONFLICTS =
+STALE_PROJECTIONS_SUSPECTED =
+CURRENT_REAL_EXECUTION_BLOCKERS =
+CURRENT_GOVERNANCE_BLOCKERS =
+PARALLEL_WORK_AVAILABLE_NOW =
+NEXT_ENGINEERING_ACTION =
+NEXT_ARCHITECTURE_ACTION =
+NEXT_HUMAN_DECISION =
+```
+
+`NEXT_ENGINEERING_ACTION` is work that can proceed under existing authority.
+`NEXT_ARCHITECTURE_ACTION` is evidence/peer-authority or documentation/DAG
+reconciliation. `NEXT_HUMAN_DECISION` is used only for a genuine
+authority-bearing decision. An inconsistency is not automatically a human
+decision: investigate autonomously when repository evidence can resolve it.
