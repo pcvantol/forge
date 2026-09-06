@@ -23,7 +23,7 @@ class CanonicalActionDerivationQualificationService:
             raise PermissionError("trusted operator context is required")
         state = self.database.get_document("mission_state", mission_id)
         successor = self.database.get_document("action_derivations", successor_attempt_id)
-        required = ("predecessor_attempt_id", "authorization_id", "preflight_receipt_id", "evidence_digest",
+        required = ("predecessor_attempt_id", "authorization_id", "preflight_receipt_id", "main_head", "evidence_digest",
                     "effective_contract_digest", "provider_configuration", "generation_request_digest",
                     "validation_digest")
         if (state.get("status") != "APPROVED_PLANNABLE" or successor.get("mission_id") != mission_id
@@ -41,7 +41,7 @@ class CanonicalActionDerivationQualificationService:
                 or any(authorization.get(left) != successor.get(right) for left, right in (
                     ("planning_snapshot_digest", "snapshot_digest"), ("g011_policy_digest", "provider_configuration"),
                     ("evidence_digest", "evidence_digest"), ("effective_contract_digest", "effective_contract_digest"),
-                    ("provider_request_digest", "generation_request_digest")))):
+                    ("provider_request_digest", "generation_request_digest"), ("main_head", "main_head")))):
             raise PermissionError("canonical successor lineage is stale or conflicting")
         consumed_authorization = self.database._connection.execute(
             "SELECT 1 FROM action_derivation_reattempt_consumptions WHERE authorization_id = ?",
@@ -51,7 +51,7 @@ class CanonicalActionDerivationQualificationService:
             raise PermissionError("validated successor lacks a consumed canonical reattempt authorization")
         receipt = self.database.consumed_token_preflight_receipt(successor["preflight_receipt_id"])
         if any(receipt.get(left) != successor.get(right) for left, right in (
-            ("mission_id", "mission_id"), ("policy_digest", "provider_configuration"),
+            ("mission_id", "mission_id"), ("main_head", "main_head"), ("policy_digest", "provider_configuration"),
             ("request_digest", "generation_request_digest"), ("evidence_digest", "evidence_digest"),
             ("effective_contract_digest", "effective_contract_digest"),
         )):
@@ -59,7 +59,8 @@ class CanonicalActionDerivationQualificationService:
         summary = {"mission_id": mission_id, "successor_attempt_id": successor_attempt_id,
                    "predecessor_attempt_id": successor["predecessor_attempt_id"],
                    "authorization_id": successor["authorization_id"],
-                   "snapshot_digest": successor["snapshot_digest"], "evidence_digest": successor["evidence_digest"],
+                   "main_head": successor["main_head"], "snapshot_digest": successor["snapshot_digest"],
+                   "evidence_digest": successor["evidence_digest"],
                    "effective_contract_digest": successor["effective_contract_digest"],
                    "g011_policy_digest": successor["provider_configuration"],
                    "request_digest": successor["generation_request_digest"],

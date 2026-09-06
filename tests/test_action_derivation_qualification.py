@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from forge.action_derivation_qualification import CanonicalActionDerivationQualificationService
 from forge.governance_authority import CanonicalGovernanceRepository
@@ -25,11 +26,14 @@ class ActionDerivationQualificationTests(unittest.TestCase):
                 db.save_action_derivation(predecessor)
                 auth={"authorization_id":"auth","successor_attempt_id":"successor","mission_id":"mission","predecessor_attempt_id":"failed","predecessor_terminal_state":"FAILED","attempt_sequence":2,"planning_snapshot_digest":digest("a"),"effective_contract_digest":digest("e"),"evidence_digest":digest("d"),"g011_policy_digest":digest("b"),"provider_request_digest":digest("0"),"main_head":"f"*40,"reattempt_reason":"REQUEST_SEMANTICS_CHANGED","rationale":"changed request","authorization_identity":sha256(context.generated_uid.encode()).hexdigest()[:16],"installation_id":context.installation_id,"created_at":"2026-09-06T00:00:00Z"}
                 auth["digest"]="sha256:"+sha256(json.dumps(auth,sort_keys=True,separators=(",",":")).encode()).hexdigest(); db.create_action_derivation_reattempt_authorization(auth)
-                successor={"derivation_id":"successor","mission_id":"mission","snapshot_digest":digest("a"),"contract_version":"1.0","provider_configuration":digest("b"),"lifecycle":"VALIDATED","generation_request_digest":digest("0"),"evidence_digest":digest("d"),"effective_contract_digest":digest("e"),"validation_digest":digest("1"),"validation_result":"PASS","provider_output_untrusted":True,"runtime_action_executed":False,"action_materialized":False,"predecessor_attempt_id":"failed","authorization_id":"auth","preflight_receipt_id":"receipt"}
+                successor={"derivation_id":"successor","mission_id":"mission","snapshot_digest":digest("a"),"contract_version":"1.0","provider_configuration":digest("b"),"lifecycle":"VALIDATED","generation_request_digest":digest("0"),"evidence_digest":digest("d"),"effective_contract_digest":digest("e"),"validation_digest":digest("1"),"validation_result":"PASS","provider_output_untrusted":True,"runtime_action_executed":False,"action_materialized":False,"predecessor_attempt_id":"failed","authorization_id":"auth","preflight_receipt_id":"receipt","main_head":"f"*40}
                 db.save_action_derivation(successor)
                 receipt={"receipt_id":"receipt","mission_id":"mission","main_head":"f"*40,"policy_digest":digest("b"),"request_digest":digest("0"),"evidence_digest":digest("d"),"effective_contract_digest":digest("e"),"provider_id":"provider","input_tokens":1,"input_token_bound":2,"context_token_bound":3,"output_token_bound":2,"context_with_requested_output":3,"result":"PASS","created_at":"2026-09-06T00:00:00Z"}
                 db.create_token_preflight_receipt(receipt); db.consume_token_preflight_receipt("receipt",{key:receipt[key] for key in ("main_head","policy_digest","request_digest","evidence_digest","effective_contract_digest")})
                 db.consume_action_derivation_reattempt_authorization("auth", {"successor_attempt_id":"successor", "mission_id":"mission", "predecessor_attempt_id":"failed", "planning_snapshot_digest":digest("a"), "effective_contract_digest":digest("e"), "evidence_digest":digest("d"), "g011_policy_digest":digest("b"), "provider_request_digest":digest("0"), "main_head":"f"*40})
                 result=CanonicalActionDerivationQualificationService(repository).qualify(mission_id="mission",successor_attempt_id="successor",operator_context=context,decision_id="decision")
                 self.assertTrue(result.startswith("sha256:")); self.assertEqual(repository.decision("decision")["capability"],"SECURITY_APPROVAL")
+                with patch.object(db, "consumed_token_preflight_receipt", return_value={**receipt, "main_head":"0"*40}):
+                    with self.assertRaisesRegex(PermissionError, "stale or conflicting"):
+                        CanonicalActionDerivationQualificationService(repository).qualify(mission_id="mission",successor_attempt_id="successor",operator_context=context,decision_id="head-mismatch")
             finally: db.close()
