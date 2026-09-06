@@ -44,7 +44,7 @@ _PERSISTABLE_PREFLIGHT_ERROR_TYPES = frozenset((
     "invalid_request_error", "authentication_error", "permission_error", "rate_limit_error", "server_error",
 ))
 _PERSISTABLE_PREFLIGHT_ERROR_CODES = frozenset((
-    "unsupported_parameter", "invalid_parameter", "invalid_value", "invalid_schema", "model_not_found",
+    "unsupported_parameter", "invalid_parameter", "invalid_value", "invalid_schema", "invalid_json_schema", "model_not_found",
     "rate_limit_exceeded", "insufficient_quota", "server_error",
 ))
 _PERSISTABLE_REQUEST_ID = re.compile(r"req_[A-Za-z0-9]{1,128}\Z")
@@ -538,7 +538,9 @@ def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[s
         "type": "string", "enum": list(scopes),
     }
     # ``NONE`` is a governance state, never a provider grant to a write path.
-    properties["write_scopes"] = {"type": "array", "maxItems": 0}
+    # Strict Responses schemas model every array with an explicit item schema.
+    # ``maxItems: 0`` remains the authority boundary: an item can never occur.
+    properties["write_scopes"] = {"type": "array", "items": {"type": "string"}, "maxItems": 0}
     properties["human_gates"] = _required_enum_array(human_gates)
     properties["risk_inputs"] = _required_enum_array(risk_inputs)
     return schema

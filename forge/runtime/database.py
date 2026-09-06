@@ -49,7 +49,7 @@ _TOKEN_PREFLIGHT_FAILURE_TYPES = frozenset((
     "invalid_request_error", "authentication_error", "permission_error", "rate_limit_error", "server_error",
 ))
 _TOKEN_PREFLIGHT_FAILURE_CODES = frozenset((
-    "unsupported_parameter", "invalid_parameter", "invalid_value", "invalid_schema", "model_not_found",
+    "unsupported_parameter", "invalid_parameter", "invalid_value", "invalid_schema", "invalid_json_schema", "model_not_found",
     "rate_limit_exceeded", "insufficient_quota", "server_error",
 ))
 _TOKEN_PREFLIGHT_FAILURE_TRANSPORT_KINDS = frozenset((
