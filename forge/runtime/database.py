@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 30
+RUNTIME_SCHEMA_VERSION = 31
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -38,7 +38,7 @@ _TABLES = frozenset((
     "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations", "action_derivation_reattempt_authorizations", "action_derivation_reattempt_consumptions",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
-    "mission_amendments",
+    "mission_amendments", "action_derivation_canary_closures",
 ))
 _TOKEN_PREFLIGHT_FAILURE_FIELDS = frozenset((
     "failure_id", "mission_id", "provider_id", "occurred_at", "main_head", "policy_digest",
@@ -136,6 +136,7 @@ class RuntimeDatabase:
         self._token_preflight_write_state = {"permitted": False}
         self._action_derivation_write_state = {"permitted": False}
         self._action_derivation_reattempt_write_state = {"permitted": False}
+        self._action_derivation_canary_closure_write_state = {"permitted": False}
         try:
             self._configure()
             self._migrate(forge_version)
@@ -153,6 +154,7 @@ class RuntimeDatabase:
         self._connection.create_function("forge_token_preflight_write_permitted", 0, lambda: int(self._token_preflight_write_state["permitted"]))
         self._connection.create_function("forge_action_derivation_write_permitted", 0, lambda: int(self._action_derivation_write_state["permitted"]))
         self._connection.create_function("forge_action_derivation_reattempt_write_permitted", 0, lambda: int(self._action_derivation_reattempt_write_state["permitted"]))
+        self._connection.create_function("forge_action_derivation_canary_closure_write_permitted", 0, lambda: int(self._action_derivation_canary_closure_write_state["permitted"]))
 
     def _insert_governance_grant(self, grant_id: str, installation_id: str, operator_id: str, capability: str,
                                  provenance: str, digest: str, occurred_at: str) -> None:
@@ -512,6 +514,31 @@ class RuntimeDatabase:
                     CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_delete BEFORE DELETE ON action_derivations
                     WHEN OLD.lifecycle = 'FAILED'
                     BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TABLE IF NOT EXISTS action_derivation_canary_closures (
+                        closure_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        successor_attempt_id TEXT NOT NULL UNIQUE, predecessor_attempt_id TEXT NOT NULL,
+                        qualification_decision_id TEXT NOT NULL, qualification_decision_digest TEXT NOT NULL,
+                        effective_contract_digest TEXT NOT NULL, evidence_digest TEXT NOT NULL,
+                        g011_policy_digest TEXT NOT NULL, provider_request_digest TEXT NOT NULL,
+                        preflight_receipt_id TEXT NOT NULL, reattempt_authorization_id TEXT NOT NULL,
+                        main_head TEXT NOT NULL, qualified_capability TEXT NOT NULL,
+                        not_qualified_capabilities TEXT NOT NULL, installation_id TEXT NOT NULL,
+                        operator_id TEXT NOT NULL, runtime_id TEXT NOT NULL, closed_at TEXT NOT NULL,
+                        digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id),
+                        FOREIGN KEY (successor_attempt_id) REFERENCES action_derivations(derivation_id),
+                        FOREIGN KEY (predecessor_attempt_id) REFERENCES action_derivations(derivation_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_authorized_insert
+                    BEFORE INSERT ON action_derivation_canary_closures
+                    WHEN forge_action_derivation_canary_closure_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation canary closure authority required'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_immutable_update
+                    BEFORE UPDATE ON action_derivation_canary_closures
+                    BEGIN SELECT RAISE(ABORT, 'action derivation canary closures are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_immutable_delete
+                    BEFORE DELETE ON action_derivation_canary_closures
+                    BEGIN SELECT RAISE(ABORT, 'action derivation canary closures are immutable'); END;
                     CREATE TABLE IF NOT EXISTS action_derivation_evidence_sets (
                         evidence_set_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL UNIQUE,
                         installation_id TEXT NOT NULL, envelope_digest TEXT NOT NULL UNIQUE,
@@ -1098,6 +1125,38 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "30", "migration_version": "30", "last_migration": "30"})
                 self._connection.execute("PRAGMA user_version=30")
+            self._migrate(forge_version)
+        elif version == 30:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS action_derivation_canary_closures (
+                        closure_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        successor_attempt_id TEXT NOT NULL UNIQUE, predecessor_attempt_id TEXT NOT NULL,
+                        qualification_decision_id TEXT NOT NULL, qualification_decision_digest TEXT NOT NULL,
+                        effective_contract_digest TEXT NOT NULL, evidence_digest TEXT NOT NULL,
+                        g011_policy_digest TEXT NOT NULL, provider_request_digest TEXT NOT NULL,
+                        preflight_receipt_id TEXT NOT NULL, reattempt_authorization_id TEXT NOT NULL,
+                        main_head TEXT NOT NULL, qualified_capability TEXT NOT NULL,
+                        not_qualified_capabilities TEXT NOT NULL, installation_id TEXT NOT NULL,
+                        operator_id TEXT NOT NULL, runtime_id TEXT NOT NULL, closed_at TEXT NOT NULL,
+                        digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL,
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id),
+                        FOREIGN KEY (successor_attempt_id) REFERENCES action_derivations(derivation_id),
+                        FOREIGN KEY (predecessor_attempt_id) REFERENCES action_derivations(derivation_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_authorized_insert
+                    BEFORE INSERT ON action_derivation_canary_closures
+                    WHEN forge_action_derivation_canary_closure_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation canary closure authority required'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_immutable_update
+                    BEFORE UPDATE ON action_derivation_canary_closures
+                    BEGIN SELECT RAISE(ABORT, 'action derivation canary closures are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_canary_closures_immutable_delete
+                    BEFORE DELETE ON action_derivation_canary_closures
+                    BEGIN SELECT RAISE(ABORT, 'action derivation canary closures are immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "31", "migration_version": "31", "last_migration": "31"})
+                self._connection.execute("PRAGMA user_version=31")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1565,6 +1624,82 @@ class RuntimeDatabase:
             self._action_derivation_write_state["permitted"] = False
         return document
 
+    def create_action_derivation_canary_closure(self, closure: Any) -> dict[str, Any]:
+        """Persist one immutable, non-executing Action-Derivation canary closure."""
+        document = _document(closure, "action derivation canary closure")
+        secret_checked = {key: value for key, value in document.items()
+                          if key not in ("reattempt_authorization_id", "operator_id")}
+        if _contains_secret_field(secret_checked):
+            raise RuntimeDatabaseError("action derivation canary closure must not contain secret material")
+        required = (
+            "closure_id", "mission_id", "successor_attempt_id", "predecessor_attempt_id",
+            "qualification_decision_id", "qualification_decision_digest",
+            "effective_contract_digest", "evidence_digest", "g011_policy_digest",
+            "provider_request_digest", "preflight_receipt_id", "reattempt_authorization_id",
+            "main_head", "qualified_capability", "not_qualified_capabilities",
+            "installation_id", "operator_id", "runtime_id", "closed_at", "digest",
+        )
+        if any(not isinstance(document.get(item), str) or not document[item] for item in required
+               if item != "not_qualified_capabilities"):
+            raise RuntimeDatabaseError("action derivation canary closure requires complete identity and provenance")
+        excluded = document.get("not_qualified_capabilities")
+        expected_excluded = (
+            "ACTION_MATERIALIZATION", "AUTONOMOUS_NEXT_MISSION_LOOP", "EP_DISPATCH",
+            "EP_RESULT_OBSERVATION", "EXECUTION_ADMISSION",
+        )
+        if (not isinstance(excluded, list) or tuple(sorted(excluded)) != expected_excluded
+                or document.get("qualified_capability") != "ACTION_DERIVATION"
+                or not re.fullmatch(r"[0-9a-f]{40}", document["main_head"])
+                or any(not _SHA256_DIGEST.fullmatch(document[item]) for item in (
+                    "qualification_decision_digest", "effective_contract_digest", "evidence_digest",
+                    "g011_policy_digest", "provider_request_digest", "digest"))):
+            raise RuntimeDatabaseError("action derivation canary closure provenance is malformed")
+        digest_source = {key: value for key, value in document.items() if key != "digest"}
+        expected_digest = "sha256:" + sha256(json.dumps(digest_source, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if document["digest"] != expected_digest:
+            raise RuntimeIntegrityError("action derivation canary closure digest is inconsistent")
+        binding = self._connection.execute(
+            "SELECT generated_uid, status FROM installation_operator_binding WHERE installation_id=?",
+            (document["installation_id"],),
+        ).fetchone()
+        if (document["installation_id"] != self.metadata.get("installation_id")
+                or document["runtime_id"] != self.metadata.get("runtime_id")
+                or binding is None or binding["status"] != "ACTIVE"
+                or document["operator_id"] != sha256(binding["generated_uid"].encode()).hexdigest()[:16]):
+            raise RuntimeIntegrityError("action derivation canary closure lacks trusted runtime provenance")
+        successor = self._connection.execute(
+            "SELECT mission_id FROM action_derivations WHERE derivation_id=?", (document["successor_attempt_id"],)
+        ).fetchone()
+        predecessor = self._connection.execute(
+            "SELECT mission_id FROM action_derivations WHERE derivation_id=?", (document["predecessor_attempt_id"],)
+        ).fetchone()
+        if (successor is None or predecessor is None or successor["mission_id"] != document["mission_id"]
+                or predecessor["mission_id"] != document["mission_id"]):
+            raise RuntimeIntegrityError("action derivation canary closure lineage is absent or cross-Mission")
+        self._action_derivation_canary_closure_write_state["permitted"] = True
+        try:
+            with self._connection:
+                existing = self._connection.execute(
+                    "SELECT document FROM action_derivation_canary_closures WHERE successor_attempt_id=?",
+                    (document["successor_attempt_id"],),
+                ).fetchone()
+                if existing is not None:
+                    persisted = json.loads(existing["document"])
+                    if persisted != document:
+                        raise RuntimeIntegrityError("action derivation canary closure rewrite is denied")
+                    return persisted
+                placeholders = ",".join("?" for _ in range(len(required) + 1))
+                self._connection.execute(
+                    f"INSERT INTO action_derivation_canary_closures VALUES ({placeholders})",
+                    tuple(
+                        self._dump(document[item]) if item == "not_qualified_capabilities" else document[item]
+                        for item in required
+                    ) + (self._dump(document),),
+                )
+        finally:
+            self._action_derivation_canary_closure_write_state["permitted"] = False
+        return document
+
     def create_action_derivation_reattempt_authorization(self, authorization: Any) -> dict[str, Any]:
         """Persist one immutable, explicitly operator-authorized successor attempt."""
         document = _document(authorization, "action derivation reattempt authorization")
@@ -1891,7 +2026,8 @@ class RuntimeDatabase:
                   "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document"), "planning_state": ("singleton", "document"),
                   "delegation_requests": ("delegation_id", "document"), "integration_evidence": ("integration_id", "document"),
                   "action_derivations": ("derivation_id", "document"), "action_derivation_evidence_sets": ("evidence_set_id", "document"), "mission_amendments": ("amendment_id", "document"),
-                  "action_derivation_reattempt_authorizations": ("authorization_id", "document")}
+                  "action_derivation_reattempt_authorizations": ("authorization_id", "document"),
+                  "action_derivation_canary_closures": ("closure_id", "document")}
         if table not in lookup:
             raise RuntimeDatabaseError("table is not a Forge document store")
         key, column = lookup[table]
