@@ -27,7 +27,9 @@ class DagTests(unittest.TestCase):
             self.assertTrue(detail["qualification_gate"])
             self.assertTrue(detail["prerequisite_trace"])
             self.assertTrue(detail["source_provenance"]["ep_main_sha"])
-            self.assertEqual(33, detail["source_provenance"]["ep_pr"])
+            self.assertTrue(detail["source_provenance"]["observed_at"])
+            self.assertEqual("HISTORICAL_SOURCE_PIN", detail["source_provenance"]["observation_classification"])
+            self.assertEqual("RESOLVE_FRESH_EP_ORIGIN_MAIN", detail["source_provenance"]["current_status_resolution"])
         seen, active = set(), set()
         def visit(key):
             self.assertNotIn(key, active)

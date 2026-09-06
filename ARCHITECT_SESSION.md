@@ -70,8 +70,25 @@ Knowledge lifecycle/certification remains owned by the Knowledge Base.
 
 ## Read order: peer authorities
 
-Use the checked-out and remote `main` revisions, recording the SHA/date used
-when a conclusion depends on them.
+Resolve time-sensitive peer authority through the **Peer Authority Freshness
+Contract** before drawing a current-status conclusion. A local peer checkout,
+including its filesystem timestamp, is never current authority merely because
+it is present on the host.
+
+```text
+PEER_AUTHORITY_FRESHNESS_CONTRACT
+1. Refresh the peer remote repository state.
+2. Resolve that peer's current `origin/main`.
+3. Record repository, exact SHA and UTC observation timestamp.
+4. Treat every previously observed SHA as HISTORICAL observation evidence.
+5. If refresh or resolution fails, set PEER_AUTHORITY_FRESHNESS = UNVERIFIED
+   and do not present time-sensitive peer status as current.
+```
+
+Use the resolved remote `origin/main` revision, recording its SHA and UTC
+observation time whenever a conclusion depends on peer state. The session may
+read a matching isolated worktree for convenience only after pinning it to that
+resolved SHA.
 
 | Peer | Read first | Authority to preserve |
 | --- | --- | --- |
@@ -136,14 +153,15 @@ Reconstruct faithfully, without reinterpretation:
 Label the result `CANONICAL_AS_DOCUMENTED`. Implementation evidence is not
 automatically architecture authority, and a pending PR is not merged authority.
 
-### Pass 2 — architecture reconciliation
+### Pass 2 — evidence reconciliation
 
 Test whether the sources reconstructed in Pass 1 remain mutually coherent.
 Do not automatically mutate a roadmap, DAG, or peer truth from this analysis.
 Classify a finding first, investigate repository evidence where it can resolve
 the question, and route only the appropriate durable result to its owner.
 
-For every important reported critical-path dependency, answer:
+For every important reported current capability or critical-path dependency,
+answer:
 
 ```text
 DEPENDENCY =
@@ -153,7 +171,9 @@ EVIDENCE =
 DOCUMENTED_STATUS =
 IMPLEMENTED =
 QUALIFIED =
+COMPLETION_EVIDENCE =
 AVAILABLE_TO_CONSUMER =
+CURRENT_RECONCILED_STATUS =
 CLASSIFICATION =
 RATIONALE =
 ```
@@ -166,10 +186,23 @@ canonical source, or proposed for change in a pending PR. Ask whether the whole
 umbrella gate is needed or only a bounded producer capability inside it, and
 whether the edge is an authority requirement rather than historic sequencing.
 
-Always distinguish `ARCHITECTURE_REQUIRED`, `IMPLEMENTED`, `QUALIFIED`,
-`AVAILABLE_TO_CONSUMER`, and `DOCUMENTED_STATUS`. None implies another. For
-example, a capability may be required but implemented, implemented but not
-qualified, or qualified while a roadmap projection remains stale.
+Always distinguish `ARCHITECTURE_REQUIRED`, `DOCUMENTED_STATUS`,
+`IMPLEMENTED`, `QUALIFIED`, `COMPLETION_EVIDENCE`, `AVAILABLE_TO_CONSUMER` and
+`CURRENT_RECONCILED_STATUS`. None implies another. A merged closure or
+qualification record must be checked to ensure it applies to the same
+capability. If it does and a roadmap/DAG/status projection still says
+`ACTIVE`, `PLANNED` or `INCOMPLETE`, classify the finding
+`STALE_PROJECTION_SUSPECTED = TRUE`; roadmap ordering is not stronger than
+owning-repository completion evidence. Repair the owning projection when the
+authority permits, but never promote implementation alone to qualification.
+
+Pass 2 compares sources **within each owning repository** as well as across
+product boundaries: roadmap, DAG/status projection, completion and
+qualification evidence, implementation evidence, and merged history where it
+is canonical evidence. Classify each discrepancy as `NO_CONFLICT`,
+`STALE_PROJECTION_SUSPECTED`, `PENDING_RECONCILIATION`, or
+`REAL_AUTHORITY_CONFLICT`. `CURRENT_STATUS_IS_EVIDENCE_RECONCILED = TRUE` is
+valid only after this comparison.
 
 ## Reconstructing Project Context and analyzing the primary objective
 
@@ -230,6 +263,14 @@ implementation may show a subset exists, and a pending Forge PR may propose a
 new consumer dependency. Record this as a reconciliation finding; do not
 resolve peer capability truth by editing Forge documentation alone.
 
+Forge owns a consumer dependency's required capability and its consequence for
+Forge work (`FORGE_OWNED_DEPENDENCY`). EP owns whether an EP capability is
+implemented, qualified, complete or currently available
+(`EP_OWNED_STATUS`). A Forge roadmap/DAG may retain a source-pinned observed
+peer fact as historical evidence, but a fresh EP `origin/main` resolution is
+required before it is reported as current; that fact is never independent
+Forge status authority.
+
 ## Governance and parallel work
 
 Within an already authorized functional engineering envelope, ordinary
@@ -276,6 +317,11 @@ contract references; remove contradictions rather than creating duplicate
 authority. Add an ADR only for a durable architectural decision needing decision
 history, not for status.
 
+A stale current-status projection normally routes autonomously to the owning
+roadmap/status/DAG projection. A peer capability truth routes only to the peer;
+Forge may update only its own consumer dependency semantics and its
+source-pinned observation. Do not create a second peer-status register here.
+
 ## Completion check
 
 Before ending, re-run the relevant documentation/DAG tests and verify links.
@@ -292,11 +338,12 @@ dependencies without chat history.
 
 Every substantive Architect response ends with a compact ASCII progress report.
 It is a read-time evidence projection, not a fourth roadmap or an independent
-status register. Derive the shared rows afresh from the current owning
-repository `main` authorities, their exact SHA/date where material, canonical
-producer evidence, and open-PR head/qualification state. Name those sources in
-`SOURCES`; never copy a peer's status into this file or silently promote a
-`PENDING_PR` to canonical truth.
+status register. Derive the shared rows afresh from current remote owning
+authorities, their exact SHA/UTC observation time, canonical producer evidence,
+and open-PR head/qualification state. Name those sources in `SOURCES`; never
+copy a peer's status into this file or silently promote a `PENDING_PR` to
+canonical truth. If peer freshness is unverified, say so and omit
+time-sensitive peer status instead of estimating it.
 
 Use capability/evidence rows only — a status is never inferred from ordering,
 elapsed time, or an approximate percentage. Every row must use exactly one of:
@@ -310,8 +357,12 @@ The report must include both shared sections and this product-specific section:
 
 ```text
 ARCHITECT PROGRESS
-SOURCES: Forge main=<SHA/date>; EP main=<SHA/date>; Workspace main=<SHA/date>;
-         pending=<PR/head/check state or none>
+SOURCES
+Forge origin/main=<SHA>@<observed-at>
+EP origin/main=<SHA>@<observed-at>
+Workspace origin/main=<SHA>@<observed-at>
+PEER_AUTHORITY_FRESHNESS=VERIFIED | UNVERIFIED
+pending=<PR/head/check state or none>
 
 AUTONOMY CUTOVER
 <status> <capability> — <producer/qualification evidence and classification>
