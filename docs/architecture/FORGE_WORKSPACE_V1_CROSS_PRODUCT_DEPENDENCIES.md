@@ -1,121 +1,109 @@
 # Forge / Workspace / EP V1 Cross-Product Dependency View
 
-> **THIS DOCUMENT IS A DERIVED DEPENDENCY VIEW. IT DOES NOT REPLACE PRODUCT
-> ROADMAP AUTHORITY.** Forge owns this index only as an interpretation of
-> evidence. Each product owns allocation, implementation, qualification and
-> changes to its own roadmap nodes.
+> **DERIVED DEPENDENCY VIEW.** Product roadmaps remain authoritative for their own implementation and qualification.
 
-## Method and node types
+## Current bootstrap graph — 2026-09-06
 
-`CAPABILITY_MILESTONE` is a consumer-visible outcome. `IMPLEMENTATION_INCREMENT`
-has exactly one owner. `QUALIFICATION_GATE` makes a producer capability
-available to consumers. `EXTERNAL_DEPENDENCY` is an edge only, never an
-allocation of another product's work. A consumer may begin fixture-based work
-after a contract is frozen, but may not complete an integration claim before
-the stated producer qualification gate passes.
+```text
+EP::P_TRANSPORT_V1 [MERGED/AVAILABLE transport]
+        |
+        v
+EP::P_NEUTRAL_V1 [ACTIVE]
+        |
+        v
+EP::MINIMUM_INSTALLED_EXECUTION_V1
+        |
+        v
+EP::STANDALONE_EP_VERIFIED
+        |
+        +--------------------------+
+        |                          |
+        v                          v
+Forge::FIRST_EXECUTABLE_F3_F4   Workspace future installed adapter/onboarding
+        |
+        v
+Forge::FIRST_EP_CANARY
+        |
+        v
+Forge::AUTONOMOUS_NEXT_MISSION_LOOP
+```
 
-This view is derived from Forge [10_ROADMAP](../../knowledge/bootstrap/10_ROADMAP.md),
-Workspace [ROADMAP](https://github.com/pcvantol/workspace/blob/main/ROADMAP.md),
-and EP [Engineering Platform Roadmap](https://github.com/pcvantol/engineering-platform/blob/main/docs/development/ENGINEERING_PLATFORM_ROADMAP.md).
-The EP roadmap is the canonical allocation authority for the EP-owned producer
-capabilities; their stated planned/unavailable disposition remains distinct
-from a merged roadmap allocation.
+Broader Agent separation/generalized dispatch, multi-host scheduling, multi-repository parallelism and unrelated B8E parity work are follow-on EP capabilities unless the minimum installed canary proves a concrete dependency.
 
-The pinned, non-authoritative trace from the current EP migration frontier
-through each EP producer and this consumer graph is maintained in
-[Forge / EP V1 migration continuity cross-check](FORGE_EP_V1_MIGRATION_CONTINUITY.md).
-It names the EP-internal prerequisites behind `EP::STANDALONE_EP_VERIFIED`;
-this view must never collapse those prerequisites into an opaque consumer gate.
+## Current node index
 
-## Canonical node index
+| Node | Owner | Current state | Provides / consumed by |
+| --- | --- | --- | --- |
+| `EP::LOCAL_CONSUMER_API_V1` | EP | QUALIFIED | Consumer identity/auth/read foundation. Distinct from later P-TRANSPORT submission HTTP. |
+| `EP::P_TRANSPORT_V1` | EP | MERGED / QUALIFIED transport | HTTP, installed CLI and Server-owned File Inbox canonical submission ingress. Forge should reuse HTTP. |
+| `EP::P_NEUTRAL_V1` | EP | ACTIVE | Zero active generic DJConnect platform identity/authority in qualified scope. |
+| `EP::MINIMUM_INSTALLED_EXECUTION_V1` | EP | QUALIFICATION TARGET | One canonical submission -> admission -> execution -> finalization -> receipt/result chain using current installed execution path. |
+| `EP::STANDALONE_EP_VERIFIED` | EP | WAITING P-NEUTRAL + minimum execution proof | Installed independent execution authority for consumer canary integration. |
+| `Forge::FIRST_EXECUTABLE_F3_F4` | Forge | CONTRACT-FIRST / LIVE WAITS EP | Action materialization, execution admission, HTTP submission binding, observation and reconciliation. |
+| `Forge::FIRST_EP_CANARY` | Forge + EP boundary | WAITING STANDALONE | One bounded Forge -> EP -> Forge execution, one repo/action/submission. |
+| `Forge::AUTONOMOUS_NEXT_MISSION_LOOP` | Forge | WAITS FIRST CANARY | Reconcile outcome -> determine/refine next candidate/Mission -> repeat under governance. |
+| `Workspace::ONBOARDING_CONTROL_PLANE_V1` | Workspace | FUTURE / NOT FIRST-CANARY BLOCKER | Human/project UX and permitted intent over qualified producer contracts. |
+| `EP::GENERALIZED_AGENT_DISPATCH_V1` | EP | FOLLOW_ON | Broader Agent separation/dispatch/multi-host resilience. |
+| `EP::MULTI_REPOSITORY_EXECUTION_V1` | EP | FOLLOW_ON | Parallel/multi-repo scheduling, leases/capacity/ordering. |
+| `Forge::L2_L3_QUALITY_LEARNING` | Forge | FOLLOW_ON | Quality observation/proposals after stable Action outcome contract. |
+| Knowledge/KB surfaces | Forge/Workspace/KB | POST_V1 | Additive read/proposal learning; never standalone blocker. |
 
-| Node ID | Node type | Owner repo | Canonical roadmap reference | Depends on | Provides / consumed by | Qualification gate | V1 disposition / readiness |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `EP::LOCAL_CONSUMER_API_V1` | IMPLEMENTATION_INCREMENT | Engineering Platform | Phase 1 / Increments 1–3 | EP local runtime foundation | Versioned, scoped consumer envelope and registration base; consumed by project attachment | Phase 1 closure: schema 40, registration and credential lifecycle qualified | RESOLVED / available |
-| `EP::STANDALONE_EP_VERIFIED` | QUALIFICATION_GATE | Engineering Platform | Phase 3, B8C → B8D → B9 | Named EP Phase-3/package, P-TRANSPORT, P-QUEUE, P-NEUTRAL, installer/release, re-audit, P-D, minimum Phase-S and B8E trace | Installed EP execution authority | B9 activation only after the named prerequisite trace passes | RESOLVED node / not yet satisfied; see derived continuity trace |
-| `EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1` | IMPLEMENTATION_INCREMENT | Engineering Platform | Phase 4 / Increment 1 | `EP::LOCAL_CONSUMER_API_V1`, `EP::STANDALONE_EP_VERIFIED` | Idempotent project registration refresh, repository/Agent attachment and admission-ready project; consumed by Workspace onboarding | Clean-install, fresh-registration, idempotency, project-routing and first-governed-execution evidence | RESOLVED allocation / BLOCKED_BY `EP::STANDALONE_EP_VERIFIED` |
-| `EP::ENGINEERING_CONTRACT_FOUNDATION_V1` | IMPLEMENTATION_INCREMENT | Engineering Platform | Phase 4 / Increment 2 | `EP::LOCAL_CONSUMER_API_V1`, `EP::STANDALONE_EP_VERIFIED` | Capability classification, Effective DoR/DoD, proofs, Human Gates, Action quality outcome, immutable Action snapshots and live/historical projection; consumed by Forge L0 | `EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED`: installed-artifact contract, negative/admission, recovery and evidence-projection qualification | EP_ROADMAP_GAP resolved by planned allocation / BLOCKED_BY `EP::STANDALONE_EP_VERIFIED` |
-| `Forge::L0_ENGINEERING_CONTRACT_FOUNDATION` | CAPABILITY_MILESTONE | Forge (consumer interpretation) | Forge L0 | `EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED` | Common capability milestone; unlocks L1 | Producer qualification above | RESOLVED / blocked externally |
-| `Forge::L1_BOOTSTRAP_EVIDENCE_CONTRACT` | IMPLEMENTATION_INCREMENT | Forge | Forge L1 | Forge L0 | Project-owned bootstrap/evidence composition; consumed by L1-R and Workspace quality surface | Forge contract and EP integration qualification | BLOCKED_BY `Forge::L0_ENGINEERING_CONTRACT_FOUNDATION` |
-| `Forge::L1R_MANAGED_REPOSITORY_GOVERNANCE` | IMPLEMENTATION_INCREMENT | Forge | Forge L1-R | Forge L1 | Versioned desired-state governance and read-back evidence | Managed repository qualification | BLOCKED_BY Forge L1 |
-| `Workspace::ONBOARDING_CONTROL_PLANE_V1` | IMPLEMENTATION_INCREMENT | Workspace | Workspace “Proposed repository onboarding and control plane” | `EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1`; Forge L1 for managed bootstrap flows | Workspace project identity, permitted intent and onboarding UX | Workspace UX/accessibility/no-secondary-authority proof plus EP producer qualification | BLOCKED_BY `EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1` |
-| `Workspace::QUALITY_GOVERNANCE_SURFACE` | IMPLEMENTATION_INCREMENT | Workspace | Workspace dependency register | Forge L0/L1 evidence and onboarding contract | Governed presentation and intent only | Attribution, freshness/degraded-state, accessibility and no-secondary-authority proof | CONTRACT_FIRST_PARALLEL_AFTER Forge L0 contract freeze |
-| `Forge::L2_L3_QUALITY_LEARNING` | IMPLEMENTATION_INCREMENT | Forge | Forge L2–L3 | Forge runtime/planning maturity | Quality observation and proposals | Forge review/hardening qualification | BLOCKED_BY Forge runtime/planning maturity; separately approved Forge work remains required |
-| `Workspace::KNOWLEDGE_GOVERNANCE_SURFACE` | IMPLEMENTATION_INCREMENT | Workspace | Workspace dependency register | KB export/consumption contracts | Governed knowledge presentation and permitted intent | Lineage/redaction, unavailable-KB degradation, accessibility and no-direct-certification proof | POST_V1 / nonblocking |
-| `Forge::L5_L8_KNOWLEDGE_CONSUMPTION` | CAPABILITY_MILESTONE | Forge + KB boundary | Forge L5–L8 | KB-owned explicit export and read-only consumption contracts | Additive, read-only knowledge use | KB lifecycle/provenance qualification | POST_V1 / nonblocking |
-| `TDE::OBSERVE_ONLY_PUBLIC_RUNTIME` | EXTERNAL_DEPENDENCY | Technical Debt Engine | TDE Product Roadmap — operational maintenance | Applicable public capability | Nonblocking evidence observation only | TDE public-runtime and consumer evidence | RESOLVED / nonblocking; no Forge/Workspace V1 build edge |
-| `ForgePlatform::QUALIFIED_COMPOSITION` | EXTERNAL_DEPENDENCY | Forge Platform | MVP W0–W4 | Published product artifacts and product-owned contracts | Installation/release composition | Forge Platform clean-install and composition qualification | POST_V1 for this graph; never an EP/Forge/Workspace implementation allocation |
-| `KB::GOVERNED_LIFECYCLE` | EXTERNAL_DEPENDENCY | Knowledge Base | KB future evolution recommendation | KB governance | Certified knowledge and observation lifecycle | KB-owned lifecycle/provenance evidence | POST_V1 / nonblocking; no V1 runtime dependency |
+## Authority corrections
 
-## Directed edge register
+### Project identity
 
-| From producer | To consumer | Capability contract | Qualification required before consumer completion | Classification |
-| --- | --- | --- | --- | --- |
-| `EP::LOCAL_CONSUMER_API_V1` | `EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1` | Versioned project scope, consumer identity and registration base | Phase 1 closure | RESOLVED |
-| `EP::STANDALONE_EP_VERIFIED` | `EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1` | Installed Server/Agent execution authority | B8C/B8D/B9 retained bundle | RESOLVED |
-| `EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1` | `Workspace::ONBOARDING_CONTROL_PLANE_V1` | `PROJECT_ATTACHMENT_AND_ADMISSION_V1` | Clean-install/fresh-registration/idempotency/project-routing/first-run evidence | RESOLVED |
-| `EP::STANDALONE_EP_VERIFIED` | `EP::ENGINEERING_CONTRACT_FOUNDATION_V1` | Installed EP foundation | B8C/B8D/B9 retained bundle | RESOLVED |
-| `EP::ENGINEERING_CONTRACT_FOUNDATION_V1` | `Forge::L0_ENGINEERING_CONTRACT_FOUNDATION` | `ENGINEERING_CONTRACT_FOUNDATION_V1` | Installed artifact, negative admission/recovery and evidence-projection qualification | RESOLVED |
-| `Forge::L0_ENGINEERING_CONTRACT_FOUNDATION` | `Forge::L1_BOOTSTRAP_EVIDENCE_CONTRACT` | Effective contract/evidence semantics | EP producer gate plus Forge composition evidence | RESOLVED |
-| `Forge::L1_BOOTSTRAP_EVIDENCE_CONTRACT` | `Forge::L1R_MANAGED_REPOSITORY_GOVERNANCE` | Project-owned contract and baseline provenance | Forge L1 qualification | RESOLVED |
-| `Forge::L1_BOOTSTRAP_EVIDENCE_CONTRACT` | `Workspace::ONBOARDING_CONTROL_PLANE_V1` | Managed bootstrap flow only | Forge L1 qualification; it is not required for identity-only onboarding | RESOLVED |
-| `Forge::L0_ENGINEERING_CONTRACT_FOUNDATION` | `Workspace::QUALITY_GOVERNANCE_SURFACE` | Effective DoR/DoD/Gate projection | Producer evidence freshness and attribution | RESOLVED |
-| `Forge::L1_BOOTSTRAP_EVIDENCE_CONTRACT` | `Workspace::QUALITY_GOVERNANCE_SURFACE` | Governance state/drift projection | Forge L1 qualification | RESOLVED |
-| `Forge::L2_L3_QUALITY_LEARNING` | `Workspace::QUALITY_GOVERNANCE_SURFACE` | Governed Quality Learning proposals | Forge observer/review qualification and Workspace attribution/freshness proof | RESOLVED |
-| `KB::GOVERNED_LIFECYCLE` | `Forge::L5_L8_KNOWLEDGE_CONSUMPTION` | Explicit export and read-only consumption | KB provenance/certification | POST_V1 |
-| `KB::GOVERNED_LIFECYCLE` | `Workspace::KNOWLEDGE_GOVERNANCE_SURFACE` | Evidence-linked lifecycle projection | KB lineage/redaction/degraded-state proof | POST_V1 |
-| `TDE::OBSERVE_ONLY_PUBLIC_RUNTIME` | Forge/Workspace/EP consumers | Applicable public observe capability | Consumer-owned, nonblocking observation evidence | POST_V1 |
-| Forge/Workspace/EP published artifacts | `ForgePlatform::QUALIFIED_COMPOSITION` | Versioned artifact/protocol compatibility | Forge Platform composition qualification | POST_V1 |
+B8R is current EP architecture. Durable project/repository identity is declared in the Canonical Project Authority Repository at `.engineering-platform/repository.json` and validated by EP. Workspace may project it and own mutable human-facing project state/display names, but Workspace availability is not required for independent EP attachment.
 
-No edge is a duplicate work allocation. No V1 build edge points to a historical
-branch term. The graph is acyclic: runtime interaction between Forge, Workspace
-and EP is not a build dependency; the producer contract and qualification gate
-break the integration sequence.
+### Submission transport
+
+The earlier Phase-1 Local Consumer API was initially qualified as read-only. P-TRANSPORT later added canonical mutating submission transport. Therefore:
+
+`EP_HTTP_ALL_READ_ONLY = FALSE`
+
+`P_TRANSPORT_HTTP_SUBMISSION_AVAILABLE = TRUE`
+
+Forge must not create a parallel mutation transport merely because older Phase-1 documentation says its original endpoints were read-only.
+
+### Execution versus productization
+
+`EP::STANDALONE_EP_VERIFIED` requires proof of an independent installed execution authority, not completion of every future topology/scheduling feature. The minimum one-run canary may use the existing installed execution path. Any concrete missing queue/lease/recovery/finalization capability becomes a bounded prerequisite only when evidence shows the canary needs it.
+
+## Directed edges
+
+| Producer | Consumer | Contract / qualification |
+| --- | --- | --- |
+| `EP::P_TRANSPORT_V1` | `EP::MINIMUM_INSTALLED_EXECUTION_V1` | Canonical submission transport; transport alone is not execution qualification. |
+| `EP::P_NEUTRAL_V1` | `EP::STANDALONE_EP_VERIFIED` | No legacy generic platform identity required by installed authority. |
+| `EP::MINIMUM_INSTALLED_EXECUTION_V1` | `EP::STANDALONE_EP_VERIFIED` | One real installed governed execution with finalization and immutable result evidence. |
+| `EP::STANDALONE_EP_VERIFIED` | `Forge::FIRST_EXECUTABLE_F3_F4` | Live installed producer available; Forge can complete HTTP submission/observation/reconciliation integration. |
+| `Forge::FIRST_EXECUTABLE_F3_F4` | `Forge::FIRST_EP_CANARY` | Materialized/admitted Action and exact EP correlation contract. |
+| `Forge::FIRST_EP_CANARY` | `Forge::AUTONOMOUS_NEXT_MISSION_LOOP` | Proven complete machine loop before automatic repetition. |
+| `EP::STANDALONE_EP_VERIFIED` | `Workspace::ONBOARDING_CONTROL_PLANE_V1` | Allows later installed adapter/onboarding qualification; not reciprocal. |
+
+There is no edge from Workspace to the first Forge execution canary and no default edge from generalized Agent dispatch/multi-repository execution to `EP::STANDALONE_EP_VERIFIED`.
 
 ## Safe parallelism
 
-| Increment / capability | Current classification | Safe condition |
-| --- | --- | --- |
-| `EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1` | BLOCKED_BY `EP::STANDALONE_EP_VERIFIED` | EP-only implementation and qualification after the installed boundary exists |
-| `EP::ENGINEERING_CONTRACT_FOUNDATION_V1` | CONTRACT_FIRST_PARALLEL_AFTER `EP::LOCAL_CONSUMER_API_V1` | Its contract design may proceed in EP; consumer integration waits for its qualification |
-| Forge L1 | CONTRACT_FIRST_PARALLEL_AFTER L0 contract freeze | Forge may compose fixtures; no integration-complete claim before the EP gate |
-| Workspace onboarding | CONTRACT_FIRST_PARALLEL_AFTER registration/attachment contract freeze | UX fixtures may proceed; real attachment/admission waits for EP qualification |
-| Workspace quality surface | CONTRACT_FIRST_PARALLEL_AFTER Forge projection contract freeze | UI fixtures may proceed; governed live view waits for freshness/attribution proof |
-| Knowledge surfaces | POST_V1 | Additive only; never blocks standalone execution |
+- Forge may build deterministic Action materialization/admission and HTTP contract fixtures while EP completes P-NEUTRAL/standalone qualification.
+- Forge live integration completion waits for `EP::STANDALONE_EP_VERIFIED`.
+- Workspace may design fixtures/UX but is not needed for the first machine loop.
+- Broader EP Agent/dispatch/queue work may proceed separately but must not be presented as bootstrap blocking without evidence.
+- Quality/Knowledge work remains nonblocking.
 
-## Adversarial review and counts
+## Invariants
 
-An independent reader can determine each V1 prerequisite owner, canonical
-reference, contract and evidence gate from the node/edge tables. `P-TRANSPORT`
-is retained in EP main only as an EP-internal migration/transport term; it is
-not a cross-product capability or V1 dependency edge.
+`DUPLICATE_EXECUTION_AUTHORITY = 0`
 
-| Measure | Count |
-| --- | ---: |
-| `V1_NODES` | 10 |
-| `V1_EDGES` | 11 |
-| `UNRESOLVED_NODES` | 0 |
-| `DANGLING_EDGES` | 0 |
-| `DUPLICATE_ALLOCATIONS` | 0 |
-| `UNDEFINED_CONTRACT_EDGES` | 0 |
-| `UNDEFINED_QUALIFICATION_EDGES` | 0 |
-| `STALE_REFERENCES` | 0 |
-| `V1_BUILD_DEPENDENCY_CYCLES` | 0 |
+`FORGE_DIRECT_EP_DATABASE_ACCESS = FALSE`
 
-`P_TRANSPORT_CANONICAL_MAPPING = EP::P_TRANSPORT_V1; EP-owned derived prerequisite, not a Forge allocation`
+`FORGE_DIRECT_AGENT_CONTROL = FALSE`
 
-`P_TRANSPORT_REFERENCE_RESULT = PASS`
+`WORKSPACE_EXECUTION_AUTHORITY = FALSE`
 
-`FORGE_L0_CANONICAL_EP_PRODUCER = EP::ENGINEERING_CONTRACT_FOUNDATION_V1`
+`P_TRANSPORT_DUPLICATE_FORGE_TRANSPORT = FALSE`
 
-`FORGE_L0_EP_IMPLEMENTATION_TRACE = PASS`
+`FIRST_CANARY_REPOSITORY_COUNT = 1`
 
-`WORKSPACE_ONBOARDING_EP_REGISTRATION_PRODUCER = EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1`
+`FIRST_CANARY_AUTOMATIC_RESUBMIT = FALSE`
 
-`WORKSPACE_ONBOARDING_EP_REGISTRATION_TRACE = PASS`
-
-`EP_V1_PREREQUISITE_TRACE = FORGE_EP_V1_MIGRATION_CONTINUITY.md`
-
-`CROSS_PRODUCT_V1_DEPENDENCY_GRAPH = CLOSED` is valid only when the owning
-roadmaps continue to resolve every listed V1 node and edge at its stated
-qualification boundary.
+`CROSS_PRODUCT_BOOTSTRAP_DEPENDENCY_CYCLES = 0`

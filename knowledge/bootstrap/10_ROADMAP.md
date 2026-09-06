@@ -12,232 +12,255 @@ Bootstrap -> Foundation -> Self Engineering -> Runtime -> Production
 
 Foundation is complete. Self Engineering is underway. Runtime and Production remain governed future maturity states rather than implied implementation commitments.
 
+## Current bootstrap autonomy critical path — 2026-09-06
+
+The immediate objective is the shortest safe route to a real autonomous Forge operating loop, not completion of every future EP/Workspace productization capability.
+
+`AUTONOMY_BOOTSTRAP_DONE` is earned only when Forge selects real work,
+materializes a bounded Action, submits it through the installed canonical EP
+machine boundary, and EP persists/adopts it, performs a real repository
+mutation, validates/reviews/finalizes it, and exposes canonical terminal
+evidence. Forge must then observe and exactly reconcile that result, unlock or
+select a successor, and continue through repairable bounded failures without
+the owner relaying prompts or results. The critical dogfood proof is
+`FORGE_CAUSES_REAL_FORGE_REPOSITORY_CHANGE_VIA_EP = TRUE`.
+
+Current qualified Forge foundation includes canonical governance persistence, Mission Intake/amendment lineage, Action-Derivation evidence, G011/provider boundaries, token-preflight binding, governed reattempt lineage, a real Action-Derivation provider canary, post-canary Security qualification and immutable canary closure. PR #40 is merged; this foundation must not be reopened without regression evidence.
+
+Forge is intentionally **on hold for execution integration** while EP proves the external execution producer. The current critical path is:
+
+```text
+EP P-NEUTRAL closure
+  -> EP P-INSTALLER-V1 server-only installed-product qualification
+  -> DJConnect real-project declaration + CENTRAL attachment
+  -> one real governed DJConnect EP Action
+  -> EP::STANDALONE_EP_VERIFIED
+  -> EP self-development through CENTRAL
+  -> EP::SELF_HOSTED_ENGINEERING_VERIFIED
+  -> direct EP dogfood on Forge repository
+  -> Forge materialization + execution admission
+  -> existing EP P-TRANSPORT HTTP submission ingress
+  -> EP canonical run/finalization/result evidence
+  -> Forge result observation + reconciliation
+  -> first Forge -> EP -> Forge governed execution canary
+  -> autonomous next-Mission selection/repetition
+```
+
+### Critical-path corrections
+
+1. **P-TRANSPORT is merged/closed.** EP already owns three canonical submission transports: HTTP, installed CLI and Server-owned File Inbox. Forge must reuse canonical HTTP submission ingress.
+2. **Local Consumer API read-only foundation and P-TRANSPORT submission HTTP are distinct.** Describing all installed EP HTTP integration as read-only is stale.
+3. **P-INSTALLER-V1 is now a required producer gate.** It qualifies only the standalone EP Server-side installed product required by the first real canary. It excludes Forge, Workspace and generalized Agent productization.
+4. **Workspace is not required for the first autonomy canary.** Workspace remains human/project control plane and later projection/onboarding consumer.
+5. **B8R project identity supersedes the older Workspace-ID assumption.** Durable identity is declared in `.engineering-platform/repository.json` and validated by EP.
+6. **Broader Agent separation/generalized dispatch is follow-on work.** Multi-host, multi-Agent and generalized dispatch/scheduling are not default prerequisites.
+7. **Queue/B8E work is evidence-driven, not blanket blocking.** Only concrete capabilities required by the installed real-project canary are immediate prerequisites.
+8. **Real-project dogfooding precedes Forge orchestration.** DJConnect proves standalone; EP proves self-development; Forge then proves it can be engineered directly by EP before Forge itself orchestrates EP.
+9. **Owner gates are reserved for genuine authority expansion.** Engineering repair/validation/re-review inside an approved boundary should run autonomously.
+
+`P_TRANSPORT_STATUS = MERGED_CLOSED`
+`P_INSTALLER_V1_ON_CRITICAL_PATH = TRUE`
+`P_INSTALLER_V1_SERVER_ONLY = TRUE`
+`WORKSPACE_ON_FIRST_AUTONOMY_CRITICAL_PATH = FALSE`
+`GENERAL_AGENT_SEPARATION_ON_FIRST_AUTONOMY_CRITICAL_PATH = FALSE`
+`P_TRANSPORT_HTTP_IS_CANONICAL_FORGE_SUBMISSION_TARGET = TRUE`
+`FORGE_EXECUTION_INTEGRATION_ON_HOLD_UNTIL_EP_REAL_PROJECT_PROOFS = TRUE`
+
+## Governance-minimal producer bootstrap
+
+Forge expects EP to run steps from P-NEUTRAL through self-hosted engineering under a single bounded bootstrap authority envelope wherever repository policy permits.
+
+That means no owner micro-gates between:
+
+```text
+P-NEUTRAL implementation/qualification
+  -> P-INSTALLER-V1 implementation/installed qualification
+  -> DJConnect declaration/attachment
+  -> DJConnect real Action
+  -> STANDALONE_EP_VERIFIED evidence
+  -> EP declaration/attachment
+  -> EP self-development real Action
+  -> SELF_HOSTED_ENGINEERING_VERIFIED evidence
+```
+
+Implementation defects, CI failures, installer issues, schema/host findings,
+fixture/coverage corrections, bounded security-review findings and exact-head
+changes caused by those bounded repairs are engineering repair loops, not owner
+decisions. Evidence milestones are not owner approvals by themselves. Manual
+owner input is reserved for actual authority expansion, destructive operation,
+wider write scope, weakened security invariants, materially ambiguous product
+decisions or a repository merge policy that explicitly requires owner merge
+authorization.
+
+`BOOTSTRAP_MICRO_APPROVALS_EXPECTED = FALSE`
+`EP_ENGINEERING_REPAIR_LOOP_AUTONOMOUS = TRUE`
+`SECURITY_REVIEW_IS_QUALIFICATION_NOT_OWNER_GATE = TRUE`
+
+## EP real-project producer proof required by Forge
+
+### Gate 0 — `EP::P_INSTALLER_V1_QUALIFIED`
+
+Before trusting real-project execution evidence, EP must prove a reproducible installed Server product: canonical runtime/CENTRAL, Server lifecycle, canonical HTTP/CLI/File-Inbox submission transports and applicable Console/relay components. P-INSTALLER-V1 does not install Forge, Workspace or generalized Project-Agent productization.
+
+### Gate A — `EP::STANDALONE_EP_VERIFIED`
+
+DJConnect is the mandatory first physical project canary:
+
+```text
+P-INSTALLER-V1-qualified installed EP
+  -> committed DJConnect .engineering-platform/repository.json
+  -> EP validates + attaches repository to CENTRAL
+  -> canonical P-TRANSPORT submission
+  -> admission/run
+  -> real provider/repository mutation
+  -> DJConnect canonical validation
+  -> finalization
+  -> immutable receipt/result/provenance
+  -> canonical observation
+```
+
+### Gate B — `EP::SELF_HOSTED_ENGINEERING_VERIFIED`
+
+Immediately after standalone, the installed EP executes one real bounded Engineering Platform repository change through CENTRAL. This proves EP can maintain its own product source through the same authority it exposes to consumers.
+
+### Gate C — Forge repository direct-EP dogfood
+
+Before or during Forge's execution-integration increment, the Forge repository receives its own committed B8R declaration and one real direct EP-governed development Action. This proves “EP can engineer Forge” independently from “Forge can orchestrate EP”.
+
+Workspace may receive the same real-project dogfood later, but it is not blocking for the first Forge autonomy loop.
+
+## Immediate executable Forge slice
+
+After the EP producer proofs above, Forge should implement/qualify one narrow F3/F4 slice:
+
+1. one new low-risk Mission;
+2. one immutable Action snapshot/materialization;
+3. one execution-admission record with exact repository/write-scope/human-gate bindings;
+4. persist intended submission identity/idempotency/correlation before the EP call;
+5. submit once through canonical EP P-TRANSPORT HTTP;
+6. observe the exact EP run through canonical status/result/evidence projections;
+7. reconcile terminal evidence idempotently in Forge;
+8. stop after the first real canary;
+9. only then add autonomous next-Mission selection/repetition.
+
+Forge never writes the target repository directly and never reconstructs EP execution authority from logs, Console state or local process state.
+
+## Project Intelligence and dynamic roadmap planning
+
+Forge's existing Mission Candidate concept is the beginning of a dynamic planning layer, but it must not become a hidden second roadmap. The canonical architecture is defined in `docs/architecture/PROJECT_INTELLIGENCE_AND_DYNAMIC_PLANNING.md`.
+
+Forge distinguishes:
+
+- **Roadmap / Capability DAG** — approved canonical direction, milestones and dependencies;
+- **Expected Mission** — dynamic, confidence-bearing inference from Forge Knowledge + current Project Context about likely future work; never canonical backlog authority;
+- **Mission Candidate** — advisory concrete possible next Mission;
+- **Mission** — governed canonical work;
+- **Roadmap/DAG Insight** — Forge inference that the approved plan may need structural change;
+- **Roadmap Change Proposal** — explicit before/after changeset requiring applicable governance before canonical mutation.
+
+Expected Missions are recalculated dynamically from project context and may appear or disappear without becoming cancelled roadmap items. Mission Candidate generation should consider canonical roadmap state, architecture, completed/active Missions, EP execution evidence, business priorities, current blockers and high-confidence Expected Missions.
+
+Every projected intelligence claim must preserve the semantic distinction between `FACT`, `INFERENCE`, `FORECAST`, `RECOMMENDATION` and `DECISION`.
+
+### Early architecture seams to establish
+
+These contracts are worth stabilizing before the full Workspace governance UI is built:
+
+- stable roadmap/capability/DAG node and dependency identities;
+- Project Context snapshot/digest provenance;
+- Expected Mission / Mission Candidate / Mission identity and lifecycle separation;
+- immutable Roadmap Change Proposal identity and before/after diff semantics;
+- evidence references usable by Workspace;
+- decision type / required role metadata seam;
+- semantic claim classification (`FACT / INFERENCE / FORECAST / RECOMMENDATION / DECISION`).
+
+### Not on the first execution critical path
+
+The first Forge -> EP -> Forge canary does **not** require interactive DAG editing, probabilistic completion forecasting, automatic roadmap reordering, multi-role Workspace approval UI or automatic low-risk roadmap mutation. Those become follow-on product capabilities after the basic execution/reconciliation loop unless real evidence creates a dependency.
+
+### Project Completion Model — follow-on
+
+Forge should ultimately provide Business Workspace with a semantic project-completion and forecast projection based on weighted outcomes/capabilities, critical-path work, active Missions, high-confidence Expected Missions, historical delivery evidence and uncertainty. Forecasts should expose ranges/confidence rather than false precision. This is a core product direction, not a V1 execution gate.
+
 ## Forge + Workspace V1 implementation programme
 
-The V1 programme is dependency/capability driven. Cross-product milestones do not allocate another repository's implementation work. The derived `FORGE_WORKSPACE_V1_CROSS_PRODUCT_DEPENDENCIES.md` is an index, not authority.
+The V1 programme is dependency/capability driven. Cross-product milestones do not allocate another repository's implementation work. Derived DAG/dependency documents are indexes/projections, not product authority. Future productization must not be promoted onto the bootstrap critical path without evidence.
 
-### Productization reconciliation baseline
+## L0 — Engineering Contract Foundation
 
-The [Productization Reconciliation](../../docs/architecture/FORGE_PRODUCTIZATION_RECONCILIATION.md)
-is the target architecture for Product Vision, Portfolio/Roadmap/Forecast,
-Runtime Service, Workspace, application services and MCP adapters. It does not
-renumber L0–L10 or allocate cross-product work. Application-service/API,
-Runtime Service, Workspace-facing projections, Business/Architecture session
-support, Portfolio Intelligence, and MCP exposure are dependencies to be
-introduced through approved Missions alongside the existing L0–L10 learning
-increments. Installed-product qualification remains gated by L0/L1/L1-R/L10
-and owner-qualified Workspace/EP contracts.
+Long-term L0 remains an EP-produced rich contract for packaged baselines, capability classification, Effective DoR/DoD, readiness, proof requirements, Human Gates, workflow projection, completion enforcement and immutable Action snapshots. The first bootstrap canary consumes the minimum already-proven contracts and exposes genuinely missing producer capabilities as bounded gaps.
 
-The versioned topology, attachment, API, operational-store, control-plane and
-qualification decisions are defined by
-[Forge V1 Productization Decision Contract](../../docs/architecture/FORGE_V1_PRODUCTIZATION_DECISION_CONTRACT.md).
+## L1 / L1-R — Bootstrap evidence and Managed repository governance
 
-The derived, non-authoritative executable capability sequence and parallel
-lanes are in [Forge V1 Implementation DAG](../../docs/architecture/FORGE_V1_IMPLEMENTATION_DAG.md).
+These harden project-owned contracts, baseline provenance and generic repository desired-state/read-back evidence. Full productization is not a prerequisite for the first bounded canary when the target repository already satisfies its explicitly pinned execution contract.
 
-### L0 — Engineering Contract Foundation
+## L2–L3 — Quality Learning
 
-**Node type:** CAPABILITY_MILESTONE. **Implementation owner:** Engineering Platform through `EP::ENGINEERING_CONTRACT_FOUNDATION_V1`; Forge is consumer.
+Observe eligible Action outcomes and propose governed hardening after a reliable Action/EP outcome contract exists. Zero automatic governance mutation.
 
-The foundation must provide packaged baseline contracts, capability classification, Effective DoR, pre-dispatch readiness, Effective DoD, proof requirements, Human Gates, workflow projection, completion enforcement, `ActionQualityOutcome` and immutable Action snapshots.
+## L4 — Workspace Quality Governance
 
-It must also support consequence-driven transition profiles so migration/replacement/authority-transfer work can compose explicit readiness/retirement proof rather than relying on prompt prose.
+Workspace-owned dependency marker. Workspace presents governed projections and permitted human intent; it does not become runtime authority and does not block the first Forge -> EP -> Forge machine loop.
 
-Required baseline transition profiles/capabilities include the semantic equivalents of:
+## L4-AI / L5–L10
 
-- `MIGRATION`
-- `REPLACEMENT`
-- `AUTHORITY_TRANSFER`
-- `CUTOVER`
-- `MIGRATION_RETIREMENT_COMPLETENESS`
-- `AUTHORITY_TRANSFER_COMPLETENESS`
+AI exposure, Knowledge Learning, continuous dual learning and effectiveness/distribution qualification remain later maturity lanes. They consume canonical application/execution evidence and do not block the first autonomous execution proof.
 
-The exact representation is an EP implementation contract, but the resulting criteria must be first-class Action evidence.
+## Authority and state rules
 
-**Exit:** installed EP can enforce Ready/Done, including applicable transition consequence/retirement criteria, without source-repository access.
-
-### L1 — Learning Evidence + New-Project Bootstrap Contract
-
-**Owner:** Forge + EP contract boundary.
-
-Define versioned Action learning evidence and self-contained project bootstrap: installed baseline provenance, project-owned contract creation, Action contract versioning, privacy/redaction/retention and clean-install behavior. Include transition-quality evidence such as retirement findings, compatibility exceptions, successor-assumption proof and authority-transfer violations where applicable.
-
-### L1-R — Managed Repository Governance Baseline
-
-**Owner:** Forge with repository-host adapters and EP/CI proof integration.
-
-Define a generic versioned Managed repository desired state rather than copying pcvantol settings. Cover protected/default branch, PR/review/conversation policy, validation-derived checks, security/CodeQL, trusted delivery, ownership, merge/cleanup, workflow permissions, dependency policy, rulesets and host limitations. Provision idempotently and read back actual state. Existing repositories use drift/adoption governance rather than silent overwrite.
-
-**Exit:** a new Managed repository proves `REPOSITORY_GOVERNANCE = PASS` before general Ready.
-
-### L2 — Quality Observer v1
-
-**Owner:** Forge.
-
-Run lightweight post-Action analysis. In addition to general DoR/DoD/late-failure signals, transition Actions must emit signals for unresolved legacy/retirement findings, old authority still reachable or writable, secondary operational authority/store, compatibility exceptions without retirement condition, obsolete packaged/runtime artifacts, successor assumptions discovered late, tests that preserve retired behavior and human-review discovery of incomplete transition consequences.
-
-Zero automatic governance mutation.
-
-### L3 — Quality Learning Review + Hardening Proposals
-
-**Owner:** Forge.
-
-Implement multi-Action reviews using `defect -> root cause -> pattern -> systemic hardening` and requirement-to-enforcement audits. For architecture transitions, explicitly evaluate whether prior work stopped at replacement validation instead of consequence closure.
-
-Forge may propose strengthening transition DoR/DoD profiles, retirement completeness matrices, authority guards, dead-code/package audits, installed-product qualification and successor-assumption gates. Accepted hardening remains governed project policy.
-
-### L4 — Workspace Quality Governance
-
-**Owner:** Workspace dependency marker.
-
-Workspace presents DoR/DoD/Human Gates and Quality Learning proposals. For transition Actions, the UX should expose consequence/retirement criteria, intentional compatibility exceptions and required human decisions without turning Workspace into execution authority.
-
-### L4-AI — AI Capability Exposure v1
-
-**Owner:** Forge. **Predecessors:** stable Forge application-service contracts plus L2/L3 quality-learning semantics; Workspace L4 is not required as runtime authority.
-
-Expose Forge's canonical project intelligence to external AI hosts and engineering agents through an interface-neutral AI capability boundary. MCP is the initial target adapter, but MCP does not become Forge's internal architecture, persistence model, governance authority or learning-loop transport.
-
-Required architecture:
-
-```text
-                         Forge application services
-                                   |
-                 +-----------------+-----------------+
-                 |                 |                 |
-              Workspace           CLI/HTTP          MCP
-                 |                 |                 |
-                 +-----------------+-----------------+
-                                   |
-                    canonical project intelligence
-```
-
-Forge capabilities must therefore be designed independently of Workspace-specific UI and independently of MCP protocol details. Workspace, CLI, HTTP and MCP are adapters over the same canonical application services.
-
-The first AI exposure profile is deliberately bounded to **read + explain + propose** capabilities. Candidate surfaces include project context, architecture, roadmap/backlog, Engineering Action history, Effective DoR/DoD/Human Gates, Quality Outcomes, Quality Learning records/proposals and other evidence-backed project context. Proposal tools may propose Actions or hardening, but cannot bypass ordinary Forge/Workspace governance.
-
-MCP/resource-style exposure should support selective retrieval of canonical context rather than requiring giant generated prompts. External AI clients must be able to consume structured project/quality evidence without directly understanding Forge repository/storage internals.
-
-Required authority invariants:
-
-- `MCP_IS_ADAPTER_NOT_AUTHORITY = TRUE`
-- `AI_CLIENT_DIRECT_PROJECT_POLICY_MUTATION = FALSE`
-- `AI_CLIENT_DIRECT_EXECUTION_AUTHORITY = FALSE`
-- `AI_CLIENT_BYPASSES_DOR_DOD = FALSE`
-- `AI_CLIENT_BYPASSES_HUMAN_GATES = FALSE`
-- `FORGE_CAPABILITIES_INTERFACE_NEUTRAL = TRUE`
-
-Identity, authorization, project permissions and governance remain Forge/product responsibilities; protocol annotations or client declarations never replace authorization.
-
-**Exit:** an authorized external AI host can discover/read/explain Forge project and Quality Learning context and create bounded proposals through the same canonical service contracts used by other adapters, with no alternate authority path.
-
-### L5-L8 — Knowledge Learning
-
-L5 defines the governed evidence export boundary to the independent Knowledge Base; L6 adds Forge Knowledge Observer proposals; L7 is the Workspace knowledge-governance dependency; L8 consumes Certified Knowledge read-only in Forge planning. Project policy remains distinct from Certified Knowledge and KB availability never becomes an EP execution dependency.
-
-### L8-AI — Knowledge AI Exposure
-
-**Owner:** Forge + KB read-only consumer boundary. **Predecessor:** L8 Certified Knowledge consumption plus L4-AI's stable AI adapter/application-service boundary.
-
-Extend the AI-facing capability surface with governed Knowledge Learning access. External AI hosts may search/read Certified Knowledge with lineage and may propose Engineering Observations/knowledge candidates through the existing governed Knowledge Learning boundary. They may not certify, promote or mutate Certified Knowledge directly.
-
-This stage should allow an AI to distinguish explicitly between:
-
-- project-specific Quality Learning ("what this project learned about how to engineer itself"), and
-- reusable Certified Knowledge ("what has passed independent reusable-knowledge governance").
-
-Required:
-
-- `PROJECT_POLICY_IS_NOT_CERTIFIED_KNOWLEDGE = TRUE`
-- `CERTIFIED_KNOWLEDGE_IS_NOT_AUTOMATIC_PROJECT_POLICY = TRUE`
-- `AI_CLIENT_CAN_CERTIFY_KNOWLEDGE = FALSE`
-
-### L9 — Continuous Dual Learning
-
-Run Quality and Knowledge observers after eligible Actions with bounded cost/health, milestone/release reviews, repeated-defect escalation and drift/gap triggers. Automation proposes/prepares; it never self-approves project governance or KB certification.
-
-AI exposure must consume these canonical outputs rather than creating a third learning loop.
-
-### L10 — Learning Effectiveness + Distribution Qualification
-
-Measure first-pass qualification, DoR misses, DoD escapes, human-review escapes, repeated defects and time-to-Done. Use negative/mutation proof where practical.
-
-Transition effectiveness additionally measures whether accepted hardening prevents recurrence of incomplete authority transfer, dead legacy runtime paths, unexplained compatibility code, obsolete packaged assets/services and successor-phase assumption escapes.
-
-Permanent clean-install qualification proves local baseline contracts, project bootstrap, Managed repository governance, DoR/DoD/Human Gates and absence of source-repository runtime authority.
-
-AI capability distribution qualification must additionally prove that an installed Forge exposes only authorized capabilities, that read/explain/propose operations resolve through canonical services, and that an AI adapter cannot bypass governance or execution boundaries.
-
-## AI capability exposure architecture rule
-
-Forge may act as an AI capability **server/provider** through adapters such as MCP, and may later consume external specialist capabilities as an MCP/client where separately justified. Forge must never call itself through MCP for its internal Quality/Knowledge observers or ordinary application-service composition.
-
-```text
-GOOD:
-external AI -> MCP adapter -> Forge application service -> canonical authority
-
-BAD:
-Forge Quality Observer -> MCP -> Forge
-```
-
-MCP/provider evolution must therefore remain replaceable. Protocol changes may alter the adapter without redefining Project, Action, DoR/DoD, learning, evidence or governance semantics.
-
-Governed mutation through AI-facing protocols is explicitly deferred beyond the first exposure stage. If introduced later, it requires its own authorization/threat model and may only invoke the same governed mutation intents available to other authorized adapters.
-
-## Consequence-driven transition quality requirement
-
-Architecture transitions are a first-class quality concern for Forge V1.
-
-For every Action classified as migration/replacement/authority-transfer/cutover, planning and completion must reason beyond the immediate replacement:
-
-```text
-replacement works
-    -> consumers/writers migrate
-    -> old authority becomes impossible
-    -> obsolete config/UI/services/state retire
-    -> dead implementation/package artifacts retire
-    -> historical evidence and justified compatibility remain classified
-    -> anti-regression proof exists
-    -> installed product proves the resulting topology
-    -> successor assumptions are safe
-```
-
-The canonical semantics are defined in `docs/architecture/engineering-quality-learning-loop.md`.
-
-This requirement exists specifically so future users do not have to remember ad hoc that a migration needs a dead-code audit, authority audit, package audit or successor-phase check. Applicability is derived from Action classification and becomes part of Effective DoR/DoD.
+- Forge owns why/what: roadmap reasoning, Mission, Action intent, planning dependencies and governance proposals.
+- EP owns how: submission/admission, execution lifecycle, queue/lease where applicable, provider execution, finalization, receipts and canonical execution evidence.
+- Workspace owns human/project UX, role-aware decision routing and evidence projections, never execution lifecycle or Forge reasoning authority.
+- Canonical Project Authority Repository declares project/repository identity; EP validates it.
+- Forge records intended Action/submission identity before EP submission; EP persists canonical submission/run evidence; Forge reconciles by correlation/run identity.
+- A retry never invents a second submission when the first POST outcome is ambiguous.
+- Provider output is never directly executable authority.
+- Reports, logs, browser selection and current checkout are not lifecycle authority.
+- Forge inference, forecast or recommendation never silently becomes canonical roadmap state.
 
 ## Dependency guidance
 
 ```text
-EP migration/cutover prerequisites
-  -> EP::ENGINEERING_CONTRACT_FOUNDATION_V1 (L0 producer)
-  -> L1 project/evidence bootstrap
-  -> L1-R Managed repository governance
-  -> L2/L3 Quality Learning
-  -> Workspace L4 governance
-  -> L4-AI AI Capability Exposure v1
+CURRENT EP PRODUCER BOOTSTRAP:
+P-NEUTRAL
+  -> P-INSTALLER-V1
+  -> DJConnect real Action
+  -> STANDALONE_EP_VERIFIED
+  -> EP self-development real Action
+  -> SELF_HOSTED_ENGINEERING_VERIFIED
+  -> Forge repository direct-EP dogfood
 
-Knowledge integration readiness
-  -> L5 -> L6 -> L7 -> L8
-                     |      |
-                     +-------> L8-AI Knowledge AI Exposure
+FORGE RESUMES:
+materialization/admission
+  -> existing P-TRANSPORT HTTP
+  -> result observation/reconciliation
+  -> first Forge -> EP -> Forge canary
+  -> autonomous next-Mission loop
 
-Quality + Knowledge observers stable
-  -> L9 -> L10
+PROJECT INTELLIGENCE PREPARATION (non-blocking):
+Project Context contracts
+  -> Expected Missions
+  -> Mission Candidate reasoning
+  -> Roadmap Change Proposal contracts
+  -> Workspace role-aware governance projections
+
+FOLLOW-ON EP PRODUCTIZATION:
+broader Agent separation / generalized dispatch / multi-host / multi-repository
+
+FOLLOW-ON CROSS-PRODUCT:
+Workspace Roadmap/DAG Governance; completion forecasting; L1/L1-R hardening; Quality/AI/Knowledge maturity
 ```
-
-L4-AI may be developed once canonical Forge application-service and Quality Learning contracts are stable; it must not force L5-L8 Knowledge Learning to complete first. L8-AI deliberately waits for Certified Knowledge consumption.
-
-Safe parallelism is determined by the canonical cross-product dependency graph and stable producer contracts, not roadmap prose alone.
 
 ## Non-goals and authority constraints
 
 - Forge does not become a second execution engine.
-- EP does not autonomously rewrite project policy.
-- Workspace does not become execution authority.
-- Forge/EP/Workspace do not certify reusable engineering knowledge.
-- KB does not mutate source repositories or become an execution dependency.
+- EP does not become a planner or autonomously rewrite Forge policy.
+- Workspace does not become Forge planning or EP execution authority.
+- Forge must not duplicate the existing P-TRANSPORT submission transport.
+- P-INSTALLER-V1 must not absorb Forge, Workspace or generalized Agent productization.
+- Broader Agent/queue architecture must not be inserted onto the bootstrap critical path without evidence that the minimum installed canary needs it.
+- Real-project dogfood does not authorize parallel multi-project mutation; serial execution is sufficient for these proofs.
+- Expected Missions and Mission Candidates are not approved backlog or execution authority.
+- Roadmap Change Proposals require applicable governance before canonical mutation.
 - Product upgrades do not silently rewrite project/repository policy.
-- Transition hardening does not authorize blind deletion: historical evidence, migration tooling and intentional compatibility require explicit classification.
-- MCP is not internal Forge authority or persistence.
-- External AI clients do not receive implicit governed-mutation or execution authority.
+- Historical evidence and intentional compatibility require explicit classification before retirement.
