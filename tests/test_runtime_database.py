@@ -159,19 +159,23 @@ class RuntimeDatabaseTests(unittest.TestCase):
 
     def test_token_preflight_failure_is_immutable_secret_free_and_migrated(self) -> None:
         self.database.save_mission_state(self._mission())
-        failure = {"failure_id": "failure-1", "mission_id": "mission-1", "provider_id": "provider",
-                   "occurred_at": "now", "main_head": "a" * 40, "policy_digest": "sha256:policy",
-                   "request_digest": "sha256:request", "evidence_digest": "sha256:evidence",
-                   "effective_contract_digest": "sha256:contract", "layer": "PROVIDER_AVAILABILITY",
+        failure = {"failure_id": "token-preflight-failure-00000000-0000-0000-0000-000000000001", "mission_id": "mission-1", "provider_id": "provider",
+                   "occurred_at": "2026-09-06T00:00:00Z", "main_head": "a" * 40, "policy_digest": "sha256:" + "b" * 64,
+                   "request_digest": "sha256:" + "c" * 64, "evidence_digest": "sha256:" + "d" * 64,
+                   "effective_contract_digest": "sha256:" + "e" * 64, "layer": "PROVIDER_AVAILABILITY",
                    "status": 400, "provider_type": "invalid_request_error", "provider_code": "invalid_schema"}
         self.database.record_token_preflight_failure(failure)
         with self.assertRaises(sqlite3.IntegrityError):
-            self.database._connection.execute("UPDATE token_preflight_failures SET provider_id='other' WHERE failure_id='failure-1'")
+            self.database._connection.execute("UPDATE token_preflight_failures SET provider_id='other' WHERE failure_id=?", (failure["failure_id"],))
         with self.assertRaises(RuntimeError):
             self.database.record_token_preflight_failure({**failure, "failure_id": "failure-2", "secret": "forbidden"})
+        with self.assertRaisesRegex(RuntimeError, "unsupported diagnostic fields"):
+            self.database.record_token_preflight_failure({**failure, "failure_id": "token-preflight-failure-00000000-0000-0000-0000-000000000002", "payload": "untrusted"})
+        with self.assertRaisesRegex(RuntimeError, "not allow-listed"):
+            self.database.record_token_preflight_failure({**failure, "failure_id": "token-preflight-failure-00000000-0000-0000-0000-000000000003", "provider_code": "sk-proj-secret"})
         self.database.close()
         self.database = RuntimeDatabase(self.root, forge_version="test")
-        self.assertTrue(self.database._connection.execute("SELECT 1 FROM token_preflight_failures WHERE failure_id='failure-1'").fetchone())
+        self.assertTrue(self.database._connection.execute("SELECT 1 FROM token_preflight_failures WHERE failure_id=?", (failure["failure_id"],)).fetchone())
 
     def test_schema27_migrates_bounded_token_preflight_failures_before_restart(self) -> None:
         self.database.close()

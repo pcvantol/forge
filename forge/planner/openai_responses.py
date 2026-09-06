@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 import json
 from pathlib import Path
+import re
 import subprocess
 from typing import Callable, Protocol
 from urllib.error import HTTPError, URLError
@@ -39,6 +40,17 @@ _GENERATION_REQUEST_FIELDS = frozenset((
     "model", "store", "truncation", "input", "max_output_tokens", "text",
 ))
 _INPUT_TOKEN_REQUEST_FIELDS = frozenset(("model", "truncation", "input", "text"))
+_PERSISTABLE_PREFLIGHT_ERROR_TYPES = frozenset((
+    "invalid_request_error", "authentication_error", "permission_error", "rate_limit_error", "server_error",
+))
+_PERSISTABLE_PREFLIGHT_ERROR_CODES = frozenset((
+    "unsupported_parameter", "invalid_parameter", "invalid_value", "invalid_schema", "model_not_found",
+    "rate_limit_exceeded", "insufficient_quota", "server_error",
+))
+_PERSISTABLE_REQUEST_ID = re.compile(r"req_[A-Za-z0-9]{1,128}\Z")
+_PERSISTABLE_TRANSPORT_KINDS = frozenset((
+    "ConnectionRefusedError", "ConnectionResetError", "ConnectionAbortedError", "TimeoutError", "OSError", "gaierror",
+))
 
 class ProviderSubmissionAmbiguous(RuntimeError):
     """The request may have reached OpenAI; operator reconciliation is required."""
@@ -294,9 +306,12 @@ class OpenAIResponsesPlanningProvider:
         self.configuration.policy_service.db.record_token_preflight_failure({
             "failure_id": f"token-preflight-failure-{uuid.uuid4()}", "mission_id": mission_id,
             "provider_id": provider_id, **boundary.values(policy_digest=policy_digest, request_digest=request_digest),
-            "layer": error.layer, "status": error.status, "provider_type": error.provider_type,
-            "provider_code": error.provider_code, "request_id": error.request_id,
-            "transport_kind": error.transport_kind, "transport_errno": error.transport_errno,
+            "layer": error.layer, "status": error.status,
+            "provider_type": error.provider_type if error.provider_type in _PERSISTABLE_PREFLIGHT_ERROR_TYPES else None,
+            "provider_code": error.provider_code if error.provider_code in _PERSISTABLE_PREFLIGHT_ERROR_CODES else None,
+            "request_id": error.request_id if isinstance(error.request_id, str) and _PERSISTABLE_REQUEST_ID.fullmatch(error.request_id) else None,
+            "transport_kind": error.transport_kind if error.transport_kind in _PERSISTABLE_TRANSPORT_KINDS else None,
+            "transport_errno": error.transport_errno,
             "occurred_at": _now(),
         })
 

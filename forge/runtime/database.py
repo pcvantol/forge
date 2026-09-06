@@ -39,6 +39,27 @@ _TABLES = frozenset((
     "action_derivation_evidence_sets",
     "mission_amendments",
 ))
+_TOKEN_PREFLIGHT_FAILURE_FIELDS = frozenset((
+    "failure_id", "mission_id", "provider_id", "occurred_at", "main_head", "policy_digest",
+    "request_digest", "evidence_digest", "effective_contract_digest", "layer", "status",
+    "provider_type", "provider_code", "request_id", "transport_kind", "transport_errno",
+))
+_TOKEN_PREFLIGHT_FAILURE_LAYERS = frozenset(("PROVIDER_AVAILABILITY", "TRANSPORT", "RESPONSE_PARSING", "OTHER"))
+_TOKEN_PREFLIGHT_FAILURE_TYPES = frozenset((
+    "invalid_request_error", "authentication_error", "permission_error", "rate_limit_error", "server_error",
+))
+_TOKEN_PREFLIGHT_FAILURE_CODES = frozenset((
+    "unsupported_parameter", "invalid_parameter", "invalid_value", "invalid_schema", "model_not_found",
+    "rate_limit_exceeded", "insufficient_quota", "server_error",
+))
+_TOKEN_PREFLIGHT_FAILURE_TRANSPORT_KINDS = frozenset((
+    "ConnectionRefusedError", "ConnectionResetError", "ConnectionAbortedError", "TimeoutError", "OSError", "gaierror",
+))
+_TOKEN_PREFLIGHT_FAILURE_ID = re.compile(r"token-preflight-failure-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z")
+_TOKEN_PREFLIGHT_FAILURE_PROVIDER_ID = re.compile(r"[a-z][a-z0-9-]{0,127}\Z")
+_TOKEN_PREFLIGHT_FAILURE_REQUEST_ID = re.compile(r"req_[A-Za-z0-9]{1,128}\Z")
+_TOKEN_PREFLIGHT_FAILURE_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
+_SHA256_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 def _timestamp() -> str:
@@ -1448,12 +1469,37 @@ class RuntimeDatabase:
     def record_token_preflight_failure(self, failure: Any) -> dict[str, Any]:
         """Persist bounded, immutable diagnostics for one failed token preflight."""
         document = _document(failure, "token preflight failure")
+        if set(document) - _TOKEN_PREFLIGHT_FAILURE_FIELDS:
+            raise RuntimeDatabaseError("token preflight failure contains unsupported diagnostic fields")
         if _contains_secret_field(document):
             raise RuntimeDatabaseError("token preflight failure must not contain secret material")
         required = ("failure_id", "mission_id", "provider_id", "occurred_at", "main_head", "policy_digest",
                     "request_digest", "evidence_digest", "effective_contract_digest", "layer")
         if any(not isinstance(document.get(item), str) or not document[item] for item in required):
             raise RuntimeDatabaseError("token preflight failure requires complete bounded provenance")
+        if (not _TOKEN_PREFLIGHT_FAILURE_ID.fullmatch(document["failure_id"])
+                or not _TOKEN_PREFLIGHT_FAILURE_PROVIDER_ID.fullmatch(document["provider_id"])
+                or not _TOKEN_PREFLIGHT_FAILURE_TIMESTAMP.fullmatch(document["occurred_at"])
+                or not re.fullmatch(r"[0-9a-f]{40}", document["main_head"])
+                or any(not _SHA256_DIGEST.fullmatch(document[item]) for item in (
+                    "policy_digest", "request_digest", "evidence_digest", "effective_contract_digest"))
+                or document["layer"] not in _TOKEN_PREFLIGHT_FAILURE_LAYERS):
+            raise RuntimeDatabaseError("token preflight failure provenance is malformed")
+        status = document.get("status")
+        if status is not None and (not isinstance(status, int) or isinstance(status, bool) or not 100 <= status <= 599):
+            raise RuntimeDatabaseError("token preflight failure status is malformed")
+        if document.get("provider_type") is not None and document["provider_type"] not in _TOKEN_PREFLIGHT_FAILURE_TYPES:
+            raise RuntimeDatabaseError("token preflight failure provider type is not allow-listed")
+        if document.get("provider_code") is not None and document["provider_code"] not in _TOKEN_PREFLIGHT_FAILURE_CODES:
+            raise RuntimeDatabaseError("token preflight failure provider code is not allow-listed")
+        if document.get("request_id") is not None and (not isinstance(document["request_id"], str)
+                                                        or not _TOKEN_PREFLIGHT_FAILURE_REQUEST_ID.fullmatch(document["request_id"])):
+            raise RuntimeDatabaseError("token preflight failure request ID is malformed")
+        if document.get("transport_kind") is not None and document["transport_kind"] not in _TOKEN_PREFLIGHT_FAILURE_TRANSPORT_KINDS:
+            raise RuntimeDatabaseError("token preflight failure transport kind is not allow-listed")
+        errno = document.get("transport_errno")
+        if errno is not None and (not isinstance(errno, int) or isinstance(errno, bool) or errno < 0):
+            raise RuntimeDatabaseError("token preflight failure transport errno is malformed")
         if not self._connection.execute("SELECT 1 FROM mission_state WHERE mission_id=?", (document["mission_id"],)).fetchone():
             raise RuntimeDatabaseError("token preflight failure references an unknown Mission")
         self._token_preflight_write_state["permitted"] = True
