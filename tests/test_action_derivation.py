@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from forge.models import (
     ArchitectureMission, ArchitectureMissionStatus, DerivationLifecycle, DerivationPolicy, DerivationRecord, DerivedActionProposal, DerivedActionIdentityState,
@@ -11,7 +13,9 @@ from forge.models import (
     RequiredDiscipline, ApprovedScope, classify_replan_identity,
 )
 from forge.planner import (AIMissionPlanner, ActionDerivationValidator, BoundedActionDerivationProvider,
-                           ProposalValidationError, ProviderDerivationRequest, ProviderDerivationResponse)
+                           ProposalValidationError, ProviderDerivationRequest, ProviderDerivationResponse,
+                           deterministic_validation_failure_code, record_deterministic_validation_failure)
+from forge.runtime.database import RuntimeDatabase
 
 
 def _digest(char: str) -> str:
@@ -152,6 +156,31 @@ class ActionDerivationTests(unittest.TestCase):
         self.assertEqual(classify_replan_identity(current, modified, completed=True), DerivedActionIdentityState.SUPERSEDED)
         deferred = DerivedActionProposal(**{**current.__dict__, "postponed": True})
         self.assertEqual(classify_replan_identity(current, deferred), DerivedActionIdentityState.DEFERRED)
+
+    def test_validation_failure_is_persisted_as_closed_canonical_evidence(self) -> None:
+        request = ProviderDerivationRequest("derivation-validation-failure", self.snapshot,
+                                            "fixture-provider", "fixture-1")
+        failure = ProposalValidationError("derived proposal write scope exceeds approved authority")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = RuntimeDatabase(root, path=root / "runtime.db")
+            self.addCleanup(database.close)
+            database.create_mission_state({
+                "mission_id": "mission-1", "status": "APPROVED_PLANNABLE",
+                "lifecycle": "APPROVED_PLANNABLE", "progress": {}, "resume": {},
+                "execution_policy": {"write_scope": "NONE"}, "revision": 1,
+                "admission_contract": {"mission": {"id": "mission-1"}},
+            })
+            saved = record_deterministic_validation_failure(
+                database, request, policy_digest=_digest("b"), evidence_digest=_digest("c"),
+                effective_contract_digest=_digest("d"), error=failure,
+            )
+            self.assertEqual(saved["lifecycle"], DerivationLifecycle.FAILED.value)
+            self.assertEqual(saved["validation_failure_code"], "WRITE_SCOPE_EXCEEDED")
+            self.assertNotIn(str(failure), str(saved))
+            self.assertEqual(database.get_document("action_derivations", request.derivation_id), saved)
+        self.assertEqual(deterministic_validation_failure_code(ProposalValidationError("untrusted sk-proj-value")),
+                         "DETERMINISTIC_VALIDATION_REJECTED")
 
 
 if __name__ == "__main__":
