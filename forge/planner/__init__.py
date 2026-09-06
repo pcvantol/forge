@@ -7,8 +7,6 @@ from .action_derivation import (
     ActionDerivationValidator,
     DerivationResult,
     ProposalValidationError,
-    deterministic_validation_failure_code,
-    record_deterministic_validation_failure,
     planner_input_from_derivation,
 )
 from .provider_adapter import (
@@ -23,8 +21,7 @@ from .openai_responses import (OpenAIPlanningProviderConfiguration,
     TokenPreflightBoundary, CanonicalTokenPreflightAuthority)
 
 __all__ = ["MissionPlanner", "AIMissionPlanner", "ActionDerivationProvider", "ActionDerivationValidator",
-           "DerivationResult", "ProposalValidationError", "deterministic_validation_failure_code",
-           "record_deterministic_validation_failure", "planner_input_from_derivation",
+           "DerivationResult", "ProposalValidationError", "planner_input_from_derivation",
            "BoundedActionDerivationProvider", "ProviderDerivationRequest", "ProviderDerivationResponse", "ProviderExecutor",
            "OpenAIPlanningProviderConfiguration", "OpenAIResponsesPlanningProvider", "ProviderSubmissionAmbiguous",
            "ProviderTokenPreflightBindingChanged", "ProviderTokenPreflightFailed", "TokenPreflightBoundary",

@@ -49,23 +49,28 @@ def _is_sha256_digest(value: object) -> bool:
             and all(character in "0123456789abcdef" for character in value[7:]))
 
 
-def record_deterministic_validation_failure(database, request, *, policy_digest: str,
-                                            evidence_digest: str, effective_contract_digest: str,
-                                            error: ProposalValidationError) -> dict[str, object]:
-    """Persist bounded FAILED lifecycle evidence through the canonical store."""
+def _record_deterministic_validation_failure(database, request, *, policy_digest: str,
+                                             evidence_digest: str, effective_contract_digest: str,
+                                             provider_result_digest: str,
+                                             error: ProposalValidationError) -> dict[str, object]:
+    """Persist bounded FAILED lifecycle evidence through the canonical store only."""
     if not all(_is_sha256_digest(value) for value in
-               (policy_digest, evidence_digest, effective_contract_digest, request.snapshot.digest)):
+               (policy_digest, evidence_digest, effective_contract_digest,
+                provider_result_digest, request.snapshot.digest)):
         raise ValueError("complete canonical validation-failure bindings are required")
     code = deterministic_validation_failure_code(error)
     validation_digest = "sha256:" + sha256(json.dumps({
         "code": code, "snapshot_digest": request.snapshot.digest, "policy_digest": policy_digest,
         "evidence_digest": evidence_digest, "effective_contract_digest": effective_contract_digest,
+        "provider_result_digest": provider_result_digest,
     }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     document = DerivationRecord(request.derivation_id, request.snapshot.mission_id, request.snapshot.digest,
                                 "1.0", policy_digest, DerivationLifecycle.FAILED,
+                                proposal_digest=provider_result_digest,
                                 validation_digest=validation_digest).to_dict()
     document.update({"validation_failure_code": code, "evidence_digest": evidence_digest,
                      "effective_contract_digest": effective_contract_digest,
+                     "provider_result_digest": provider_result_digest,
                      "provider_output_untrusted": True, "runtime_action_executed": False})
     return database.save_action_derivation(document)
 

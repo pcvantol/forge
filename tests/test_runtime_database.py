@@ -107,9 +107,18 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.database.close()
         self.database = RuntimeDatabase(self.root, forge_version="test")
         self.assertEqual(self.database.get_document("action_derivations", "derivation-1"), record)
-        self.database.save_action_derivation({**record, "lifecycle": "MATERIALIZED"})
+        with self.assertRaisesRegex(RuntimeIntegrityError, "immutable"):
+            self.database.save_action_derivation({**record, "lifecycle": "MATERIALIZED"})
         with self.assertRaisesRegex(RuntimeError, "identical action derivation"):
             self.database.save_action_derivation({**record, "derivation_id": "other"})
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute(
+                "UPDATE action_derivations SET lifecycle='FAILED' WHERE derivation_id='derivation-1'"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute(
+                "INSERT INTO action_derivations VALUES ('forged', 'mission-1', 'sha256:forged', '1.0', 'forged', 'FAILED', '{}')"
+            )
 
     def test_token_preflight_receipt_is_immutable_durable_and_single_use(self) -> None:
         self.database.save_mission_state(self._mission())
@@ -176,6 +185,19 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.database.close()
         self.database = RuntimeDatabase(self.root, forge_version="test")
         self.assertTrue(self.database._connection.execute("SELECT 1 FROM token_preflight_failures WHERE failure_id=?", (failure["failure_id"],)).fetchone())
+
+    def test_schema28_migrates_action_derivations_to_canonical_immutable_records(self) -> None:
+        self.database.close()
+        connection = sqlite3.connect(self.database.path)
+        for trigger in ("action_derivations_authorized_insert", "action_derivations_immutable_update", "action_derivations_immutable_delete"):
+            connection.execute(f"DROP TRIGGER {trigger}")
+        connection.execute("UPDATE runtime_metadata SET value='28' WHERE key IN ('schema_version','migration_version','last_migration')")
+        connection.execute("PRAGMA user_version=28")
+        connection.commit(); connection.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
+        triggers = {row["name"] for row in self.database._connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+        self.assertTrue({"action_derivations_authorized_insert", "action_derivations_immutable_update", "action_derivations_immutable_delete"} <= triggers)
 
     def test_schema27_migrates_bounded_token_preflight_failures_before_restart(self) -> None:
         self.database.close()

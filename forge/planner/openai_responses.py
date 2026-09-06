@@ -18,7 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import uuid
 
-from forge.models.action_derivation import (DerivedActionProposal, GovernanceRefinementRequired,
+from forge.models.action_derivation import (DerivationPolicy, DerivedActionProposal, GovernanceRefinementRequired,
     PlanningSnapshot, ProposalProvenance, ProviderInvocationEvidence, ProviderSideEffectState)
 from forge.provider_security import (PlanningProviderInvocationPolicy,
     PlanningProviderSecurityService, SecretReference, SecretState)
@@ -373,6 +373,61 @@ class OpenAIResponsesPlanningProvider:
 
     def reconcile(self, request: ProviderDerivationRequest) -> ProviderSideEffectState:
         return ProviderSideEffectState.MAY_HAVE_HAPPENED
+
+    def invoke_and_validate(self, request: ProviderDerivationRequest, *, receipt_id: str,
+                            governance_repository):
+        """Perform the one permitted generation and its canonical non-executing validation boundary."""
+        response = self.invoke(request, receipt_id=receipt_id)
+        return self._validate_and_record(request, response, receipt_id=receipt_id,
+                                         governance_repository=governance_repository)
+
+    def _validate_and_record(self, request: ProviderDerivationRequest, response: ProviderDerivationResponse,
+                             *, receipt_id: str, governance_repository):
+        """Validate one confirmed response against canonical state and record only a bounded rejection.
+
+        This post-generation boundary deliberately has no materialization or
+        execution capability.  It accepts neither caller-provided digests nor
+        a caller-selected database: every binding is re-derived from the
+        canonical RuntimeDatabase and the consumed generation receipt.
+        """
+        from forge.action_derivation_evidence import CanonicalActionDerivationEvidenceProducer
+        from forge.planner.action_derivation import (ActionDerivationValidator, ProposalValidationError,
+                                                      _record_deterministic_validation_failure)
+
+        database = self.configuration.policy_service.db
+        if governance_repository.database is not database:
+            raise PermissionError("canonical governance repository must own the provider RuntimeDatabase")
+        receipt = database.consumed_token_preflight_receipt(receipt_id)
+        policy = self.configuration.current_policy()
+        snapshot = _G011PolicySnapshot.from_policy(policy)
+        body = self._body(request, policy)
+        boundary = self.configuration.preflight_authority.boundary_for(request.snapshot.mission_id)
+        expected = boundary.values(policy_digest=snapshot.digest, request_digest=_digest(body))
+        if any(receipt.get(key) != value for key, value in expected.items()):
+            raise ProviderTokenPreflightBindingChanged("consumed receipt no longer binds canonical validation")
+        producer = CanonicalActionDerivationEvidenceProducer(database, governance_repository)
+        planning_input = producer.planner_input(request.snapshot.mission_id)
+        if request.snapshot != PlanningSnapshot.from_planner_input(planning_input):
+            raise ProviderTokenPreflightBindingChanged("canonical planning input no longer binds generation snapshot")
+        if response.evidence.request_digest != request.digest or response.evidence.snapshot_digest != request.snapshot.digest:
+            raise PermissionError("provider result does not bind the canonical generation request")
+        result_digest = response.evidence.result_digest
+        if not isinstance(result_digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", result_digest):
+            raise PermissionError("provider result lacks a bounded canonical result digest")
+        if response.proposals is None:
+            return response.governance_refinement
+        write_scopes, human_gates, risk_inputs = self.configuration.preflight_authority.approved_derivation_policy_for(request.snapshot.mission_id)
+        try:
+            return ActionDerivationValidator().validate(
+                response.proposals, request.snapshot, planning_input,
+                DerivationPolicy(write_scopes, human_gates, risk_inputs),
+            )
+        except ProposalValidationError as error:
+            return _record_deterministic_validation_failure(
+                database, request, policy_digest=snapshot.digest, evidence_digest=boundary.evidence_digest,
+                effective_contract_digest=boundary.effective_contract_digest,
+                provider_result_digest=result_digest, error=error,
+            )
 
     def _body(self, request: ProviderDerivationRequest, policy: PlanningProviderInvocationPolicy | None = None) -> dict[str, object]:
         policy = policy or self.configuration.current_policy()
