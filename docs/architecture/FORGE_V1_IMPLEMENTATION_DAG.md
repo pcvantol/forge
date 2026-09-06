@@ -1,121 +1,148 @@
 # Forge V1 Implementation DAG
 
-**AUTHORITY = DERIVED.** Source authority is the Product Model, Productization
-Reconciliation, V1 Decision Contract, canonical roadmap and cross-product
-producer contracts. The JSON sibling is the deterministic source for validation.
+**AUTHORITY = DERIVED.** Source authority is the Product Model, Productization Reconciliation, V1 Decision Contract, canonical Forge roadmap and product-owned cross-product producer contracts. This document never allocates EP or Workspace work.
+
+## Current bootstrap reconciliation — 2026-09-06
+
+The shortest safe route to Forge autonomy is now explicit:
+
+```text
+Forge Action-Derivation foundation (qualified)
+  -> EP P-NEUTRAL closure
+  -> EP minimal installed execution-path qualification using existing runtime
+  -> EP::STANDALONE_EP_VERIFIED
+  -> Forge F3/F4 binding to canonical EP HTTP submission + status/evidence contracts
+  -> first Forge -> EP -> Forge governed execution canary
+  -> autonomous next-Mission loop
+```
+
+Important consequences:
+
+- P-TRANSPORT is merged/closed and already provides three canonical submission transports: HTTP, installed CLI and Server-owned File Inbox. Forge should reuse the canonical HTTP submission ingress rather than wait for or invent a second mutation transport.
+- The older Phase-1 Local Consumer API read-only qualification and the later P-TRANSPORT HTTP submission ingress are distinct contracts. Describing all installed EP HTTP integration as read-only is stale.
+- Workspace is not a runtime prerequisite for the first Forge autonomy canary. Workspace remains the human/project control plane and later consumer of qualified Forge/EP projections.
+- B8R supersedes the older assumption that Workspace manufactures EP logical project identity. Durable project/repository identity is declared by the Canonical Project Authority Repository in `.engineering-platform/repository.json`; Workspace may project it and own human-facing state.
+- Broader Project-Agent separation, generalized Agent dispatch, multi-host scheduling and multi-repository parallelism are not prerequisites for the first `EP::STANDALONE_EP_VERIFIED` canary when the existing installed EP execution path can prove one governed execution. They remain follow-on EP productization.
+- Do not make full P-QUEUE/generalized dispatch or the whole B8E product programme artificial prerequisites for the first standalone canary. Only concrete capabilities required to execute, finalize, retain evidence and observe one governed run are on the bootstrap critical path. Any remaining B8E/queue/Agent gaps stay explicit follow-on nodes unless a qualification failure proves them necessary.
+
+`P_TRANSPORT_STATUS = MERGED_CLOSED`
+
+`WORKSPACE_ON_FIRST_FORGE_AUTONOMY_CRITICAL_PATH = FALSE`
+
+`GENERAL_AGENT_SEPARATION_ON_STANDALONE_CRITICAL_PATH = FALSE`
+
+`P_TRANSPORT_HTTP_SUBMISSION_REUSED_BY_FORGE = TRUE`
 
 ## Capability inventory and dispositions
 
-| Capability | Evidence classification | V1 disposition |
+| Capability | Current evidence classification | V1 disposition |
 | --- | --- | --- |
-| Product Vision, Portfolio, Roadmap DAG, Forecast | CONTRACT_ONLY | F2/F5; Forecast materialized projection. |
+| Governance, Mission Intake/amendments, Action-Derivation evidence/provider boundary | QUALIFIED bootstrap foundation | KEEP; do not reopen except regression. |
+| Action-Derivation canary closure | QUALIFIED / PR #40 merged | KEEP; administrative qualification authority only. |
+| Product Vision, Portfolio, Roadmap DAG, Forecast | CONTRACT_ONLY / PARTIAL | F2/F5. |
 | Mission Candidates/Recommendations, Business/Architecture refinement | PARTIALLY_IMPLEMENTED | KEEP/HARDEN; F2/F6. |
-| Architecture Review, Repository Truth | IMPLEMENTED_NOT_QUALIFIED | KEEP/ADAPT_TO_RUNTIME_SERVICE. |
-| AI Mission Planner, Living Mission Graph, Mission State/Scheduler | PARTIALLY_IMPLEMENTED | KEEP/HARDEN; F4. |
-| Forge operational store | PARTIALLY_IMPLEMENTED | MIGRATE to installation/project-partitioned authority; F1. |
-| Runtime Service, application services, versioned API | NOT_IMPLEMENTED | F1/F2. |
-| project attachment, multi-repo/leases, EP submission/receipts | CONTRACT_ONLY / EXTERNAL_DEPENDENCY | F3/F4; EP producer gates. |
-| Quality Observer/Learning | CONTRACT_ONLY | F7, optional V1. |
-| Knowledge Observer/Learning | CONTRACT_ONLY / EXTERNAL_DEPENDENCY | F8, post-V1. |
-| Workspace-facing contracts, CLI adapter, MCP adapter | PARTIALLY_IMPLEMENTED / CONTRACT_ONLY | F2/F9; MCP after API. |
-| clean-install/install-product qualification | NOT_IMPLEMENTED | F9. |
+| AI Mission Planner, Living Mission Graph, Mission State/Scheduler | PARTIALLY_IMPLEMENTED / proven local segments | KEEP/HARDEN; F4. |
+| Action materialization + execution admission | FORGE_GAP | First executable F4 slice. |
+| EP submission transport | EXTERNAL PRODUCER AVAILABLE at P-TRANSPORT transport layer | Reuse canonical HTTP ingress; do not duplicate. |
+| EP installed one-run execution/finalization/evidence | EXTERNAL QUALIFICATION GAP | EP critical path to `STANDALONE_EP_VERIFIED`. |
+| Forge EP result observation/reconciliation | FORGE_GAP | F4 immediately after installed EP producer is usable. |
+| Broader Agent separation/general dispatch/multi-host | EP FOLLOW_ON | Not a first-canary blocker unless evidence proves otherwise. |
+| Workspace control plane | WORKSPACE-OWNED FUTURE | Not a first autonomy-canary blocker. |
+| Quality Observer/Learning | CONTRACT_ONLY | F7 optional V1. |
+| Knowledge Observer/Learning | EXTERNAL / POST_V1 | F8 post-V1. |
 
-`UNCLASSIFIED_V1_CAPABILITIES = 0`
+## Critical DAG
 
-`EXISTING_CAPABILITY_WITHOUT_V1_DISPOSITION = 0`
+```text
+F1/F2 Forge service + contracts
+        |
+        +------------------------------+
+        |                              |
+        v                              v
+Forge planning/derivation        EP standalone bootstrap
+(already strongly proven)        P-NEUTRAL
+        |                              |
+        |                              v
+        |                       minimal installed execution
+        |                       submission -> run -> finalization
+        |                       -> receipt/result
+        |                              |
+        |                              v
+        |                    EP::STANDALONE_EP_VERIFIED
+        |                              |
+        +---------------+--------------+
+                        v
+              Forge F3/F4 executable slice
+              materialize -> admit
+              -> HTTP submit -> observe
+              -> reconcile
+                        |
+                        v
+              first Forge -> EP -> Forge canary
+                        |
+                        v
+              autonomous next-Mission loop
+```
 
-## DAG, lanes and critical path
+The first Forge execution canary must use one repository, one bounded Action, one canonical submission identity and no automatic resubmission. Forge persists the intended immutable Action/submission key before the EP call; EP owns submission/admission/run/finalization evidence; Forge reconciles by canonical correlation/run identity.
 
-`F1 Service foundation -> F2 API contracts -> F3 attachment + F4 runtime/EP
-reconciliation -> F9 installed control plane` is the critical path. `F1` and
-`F2` are high-leverage; after F2, F5 Forecast, F6 sessions and consumer fixtures
-can proceed in parallel. F7 quality is optional V1; F8 Knowledge is post-V1 and
-cannot block V1. External work remains EP/Workspace/KB owned.
+## Cross-product authority boundaries
 
-Autonomous Mission execution path has proven local Planner/State/Scheduler
-segments; F4 plus EP contract/admission/Agent/receipt qualification remain the
-external path. Portfolio intelligence has Review/Recommendation implementation;
-F5 materialization and background-worker qualification remain Forge gaps.
+| Boundary | Owner | Bootstrap meaning |
+| --- | --- | --- |
+| Mission, Action intent, planning/governance | Forge | Forge decides why/what. |
+| Project/repository declaration | Canonical Project Authority Repository, validated by EP | No path/name/Workspace-runtime-derived identity. |
+| Submission/admission/run/finalization/receipt | EP | EP decides how execution proceeds. |
+| HTTP submission transport | EP P-TRANSPORT | Existing canonical mutation ingress; Forge is a consumer. |
+| Run/status/evidence projection | EP | Forge consumes, never reconstructs from logs/Console. |
+| Human/project UX and cross-product projections | Workspace | Not execution authority and not required for first canary. |
 
-## First wave and Goldens
+## Readiness chains
 
-Ready now: F1 operational-store/service composition, F2 versioned contracts,
-F5 Roadmap/Forecast projection and F6 shared session infrastructure. Their DoR
-is the merged decision contract; DoD is the JSON node contract. Goldens A-C,
-G-H and J are V1-required; D is required once Portfolio Intelligence is in V1;
-E optional; F post-V1; I required for multi-project V1 only.
-
-Roadmap node -> DoR -> advisory Mission Candidate -> explicit Business and
-Architecture approvals -> Mission Intake. The DAG creates no executable Mission.
-
-## Readiness chains and build lanes
-
-| Readiness chain | Known edges |
+| Readiness chain | Current edge sequence |
 | --- | --- |
-| Autonomous Mission execution | approved Mission → Planner/Living Graph **ALREADY_PROVEN** → submission/EP admission/Agent/receipt **EP_DEPENDENCY** → F4 reconciliation **FORGE_GAP** → completion **QUALIFICATION_GAP**. |
-| Portfolio intelligence | repository/completed Mission → Review/Recommendation **ALREADY_PROVEN** → F5 Roadmap/Forecast/ranking **FORGE_GAP** → advisory candidate **FORGE_GAP** → Business review; no approval automation. |
-| Quality learning | Action/EP outcome **CONTRACT_GAP** → F7 observer/proposal **FORGE_GAP** → governed hardening → effectiveness evidence. |
-| Knowledge learning | evidence → F8 observer/export **FORGE_GAP** → KB certification **EXTERNAL_DEPENDENCY** → read-only consumption. |
+| Autonomous Mission execution | approved Mission -> Planner/Living Graph **PROVEN** -> Action materialization/admission **FORGE GAP** -> P-TRANSPORT HTTP submission **AVAILABLE TRANSPORT** -> installed EP execution/finalization/receipt **EP QUALIFICATION GAP** -> Forge observation/reconciliation **FORGE GAP** -> first canary -> next-Mission automation. |
+| Portfolio intelligence | repository/completed Mission -> Review/Recommendation **PROVEN** -> F5 Roadmap/Forecast/ranking -> advisory candidate -> Business review. |
+| Quality learning | Action/EP outcome -> F7 observer/proposal -> governed hardening. |
+| Knowledge learning | evidence -> F8 observer/export -> KB certification -> read-only consumption; post-V1. |
 
-No chain has an unknown edge. `AUTONOMOUS_MISSION_EXECUTION_UNKNOWN_EDGE = 0`,
-`AUTONOMOUS_PORTFOLIO_INTELLIGENCE_UNKNOWN_EDGE = 0`,
-`QUALITY_LEARNING_UNKNOWN_EDGE = 0`, `KNOWLEDGE_LEARNING_UNKNOWN_EDGE = 0`.
+## Build lanes and safe parallelism
 
-| Lane | Start gate | Blockers | Integration point |
-| --- | --- | --- | --- |
-| A Service foundation | merged decisions | none | F1 store/identity composition. |
-| B API contracts | F1 contract shape | F1 | F2 version/capability envelope. |
-| C Forecast | F2 | none | F5 projection contract. |
-| D Sessions | F2 | Workspace consumer later | F6 shared session/proposal contract. |
-| E Mission runtime | F1/F2 | EP engineering/admission gates | F4 Producer/receipt boundary. |
-| F Quality | F2/F4 | Action evidence | F7 proposals. |
-| H Workspace | F2 | Workspace-owned producer work | F9 control-plane Goldens. |
-| J MCP | F2 | API/security qualification | read/explain/propose adapter. |
+| Lane | May proceed now | Must wait for |
+| --- | --- | --- |
+| Forge Action materialization/admission contract fixtures | Yes | Live integration completion waits for installed EP evidence. |
+| EP P-NEUTRAL | Yes; current EP critical path | Its own exact-head/host qualification. |
+| EP minimal installed execution canary | After required P-NEUTRAL closure | Only concrete execution prerequisites discovered by the canary. |
+| Forge HTTP submission/status/result adapter | Contract-first against existing P-TRANSPORT/status evidence | Integration-complete claim waits for installed EP producer qualification. |
+| Workspace onboarding/control plane | Fixture/design work only | Qualified producer contracts; not needed for first Forge autonomy canary. |
+| Broader Agent separation/dispatch/multi-host | Follow-on | Not a bootstrap prerequisite by default. |
+| Quality/Knowledge | Parallel/post-V1 as already classified | Their named predecessors. |
 
-`UNSAFE_PARALLEL_LANES = 0`; each lane merges only against its named shared
-contract. Node DoR is its predecessor and external gate set; node DoD is its
-JSON completion/qualification contract; its listed `human_gates` is exhaustive.
+`UNSAFE_PARALLEL_LANES = 0`
 
-## Consumer gates, installation and advisory candidates
+## Installed execution and Forge F4 completion
 
-Workspace V1 requires F2 for Product Vision, Portfolio, Candidates,
-Business/Architecture refinement, decisions/evidence and health; F5 for
-Roadmap/Forecast; F4 for Mission/Living Graph/runtime status; and F9 for
-attachment and EP views. Quality is optional and Knowledge is post-V1. Workspace
-implementation remains Workspace-owned; these are consumer gates only.
+`EP::STANDALONE_EP_VERIFIED` for this bootstrap means the installed EP instance has proven the minimum real execution chain needed by consumers: canonical submission, bounded admission, one governed execution through the current installed execution path, finalization, immutable receipt/result evidence and stable observation. It does not by itself require the future generalized Agent topology or multi-project scheduler.
 
-Clean-install chain: embedded schemas/baselines/migrations -> F1 service ->
-F2 discovery -> F3 EP attachment -> Workspace connection -> candidate and
-approvals -> F4 Action/receipt -> Forge reconciliation -> F9 Golden. The V1
-exit requires `SOURCE_REPOSITORY_RUNTIME_DEPENDENCIES = 0` and package,
-restart, negative-security, version-negotiation and cross-product consumer
-qualification.
+After that gate, Forge F3/F4 should take the shortest integration route:
 
-The following are advisory implementation Mission Candidates, never approved
-Missions: **Service Foundation** (F1; installation value; store/identity/restart
-evidence); **Canonical Forge Contracts** (F2; adapter safety; version/conflict
-evidence); **Project Attachment and Runtime Reconciliation** (F3/F4; bounded
-execution value; EP-gate/receipt evidence); **Portfolio Projections and
-Refinement Sessions** (F5/F6; governed planning value; provenance/audit
-evidence); and **Installed Control Plane Qualification** (F9; product release
-value; Golden evidence). Each requires its predecessor gate, has repository
-impact limited to its named capability, and may proceed only in its lane.
+1. create/select one new low-risk executable Mission;
+2. materialize one immutable Action snapshot;
+3. persist one execution-admission/submission intent with idempotency/correlation;
+4. POST through the existing canonical P-TRANSPORT HTTP submission ingress;
+5. observe the canonical EP run/result projection without resubmitting;
+6. reconcile the terminal evidence into Forge;
+7. stop after the first canary;
+8. only then activate automatic next-Mission selection in a separate final autonomy increment.
 
-`IMPLEMENTATION_CANDIDATES_ARE_ADVISORY = TRUE`
+## Workspace position
+
+Workspace V1 remains a consumer/control-plane programme. It may later present project topology, Forge planning, EP queue/run/result state and permitted lifecycle actions, but it is not needed to prove the first machine-to-machine Forge -> EP -> Forge execution loop. Its roadmap remains authoritative for Workspace-owned implementation.
 
 ## Roadmap-to-action readiness contract
 
-The canonical roadmap remains the authority for strategic sequencing. This
-derived graph maps a roadmap capability node to a deterministic Effective DoR:
-all graph predecessors complete, external producer gates qualified, version and
-security contracts compatible, migration prerequisites available, and the node
-has no unresolved authority decision. A passing DoR yields
-`READY_FOR_MISSION_CANDIDATE`, not executable work. Forge then creates or
-refines an advisory Candidate; Business and Architecture retain their separate
-approvals before Mission Intake. DoD evidence updates node state and may
-invalidate dependent projections, never self-approve a successor.
+The canonical Forge roadmap remains strategic authority. A derived node can become `READY_FOR_MISSION_CANDIDATE` only when its Forge predecessors and real external producer gates are satisfied. Derived documentation must not reintroduce stale producer assumptions, convert follow-on productization into artificial blockers, or silently promote a transport-level capability into execution qualification.
 
-Regenerate this graph whenever one of its listed authority sources, external
-producer gate identities, or V1 classification changes. The validator protects
-only graph structure; consumer and producer qualification remain evidence work
-owned by the relevant product.
+A passing DoR creates/refines an advisory Candidate; it does not self-approve execution. Owner/human gates apply at genuine authority expansion points, not every engineering repair/validation sub-step.
+
+Regenerate/reconcile this DAG whenever the canonical Forge roadmap, EP roadmap/qualification state, Workspace roadmap or cross-product producer contracts change.
