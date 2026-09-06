@@ -52,7 +52,8 @@ def _is_sha256_digest(value: object) -> bool:
 def _record_deterministic_validation_failure(database, request, *, policy_digest: str,
                                              evidence_digest: str, effective_contract_digest: str,
                                              provider_result_digest: str, preflight_receipt: dict[str, object],
-                                             error: ProposalValidationError) -> dict[str, object]:
+                                             error: ProposalValidationError,
+                                             reattempt_lineage: dict[str, object] | None = None) -> dict[str, object]:
     """Persist bounded FAILED lifecycle evidence through the canonical store only."""
     if not all(_is_sha256_digest(value) for value in
                (policy_digest, evidence_digest, effective_contract_digest,
@@ -65,12 +66,15 @@ def _record_deterministic_validation_failure(database, request, *, policy_digest
             or any(character not in "0123456789abcdef" for character in main_head)):
         raise ValueError("complete canonical token-preflight provenance is required")
     code = deterministic_validation_failure_code(error)
+    lineage = _validated_reattempt_lineage(reattempt_lineage, request, policy_digest, evidence_digest,
+                                           effective_contract_digest, preflight_receipt["request_digest"])
     validation_digest = "sha256:" + sha256(json.dumps({
         "code": code, "snapshot_digest": request.snapshot.digest, "policy_digest": policy_digest,
         "evidence_digest": evidence_digest, "effective_contract_digest": effective_contract_digest,
         "provider_result_digest": provider_result_digest,
         "generation_request_digest": preflight_receipt["request_digest"],
         "preflight_receipt_id": receipt_id, "main_head": main_head,
+        "reattempt_lineage": lineage,
     }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     document = DerivationRecord(request.derivation_id, request.snapshot.mission_id, request.snapshot.digest,
                                 "1.0", policy_digest, DerivationLifecycle.FAILED,
@@ -81,7 +85,8 @@ def _record_deterministic_validation_failure(database, request, *, policy_digest
                      "provider_result_digest": provider_result_digest,
                      "generation_request_digest": preflight_receipt["request_digest"],
                      "preflight_receipt_id": receipt_id, "main_head": main_head,
-                     "provider_output_untrusted": True, "runtime_action_executed": False})
+                     "provider_output_untrusted": True, "runtime_action_executed": False,
+                     **lineage})
     return database.save_action_derivation(document)
 
 
@@ -89,7 +94,8 @@ def _record_deterministic_validation_success(database, request, *, policy_digest
                                              evidence_digest: str, effective_contract_digest: str,
                                              provider_result_digest: str,
                                              preflight_receipt: dict[str, object],
-                                             validated: "ValidatedDerivation") -> dict[str, object]:
+                                             validated: "ValidatedDerivation",
+                                             reattempt_lineage: dict[str, object] | None = None) -> dict[str, object]:
     """Persist a bounded, non-materializing successful validation result.
 
     The validated proposals remain provider data and are deliberately not
@@ -108,12 +114,15 @@ def _record_deterministic_validation_success(database, request, *, policy_digest
             or not isinstance(main_head, str) or len(main_head) != 40
             or any(character not in "0123456789abcdef" for character in main_head)):
         raise ValueError("complete canonical token-preflight provenance is required")
+    lineage = _validated_reattempt_lineage(reattempt_lineage, request, policy_digest, evidence_digest,
+                                           effective_contract_digest, preflight_receipt["request_digest"])
     validation_digest = "sha256:" + sha256(json.dumps({
         "result": "PASS", "snapshot_digest": request.snapshot.digest, "policy_digest": policy_digest,
         "evidence_digest": evidence_digest, "effective_contract_digest": effective_contract_digest,
         "provider_result_digest": provider_result_digest,
         "generation_request_digest": preflight_receipt["request_digest"],
         "preflight_receipt_id": receipt_id, "main_head": main_head,
+        "reattempt_lineage": lineage,
     }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     document = DerivationRecord(request.derivation_id, request.snapshot.mission_id, request.snapshot.digest,
                                 "1.0", policy_digest, DerivationLifecycle.VALIDATED,
@@ -125,8 +134,30 @@ def _record_deterministic_validation_success(database, request, *, policy_digest
                      "generation_request_digest": preflight_receipt["request_digest"],
                      "preflight_receipt_id": receipt_id, "main_head": main_head,
                      "provider_output_untrusted": True, "runtime_action_executed": False,
-                     "action_materialized": False})
+                     "action_materialized": False, **lineage})
     return database.save_action_derivation(document)
+
+
+def _validated_reattempt_lineage(lineage: dict[str, object] | None, request, policy_digest: str,
+                                 evidence_digest: str, effective_contract_digest: str,
+                                 request_digest: object) -> dict[str, object]:
+    """Copy only canonically consumed successor lineage into a terminal record."""
+    if lineage is None:
+        return {}
+    required = ("authorization_id", "predecessor_attempt_id", "reattempt_reason", "attempt_sequence",
+                "successor_attempt_id", "planning_snapshot_digest", "g011_policy_digest",
+                "evidence_digest", "effective_contract_digest", "provider_request_digest")
+    if any(field not in lineage for field in required):
+        raise ValueError("complete consumed reattempt lineage is required")
+    if (lineage["successor_attempt_id"] != request.derivation_id
+            or lineage["planning_snapshot_digest"] != request.snapshot.digest
+            or lineage["g011_policy_digest"] != policy_digest
+            or lineage["evidence_digest"] != evidence_digest
+            or lineage["effective_contract_digest"] != effective_contract_digest
+            or lineage["provider_request_digest"] != request_digest):
+        raise ValueError("consumed reattempt lineage does not bind terminal derivation")
+    return {field: lineage[field] for field in ("authorization_id", "predecessor_attempt_id",
+                                                 "reattempt_reason", "attempt_sequence")}
 
 
 class ActionDerivationValidator:

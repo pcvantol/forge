@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from enum import Enum
+from hashlib import sha256
 import json
 from pathlib import Path
 import re
@@ -21,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 29
+RUNTIME_SCHEMA_VERSION = 30
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -34,7 +35,7 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
-    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations",
+    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations", "action_derivation_reattempt_authorizations", "action_derivation_reattempt_consumptions",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments",
@@ -134,6 +135,7 @@ class RuntimeDatabase:
         self._governance_write_state = {"permitted": False}
         self._token_preflight_write_state = {"permitted": False}
         self._action_derivation_write_state = {"permitted": False}
+        self._action_derivation_reattempt_write_state = {"permitted": False}
         try:
             self._configure()
             self._migrate(forge_version)
@@ -150,6 +152,7 @@ class RuntimeDatabase:
         self._connection.create_function("forge_governance_write_permitted", 0, lambda: int(self._governance_write_state["permitted"]))
         self._connection.create_function("forge_token_preflight_write_permitted", 0, lambda: int(self._token_preflight_write_state["permitted"]))
         self._connection.create_function("forge_action_derivation_write_permitted", 0, lambda: int(self._action_derivation_write_state["permitted"]))
+        self._connection.create_function("forge_action_derivation_reattempt_write_permitted", 0, lambda: int(self._action_derivation_reattempt_write_state["permitted"]))
 
     def _insert_governance_grant(self, grant_id: str, installation_id: str, operator_id: str, capability: str,
                                  provenance: str, digest: str, occurred_at: str) -> None:
@@ -466,8 +469,9 @@ class RuntimeDatabase:
                         derivation_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
                         snapshot_digest TEXT NOT NULL, contract_version TEXT NOT NULL,
                         provider_configuration TEXT NOT NULL, lifecycle TEXT NOT NULL,
+                        generation_request_digest TEXT,
                         document TEXT NOT NULL,
-                        UNIQUE (mission_id, snapshot_digest, contract_version, provider_configuration),
+                        UNIQUE (mission_id, snapshot_digest, contract_version, provider_configuration, generation_request_digest),
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
                     CREATE TRIGGER IF NOT EXISTS action_derivations_authorized_insert BEFORE INSERT ON action_derivations
@@ -476,6 +480,35 @@ class RuntimeDatabase:
                     CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_update BEFORE UPDATE ON action_derivations
                     WHEN OLD.lifecycle = 'FAILED'
                     BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TABLE IF NOT EXISTS action_derivation_reattempt_authorizations (
+                        authorization_id TEXT PRIMARY KEY, successor_attempt_id TEXT NOT NULL UNIQUE,
+                        mission_id TEXT NOT NULL, predecessor_attempt_id TEXT NOT NULL,
+                        predecessor_terminal_state TEXT NOT NULL, attempt_sequence INTEGER NOT NULL,
+                        planning_snapshot_digest TEXT NOT NULL, effective_contract_digest TEXT NOT NULL,
+                        evidence_digest TEXT NOT NULL, g011_policy_digest TEXT NOT NULL,
+                        provider_request_digest TEXT NOT NULL, main_head TEXT NOT NULL,
+                        reattempt_reason TEXT NOT NULL, authorization_identity TEXT NOT NULL,
+                        installation_id TEXT NOT NULL, created_at TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
+                        document TEXT NOT NULL,
+                        UNIQUE (predecessor_attempt_id, provider_request_digest),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id),
+                        FOREIGN KEY (predecessor_attempt_id) REFERENCES action_derivations(derivation_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS action_derivation_reattempt_consumptions (
+                        authorization_id TEXT PRIMARY KEY, consumed_at TEXT NOT NULL,
+                        FOREIGN KEY (authorization_id) REFERENCES action_derivation_reattempt_authorizations(authorization_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_authorizations_authorized_insert BEFORE INSERT ON action_derivation_reattempt_authorizations
+                    WHEN forge_action_derivation_reattempt_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation reattempt authority required'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_authorizations_immutable_update BEFORE UPDATE ON action_derivation_reattempt_authorizations
+                    BEGIN SELECT RAISE(ABORT, 'action derivation reattempt authorization is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_authorizations_immutable_delete BEFORE DELETE ON action_derivation_reattempt_authorizations
+                    BEGIN SELECT RAISE(ABORT, 'action derivation reattempt authorization is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_consumptions_immutable_update BEFORE UPDATE ON action_derivation_reattempt_consumptions
+                    BEGIN SELECT RAISE(ABORT, 'action derivation reattempt consumption is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_consumptions_immutable_delete BEFORE DELETE ON action_derivation_reattempt_consumptions
+                    BEGIN SELECT RAISE(ABORT, 'action derivation reattempt consumption is immutable'); END;
                     CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_delete BEFORE DELETE ON action_derivations
                     WHEN OLD.lifecycle = 'FAILED'
                     BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
@@ -999,6 +1032,72 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "29", "migration_version": "29", "last_migration": "29"})
                 self._connection.execute("PRAGMA user_version=29")
+            self._migrate(forge_version)
+        elif version == 29:
+            # Generation request semantics are a durable part of an attempt
+            # identity.  Rebuild the small table to retire the former unique
+            # key that prevented an explicitly governed successor attempt.
+            with self._connection:
+                self._connection.executescript("""
+                    DROP TRIGGER IF EXISTS action_derivations_authorized_insert;
+                    DROP TRIGGER IF EXISTS action_derivations_failed_immutable_update;
+                    DROP TRIGGER IF EXISTS action_derivations_failed_immutable_delete;
+                    ALTER TABLE action_derivations RENAME TO action_derivations_v29;
+                    CREATE TABLE action_derivations (
+                        derivation_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL,
+                        snapshot_digest TEXT NOT NULL, contract_version TEXT NOT NULL,
+                        provider_configuration TEXT NOT NULL, lifecycle TEXT NOT NULL,
+                        generation_request_digest TEXT, document TEXT NOT NULL,
+                        UNIQUE (mission_id, snapshot_digest, contract_version, provider_configuration, generation_request_digest),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
+                    );
+                    INSERT INTO action_derivations
+                    (derivation_id, mission_id, snapshot_digest, contract_version, provider_configuration, lifecycle, generation_request_digest, document)
+                    SELECT derivation_id, mission_id, snapshot_digest, contract_version, provider_configuration, lifecycle,
+                           json_extract(document, '$.generation_request_digest'), document
+                    FROM action_derivations_v29;
+                    DROP TABLE action_derivations_v29;
+                    CREATE TRIGGER action_derivations_authorized_insert BEFORE INSERT ON action_derivations
+                    WHEN forge_action_derivation_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation producer required'); END;
+                    CREATE TRIGGER action_derivations_failed_immutable_update BEFORE UPDATE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TRIGGER action_derivations_failed_immutable_delete BEFORE DELETE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TABLE IF NOT EXISTS action_derivation_reattempt_authorizations (
+                        authorization_id TEXT PRIMARY KEY, successor_attempt_id TEXT NOT NULL UNIQUE,
+                        mission_id TEXT NOT NULL, predecessor_attempt_id TEXT NOT NULL,
+                        predecessor_terminal_state TEXT NOT NULL, attempt_sequence INTEGER NOT NULL,
+                        planning_snapshot_digest TEXT NOT NULL, effective_contract_digest TEXT NOT NULL,
+                        evidence_digest TEXT NOT NULL, g011_policy_digest TEXT NOT NULL,
+                        provider_request_digest TEXT NOT NULL, main_head TEXT NOT NULL,
+                        reattempt_reason TEXT NOT NULL, authorization_identity TEXT NOT NULL,
+                        installation_id TEXT NOT NULL, created_at TEXT NOT NULL, digest TEXT NOT NULL UNIQUE,
+                        document TEXT NOT NULL,
+                        UNIQUE (predecessor_attempt_id, provider_request_digest),
+                        FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id),
+                        FOREIGN KEY (predecessor_attempt_id) REFERENCES action_derivations(derivation_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS action_derivation_reattempt_consumptions (
+                        authorization_id TEXT PRIMARY KEY, consumed_at TEXT NOT NULL,
+                        FOREIGN KEY (authorization_id) REFERENCES action_derivation_reattempt_authorizations(authorization_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_authorizations_authorized_insert BEFORE INSERT ON action_derivation_reattempt_authorizations
+                    WHEN forge_action_derivation_reattempt_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation reattempt authority required'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_authorizations_immutable_update BEFORE UPDATE ON action_derivation_reattempt_authorizations
+                    BEGIN SELECT RAISE(ABORT, 'action derivation reattempt authorization is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_authorizations_immutable_delete BEFORE DELETE ON action_derivation_reattempt_authorizations
+                    BEGIN SELECT RAISE(ABORT, 'action derivation reattempt authorization is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_consumptions_immutable_update BEFORE UPDATE ON action_derivation_reattempt_consumptions
+                    BEGIN SELECT RAISE(ABORT, 'action derivation reattempt consumption is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_reattempt_consumptions_immutable_delete BEFORE DELETE ON action_derivation_reattempt_consumptions
+                    BEGIN SELECT RAISE(ABORT, 'action derivation reattempt consumption is immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "30", "migration_version": "30", "last_migration": "30"})
+                self._connection.execute("PRAGMA user_version=30")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1418,6 +1517,9 @@ class RuntimeDatabase:
                     "provider_configuration", "lifecycle")
         if any(not isinstance(document.get(item), str) or not document[item] for item in required):
             raise RuntimeDatabaseError("action derivation requires stable identity, snapshot, provider configuration, and lifecycle")
+        request_digest = document.get("generation_request_digest")
+        if request_digest is not None and (not isinstance(request_digest, str) or not _SHA256_DIGEST.fullmatch(request_digest)):
+            raise RuntimeDatabaseError("action derivation generation request digest is malformed")
         existing = self._connection.execute(
             "SELECT document FROM action_derivations WHERE derivation_id = ?", (document["derivation_id"],)
         ).fetchone()
@@ -1431,7 +1533,8 @@ class RuntimeDatabase:
                               "effective_contract_digest", "provider_result_digest",
                               "generation_request_digest", "preflight_receipt_id", "main_head",
                               "provider_output_untrusted", "runtime_action_executed",
-                              "validation_result")
+                              "validation_result", "authorization_id", "predecessor_attempt_id",
+                              "reattempt_reason", "attempt_sequence")
             if any(field in persisted and document.get(field) != persisted[field]
                    for field in binding_fields):
                 raise RuntimeIntegrityError("action derivation validation bindings are immutable")
@@ -1446,8 +1549,8 @@ class RuntimeDatabase:
                 raise RuntimeIntegrityError("action derivation lifecycle transition is invalid")
         if existing is None:
             identity = self._connection.execute(
-                "SELECT derivation_id FROM action_derivations WHERE mission_id = ? AND snapshot_digest = ? AND contract_version = ? AND provider_configuration = ?",
-                tuple(document[item] for item in required[1:5]),
+                "SELECT derivation_id FROM action_derivations WHERE mission_id = ? AND snapshot_digest = ? AND contract_version = ? AND provider_configuration = ? AND generation_request_digest IS ?",
+                tuple(document[item] for item in required[1:5]) + (request_digest,),
             ).fetchone()
             if identity is not None:
                 raise RuntimeDatabaseError("identical action derivation identity already belongs to another record")
@@ -1455,12 +1558,102 @@ class RuntimeDatabase:
         try:
             with self._connection:
                 self._connection.execute(
-                    "INSERT INTO action_derivations VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(derivation_id) DO UPDATE SET lifecycle=excluded.lifecycle, document=excluded.document",
-                    tuple(document[item] for item in required) + (self._dump(document),),
+                    "INSERT INTO action_derivations (derivation_id, mission_id, snapshot_digest, contract_version, provider_configuration, lifecycle, generation_request_digest, document) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(derivation_id) DO UPDATE SET lifecycle=excluded.lifecycle, document=excluded.document",
+                    tuple(document[item] for item in required) + (request_digest, self._dump(document)),
                 )
         finally:
             self._action_derivation_write_state["permitted"] = False
         return document
+
+    def create_action_derivation_reattempt_authorization(self, authorization: Any) -> dict[str, Any]:
+        """Persist one immutable, explicitly operator-authorized successor attempt."""
+        document = _document(authorization, "action derivation reattempt authorization")
+        # ``authorization_identity`` is operator provenance, not credential
+        # material; inspect every other field with the normal secret guard.
+        if _contains_secret_field({key: value for key, value in document.items()
+                                   if key not in ("authorization_id", "authorization_identity")}):
+            raise RuntimeDatabaseError("action derivation reattempt authorization must not contain secret material")
+        required = ("authorization_id", "successor_attempt_id", "mission_id", "predecessor_attempt_id",
+                    "predecessor_terminal_state", "attempt_sequence", "planning_snapshot_digest",
+                    "effective_contract_digest", "evidence_digest", "g011_policy_digest",
+                    "provider_request_digest", "main_head", "reattempt_reason", "rationale", "authorization_identity",
+                    "installation_id", "created_at", "digest")
+        if any(item not in document or document[item] in (None, "") for item in required):
+            raise RuntimeDatabaseError("action derivation reattempt authorization requires complete lineage")
+        if (document["predecessor_terminal_state"] != "FAILED"
+                or not isinstance(document["attempt_sequence"], int) or document["attempt_sequence"] < 2
+                or not re.fullmatch(r"[0-9a-f]{40}", document["main_head"])
+                or any(not _SHA256_DIGEST.fullmatch(document[item]) for item in (
+                    "planning_snapshot_digest", "effective_contract_digest", "evidence_digest",
+                    "g011_policy_digest", "provider_request_digest", "digest"))):
+            raise RuntimeDatabaseError("action derivation reattempt authorization provenance is malformed")
+        digest_source = {key: value for key, value in document.items() if key != "digest"}
+        expected_digest = "sha256:" + sha256(json.dumps(digest_source, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if document["digest"] != expected_digest:
+            raise RuntimeIntegrityError("action derivation reattempt authorization digest is inconsistent")
+        binding = self._connection.execute(
+            "SELECT generated_uid, status FROM installation_operator_binding WHERE installation_id=?",
+            (document["installation_id"],),
+        ).fetchone()
+        if (document["installation_id"] != self.metadata.get("installation_id")
+                or binding is None or binding["status"] != "ACTIVE"
+                or document["authorization_identity"] != sha256(binding["generated_uid"].encode()).hexdigest()[:16]):
+            raise RuntimeIntegrityError("action derivation reattempt authorization lacks trusted operator provenance")
+        predecessor = self._connection.execute("SELECT mission_id, lifecycle, document FROM action_derivations WHERE derivation_id=?",
+                                               (document["predecessor_attempt_id"],)).fetchone()
+        if predecessor is None or predecessor["mission_id"] != document["mission_id"] or predecessor["lifecycle"] != document["predecessor_terminal_state"]:
+            raise RuntimeIntegrityError("reattempt predecessor is absent, cross-Mission, or non-terminal")
+        predecessor_document = json.loads(predecessor["document"])
+        if (predecessor_document.get("generation_request_digest") == document["provider_request_digest"]
+                or predecessor_document.get("snapshot_digest") != document["planning_snapshot_digest"]
+                or predecessor_document.get("effective_contract_digest") != document["effective_contract_digest"]
+                or predecessor_document.get("evidence_digest") != document["evidence_digest"]
+                or predecessor_document.get("provider_configuration") != document["g011_policy_digest"]):
+            raise RuntimeIntegrityError("reattempt authorization does not bind a materially changed canonical request")
+        if not self._connection.execute("SELECT 1 FROM mission_state WHERE mission_id=?", (document["mission_id"],)).fetchone():
+            raise RuntimeDatabaseError("action derivation reattempt references an unknown Mission")
+        self._action_derivation_reattempt_write_state["permitted"] = True
+        try:
+            with self._connection:
+                existing = self._connection.execute("SELECT document FROM action_derivation_reattempt_authorizations WHERE authorization_id=?", (document["authorization_id"],)).fetchone()
+                if existing is not None:
+                    persisted = json.loads(existing["document"])
+                    if persisted != document:
+                        raise RuntimeIntegrityError("action derivation reattempt authorization rewrite is denied")
+                    return persisted
+                row_fields = tuple(item for item in required if item != "rationale")
+                self._connection.execute("INSERT INTO action_derivation_reattempt_authorizations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    tuple(document[item] for item in row_fields) + (self._dump(document),))
+        finally:
+            self._action_derivation_reattempt_write_state["permitted"] = False
+        return document
+
+    def consume_action_derivation_reattempt_authorization(self, authorization_id: str, boundary: Mapping[str, str]) -> dict[str, Any]:
+        """Reserve one exact successor authorization; it is never a retry permit."""
+        required = ("successor_attempt_id", "mission_id", "predecessor_attempt_id", "planning_snapshot_digest",
+                    "effective_contract_digest", "evidence_digest", "g011_policy_digest", "provider_request_digest", "main_head")
+        if not authorization_id or any(not isinstance(boundary.get(item), str) or not boundary[item] for item in required):
+            raise RuntimeDatabaseError("complete action derivation reattempt boundary is required")
+        connection = self._connection; connection.execute("BEGIN IMMEDIATE")
+        try:
+            row = connection.execute("SELECT document FROM action_derivation_reattempt_authorizations WHERE authorization_id=?", (authorization_id,)).fetchone()
+            if row is None:
+                raise RuntimeDatabaseError("action derivation reattempt authorization is missing")
+            document = json.loads(row["document"])
+            if (document.get("predecessor_terminal_state") != "FAILED"
+                    or any(document.get(item) != boundary[item] for item in required)):
+                raise RuntimeIntegrityError("action derivation reattempt authorization is stale or conflicting")
+            predecessor = connection.execute("SELECT lifecycle FROM action_derivations WHERE derivation_id=?", (document["predecessor_attempt_id"],)).fetchone()
+            if predecessor is None or predecessor["lifecycle"] != document["predecessor_terminal_state"]:
+                raise RuntimeIntegrityError("action derivation reattempt predecessor is no longer valid")
+            try:
+                connection.execute("INSERT INTO action_derivation_reattempt_consumptions VALUES (?,?)", (authorization_id, _timestamp()))
+            except sqlite3.IntegrityError as error:
+                raise RuntimeIntegrityError("action derivation reattempt authorization was already consumed") from error
+            connection.commit()
+            return document
+        except Exception:
+            connection.rollback(); raise
 
     def create_token_preflight_receipt(self, receipt: Any) -> dict[str, Any]:
         """Persist one immutable provider-authoritative token-preflight PASS."""
@@ -1697,7 +1890,8 @@ class RuntimeDatabase:
         lookup = {"mission_state": ("mission_id", "document"), "mission_runtime_projections": ("mission_id", "document"), "mission_intake_evidence": ("evidence_id", "document"), "architecture_reviews": ("review_id", "document"),
                   "mission_recommendations": ("recommendation_id", "document"), "decision_evidence": ("decision_id", "document"), "planning_state": ("singleton", "document"),
                   "delegation_requests": ("delegation_id", "document"), "integration_evidence": ("integration_id", "document"),
-                  "action_derivations": ("derivation_id", "document"), "action_derivation_evidence_sets": ("evidence_set_id", "document"), "mission_amendments": ("amendment_id", "document")}
+                  "action_derivations": ("derivation_id", "document"), "action_derivation_evidence_sets": ("evidence_set_id", "document"), "mission_amendments": ("amendment_id", "document"),
+                  "action_derivation_reattempt_authorizations": ("authorization_id", "document")}
         if table not in lookup:
             raise RuntimeDatabaseError("table is not a Forge document store")
         key, column = lookup[table]

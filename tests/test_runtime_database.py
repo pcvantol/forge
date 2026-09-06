@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
+import json
 import sqlite3
 import tempfile
 import unittest
 
 from forge.runtime import RUNTIME_SCHEMA_VERSION, RuntimeDatabase, RuntimeIntegrityError, RuntimeResolver
+from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 
 
 class RuntimeDatabaseTests(unittest.TestCase):
@@ -116,7 +119,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
             self.database.save_action_derivation({**record, "derivation_id": "other"})
         with self.assertRaises(sqlite3.IntegrityError):
             self.database._connection.execute(
-                "INSERT INTO action_derivations VALUES ('forged', 'mission-1', 'sha256:forged', '1.0', 'forged', 'FAILED', '{}')"
+                "INSERT INTO action_derivations (derivation_id, mission_id, snapshot_digest, contract_version, provider_configuration, lifecycle, document) VALUES ('forged', 'mission-1', 'sha256:forged', '1.0', 'forged', 'FAILED', '{}')"
             )
 
     def test_token_preflight_receipt_is_immutable_durable_and_single_use(self) -> None:
@@ -202,6 +205,89 @@ class RuntimeDatabaseTests(unittest.TestCase):
         triggers = {row["name"] for row in self.database._connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
         self.assertTrue({"action_derivations_authorized_insert", "action_derivations_failed_immutable_update", "action_derivations_failed_immutable_delete"} <= triggers)
         self.database.save_action_derivation({**in_flight, "lifecycle": "DERIVATION_REQUESTED"})
+
+    def test_request_digest_aware_reattempt_lineage_is_immutable_and_survives_reopen(self) -> None:
+        self.database.save_mission_state(self._mission())
+        operators = InstallationOperatorService(self.database, lambda: NamedOperatorIdentity("00000000-0000-0000-0000-000000000001", 1))
+        context = operators.first_bind()
+        digest = lambda letter: "sha256:" + letter * 64
+        predecessor = {"derivation_id": "failed-attempt", "mission_id": "mission-1",
+                       "snapshot_digest": digest("a"), "contract_version": "1.0",
+                       "provider_configuration": digest("b"), "lifecycle": "FAILED",
+                       "generation_request_digest": digest("c"), "evidence_digest": digest("d"),
+                       "effective_contract_digest": digest("e"), "main_head": "f" * 40}
+        self.database.save_action_derivation(predecessor)
+        authorization = {"authorization_id": "reauth-1", "successor_attempt_id": "successor-1",
+                         "mission_id": "mission-1", "predecessor_attempt_id": "failed-attempt",
+                         "predecessor_terminal_state": "FAILED", "attempt_sequence": 2,
+                         "planning_snapshot_digest": digest("a"), "effective_contract_digest": digest("e"),
+                         "evidence_digest": digest("d"), "g011_policy_digest": digest("b"),
+                         "provider_request_digest": digest("f"), "main_head": "f" * 40,
+                         "reattempt_reason": "REQUEST_SEMANTICS_CHANGED", "rationale": "bounded request semantics changed",
+                         "authorization_identity": sha256(context.generated_uid.encode()).hexdigest()[:16],
+                         "installation_id": context.installation_id, "created_at": "2026-09-06T00:00:00Z"}
+        authorization["digest"] = "sha256:" + sha256(json.dumps(authorization, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        self.database.create_action_derivation_reattempt_authorization(authorization)
+        validated_predecessor = {**predecessor, "derivation_id": "validated-attempt", "lifecycle": "VALIDATED",
+                                 "generation_request_digest": digest("0")}
+        self.database.save_action_derivation(validated_predecessor)
+        validated_authorization = {**authorization, "authorization_id": "reauth-validated",
+                                   "successor_attempt_id": "successor-validated",
+                                   "predecessor_attempt_id": "validated-attempt",
+                                   "predecessor_terminal_state": "VALIDATED",
+                                   "provider_request_digest": digest("1")}
+        validated_authorization["digest"] = "sha256:" + sha256(json.dumps(
+            {key: value for key, value in validated_authorization.items() if key != "digest"},
+            sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        with self.assertRaisesRegex(Exception, "provenance is malformed"):
+            self.database.create_action_derivation_reattempt_authorization(validated_authorization)
+        foreign_installation = {**authorization, "authorization_id": "reauth-foreign",
+                                "successor_attempt_id": "successor-foreign", "installation_id": "foreign"}
+        foreign_installation["digest"] = "sha256:" + sha256(json.dumps(
+            {key: value for key, value in foreign_installation.items() if key != "digest"},
+            sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        with self.assertRaisesRegex(Exception, "trusted operator provenance"):
+            self.database.create_action_derivation_reattempt_authorization(foreign_installation)
+        with self.assertRaises(RuntimeIntegrityError):
+            self.database.create_action_derivation_reattempt_authorization({**authorization, "reattempt_reason": "forged"})
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute("UPDATE action_derivations SET lifecycle='PROVIDER_RUNNING' WHERE derivation_id='failed-attempt'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute("UPDATE action_derivation_reattempt_authorizations SET reattempt_reason='forged' WHERE authorization_id='reauth-1'")
+        self.database._connection.rollback()
+        boundary = {key: authorization[key] for key in ("successor_attempt_id", "mission_id", "predecessor_attempt_id", "planning_snapshot_digest", "effective_contract_digest", "evidence_digest", "g011_policy_digest", "provider_request_digest", "main_head")}
+        self.assertEqual(self.database.consume_action_derivation_reattempt_authorization("reauth-1", boundary), authorization)
+        with self.assertRaises(RuntimeIntegrityError):
+            self.database.consume_action_derivation_reattempt_authorization("reauth-1", boundary)
+        self.database.close(); self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertEqual(self.database.get_document("action_derivation_reattempt_authorizations", "reauth-1"), authorization)
+
+    def test_schema29_rebuilds_action_identity_with_request_digest_and_reattempt_tables(self) -> None:
+        self.database.save_mission_state(self._mission())
+        record = {"derivation_id": "failed-attempt", "mission_id": "mission-1", "snapshot_digest": "sha256:" + "a" * 64,
+                  "contract_version": "1.0", "provider_configuration": "sha256:" + "b" * 64,
+                  "lifecycle": "FAILED", "generation_request_digest": "sha256:" + "c" * 64}
+        self.database.save_action_derivation(record)
+        self.database.close()
+        connection = sqlite3.connect(self.database.path)
+        for trigger in ("action_derivation_reattempt_authorizations_authorized_insert", "action_derivation_reattempt_authorizations_immutable_update", "action_derivation_reattempt_authorizations_immutable_delete", "action_derivation_reattempt_consumptions_immutable_update", "action_derivation_reattempt_consumptions_immutable_delete"):
+            connection.execute(f"DROP TRIGGER {trigger}")
+        connection.execute("DROP TABLE action_derivation_reattempt_consumptions")
+        connection.execute("DROP TABLE action_derivation_reattempt_authorizations")
+        connection.execute("DROP TRIGGER action_derivations_authorized_insert")
+        connection.execute("DROP TRIGGER action_derivations_failed_immutable_update")
+        connection.execute("DROP TRIGGER action_derivations_failed_immutable_delete")
+        connection.execute("ALTER TABLE action_derivations RENAME TO action_derivations_v30")
+        connection.execute("CREATE TABLE action_derivations (derivation_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL, snapshot_digest TEXT NOT NULL, contract_version TEXT NOT NULL, provider_configuration TEXT NOT NULL, lifecycle TEXT NOT NULL, document TEXT NOT NULL, UNIQUE(mission_id, snapshot_digest, contract_version, provider_configuration))")
+        connection.execute("INSERT INTO action_derivations SELECT derivation_id, mission_id, snapshot_digest, contract_version, provider_configuration, lifecycle, document FROM action_derivations_v30")
+        connection.execute("DROP TABLE action_derivations_v30")
+        connection.execute("UPDATE runtime_metadata SET value='29' WHERE key IN ('schema_version','migration_version','last_migration')")
+        connection.execute("PRAGMA user_version=29"); connection.commit(); connection.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        columns = {row["name"] for row in self.database._connection.execute("PRAGMA table_info(action_derivations)")}
+        self.assertIn("generation_request_digest", columns)
+        self.assertTrue(self.database._connection.execute("SELECT 1 FROM action_derivation_reattempt_authorizations").fetchone() is None)
+        self.assertEqual(self.database.get_document("action_derivations", "failed-attempt"), record)
 
     def test_schema27_migrates_bounded_token_preflight_failures_before_restart(self) -> None:
         self.database.close()
