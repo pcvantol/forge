@@ -157,6 +157,42 @@ class RuntimeDatabaseTests(unittest.TestCase):
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='token_preflight_receipts'"
         ).fetchone())
 
+    def test_token_preflight_failure_is_immutable_secret_free_and_migrated(self) -> None:
+        self.database.save_mission_state(self._mission())
+        failure = {"failure_id": "token-preflight-failure-00000000-0000-0000-0000-000000000001", "mission_id": "mission-1", "provider_id": "provider",
+                   "occurred_at": "2026-09-06T00:00:00Z", "main_head": "a" * 40, "policy_digest": "sha256:" + "b" * 64,
+                   "request_digest": "sha256:" + "c" * 64, "evidence_digest": "sha256:" + "d" * 64,
+                   "effective_contract_digest": "sha256:" + "e" * 64, "layer": "PROVIDER_AVAILABILITY",
+                   "status": 400, "provider_type": "invalid_request_error", "provider_code": "invalid_schema"}
+        self.database.record_token_preflight_failure(failure)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute("UPDATE token_preflight_failures SET provider_id='other' WHERE failure_id=?", (failure["failure_id"],))
+        with self.assertRaises(RuntimeError):
+            self.database.record_token_preflight_failure({**failure, "failure_id": "failure-2", "secret": "forbidden"})
+        with self.assertRaisesRegex(RuntimeError, "unsupported diagnostic fields"):
+            self.database.record_token_preflight_failure({**failure, "failure_id": "token-preflight-failure-00000000-0000-0000-0000-000000000002", "payload": "untrusted"})
+        with self.assertRaisesRegex(RuntimeError, "not allow-listed"):
+            self.database.record_token_preflight_failure({**failure, "failure_id": "token-preflight-failure-00000000-0000-0000-0000-000000000003", "provider_code": "sk-proj-secret"})
+        self.database.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertTrue(self.database._connection.execute("SELECT 1 FROM token_preflight_failures WHERE failure_id=?", (failure["failure_id"],)).fetchone())
+
+    def test_schema27_migrates_bounded_token_preflight_failures_before_restart(self) -> None:
+        self.database.close()
+        connection = sqlite3.connect(self.database.path)
+        for trigger in ("token_preflight_failures_authorized_insert", "token_preflight_failures_immutable_update",
+                        "token_preflight_failures_immutable_delete"):
+            connection.execute(f"DROP TRIGGER {trigger}")
+        connection.execute("DROP TABLE token_preflight_failures")
+        connection.execute("UPDATE runtime_metadata SET value='27' WHERE key IN ('schema_version','migration_version','last_migration')")
+        connection.execute("PRAGMA user_version=27")
+        connection.commit(); connection.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
+        self.assertTrue(self.database._connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='token_preflight_failures'"
+        ).fetchone())
+
     def test_execution_receipts_are_immutable(self) -> None:
         self.database.save_mission_state(self._mission())
         self.database.record_execution_receipt(receipt_id="receipt-1", mission_id="mission-1", execution_host="host", execution_run_id="run", engineering_report_id="report", correlation_identity="correlation", executed_at="2026-08-04T00:00:00Z", outcome="complete")
