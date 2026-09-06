@@ -1,3 +1,5 @@
+import json
+from hashlib import sha256
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,7 +9,11 @@ from forge.governance_authority import (ArchitecturePlanningEvidence, CanonicalA
     CanonicalBusinessWorkspace, CanonicalGovernanceRepository)
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.mission_recommendation import RequiredDiscipline
+from forge.models.action_derivation import PlanningSnapshot
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
+from forge.planner import (CanonicalTokenPreflightAuthority, OpenAIPlanningProviderConfiguration,
+                           OpenAIResponsesPlanningProvider, ProviderDerivationRequest, TokenPreflightBoundary)
+from forge.provider_security import (PlanningProviderSecurityService, SecretReference, SecretState)
 from forge.runtime.database import RuntimeDatabase
 
 
@@ -44,3 +50,59 @@ class ActionDerivationEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ActionDerivationEvidenceError, "NO_REPOSITORY_TARGET"):
             CanonicalActionDerivationEvidenceProducer(self.db, self.repository).produce("mission")
 
+    def test_canonical_validation_records_only_a_bound_immutable_failure(self):
+        self._state()
+        producer = CanonicalActionDerivationEvidenceProducer(self.db, self.repository)
+        evidence = producer.produce("mission")
+        snapshot = PlanningSnapshot.from_planner_input(producer.planner_input("mission"))
+        contract = self.db.get_document("mission_state", "mission")["admission_contract"]
+        effective_digest = "sha256:" + sha256(json.dumps(contract, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+        class Resolver:
+            def status(self, reference): return SecretState.RESOLVABLE
+            def resolve(self, reference): return SecretState.RESOLVABLE, "fixture-secret"
+        class Response:
+            def __init__(self, body): self.body = body
+            def read(self): return json.dumps(self.body).encode()
+            def __enter__(self): return self
+            def __exit__(self, *_): return None
+        calls = []
+        def opener(request, timeout):
+            calls.append(request.full_url)
+            if request.full_url.endswith("/input_tokens"):
+                return Response({"input_tokens": 1})
+            return Response({"id": "resp_fixture", "status": "completed", "output": [{"content": [{"text": json.dumps({
+                "kind": "proposals", "proposals": [{
+                    "logical_action_id": "outside", "scope": "outside-approved-mission", "objective": "untrusted",
+                    "dependencies": [], "write_scopes": [], "expected_evidence": ["e"],
+                    "validation_strategy": ["v"], "priority": 1, "postponed": False,
+                    "human_gates": ["human gate"], "risk_inputs": ["untrusted provider"],
+                    "source_evidence_refs": ["mission_state"],
+                }],
+            })}]}]})
+        resolver = Resolver()
+        service = PlanningProviderSecurityService(self.db, resolver, self.operators)
+        service.configure(configuration_id="config", provider_id="openai-planning",
+                          reference=SecretReference("keychain", "//forge.openai/planning"),
+                          operator_context=self.operators.context(), model="gpt-5.6", timeout_seconds=120,
+                          input_token_bound=64000, context_token_bound=128000, output_token_bound=16000)
+        adapter = OpenAIResponsesPlanningProvider(
+            OpenAIPlanningProviderConfiguration._for_test(
+                service, "openai-planning", CanonicalTokenPreflightAuthority._for_test(
+                    self.db, lambda _: TokenPreflightBoundary("a" * 40, evidence["digest"], effective_digest),
+                    lambda _: ("planning-only",),
+                    lambda _: (("NONE",), ("human gate",), ("untrusted provider",)),
+                ),
+            ),
+            resolver, opener=opener,
+        )
+        request = ProviderDerivationRequest("derivation-failure", snapshot, "openai-planning", "gpt-5.6")
+        receipt = adapter.preflight(request, operator_context=self.operators.context())
+        recorded = adapter.invoke_and_validate(request, receipt_id=receipt["receipt_id"],
+                                               governance_repository=self.repository)
+        self.assertEqual(recorded["lifecycle"], "FAILED")
+        self.assertEqual(recorded["validation_failure_code"], "SCOPE_OUTSIDE_MISSION")
+        self.assertNotIn("outside-approved-mission", json.dumps(recorded))
+        self.assertEqual(calls, ["https://api.openai.com/v1/responses/input_tokens", "https://api.openai.com/v1/responses"])
+        with self.assertRaises(Exception):
+            self.db._connection.execute("UPDATE action_derivations SET lifecycle='MATERIALIZED' WHERE derivation_id='derivation-failure'")

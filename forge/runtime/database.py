@@ -21,7 +21,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 28
+RUNTIME_SCHEMA_VERSION = 29
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -133,6 +133,7 @@ class RuntimeDatabase:
         self._connection.row_factory = sqlite3.Row
         self._governance_write_state = {"permitted": False}
         self._token_preflight_write_state = {"permitted": False}
+        self._action_derivation_write_state = {"permitted": False}
         try:
             self._configure()
             self._migrate(forge_version)
@@ -148,6 +149,7 @@ class RuntimeDatabase:
         self._connection.execute("PRAGMA synchronous=FULL")
         self._connection.create_function("forge_governance_write_permitted", 0, lambda: int(self._governance_write_state["permitted"]))
         self._connection.create_function("forge_token_preflight_write_permitted", 0, lambda: int(self._token_preflight_write_state["permitted"]))
+        self._connection.create_function("forge_action_derivation_write_permitted", 0, lambda: int(self._action_derivation_write_state["permitted"]))
 
     def _insert_governance_grant(self, grant_id: str, installation_id: str, operator_id: str, capability: str,
                                  provenance: str, digest: str, occurred_at: str) -> None:
@@ -468,6 +470,15 @@ class RuntimeDatabase:
                         UNIQUE (mission_id, snapshot_digest, contract_version, provider_configuration),
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_authorized_insert BEFORE INSERT ON action_derivations
+                    WHEN forge_action_derivation_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation producer required'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_update BEFORE UPDATE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_delete BEFORE DELETE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
                     CREATE TABLE IF NOT EXISTS action_derivation_evidence_sets (
                         evidence_set_id TEXT PRIMARY KEY, mission_id TEXT NOT NULL UNIQUE,
                         installation_id TEXT NOT NULL, envelope_digest TEXT NOT NULL UNIQUE,
@@ -970,6 +981,24 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version": "28", "migration_version": "28", "last_migration": "28"})
                 self._connection.execute("PRAGMA user_version=28")
+            self._migrate(forge_version)
+        elif version == 28:
+            with self._connection:
+                self._connection.executescript("""
+                    DROP TRIGGER IF EXISTS action_derivations_immutable_update;
+                    DROP TRIGGER IF EXISTS action_derivations_immutable_delete;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_authorized_insert BEFORE INSERT ON action_derivations
+                    WHEN forge_action_derivation_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation producer required'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_update BEFORE UPDATE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_delete BEFORE DELETE ON action_derivations
+                    WHEN OLD.lifecycle = 'FAILED'
+                    BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                """)
+                self._set_metadata({"schema_version": "29", "migration_version": "29", "last_migration": "29"})
+                self._connection.execute("PRAGMA user_version=29")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1389,17 +1418,40 @@ class RuntimeDatabase:
                     "provider_configuration", "lifecycle")
         if any(not isinstance(document.get(item), str) or not document[item] for item in required):
             raise RuntimeDatabaseError("action derivation requires stable identity, snapshot, provider configuration, and lifecycle")
-        with self._connection:
-            existing = self._connection.execute(
+        existing = self._connection.execute(
+            "SELECT document FROM action_derivations WHERE derivation_id = ?", (document["derivation_id"],)
+        ).fetchone()
+        if existing is not None:
+            persisted = json.loads(existing["document"])
+            if persisted == document:
+                return document
+            if any(persisted.get(item) != document[item] for item in required[1:5]):
+                raise RuntimeIntegrityError("action derivation lineage is immutable")
+            from forge.models.action_derivation import DerivationLifecycle, _LIFECYCLE_TRANSITIONS
+            try:
+                previous, current = DerivationLifecycle(persisted["lifecycle"]), DerivationLifecycle(document["lifecycle"])
+            except (KeyError, ValueError) as error:
+                raise RuntimeIntegrityError("action derivation lifecycle is invalid") from error
+            if previous is DerivationLifecycle.FAILED:
+                raise RuntimeIntegrityError("failed action derivation records are immutable")
+            if current not in _LIFECYCLE_TRANSITIONS[previous]:
+                raise RuntimeIntegrityError("action derivation lifecycle transition is invalid")
+        if existing is None:
+            identity = self._connection.execute(
                 "SELECT derivation_id FROM action_derivations WHERE mission_id = ? AND snapshot_digest = ? AND contract_version = ? AND provider_configuration = ?",
                 tuple(document[item] for item in required[1:5]),
             ).fetchone()
-            if existing is not None and existing["derivation_id"] != document["derivation_id"]:
+            if identity is not None:
                 raise RuntimeDatabaseError("identical action derivation identity already belongs to another record")
-            self._connection.execute(
-                "INSERT INTO action_derivations VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(derivation_id) DO UPDATE SET lifecycle=excluded.lifecycle, document=excluded.document",
-                tuple(document[item] for item in required) + (self._dump(document),),
-            )
+        self._action_derivation_write_state["permitted"] = True
+        try:
+            with self._connection:
+                self._connection.execute(
+                    "INSERT INTO action_derivations VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(derivation_id) DO UPDATE SET lifecycle=excluded.lifecycle, document=excluded.document",
+                    tuple(document[item] for item in required) + (self._dump(document),),
+                )
+        finally:
+            self._action_derivation_write_state["permitted"] = False
         return document
 
     def create_token_preflight_receipt(self, receipt: Any) -> dict[str, Any]:
@@ -1434,6 +1486,23 @@ class RuntimeDatabase:
                     tuple(document[item] for item in required) + (self._dump(document),))
         finally:
             self._token_preflight_write_state["permitted"] = False
+        return document
+
+    def consumed_token_preflight_receipt(self, receipt_id: str) -> dict[str, Any]:
+        """Read one immutable, already-consumed preflight receipt for post-generation validation."""
+        if not isinstance(receipt_id, str) or not receipt_id:
+            raise RuntimeDatabaseError("token preflight receipt identity is required")
+        row = self._connection.execute(
+            "SELECT receipt.document FROM token_preflight_receipts AS receipt "
+            "JOIN token_preflight_receipt_consumptions AS consumption "
+            "ON consumption.receipt_id = receipt.receipt_id WHERE receipt.receipt_id = ?",
+            (receipt_id,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeIntegrityError("token preflight receipt is not consumed canonical generation evidence")
+        document = json.loads(row["document"])
+        if document.get("receipt_id") != receipt_id or document.get("result") != "PASS":
+            raise RuntimeIntegrityError("token preflight receipt is inconsistent")
         return document
 
     def consume_token_preflight_receipt(self, receipt_id: str, boundary: Mapping[str, str]) -> dict[str, Any]:
