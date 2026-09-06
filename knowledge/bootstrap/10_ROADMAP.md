@@ -129,6 +129,43 @@ After the EP producer proofs above, Forge should implement/qualify one narrow F3
 
 Forge never writes the target repository directly and never reconstructs EP execution authority from logs, Console state or local process state.
 
+## Project Intelligence and dynamic roadmap planning
+
+Forge's existing Mission Candidate concept is the beginning of a dynamic planning layer, but it must not become a hidden second roadmap. The canonical architecture is defined in `docs/architecture/PROJECT_INTELLIGENCE_AND_DYNAMIC_PLANNING.md`.
+
+Forge distinguishes:
+
+- **Roadmap / Capability DAG** — approved canonical direction, milestones and dependencies;
+- **Expected Mission** — dynamic, confidence-bearing inference from Forge Knowledge + current Project Context about likely future work; never canonical backlog authority;
+- **Mission Candidate** — advisory concrete possible next Mission;
+- **Mission** — governed canonical work;
+- **Roadmap/DAG Insight** — Forge inference that the approved plan may need structural change;
+- **Roadmap Change Proposal** — explicit before/after changeset requiring applicable governance before canonical mutation.
+
+Expected Missions are recalculated dynamically from project context and may appear or disappear without becoming cancelled roadmap items. Mission Candidate generation should consider canonical roadmap state, architecture, completed/active Missions, EP execution evidence, business priorities, current blockers and high-confidence Expected Missions.
+
+Every projected intelligence claim must preserve the semantic distinction between `FACT`, `INFERENCE`, `FORECAST`, `RECOMMENDATION` and `DECISION`.
+
+### Early architecture seams to establish
+
+These contracts are worth stabilizing before the full Workspace governance UI is built:
+
+- stable roadmap/capability/DAG node and dependency identities;
+- Project Context snapshot/digest provenance;
+- Expected Mission / Mission Candidate / Mission identity and lifecycle separation;
+- immutable Roadmap Change Proposal identity and before/after diff semantics;
+- evidence references usable by Workspace;
+- decision type / required role metadata seam;
+- semantic claim classification (`FACT / INFERENCE / FORECAST / RECOMMENDATION / DECISION`).
+
+### Not on the first execution critical path
+
+The first Forge -> EP -> Forge canary does **not** require interactive DAG editing, probabilistic completion forecasting, automatic roadmap reordering, multi-role Workspace approval UI or automatic low-risk roadmap mutation. Those become follow-on product capabilities after the basic execution/reconciliation loop unless real evidence creates a dependency.
+
+### Project Completion Model — follow-on
+
+Forge should ultimately provide Business Workspace with a semantic project-completion and forecast projection based on weighted outcomes/capabilities, critical-path work, active Missions, high-confidence Expected Missions, historical delivery evidence and uncertainty. Forecasts should expose ranges/confidence rather than false precision. This is a core product direction, not a V1 execution gate.
+
 ## Forge + Workspace V1 implementation programme
 
 The V1 programme is dependency/capability driven. Cross-product milestones do not allocate another repository's implementation work. Derived DAG/dependency documents are indexes/projections, not product authority. Future productization must not be promoted onto the bootstrap critical path without evidence.
@@ -155,14 +192,15 @@ AI exposure, Knowledge Learning, continuous dual learning and effectiveness/dist
 
 ## Authority and state rules
 
-- Forge owns why/what: roadmap, Mission, Action intent, planning dependencies and governance.
+- Forge owns why/what: roadmap reasoning, Mission, Action intent, planning dependencies and governance proposals.
 - EP owns how: submission/admission, execution lifecycle, queue/lease where applicable, provider execution, finalization, receipts and canonical execution evidence.
-- Workspace owns human/project UX and projections, never execution lifecycle authority.
+- Workspace owns human/project UX, role-aware decision routing and evidence projections, never execution lifecycle or Forge reasoning authority.
 - Canonical Project Authority Repository declares project/repository identity; EP validates it.
 - Forge records intended Action/submission identity before EP submission; EP persists canonical submission/run evidence; Forge reconciles by correlation/run identity.
 - A retry never invents a second submission when the first POST outcome is ambiguous.
 - Provider output is never directly executable authority.
 - Reports, logs, browser selection and current checkout are not lifecycle authority.
+- Forge inference, forecast or recommendation never silently becomes canonical roadmap state.
 
 ## Dependency guidance
 
@@ -183,21 +221,30 @@ materialization/admission
   -> first Forge -> EP -> Forge canary
   -> autonomous next-Mission loop
 
+PROJECT INTELLIGENCE PREPARATION (non-blocking):
+Project Context contracts
+  -> Expected Missions
+  -> Mission Candidate reasoning
+  -> Roadmap Change Proposal contracts
+  -> Workspace role-aware governance projections
+
 FOLLOW-ON EP PRODUCTIZATION:
 broader Agent separation / generalized dispatch / multi-host / multi-repository
 
 FOLLOW-ON CROSS-PRODUCT:
-Workspace dogfood/control plane; L1/L1-R hardening; Quality/AI/Knowledge maturity
+Workspace Roadmap/DAG Governance; completion forecasting; L1/L1-R hardening; Quality/AI/Knowledge maturity
 ```
 
 ## Non-goals and authority constraints
 
 - Forge does not become a second execution engine.
 - EP does not become a planner or autonomously rewrite Forge policy.
-- Workspace does not become execution authority.
+- Workspace does not become Forge planning or EP execution authority.
 - Forge must not duplicate the existing P-TRANSPORT submission transport.
 - P-INSTALLER-V1 must not absorb Forge, Workspace or generalized Agent productization.
 - Broader Agent/queue architecture must not be inserted onto the bootstrap critical path without evidence that the minimum installed canary needs it.
 - Real-project dogfood does not authorize parallel multi-project mutation; serial execution is sufficient for these proofs.
+- Expected Missions and Mission Candidates are not approved backlog or execution authority.
+- Roadmap Change Proposals require applicable governance before canonical mutation.
 - Product upgrades do not silently rewrite project/repository policy.
 - Historical evidence and intentional compatibility require explicit classification before retirement.
