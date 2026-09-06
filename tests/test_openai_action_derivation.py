@@ -173,9 +173,36 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   properties=schema['properties']['proposals']['items']['properties']
   scope=properties['scope']
   self.assertEqual(scope,{'type':'string','enum':['planner-contract']})
-  self.assertEqual(properties['write_scopes'],{'type':'array','maxItems':0})
+  self.assertEqual(properties['write_scopes'],{'type':'array','items':{'type':'string'},'maxItems':0})
   self.assertEqual(properties['human_gates'],{'type':'array','items':{'type':'string','enum':['architecture-review']},'minItems':1,'maxItems':1})
   self.assertEqual(properties['risk_inputs'],{'type':'array','items':{'type':'string','enum':['scope-drift']},'minItems':1,'maxItems':1})
+
+ def test_strict_schema_gives_every_array_an_explicit_item_schema_without_weakening_policy(self):
+  adapter,_,_,request=self.adapter(lambda *args,**kwargs: None)
+  schema=adapter._body(request)['text']['format']['schema']
+  def check(value):
+   if isinstance(value,dict):
+    if value.get('type') == 'array': self.assertIsInstance(value.get('items'),dict)
+    for item in value.values(): check(item)
+   elif isinstance(value,list):
+    for item in value: check(item)
+  check(schema)
+  properties=schema['properties']['proposals']['items']['properties']
+  self.assertEqual(properties['write_scopes']['maxItems'],0)
+  self.assertEqual(properties['human_gates']['minItems'],1)
+  self.assertEqual(properties['risk_inputs']['minItems'],1)
+
+ def test_invalid_json_schema_is_a_safe_persisted_error_classification(self):
+  def rejected(request, timeout):
+   raise HTTPError(request.full_url, 400, 'bad request', {'x-request-id':'req_schema'},
+                   BytesIO(b'{"error":{"type":"invalid_request_error","code":"invalid_json_schema","message":"discard"}}'))
+  adapter,_,_,request=self.adapter(rejected)
+  with self.assertRaises(ProviderTokenPreflightFailed): adapter.preflight(request,operator_context=adapter.configuration.policy_service.operator_service.context())
+  row=adapter.configuration.policy_service.db._connection.execute('SELECT document FROM token_preflight_failures').fetchone()
+  recorded=json.loads(row['document'])
+  self.assertEqual((recorded['status'],recorded['provider_type'],recorded['provider_code'],recorded['request_id']),
+                   (400,'invalid_request_error','invalid_json_schema','req_schema'))
+  self.assertNotIn('discard',json.dumps(recorded))
 
  def test_invalid_canonical_derivation_policy_fails_closed_before_transport(self):
   calls=[]
