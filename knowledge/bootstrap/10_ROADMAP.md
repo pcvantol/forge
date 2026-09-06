@@ -16,6 +16,15 @@ Foundation is complete. Self Engineering is underway. Runtime and Production rem
 
 The immediate objective is the shortest safe route to a real autonomous Forge operating loop, not completion of every future EP/Workspace productization capability.
 
+`AUTONOMY_BOOTSTRAP_DONE` is earned only when Forge selects real work,
+materializes a bounded Action, submits it through the installed canonical EP
+machine boundary, and EP persists/adopts it, performs a real repository
+mutation, validates/reviews/finalizes it, and exposes canonical terminal
+evidence. Forge must then observe and exactly reconcile that result, unlock or
+select a successor, and continue through repairable bounded failures without
+the owner relaying prompts or results. The critical dogfood proof is
+`FORGE_CAUSES_REAL_FORGE_REPOSITORY_CHANGE_VIA_EP = TRUE`.
+
 Current qualified Forge foundation includes canonical governance persistence, Mission Intake/amendment lineage, Action-Derivation evidence, G011/provider boundaries, token-preflight binding, governed reattempt lineage, a real Action-Derivation provider canary, post-canary Security qualification and immutable canary closure. PR #40 is merged; this foundation must not be reopened without regression evidence.
 
 Forge is intentionally **on hold for execution integration** while EP proves the external execution producer. The current critical path is:
@@ -74,7 +83,14 @@ P-NEUTRAL implementation/qualification
   -> SELF_HOSTED_ENGINEERING_VERIFIED evidence
 ```
 
-Implementation defects, CI failures, installer issues, schema/host findings and Human Security findings inside the pre-approved boundary are engineering repair loops, not owner decisions. Evidence milestones are not owner approvals by themselves. Manual owner input is reserved for actual authority expansion, destructive operation, wider write scope, weakened security invariants or a repository merge policy that explicitly requires owner merge authorization.
+Implementation defects, CI failures, installer issues, schema/host findings,
+fixture/coverage corrections, bounded security-review findings and exact-head
+changes caused by those bounded repairs are engineering repair loops, not owner
+decisions. Evidence milestones are not owner approvals by themselves. Manual
+owner input is reserved for actual authority expansion, destructive operation,
+wider write scope, weakened security invariants, materially ambiguous product
+decisions or a repository merge policy that explicitly requires owner merge
+authorization.
 
 `BOOTSTRAP_MICRO_APPROVALS_EXPECTED = FALSE`
 `EP_ENGINEERING_REPAIR_LOOP_AUTONOMOUS = TRUE`
