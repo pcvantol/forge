@@ -32,7 +32,7 @@ class ActionDerivationCanaryClosureTests(unittest.TestCase):
         self.directory.cleanup()
 
     def _seed_validated_successor(self) -> None:
-        self.db.save_mission_state({"mission_id": "mission", "status": "APPROVED_PLANNABLE", "progress": {}, "resume": {}, "execution_policy": {}})
+        self.db.save_mission_state({"mission_id": "mission", "status": "APPROVED_PLANNABLE", "progress": {}, "resume": {}, "execution_policy": {}, "admission_contract": {"write_scope": "NONE"}})
         self.predecessor = {"derivation_id": "failed", "mission_id": "mission", "snapshot_digest": self.digest("a"), "contract_version": "1.0", "provider_configuration": self.digest("b"), "lifecycle": "FAILED", "generation_request_digest": self.digest("c"), "evidence_digest": self.digest("d"), "effective_contract_digest": self.digest("e"), "main_head": "f" * 40}
         self.db.save_action_derivation(self.predecessor)
         self.authorization = {"authorization_id": "auth", "successor_attempt_id": "successor", "mission_id": "mission", "predecessor_attempt_id": "failed", "predecessor_terminal_state": "FAILED", "attempt_sequence": 2, "planning_snapshot_digest": self.digest("a"), "effective_contract_digest": self.digest("e"), "evidence_digest": self.digest("d"), "g011_policy_digest": self.digest("b"), "provider_request_digest": self.digest("0"), "main_head": "f" * 40, "reattempt_reason": "REQUEST_SEMANTICS_CHANGED", "rationale": "bounded request changed", "authorization_identity": sha256(self.context.generated_uid.encode()).hexdigest()[:16], "installation_id": self.context.installation_id, "created_at": "2026-09-06T00:00:00Z"}
