@@ -347,7 +347,7 @@ class OpenAIResponsesPlanningProvider:
         prompt = json.dumps({"contract":"Forge Action Derivation; propose only, never approve or execute.", "snapshot": request.snapshot.to_dict() | {"evidence": evidence}}, separators=(",", ":"))
         scopes = self.configuration.preflight_authority.approved_scopes_for(request.snapshot.mission_id)
         write_scopes, human_gates, risk_inputs = self.configuration.preflight_authority.approved_derivation_policy_for(request.snapshot.mission_id)
-        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_approved_contract(scopes, write_scopes, human_gates, risk_inputs)}}}
+        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority. Preserve every required human gate and risk input represented by the schema; use only the schema's no-write value when declaring write scope."}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_approved_contract(scopes, write_scopes, human_gates, risk_inputs)}}}
 
     def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy,
                                 snapshot: _G011PolicySnapshot, request_digest: str) -> "_TokenPreflightReceipt":
@@ -505,15 +505,16 @@ def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[s
         "type": "string", "enum": list(scopes),
     }
     # ``NONE`` is a governance state, never a provider grant to a write path.
-    properties["write_scopes"] = {"type": "array", "maxItems": 0}
-    properties["human_gates"] = _required_enum_array(human_gates)
-    properties["risk_inputs"] = _required_enum_array(risk_inputs)
+    # The deterministic validator independently requires the complete canonical
+    # gate/risk sets; these enums only narrow what a provider may propose.
+    properties["write_scopes"] = _enum_array(("NONE",))
+    properties["human_gates"] = _enum_array(human_gates)
+    properties["risk_inputs"] = _enum_array(risk_inputs)
     return schema
 
 
-def _required_enum_array(values: tuple[str, ...]) -> dict[str, object]:
-    """Require exactly a finite canonical set using basic strict-schema keywords."""
+def _enum_array(values: tuple[str, ...]) -> dict[str, object]:
+    """Restrict one provider-controlled array to canonical values only."""
     if not values or len(values) != len(set(values)) or any(not isinstance(value, str) or not value for value in values):
         raise ValueError("canonical derivation constraint set is invalid")
-    return {"type": "array", "items": {"type": "string", "enum": list(values)},
-            "minItems": len(values), "maxItems": len(values)}
+    return {"type": "array", "items": {"type": "string", "enum": list(values)}}

@@ -158,9 +158,9 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   properties=schema['properties']['proposals']['items']['properties']
   scope=properties['scope']
   self.assertEqual(scope,{'type':'string','enum':['planner-contract']})
-  self.assertEqual(properties['write_scopes'],{'type':'array','maxItems':0})
-  self.assertEqual(properties['human_gates'],{'type':'array','items':{'type':'string','enum':['architecture-review']},'minItems':1,'maxItems':1})
-  self.assertEqual(properties['risk_inputs'],{'type':'array','items':{'type':'string','enum':['scope-drift']},'minItems':1,'maxItems':1})
+  self.assertEqual(properties['write_scopes'],{'type':'array','items':{'type':'string','enum':['NONE']}})
+  self.assertEqual(properties['human_gates'],{'type':'array','items':{'type':'string','enum':['architecture-review']}})
+  self.assertEqual(properties['risk_inputs'],{'type':'array','items':{'type':'string','enum':['scope-drift']}})
 
  def test_invalid_canonical_derivation_policy_fails_closed_before_transport(self):
   calls=[]
