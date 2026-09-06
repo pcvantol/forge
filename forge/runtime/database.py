@@ -1427,6 +1427,14 @@ class RuntimeDatabase:
                 return document
             if any(persisted.get(item) != document[item] for item in required[1:5]):
                 raise RuntimeIntegrityError("action derivation lineage is immutable")
+            binding_fields = ("proposal_digest", "validation_digest", "evidence_digest",
+                              "effective_contract_digest", "provider_result_digest",
+                              "generation_request_digest", "preflight_receipt_id", "main_head",
+                              "provider_output_untrusted", "runtime_action_executed",
+                              "validation_result")
+            if any(field in persisted and document.get(field) != persisted[field]
+                   for field in binding_fields):
+                raise RuntimeIntegrityError("action derivation validation bindings are immutable")
             from forge.models.action_derivation import DerivationLifecycle, _LIFECYCLE_TRANSITIONS
             try:
                 previous, current = DerivationLifecycle(persisted["lifecycle"]), DerivationLifecycle(document["lifecycle"])

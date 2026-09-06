@@ -51,18 +51,26 @@ def _is_sha256_digest(value: object) -> bool:
 
 def _record_deterministic_validation_failure(database, request, *, policy_digest: str,
                                              evidence_digest: str, effective_contract_digest: str,
-                                             provider_result_digest: str,
+                                             provider_result_digest: str, preflight_receipt: dict[str, object],
                                              error: ProposalValidationError) -> dict[str, object]:
     """Persist bounded FAILED lifecycle evidence through the canonical store only."""
     if not all(_is_sha256_digest(value) for value in
                (policy_digest, evidence_digest, effective_contract_digest,
-                provider_result_digest, request.snapshot.digest)):
+                provider_result_digest, request.snapshot.digest,
+                preflight_receipt.get("request_digest"))):
         raise ValueError("complete canonical validation-failure bindings are required")
+    receipt_id, main_head = preflight_receipt.get("receipt_id"), preflight_receipt.get("main_head")
+    if (not isinstance(receipt_id, str) or not receipt_id
+            or not isinstance(main_head, str) or len(main_head) != 40
+            or any(character not in "0123456789abcdef" for character in main_head)):
+        raise ValueError("complete canonical token-preflight provenance is required")
     code = deterministic_validation_failure_code(error)
     validation_digest = "sha256:" + sha256(json.dumps({
         "code": code, "snapshot_digest": request.snapshot.digest, "policy_digest": policy_digest,
         "evidence_digest": evidence_digest, "effective_contract_digest": effective_contract_digest,
         "provider_result_digest": provider_result_digest,
+        "generation_request_digest": preflight_receipt["request_digest"],
+        "preflight_receipt_id": receipt_id, "main_head": main_head,
     }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     document = DerivationRecord(request.derivation_id, request.snapshot.mission_id, request.snapshot.digest,
                                 "1.0", policy_digest, DerivationLifecycle.FAILED,
@@ -71,7 +79,53 @@ def _record_deterministic_validation_failure(database, request, *, policy_digest
     document.update({"validation_failure_code": code, "evidence_digest": evidence_digest,
                      "effective_contract_digest": effective_contract_digest,
                      "provider_result_digest": provider_result_digest,
+                     "generation_request_digest": preflight_receipt["request_digest"],
+                     "preflight_receipt_id": receipt_id, "main_head": main_head,
                      "provider_output_untrusted": True, "runtime_action_executed": False})
+    return database.save_action_derivation(document)
+
+
+def _record_deterministic_validation_success(database, request, *, policy_digest: str,
+                                             evidence_digest: str, effective_contract_digest: str,
+                                             provider_result_digest: str,
+                                             preflight_receipt: dict[str, object],
+                                             validated: "ValidatedDerivation") -> dict[str, object]:
+    """Persist a bounded, non-materializing successful validation result.
+
+    The validated proposals remain provider data and are deliberately not
+    stored here. The result digest and canonical authority bindings make the
+    pass auditable without turning provider output into execution authority.
+    """
+    if not isinstance(validated, ValidatedDerivation):
+        raise ValueError("a successful derivation record requires deterministic validation")
+    if not all(_is_sha256_digest(value) for value in
+               (policy_digest, evidence_digest, effective_contract_digest,
+                provider_result_digest, request.snapshot.digest,
+                preflight_receipt.get("request_digest"))):
+        raise ValueError("complete canonical validation-success bindings are required")
+    receipt_id, main_head = preflight_receipt.get("receipt_id"), preflight_receipt.get("main_head")
+    if (not isinstance(receipt_id, str) or not receipt_id
+            or not isinstance(main_head, str) or len(main_head) != 40
+            or any(character not in "0123456789abcdef" for character in main_head)):
+        raise ValueError("complete canonical token-preflight provenance is required")
+    validation_digest = "sha256:" + sha256(json.dumps({
+        "result": "PASS", "snapshot_digest": request.snapshot.digest, "policy_digest": policy_digest,
+        "evidence_digest": evidence_digest, "effective_contract_digest": effective_contract_digest,
+        "provider_result_digest": provider_result_digest,
+        "generation_request_digest": preflight_receipt["request_digest"],
+        "preflight_receipt_id": receipt_id, "main_head": main_head,
+    }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    document = DerivationRecord(request.derivation_id, request.snapshot.mission_id, request.snapshot.digest,
+                                "1.0", policy_digest, DerivationLifecycle.VALIDATED,
+                                proposal_digest=provider_result_digest,
+                                validation_digest=validation_digest).to_dict()
+    document.update({"validation_result": "PASS", "evidence_digest": evidence_digest,
+                     "effective_contract_digest": effective_contract_digest,
+                     "provider_result_digest": provider_result_digest,
+                     "generation_request_digest": preflight_receipt["request_digest"],
+                     "preflight_receipt_id": receipt_id, "main_head": main_head,
+                     "provider_output_untrusted": True, "runtime_action_executed": False,
+                     "action_materialized": False})
     return database.save_action_derivation(document)
 
 

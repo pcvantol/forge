@@ -377,6 +377,15 @@ class OpenAIResponsesPlanningProvider:
     def invoke_and_validate(self, request: ProviderDerivationRequest, *, receipt_id: str,
                             governance_repository):
         """Perform the one permitted generation and its canonical non-executing validation boundary."""
+        database = self.configuration.policy_service.db
+        policy_digest = _G011PolicySnapshot.from_policy(self.configuration.current_policy()).digest
+        existing = database._connection.execute(
+            "SELECT 1 FROM action_derivations WHERE derivation_id=? OR "
+            "(mission_id=? AND snapshot_digest=? AND contract_version='1.0' AND provider_configuration=?)",
+            (request.derivation_id, request.snapshot.mission_id, request.snapshot.digest, policy_digest),
+        ).fetchone()
+        if existing is not None:
+            raise PermissionError("canonical Action Derivation identity is already resolved")
         response = self.invoke(request, receipt_id=receipt_id)
         return self._validate_and_record(request, response, receipt_id=receipt_id,
                                          governance_repository=governance_repository)
@@ -392,7 +401,8 @@ class OpenAIResponsesPlanningProvider:
         """
         from forge.action_derivation_evidence import CanonicalActionDerivationEvidenceProducer
         from forge.planner.action_derivation import (ActionDerivationValidator, ProposalValidationError,
-                                                      _record_deterministic_validation_failure)
+                                                      _record_deterministic_validation_failure,
+                                                      _record_deterministic_validation_success)
 
         database = self.configuration.policy_service.db
         if governance_repository.database is not database:
@@ -418,7 +428,7 @@ class OpenAIResponsesPlanningProvider:
             return response.governance_refinement
         write_scopes, human_gates, risk_inputs = self.configuration.preflight_authority.approved_derivation_policy_for(request.snapshot.mission_id)
         try:
-            return ActionDerivationValidator().validate(
+            validated = ActionDerivationValidator().validate(
                 response.proposals, request.snapshot, planning_input,
                 DerivationPolicy(write_scopes, human_gates, risk_inputs),
             )
@@ -426,8 +436,14 @@ class OpenAIResponsesPlanningProvider:
             return _record_deterministic_validation_failure(
                 database, request, policy_digest=snapshot.digest, evidence_digest=boundary.evidence_digest,
                 effective_contract_digest=boundary.effective_contract_digest,
-                provider_result_digest=result_digest, error=error,
+                provider_result_digest=result_digest, preflight_receipt=receipt, error=error,
             )
+        _record_deterministic_validation_success(
+            database, request, policy_digest=snapshot.digest, evidence_digest=boundary.evidence_digest,
+            effective_contract_digest=boundary.effective_contract_digest,
+            provider_result_digest=result_digest, preflight_receipt=receipt, validated=validated,
+        )
+        return validated
 
     def _body(self, request: ProviderDerivationRequest, policy: PlanningProviderInvocationPolicy | None = None) -> dict[str, object]:
         policy = policy or self.configuration.current_policy()
