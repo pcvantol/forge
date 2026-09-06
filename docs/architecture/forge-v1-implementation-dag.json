@@ -1,1 +1,268 @@
-{"schema_version":1,"authority":"DERIVED","ep_node_authority":"ENGINEERING_PLATFORM","sources":["product-model","FORGE_PRODUCTIZATION_RECONCILIATION","FORGE_V1_PRODUCTIZATION_DECISION_CONTRACT","knowledge/bootstrap/10_ROADMAP.md","FORGE_WORKSPACE_V1_CROSS_PRODUCT_DEPENDENCIES","FORGE_EP_V1_MIGRATION_CONTINUITY"],"nodes":[{"id":"F1","owner":"Forge","state":"PARTIALLY_IMPLEMENTED","predecessors":[],"external_gates":[],"dor":"decision contract","dod":"installed store, identity, migration and restart tests","human_gates":["ARCHITECTURE_DECISION"],"parallelism":"A","v1_classification":"V1_REQUIRED"},{"id":"F2","owner":"Forge","state":"CONTRACT_ONLY","predecessors":["F1"],"external_gates":[],"dor":"F1","dod":"versioned query/intent/event/error contract tests","human_gates":["ARCHITECTURE_DECISION","SECURITY_DECISION"],"parallelism":"B","v1_classification":"V1_REQUIRED"},{"id":"F3","owner":"Forge","state":"PARTIALLY_IMPLEMENTED","predecessors":["F1","F2"],"external_gates":["EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1"],"dor":"attachment contract and qualified EP producer","dod":"idempotent attach/drift/recovery qualification","human_gates":["OWNER_AUTHORIZATION"],"parallelism":"A","v1_classification":"V1_REQUIRED"},{"id":"F4","owner":"Forge","state":"PARTIALLY_IMPLEMENTED","predecessors":["F1","F2"],"external_gates":["EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED"],"dor":"qualified EP engineering-contract producer","dod":"receipt reconciliation/restart/negative tests","human_gates":["NO_HUMAN_GATE"],"parallelism":"E","v1_classification":"V1_REQUIRED"},{"id":"F5","owner":"Forge","state":"CONTRACT_ONLY","predecessors":["F2"],"external_gates":[],"dor":"service contracts","dod":"Roadmap DAG and materialized Forecast provenance tests","human_gates":["NO_HUMAN_GATE"],"parallelism":"C","v1_classification":"V1_REQUIRED"},{"id":"F6","owner":"Forge","state":"PARTIALLY_IMPLEMENTED","predecessors":["F2"],"external_gates":[],"dor":"session contract","dod":"proposal/decision/resume/audit tests","human_gates":["BUSINESS_DECISION","ARCHITECTURE_DECISION"],"parallelism":"D","v1_classification":"V1_REQUIRED"},{"id":"F7","owner":"Forge","state":"CONTRACT_ONLY","predecessors":["F2","F4"],"external_gates":[],"dor":"Action evidence contract","dod":"observer/proposal/no-auto-policy tests","human_gates":["NO_HUMAN_GATE"],"parallelism":"F","v1_classification":"V1_OPTIONAL"},{"id":"F8","owner":"Forge","state":"CONTRACT_ONLY","predecessors":["F2","F4"],"external_gates":["KB::GOVERNED_LIFECYCLE"],"dor":"KB export contract","dod":"redaction/lineage/no-certification tests","human_gates":["NO_HUMAN_GATE"],"parallelism":"G","v1_classification":"POST_V1"},{"id":"F9","owner":"Forge","state":"CONTRACT_ONLY","predecessors":["F2","F3","F4","F5","F6"],"external_gates":["Workspace::ONBOARDING_CONTROL_PLANE_V1"],"dor":"consumer contracts","dod":"installed control-plane Goldens","human_gates":["HUMAN_UI_REVIEW"],"parallelism":"H","v1_classification":"V1_REQUIRED"}],"external_gates":["EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1","EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED","Workspace::ONBOARDING_CONTROL_PLANE_V1","KB::GOVERNED_LIFECYCLE"],"external_gate_details":[{"id":"EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1","owner":"engineering-platform","producer_capability":"idempotent canonical project registration refresh, repository/Agent attachment and admission-ready project","qualification_gate":"clean-install, fresh-registration, idempotency, project-routing and first-governed-execution evidence","current_state":"WAITING_EP_IMPLEMENTATION","prerequisite_trace":["EP::LOCAL_CONSUMER_API_V1 (AVAILABLE_FROM_EP_MAIN)","EP::STANDALONE_EP_VERIFIED","EP::PHASE3_STANDALONE_PACKAGE_AND_INSTALL_QUALIFICATION_V1","EP::P_TRANSPORT_V1","EP::P_QUEUE_V1","EP::P_NEUTRAL_V1","EP::P_INSTALLER_V1","EP::P_RELEASE_V1","EP::PHASE_P_REAUDIT_V1","EP::PD_INSTALLED_PRODUCT_GOLDENS_V1","EP::PHASE_S_EXECUTION_PROTOCOL_FOUNDATION_V1","EP::B8E_ZERO_LOSS_PASS"],"readiness_scope":"REQUIRES_SPECIFIC_EP_PRODUCER_ONLY","source_provenance":{"ep_main_sha":"fc5111d173a407af50c6a66c962a9bc1c875e3dc","ep_pr":33,"ep_pr_head":"215d42f29855052144ec5dc200c0ac66917de354","canonical_ep_state":"PLANNED_UNAVAILABLE","in_flight_ep_state":"P_TRANSPORT_IMPLEMENTED_BUT_NOT_QUALIFIED_OR_MERGED"}},{"id":"EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED","owner":"engineering-platform","producer_capability":"capability classification, Effective DoR/DoD, proof requirements, Human Gates, immutable Action snapshots and evidence projection","qualification_gate":"installed-artifact contract, negative-admission, recovery and evidence-projection tests","current_state":"WAITING_EP_IMPLEMENTATION","prerequisite_trace":["EP::LOCAL_CONSUMER_API_V1 (AVAILABLE_FROM_EP_MAIN)","EP::STANDALONE_EP_VERIFIED","EP::PHASE3_STANDALONE_PACKAGE_AND_INSTALL_QUALIFICATION_V1","EP::P_TRANSPORT_V1","EP::P_QUEUE_V1","EP::P_NEUTRAL_V1","EP::P_INSTALLER_V1","EP::P_RELEASE_V1","EP::PHASE_P_REAUDIT_V1","EP::PD_INSTALLED_PRODUCT_GOLDENS_V1","EP::PHASE_S_EXECUTION_PROTOCOL_FOUNDATION_V1","EP::B8E_ZERO_LOSS_PASS","EP::ENGINEERING_CONTRACT_FOUNDATION_V1"],"readiness_scope":"REQUIRES_SPECIFIC_EP_PRODUCER_ONLY","source_provenance":{"ep_main_sha":"fc5111d173a407af50c6a66c962a9bc1c875e3dc","ep_pr":33,"ep_pr_head":"215d42f29855052144ec5dc200c0ac66917de354","canonical_ep_state":"PLANNED_UNAVAILABLE","in_flight_ep_state":"P_TRANSPORT_IMPLEMENTED_BUT_NOT_QUALIFIED_OR_MERGED"}},{"id":"Workspace::ONBOARDING_CONTROL_PLANE_V1","owner":"workspace","producer_capability":"onboarding control plane","qualification_gate":"Workspace UX/accessibility/no-secondary-authority proof plus qualified EP attachment producer","current_state":"WAITING_CROSS_PRODUCT_QUALIFICATION","prerequisite_trace":["EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1","Forge::L1_BOOTSTRAP_EVIDENCE_CONTRACT for managed bootstrap only"],"readiness_scope":"REQUIRES_SPECIFIC_EP_PRODUCER_ONLY","source_provenance":{"workspace_main_sha":"85f86400b05f82665daa5d0c40fdde514b94e59a"}},{"id":"KB::GOVERNED_LIFECYCLE","owner":"knowledge-base","producer_capability":"governed knowledge lifecycle","qualification_gate":"KB provenance/certification","current_state":"POST_V1","prerequisite_trace":[],"readiness_scope":"POST_V1","source_provenance":{}}]}
+{
+  "schema_version": 1,
+  "authority": "DERIVED",
+  "ep_node_authority": "ENGINEERING_PLATFORM",
+  "sources": [
+    "product-model",
+    "FORGE_PRODUCTIZATION_RECONCILIATION",
+    "FORGE_V1_PRODUCTIZATION_DECISION_CONTRACT",
+    "knowledge/bootstrap/10_ROADMAP.md",
+    "FORGE_WORKSPACE_V1_CROSS_PRODUCT_DEPENDENCIES",
+    "FORGE_EP_V1_MIGRATION_CONTINUITY"
+  ],
+  "nodes": [
+    {
+      "id": "F1",
+      "owner": "Forge",
+      "state": "PARTIALLY_IMPLEMENTED",
+      "predecessors": [],
+      "external_gates": [],
+      "dor": "decision contract",
+      "dod": "installed store, identity, migration and restart tests",
+      "human_gates": [
+        "ARCHITECTURE_DECISION"
+      ],
+      "parallelism": "A",
+      "v1_classification": "V1_REQUIRED"
+    },
+    {
+      "id": "F2",
+      "owner": "Forge",
+      "state": "CONTRACT_ONLY",
+      "predecessors": [
+        "F1"
+      ],
+      "external_gates": [],
+      "dor": "F1",
+      "dod": "versioned query/intent/event/error contract tests",
+      "human_gates": [
+        "ARCHITECTURE_DECISION",
+        "SECURITY_DECISION"
+      ],
+      "parallelism": "B",
+      "v1_classification": "V1_REQUIRED"
+    },
+    {
+      "id": "F3",
+      "owner": "Forge",
+      "state": "PARTIALLY_IMPLEMENTED",
+      "predecessors": [
+        "F1",
+        "F2"
+      ],
+      "external_gates": [
+        "EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1"
+      ],
+      "dor": "attachment contract and qualified EP producer",
+      "dod": "idempotent attach/drift/recovery qualification",
+      "human_gates": [
+        "OWNER_AUTHORIZATION"
+      ],
+      "parallelism": "A",
+      "v1_classification": "V1_REQUIRED"
+    },
+    {
+      "id": "F4",
+      "owner": "Forge",
+      "state": "PARTIALLY_IMPLEMENTED",
+      "predecessors": [
+        "F1",
+        "F2"
+      ],
+      "external_gates": [
+        "EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED"
+      ],
+      "dor": "qualified EP engineering-contract producer",
+      "dod": "receipt reconciliation/restart/negative tests",
+      "human_gates": [
+        "NO_HUMAN_GATE"
+      ],
+      "parallelism": "E",
+      "v1_classification": "V1_REQUIRED"
+    },
+    {
+      "id": "F5",
+      "owner": "Forge",
+      "state": "CONTRACT_ONLY",
+      "predecessors": [
+        "F2"
+      ],
+      "external_gates": [],
+      "dor": "service contracts",
+      "dod": "Roadmap DAG and materialized Forecast provenance tests",
+      "human_gates": [
+        "NO_HUMAN_GATE"
+      ],
+      "parallelism": "C",
+      "v1_classification": "V1_REQUIRED"
+    },
+    {
+      "id": "F6",
+      "owner": "Forge",
+      "state": "PARTIALLY_IMPLEMENTED",
+      "predecessors": [
+        "F2"
+      ],
+      "external_gates": [],
+      "dor": "session contract",
+      "dod": "proposal/decision/resume/audit tests",
+      "human_gates": [
+        "BUSINESS_DECISION",
+        "ARCHITECTURE_DECISION"
+      ],
+      "parallelism": "D",
+      "v1_classification": "V1_REQUIRED"
+    },
+    {
+      "id": "F7",
+      "owner": "Forge",
+      "state": "CONTRACT_ONLY",
+      "predecessors": [
+        "F2",
+        "F4"
+      ],
+      "external_gates": [],
+      "dor": "Action evidence contract",
+      "dod": "observer/proposal/no-auto-policy tests",
+      "human_gates": [
+        "NO_HUMAN_GATE"
+      ],
+      "parallelism": "F",
+      "v1_classification": "V1_OPTIONAL"
+    },
+    {
+      "id": "F8",
+      "owner": "Forge",
+      "state": "CONTRACT_ONLY",
+      "predecessors": [
+        "F2",
+        "F4"
+      ],
+      "external_gates": [
+        "KB::GOVERNED_LIFECYCLE"
+      ],
+      "dor": "KB export contract",
+      "dod": "redaction/lineage/no-certification tests",
+      "human_gates": [
+        "NO_HUMAN_GATE"
+      ],
+      "parallelism": "G",
+      "v1_classification": "POST_V1"
+    },
+    {
+      "id": "F9",
+      "owner": "Forge",
+      "state": "CONTRACT_ONLY",
+      "predecessors": [
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "F6"
+      ],
+      "external_gates": [
+        "Workspace::ONBOARDING_CONTROL_PLANE_V1"
+      ],
+      "dor": "consumer contracts",
+      "dod": "installed control-plane Goldens",
+      "human_gates": [
+        "HUMAN_UI_REVIEW"
+      ],
+      "parallelism": "H",
+      "v1_classification": "V1_REQUIRED"
+    }
+  ],
+  "external_gates": [
+    "EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1",
+    "EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED",
+    "Workspace::ONBOARDING_CONTROL_PLANE_V1",
+    "KB::GOVERNED_LIFECYCLE"
+  ],
+  "external_gate_details": [
+    {
+      "id": "EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1",
+      "owner": "engineering-platform",
+      "producer_capability": "idempotent canonical project registration refresh, repository/Agent attachment and admission-ready project",
+      "qualification_gate": "clean-install, fresh-registration, idempotency, project-routing and first-governed-execution evidence",
+      "current_state": "WAITING_EP_IMPLEMENTATION",
+      "prerequisite_trace": [
+        "EP::LOCAL_CONSUMER_API_V1 (AVAILABLE_FROM_EP_MAIN)",
+        "EP::STANDALONE_EP_VERIFIED",
+        "EP::PHASE3_STANDALONE_PACKAGE_AND_INSTALL_QUALIFICATION_V1",
+        "EP::P_TRANSPORT_V1 (COMPLETED_PREDECESSOR; EP_OWNED_EVIDENCE)",
+        "EP::P_QUEUE_V1",
+        "EP::P_NEUTRAL_V1 (COMPLETED_PREDECESSOR; EP_OWNED_EVIDENCE)",
+        "EP::P_INSTALLER_V1",
+        "EP::P_RELEASE_V1",
+        "EP::PHASE_P_REAUDIT_V1",
+        "EP::PD_INSTALLED_PRODUCT_GOLDENS_V1",
+        "EP::PHASE_S_EXECUTION_PROTOCOL_FOUNDATION_V1",
+        "EP::B8E_ZERO_LOSS_PASS"
+      ],
+      "readiness_scope": "REQUIRES_SPECIFIC_EP_PRODUCER_ONLY",
+      "source_provenance": {
+        "ep_main_sha": "222ff52a00499f2113f1df5bdd621394c12a66c5",
+        "observed_at": "2026-09-06T20:11:58Z",
+        "observation_classification": "HISTORICAL_SOURCE_PIN",
+        "current_status_resolution": "RESOLVE_FRESH_EP_ORIGIN_MAIN"
+      }
+    },
+    {
+      "id": "EP::ENGINEERING_CONTRACT_FOUNDATION_V1_QUALIFIED",
+      "owner": "engineering-platform",
+      "producer_capability": "capability classification, Effective DoR/DoD, proof requirements, Human Gates, immutable Action snapshots and evidence projection",
+      "qualification_gate": "installed-artifact contract, negative-admission, recovery and evidence-projection tests",
+      "current_state": "WAITING_EP_IMPLEMENTATION",
+      "prerequisite_trace": [
+        "EP::LOCAL_CONSUMER_API_V1 (AVAILABLE_FROM_EP_MAIN)",
+        "EP::STANDALONE_EP_VERIFIED",
+        "EP::PHASE3_STANDALONE_PACKAGE_AND_INSTALL_QUALIFICATION_V1",
+        "EP::P_TRANSPORT_V1 (COMPLETED_PREDECESSOR; EP_OWNED_EVIDENCE)",
+        "EP::P_QUEUE_V1",
+        "EP::P_NEUTRAL_V1 (COMPLETED_PREDECESSOR; EP_OWNED_EVIDENCE)",
+        "EP::P_INSTALLER_V1",
+        "EP::P_RELEASE_V1",
+        "EP::PHASE_P_REAUDIT_V1",
+        "EP::PD_INSTALLED_PRODUCT_GOLDENS_V1",
+        "EP::PHASE_S_EXECUTION_PROTOCOL_FOUNDATION_V1",
+        "EP::B8E_ZERO_LOSS_PASS",
+        "EP::ENGINEERING_CONTRACT_FOUNDATION_V1"
+      ],
+      "readiness_scope": "REQUIRES_SPECIFIC_EP_PRODUCER_ONLY",
+      "source_provenance": {
+        "ep_main_sha": "222ff52a00499f2113f1df5bdd621394c12a66c5",
+        "observed_at": "2026-09-06T20:11:58Z",
+        "observation_classification": "HISTORICAL_SOURCE_PIN",
+        "current_status_resolution": "RESOLVE_FRESH_EP_ORIGIN_MAIN"
+      }
+    },
+    {
+      "id": "Workspace::ONBOARDING_CONTROL_PLANE_V1",
+      "owner": "workspace",
+      "producer_capability": "onboarding control plane",
+      "qualification_gate": "Workspace UX/accessibility/no-secondary-authority proof plus qualified EP attachment producer",
+      "current_state": "WAITING_CROSS_PRODUCT_QUALIFICATION",
+      "prerequisite_trace": [
+        "EP::PROJECT_ATTACHMENT_AND_ADMISSION_V1",
+        "Forge::L1_BOOTSTRAP_EVIDENCE_CONTRACT for managed bootstrap only"
+      ],
+      "readiness_scope": "REQUIRES_SPECIFIC_EP_PRODUCER_ONLY",
+      "source_provenance": {
+        "workspace_main_sha": "8c651550a46b0ed431e3f4e3acd9133d885f508f",
+        "observed_at": "2026-09-06T20:11:51Z",
+        "observation_classification": "HISTORICAL_SOURCE_PIN",
+        "current_status_resolution": "RESOLVE_FRESH_WORKSPACE_ORIGIN_MAIN"
+      }
+    },
+    {
+      "id": "KB::GOVERNED_LIFECYCLE",
+      "owner": "knowledge-base",
+      "producer_capability": "governed knowledge lifecycle",
+      "qualification_gate": "KB provenance/certification",
+      "current_state": "POST_V1",
+      "prerequisite_trace": [],
+      "readiness_scope": "POST_V1",
+      "source_provenance": {}
+    }
+  ]
+}

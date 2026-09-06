@@ -6,7 +6,7 @@
 
 ```text
 Forge Action-Derivation foundation (qualified)
-  -> EP P-NEUTRAL closure
+  -> EP P-NEUTRAL closure (completed predecessor; EP-owned evidence)
   -> EP P-INSTALLER-V1 server-only qualification
   -> DJConnect declaration + CENTRAL attachment
   -> first real DJConnect EP Action
@@ -25,6 +25,8 @@ Forge Action-Derivation foundation (qualified)
 ## Critical corrections
 
 - P-TRANSPORT is merged/closed and provides HTTP, installed CLI and Server-owned File Inbox submission transports. Forge reuses HTTP.
+- P-NEUTRAL is a completed EP predecessor; its closure evidence and any later
+  status are EP-owned and must be resolved from fresh EP `origin/main`.
 - The earlier read-only Local Consumer API and later P-TRANSPORT HTTP mutation ingress are distinct.
 - P-INSTALLER-V1 is a server-only installed-product qualification gate before real-project execution; it does not install Forge, Workspace or generalized Agent productization.
 - B8R identity comes from committed `.engineering-platform/repository.json`, not Workspace/runtime/path inference.
@@ -45,8 +47,8 @@ Forge Action-Derivation foundation (qualified)
 | --- | --- | --- |
 | Forge governance/Mission/Action-Derivation foundation | QUALIFIED | KEEP; on hold for live execution integration. |
 | EP P-TRANSPORT submission transport | AVAILABLE | Reuse HTTP; no duplicate transport. |
-| EP P-NEUTRAL | ACTIVE | Current EP critical path. |
-| EP P-INSTALLER-V1 | REQUIRED NEXT | Reproducible server-only installed product. |
+| EP P-NEUTRAL | COMPLETED predecessor (EP-owned evidence) | No longer a current Forge projection frontier. |
+| EP P-INSTALLER-V1 | EP-owned current frontier at source-pinned observation | Reproducible server-only installed product. |
 | DJConnect real-project standalone canary | REQUIRED AFTER INSTALLER | Earns `EP::STANDALONE_EP_VERIFIED`. |
 | EP self-development through CENTRAL | REQUIRED POST-STANDALONE PRODUCER PROOF | Earns `EP::SELF_HOSTED_ENGINEERING_VERIFIED`. |
 | Forge direct-EP repository dogfood | REQUIRED BEFORE/DURING FORGE INTEGRATION | Proves EP can engineer Forge without Forge orchestration. |
@@ -60,7 +62,7 @@ Forge Action-Derivation foundation (qualified)
 ## Critical execution DAG
 
 ```text
-                         EP P-NEUTRAL
+                  EP P-NEUTRAL (completed)
                               |
                               v
                        P-INSTALLER-V1
@@ -219,8 +221,8 @@ Autonomous Mission execution is now:
 ```text
 approved Mission + Planner/Living Graph       PROVEN
 EP P-TRANSPORT HTTP                           AVAILABLE
-P-NEUTRAL                                     ACTIVE EP GAP
-P-INSTALLER-V1                                EP INSTALLED-PRODUCT GAP
+P-NEUTRAL                                     COMPLETED PREDECESSOR (EP-owned)
+P-INSTALLER-V1                                EP INSTALLED-PRODUCT GAP / observed frontier
 DJConnect real execution                      EP QUALIFICATION GAP
 STANDALONE_EP_VERIFIED                        EP GATE
 EP self-development                           EP PRODUCER CONFIDENCE GAP
@@ -237,7 +239,8 @@ Project Intelligence/Workspace governance productization is deliberately not ins
 
 - Forge may stabilize Project Context / Expected Mission / Roadmap Change Proposal contracts while live execution integration is on hold.
 - Forge should not invent installed EP readiness/execution contracts ahead of real installed evidence.
-- P-NEUTRAL proceeds now, followed by P-INSTALLER-V1.
+- P-INSTALLER-V1 follows the completed P-NEUTRAL predecessor; resolve its live
+  status from fresh EP authority before reporting it as active.
 - DJConnect/EP/Forge declarations and real Actions are serial qualification proofs; this does not require multi-project concurrent scheduling.
 - Workspace Roadmap/DAG Governance architecture can mature separately and remain non-blocking for first machine autonomy.
 - General Agent separation/dispatch/multi-host/multi-repository productization follows the first real loops unless a canary proves it necessary.

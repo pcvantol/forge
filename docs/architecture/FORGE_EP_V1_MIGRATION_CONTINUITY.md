@@ -2,32 +2,45 @@
 
 **AUTHORITY = DERIVED. EP_NODE_AUTHORITY = ENGINEERING_PLATFORM.** This is a Forge readiness projection, not EP allocation authority. EP roadmap/architecture and qualification evidence decide EP sequencing.
 
-## Reconciled baseline — 2026-09-06
+## Consumer dependency semantics and source-pinned observation
 
 The previous version of this projection was stale: it still described P-TRANSPORT PR #33 as open and placed the entire historical P-QUEUE/Phase-S/B8E chain in front of standalone verification. Current owner decisions and EP evidence supersede that projection.
 
-Current facts:
+Forge owns the consumer requirements below, not the current EP status of their
+producer capabilities. For an Architect-session status report, resolve fresh
+EP `origin/main` and apply the `PEER_AUTHORITY_FRESHNESS_CONTRACT` in
+`ARCHITECT_SESSION.md`. This document's EP facts are an observed source
+snapshot, never a locally authoritative EP status register.
+
+**Observed EP evidence:** `origin/main=222ff52a00499f2113f1df5bdd621394c12a66c5`
+at `2026-09-06T20:11:58Z`; P-NEUTRAL closure
+`b44af0914622dd57c5c5c2266ee2caf9b31d9007` is its ancestor. EP's closure
+register proves the same neutral platform-authority capability and the EP
+roadmap/status repair is owned by EP.
+
+Observed facts at that snapshot:
 
 - P-TRANSPORT PR #33 is merged; P-TRANSPORT is closed.
 - P-TRANSPORT provides HTTP, installed CLI and Server-owned File Inbox as three canonical submission transports normalized through Server/CENTRAL authority.
-- P-NEUTRAL is the active EP critical-path increment.
+- P-NEUTRAL is a completed EP predecessor, preserving its historical and
+  forensic evidence.
+- P-INSTALLER-V1 is the observed EP current frontier.
 - B8R project/repository identity is declared by the Canonical Project Authority Repository and validated by EP; Workspace is not required to manufacture logical project identity.
 - Broader Agent separation/general dispatch/multi-host/multi-repository productization is follow-on work by default.
 - `EP::STANDALONE_EP_VERIFIED` should be reached through the minimum installed one-run execution proof, not by assuming every broader future queue/Agent/B8E capability is a prerequisite.
 - Any queue/lease/recovery/finalization/B8E capability that the real installed canary actually requires becomes a bounded prerequisite based on evidence.
 
-## Current EP frontier
+## Consumer-gate interpretation
 
 ```text
 completed:
   EP::LOCAL_CONSUMER_API_V1
   EP::P_TRANSPORT_V1
-
-active:
   EP::P_NEUTRAL_V1
 
-next critical target:
-  minimum installed governed execution
+EP-owned current frontier at the observed source snapshot:
+  EP::P_INSTALLER_V1
+  -> minimum installed governed execution
   -> EP::STANDALONE_EP_VERIFIED
 
 follow-on unless proven required by the canary:
@@ -40,19 +53,21 @@ follow-on unless proven required by the canary:
 
 `P_TRANSPORT_STATUS = MERGED_CLOSED`
 
-`CURRENT_EP_MIGRATION_FRONTIER = P_NEUTRAL`
+`FORGE_OWNED_DEPENDENCY = EP installed execution/result producer`
+
+`EP_OWNED_STATUS = RESOLVE_FRESH_EP_ORIGIN_MAIN`
 
 `GENERAL_AGENT_SEPARATION_BLOCKS_STANDALONE = FALSE`
 
 ## Producer-to-consumer continuity
 
-| EP producer/capability | Current availability | Forge consequence | Workspace consequence |
+| EP producer/capability | EP-owned status | Forge consequence | Workspace consequence |
 | --- | --- | --- | --- |
-| Local Consumer API/auth foundation | Qualified | consumer/auth/read foundation | consumer/auth/read foundation |
-| P-TRANSPORT HTTP submission | Qualified transport | canonical Forge machine submission target | future permitted-intent transport; no Workspace ownership |
-| Installed one-run execution/finalization/result evidence | Qualification gap | blocks first real Forge execution/reconciliation | later execution projection |
-| B8R project identity/attachment runtime | Current EP architecture | Forge may target canonical declared repo identity | Workspace may project identity; not source of EP topology authority |
-| `EP::STANDALONE_EP_VERIFIED` | Next major gate | unlocks live Forge F3/F4 canary integration | allows later installed control-plane integration |
+| Local Consumer API/auth foundation | resolve fresh from EP | consumer/auth/read foundation | consumer/auth/read foundation |
+| P-TRANSPORT HTTP submission | resolve fresh from EP | canonical Forge machine submission target | future permitted-intent transport; no Workspace ownership |
+| Installed one-run execution/finalization/result evidence | resolve fresh from EP | blocks first real Forge execution/reconciliation until qualified | later execution projection |
+| B8R project identity/attachment runtime | resolve fresh from EP | Forge may target canonical declared repo identity | Workspace may project identity; not source of EP topology authority |
+| `EP::STANDALONE_EP_VERIFIED` | resolve fresh from EP | unlocks live Forge F3/F4 canary integration | allows later installed control-plane integration |
 | Rich Engineering Contract Foundation | Follow-on producer hardening | long-term L0/F4 richness | quality/governance projection |
 | Generalized Agent/dispatch/multi-host | Follow-on | scale/resilience, not first-canary prerequisite | later operations UX |
 

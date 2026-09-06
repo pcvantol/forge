@@ -2,13 +2,27 @@
 
 > **DERIVED DEPENDENCY VIEW.** Product roadmaps remain authoritative for their own implementation and qualification.
 
-## Current bootstrap graph — 2026-09-06
+## Consumer dependency view and source-pinned observation
+
+This is a derived consumer dependency view, not a second EP current-status or
+critical-path authority. Before reporting time-sensitive EP or Workspace
+status, an Architect session refreshes and resolves each peer's `origin/main`
+under the `PEER_AUTHORITY_FRESHNESS_CONTRACT` in `ARCHITECT_SESSION.md`.
+
+**Observed EP evidence:** `origin/main=222ff52a00499f2113f1df5bdd621394c12a66c5`
+at `2026-09-06T20:11:58Z`; P-NEUTRAL closure
+`b44af0914622dd57c5c5c2266ee2caf9b31d9007` is an ancestor and applies to the
+neutral-platform-authority capability. This records an observation only; EP
+owns its live status and roadmap/DAG repair.
 
 ```text
 EP::P_TRANSPORT_V1 [MERGED/AVAILABLE transport]
         |
         v
-EP::P_NEUTRAL_V1 [ACTIVE]
+EP::P_NEUTRAL_V1 [COMPLETED predecessor]
+        |
+        v
+EP::P_INSTALLER_V1 [observed current EP frontier]
         |
         v
 EP::MINIMUM_INSTALLED_EXECUTION_V1
@@ -36,9 +50,10 @@ Broader Agent separation/generalized dispatch, multi-host scheduling, multi-repo
 | --- | --- | --- | --- |
 | `EP::LOCAL_CONSUMER_API_V1` | EP | QUALIFIED | Consumer identity/auth/read foundation. Distinct from later P-TRANSPORT submission HTTP. |
 | `EP::P_TRANSPORT_V1` | EP | MERGED / QUALIFIED transport | HTTP, installed CLI and Server-owned File Inbox canonical submission ingress. Forge should reuse HTTP. |
-| `EP::P_NEUTRAL_V1` | EP | ACTIVE | Zero active generic DJConnect platform identity/authority in qualified scope. |
+| `EP::P_NEUTRAL_V1` | EP | completed predecessor — resolve fresh from EP | Zero active generic DJConnect platform identity/authority in qualified scope. |
+| `EP::P_INSTALLER_V1` | EP | resolve fresh from EP | Reproducible server-only installed EP product required before real-project execution. |
 | `EP::MINIMUM_INSTALLED_EXECUTION_V1` | EP | QUALIFICATION TARGET | One canonical submission -> admission -> execution -> finalization -> receipt/result chain using current installed execution path. |
-| `EP::STANDALONE_EP_VERIFIED` | EP | WAITING P-NEUTRAL + minimum execution proof | Installed independent execution authority for consumer canary integration. |
+| `EP::STANDALONE_EP_VERIFIED` | EP | resolve fresh from EP | Installed independent execution authority for consumer canary integration. |
 | `Forge::FIRST_EXECUTABLE_F3_F4` | Forge | CONTRACT-FIRST / LIVE WAITS EP | Action materialization, execution admission, HTTP submission binding, observation and reconciliation. |
 | `Forge::FIRST_EP_CANARY` | Forge + EP boundary | WAITING STANDALONE | One bounded Forge -> EP -> Forge execution, one repo/action/submission. |
 | `Forge::AUTONOMOUS_NEXT_MISSION_LOOP` | Forge | WAITS FIRST CANARY | Reconcile outcome -> determine/refine next candidate/Mission -> repeat under governance. |
@@ -73,7 +88,8 @@ Forge must not create a parallel mutation transport merely because older Phase-1
 | Producer | Consumer | Contract / qualification |
 | --- | --- | --- |
 | `EP::P_TRANSPORT_V1` | `EP::MINIMUM_INSTALLED_EXECUTION_V1` | Canonical submission transport; transport alone is not execution qualification. |
-| `EP::P_NEUTRAL_V1` | `EP::STANDALONE_EP_VERIFIED` | No legacy generic platform identity required by installed authority. |
+| `EP::P_NEUTRAL_V1` | `EP::P_INSTALLER_V1` | Completed neutral-platform predecessor; EP owns completion evidence. |
+| `EP::P_INSTALLER_V1` | `EP::MINIMUM_INSTALLED_EXECUTION_V1` | Reproducible server-side installed product before the real canary. |
 | `EP::MINIMUM_INSTALLED_EXECUTION_V1` | `EP::STANDALONE_EP_VERIFIED` | One real installed governed execution with finalization and immutable result evidence. |
 | `EP::STANDALONE_EP_VERIFIED` | `Forge::FIRST_EXECUTABLE_F3_F4` | Live installed producer available; Forge can complete HTTP submission/observation/reconciliation integration. |
 | `Forge::FIRST_EXECUTABLE_F3_F4` | `Forge::FIRST_EP_CANARY` | Materialized/admitted Action and exact EP correlation contract. |
@@ -84,7 +100,7 @@ There is no edge from Workspace to the first Forge execution canary and no defau
 
 ## Safe parallelism
 
-- Forge may build deterministic Action materialization/admission and HTTP contract fixtures while EP completes P-NEUTRAL/standalone qualification.
+- Forge may build deterministic Action materialization/admission and HTTP contract fixtures while EP qualifies its installed-product/current canary producer.
 - Forge live integration completion waits for `EP::STANDALONE_EP_VERIFIED`.
 - Workspace may design fixtures/UX but is not needed for the first machine loop.
 - Broader EP Agent/dispatch/queue work may proceed separately but must not be presented as bootstrap blocking without evidence.
