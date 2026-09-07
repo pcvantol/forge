@@ -32,6 +32,11 @@ authority inputs; derived state/evidence refresh alone is not material.
 `BOOTSTRAP_AUTHORIZATION_STALENESS = DEFINED`  
 `BOOTSTRAP_NODE_DISPATCH_AUTHORITY = MACHINE_DECIDABLE`
 
+The record is written only through Forge's canonical governance writer with
+capability `OWNER_PROGRAMME_AUTHORIZATION`. Its source reference and verified
+owner-account binding are immutable evidence; a local status write, a copied
+prompt, or a retrospective assertion is not an authorization record.
+
 ## Owner authorization
 
 Forge has no inherited EP Owner Authorization workflow. This decision creates
@@ -49,7 +54,8 @@ New commits invalidate it. It is distinct from CI and Human UI Review.
 
 ## Merge and operating boundary
 
-Bootstrap V1 auto-merge is disabled. A node reaches `MERGE_READY` only after
+Within a valid programme authorization, a node may be squash-merged only after
+an executable exact-head qualification has passed. A node reaches `MERGE_READY` only after
 implementation, local and exact-head hosted qualification, resolved reviews,
 applicable UI/owner/security gates, valid authority, fresh contracts and
 mergeability. It then enters `WAITING_HUMAN_MERGE`; human merge is followed by
@@ -57,18 +63,19 @@ post-merge qualification before `DONE`. A bounded merge packet includes node,
 PR, exact head, risk, DoR/DoD, CI/reviews/gates, scopes, unlocked dependents and
 known risks. Parallel PRs re-evaluate after every merge.
 
-`BOOTSTRAP_AUTO_MERGE = FALSE`  
-`HUMAN_MERGE_REQUIRED = TRUE`  
+`BOOTSTRAP_AUTO_MERGE = QUALIFIED_SQUASH_ONLY`
+`QUALIFIED_SQUASH_MERGE_REQUIRED = TRUE`
 `MERGE_DECISION_PACKET = DEFINED`  
 `PARALLEL_PR_MERGE_REEVALUATION = TRUE`
 
-Autonomous repair remains disabled: a future runner may classify and stop at
-`REPAIR_REQUIRED`, never reinvoke itself without a separate finite policy.
-The first operating mode is autonomous preparation/observation only; programme
-approval, out-of-envelope decisions, security/UI/owner gates, repair authority
-and merge stay human.
+Autonomous repair is permitted only when its programme authorization states a
+finite per-PR/per-head budget. The current policy supports at most three
+attempts for an exact head; a new head requires a fresh exact-head
+qualification and its own budget. The runner must stop at scope expansion,
+expired or revoked authorization, failed security/review/CI, or exhausted
+budget.
 
-`AUTONOMOUS_REPAIR_ENABLED = FALSE`  
+`AUTONOMOUS_REPAIR_ENABLED = BOUNDED_PER_EXACT_HEAD`
 `UNBOUNDED_AUTONOMOUS_REPAIR = FALSE`  
 `BOOTSTRAP_RUNNER_CAN_SELF_AUTHORIZE = FALSE`  
 `BOOTSTRAP_GOVERNANCE_FORWARD_COMPATIBLE = TRUE`
