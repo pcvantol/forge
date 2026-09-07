@@ -74,6 +74,22 @@ class InstallationOperatorService:
   row=self.db._connection.execute('SELECT created_at,version,status FROM installation_operator_binding WHERE installation_id=?',(context.installation_id,)).fetchone()
   if not row or row['status']!='ACTIVE': raise PermissionError('active G001 binding required')
   self._persist_governance_capabilities(context,'EXISTING_G001_GOVERNANCE_ADOPTION_V1',{'prior_binding_created_at':row['created_at'],'prior_binding_version':row['version'],'adopted_at':_timestamp()},row)
+ def upgrade_legacy_governance_capabilities(self, context, *, decision_source):
+  """Add only the v2 programme capability to a verified v1 three-capability installation."""
+  if not self.authorize(context) or not decision_source: raise PermissionError('trusted operator and upgrade decision source required')
+  legacy=('ARCHITECTURE_APPROVAL','BUSINESS_APPROVAL','SECURITY_APPROVAL'); operator=self._governance_operator_id(context)
+  with self.db._connection:
+   binding=self.db._connection.execute('SELECT * FROM installation_operator_binding WHERE installation_id=?',(context.installation_id,)).fetchone()
+   if not binding or binding['status']!='ACTIVE': raise PermissionError('active binding required')
+   rows=self.db._connection.execute('SELECT * FROM governance_capability_grants WHERE installation_id=? AND operator_id=? ORDER BY capability',(context.installation_id,operator)).fetchall()
+   authorities=tuple(r['capability'] for r in self.db._connection.execute('SELECT capability FROM governance_authority WHERE installation_id=? AND operator_id=? ORDER BY capability',(context.installation_id,operator)))
+   if authorities==legacy+('OWNER_PROGRAMME_AUTHORIZATION',): return
+   if authorities!=legacy or tuple(r['capability'] for r in rows)!=legacy: raise PermissionError('state is not the recognized legacy capability set')
+   for row in rows:
+    document=json.loads(row['bootstrap_provenance']); digest='sha256:'+hashlib.sha256(json.dumps(document,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    if digest!=row['digest'] or document.get('capability')!=row['capability'] or document.get('installation_id')!=context.installation_id or document.get('operator_id')!=operator: raise PermissionError('legacy capability provenance is invalid')
+   now=_timestamp(); provenance={'kind':'G001_OWNER_PROGRAMME_CAPABILITY_UPGRADE_V1','upgrade_version':'1','decision_source':decision_source,'legacy_grants':[(r['grant_id'],r['digest']) for r in rows],'binding_version':binding['version'],'added_capability':'OWNER_PROGRAMME_AUTHORIZATION','occurred_at':now,'installation_id':context.installation_id,'operator_id':operator,'capability':'OWNER_PROGRAMME_AUTHORIZATION'}; encoded=json.dumps(provenance,sort_keys=True,separators=(',',':')); digest='sha256:'+hashlib.sha256(encoded.encode()).hexdigest()
+   self.db._insert_governance_grant(digest,context.installation_id,operator,'OWNER_PROGRAMME_AUTHORIZATION',encoded,digest,now); self.db._insert_governance_authority(context.installation_id,operator,'OWNER_PROGRAMME_AUTHORIZATION',now); self._audit(context.installation_id,NamedOperatorIdentity(context.generated_uid,0),'LEGACY_CAPABILITY_UPGRADE',now,'ALLOW')
  def revoke(self, context):
   if not self.authorize(context):raise PermissionError('denied')
   with self.db._connection:
