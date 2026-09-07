@@ -164,7 +164,7 @@
       "source_provenance": {
         "ep_main_sha": "d53b0eadd1385b6a208886294584aa73dfce19c8",
         "observed_at": "2026-09-07",
-        "observation_classification": "SOURCE_PIN",
+        "observation_classification": "HISTORICAL_SOURCE_PIN",
         "current_status_resolution": "RESOLVE_FRESH_EP_ORIGIN_MAIN"
       }
     },
@@ -179,7 +179,7 @@
       "source_provenance": {
         "ep_main_sha": "d53b0eadd1385b6a208886294584aa73dfce19c8",
         "observed_at": "2026-09-07",
-        "observation_classification": "SOURCE_PIN",
+        "observation_classification": "HISTORICAL_SOURCE_PIN",
         "current_status_resolution": "RESOLVE_FRESH_EP_ORIGIN_MAIN"
       }
     },
@@ -194,7 +194,7 @@
       "source_provenance": {
         "ep_main_sha": "d53b0eadd1385b6a208886294584aa73dfce19c8",
         "observed_at": "2026-09-07",
-        "observation_classification": "SOURCE_PIN",
+        "observation_classification": "HISTORICAL_SOURCE_PIN",
         "current_status_resolution": "RESOLVE_FRESH_EP_ORIGIN_MAIN"
       }
     },
