@@ -22,9 +22,23 @@ class EngineeringPlatformHttpExecutionHost:
    if error.code>=500: raise ExecutionHostTemporaryUnavailable('EP temporarily unavailable') from error
    raise ValueError(f'EP rejected request: {error.code}') from error
   except (URLError,TimeoutError) as error: raise ExecutionHostTemporaryUnavailable('EP transport unavailable') from error
+ def _bytes(self,path):
+  request=Request(self.config.base_url.rstrip('/')+path,headers={'Authorization':'Bearer '+self.config.bearer_token})
+  try:
+   with urlopen(request,timeout=self.config.timeout) as response:
+    raw=response.read(1_048_577)
+    if len(raw)>1_048_576: raise ValueError('EP artifact exceeds consumer size limit')
+    return raw
+  except HTTPError as error:
+   if error.code>=500: raise ExecutionHostTemporaryUnavailable('EP artifact temporarily unavailable') from error
+   raise ValueError(f'EP artifact request rejected: {error.code}') from error
+  except (URLError,TimeoutError) as error: raise ExecutionHostTemporaryUnavailable('EP artifact transport unavailable') from error
  def _payload(self,r):
   p=r.runtime_prompt; text=getattr(p,'rendered_text',None) or p.to_markdown()
-  return {'repository_id':r.repository_id,'producer':{'id':'forge','type':'FORGE','version':'1.0'},'prompt':text,'idempotency_key':r.correlation_id,'correlation_id':r.correlation_id,'mission_id':r.mission_id,'engineering_action_id':r.action_id,'constraints':{'forge_execution':{'contract_version':'1.0','host_id':r.host_id,'repository_id':r.repository_id,'correlation_id':r.correlation_id,'mission_id':r.mission_id,'mission_revision':'1','intent_id':r.intent_id,'intent_revision':r.intent_revision,'action_id':r.action_id,'runtime_prompt':{'id':r.runtime_prompt.id,'content_digest':getattr(r.runtime_prompt,'source_digest',getattr(r.runtime_prompt,'generation_request_digest',None))},'retry_of_correlation_id':r.retry_of_correlation_id}}}
+  revision=getattr(p,'mission_revision',None)
+  if not isinstance(revision,str) or not revision: raise ValueError('Execution Request has no persisted Mission revision')
+  contract=r.producer_contract
+  return {'repository_id':r.repository_id,'producer':contract.producer.identity.to_dict(),'prompt':text,'idempotency_key':r.correlation_id,'correlation_id':r.correlation_id,'mission_id':r.mission_id,'engineering_action_id':r.action_id,'constraints':{'forge_execution':{'contract_version':'1.0','host_id':r.host_id,'repository_id':r.repository_id,'correlation_id':r.correlation_id,'mission_id':r.mission_id,'mission_revision':revision,'intent_id':r.intent_id,'intent_revision':r.intent_revision,'action_id':r.action_id,'runtime_prompt':{'id':contract.runtime_prompt.id,'content_digest':contract.runtime_prompt.content_digest},'retry_of_correlation_id':r.retry_of_correlation_id}}}
  def dispatch(self,r):
   accepted=self._json(f'/v1/projects/{self.config.project_id}/submissions',method='POST',body=self._payload(r)); sid=accepted.get('submission_id')
   if not isinstance(sid,str): raise ValueError('EP submission acknowledgement lacks submission_id')
@@ -44,8 +58,7 @@ class EngineeringPlatformHttpExecutionHost:
   if readback.get('run',{}).get('id')!=d.host_run_id:return None
   terminal=readback.get('evidence',{}).get('terminal_artifact')
   if not isinstance(terminal,dict): return None
-  artifact=self._json(f"/v1/projects/{self.config.project_id}/artifacts/{terminal['id']}")
-  raw=json.dumps(artifact,sort_keys=True,separators=(',',':')).encode()+b'\n'
+  raw=self._bytes(f"/v1/projects/{self.config.project_id}/artifacts/{terminal['id']}")
   evidence=terminal_evidence(readback,raw,host_id=self.config.host_id)
   if (evidence.correlation_id,evidence.host_run_id,evidence.repository_evidence.runtime_prompt_id)!=(d.request.correlation_id,d.host_run_id,d.request.runtime_prompt.id): raise ValueError('EP artifact does not bind dispatch')
   return evidence
