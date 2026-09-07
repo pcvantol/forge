@@ -29,6 +29,8 @@ Mission Planner
 Engineering Intent
   ↓ contains
 Engineering Action
+  ↓ produces
+Runtime Prompt
 ```
 
 The full evidence-driven target loop is:
