@@ -296,7 +296,7 @@ class GovernanceSchema19MigrationTests(unittest.TestCase):
         capabilities = tuple(row["capability"] for row in database._connection.execute(
             "SELECT capability FROM governance_authority ORDER BY capability"
         ))
-        self.assertEqual(capabilities, ("ARCHITECTURE_APPROVAL", "BUSINESS_APPROVAL", "SECURITY_APPROVAL"))
+        self.assertEqual(capabilities, ("ARCHITECTURE_APPROVAL", "BUSINESS_APPROVAL", "OWNER_PROGRAMME_AUTHORIZATION", "SECURITY_APPROVAL"))
         repository = CanonicalGovernanceRepository._for_test(database, operators)
         planning = GovernanceAuthorityTests.planning("legacy-19")
         CanonicalBusinessWorkspace(repository, context).approve(

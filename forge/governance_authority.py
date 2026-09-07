@@ -18,6 +18,7 @@ class GovernanceCapability(str, Enum):
     BUSINESS_APPROVAL = "BUSINESS_APPROVAL"
     ARCHITECTURE_APPROVAL = "ARCHITECTURE_APPROVAL"
     SECURITY_APPROVAL = "SECURITY_APPROVAL"
+    OWNER_PROGRAMME_AUTHORIZATION = "OWNER_PROGRAMME_AUTHORIZATION"
 
 
 @dataclass(frozen=True)
@@ -30,12 +31,14 @@ class GovernanceDecision:
     scope: tuple[str, ...]
     gates: tuple[str, ...]
     predecessor_digest: str | None = None
+    evidence: dict[str, object] | None = None
 
     def document(self, installation_id: str, operator_id: str, occurred_at: str) -> dict[str, object]:
         return {
             **asdict(self), "capability": self.capability.value,
             "scope": list(sorted(self.scope)), "gates": list(sorted(self.gates)),
             "installation_id": installation_id, "operator_id": operator_id, "occurred_at": occurred_at,
+            "evidence": self.evidence or {},
         }
 
 

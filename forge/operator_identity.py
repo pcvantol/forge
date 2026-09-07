@@ -41,9 +41,9 @@ class InstallationOperatorService:
   rows=self.db._connection.execute('SELECT capability FROM governance_authority WHERE installation_id=? AND operator_id=? ORDER BY capability',(context.installation_id,operator)).fetchall()
   return tuple(row['capability'] for row in rows)
  def _valid_adoption_provenance(self, context, binding):
-  expected=('ARCHITECTURE_APPROVAL','BUSINESS_APPROVAL','SECURITY_APPROVAL'); operator=self._governance_operator_id(context)
+  expected=('ARCHITECTURE_APPROVAL','BUSINESS_APPROVAL','OWNER_PROGRAMME_AUTHORIZATION','SECURITY_APPROVAL'); operator=self._governance_operator_id(context)
   rows=self.db._connection.execute('SELECT capability,bootstrap_provenance,digest FROM governance_capability_grants WHERE installation_id=? AND operator_id=? ORDER BY capability',(context.installation_id,operator)).fetchall()
-  if len(rows)!=3 or tuple(row['capability'] for row in rows)!=expected:return False
+  if len(rows)!=len(expected) or tuple(row['capability'] for row in rows)!=expected:return False
   for row in rows:
    try:document=json.loads(row['bootstrap_provenance'])
    except (TypeError,ValueError):return False
@@ -52,7 +52,7 @@ class InstallationOperatorService:
   return True
  def _persist_governance_capabilities(self, context, kind, provenance, binding=None):
   if not self.authorize(context): raise PermissionError('trusted bound operator required')
-  expected=('ARCHITECTURE_APPROVAL','BUSINESS_APPROVAL','SECURITY_APPROVAL'); state=self._governance_state(context)
+  expected=('ARCHITECTURE_APPROVAL','BUSINESS_APPROVAL','OWNER_PROGRAMME_AUTHORIZATION','SECURITY_APPROVAL'); state=self._governance_state(context)
   if state:
    if state!=expected or kind!='EXISTING_G001_GOVERNANCE_ADOPTION_V1' or binding is None or not self._valid_adoption_provenance(context,binding): raise PermissionError('conflicting governance capability provenance')
    return
