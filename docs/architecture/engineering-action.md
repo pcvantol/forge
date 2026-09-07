@@ -18,6 +18,21 @@ bootstrap implementation limits, not target invariants.
 
 ## Canonical hierarchy
 
+The established Action boundary remains explicit inside the richer feedback
+loop:
+
+```text
+Mission
+  ↓ governs
+Mission Planner
+  ↓ creates and reconciles
+Engineering Intent
+  ↓ contains
+Engineering Action
+```
+
+The full evidence-driven target loop is:
+
 ```text
 Vision → Architecture → Roadmap → Mission → Mission Planner / Living Mission Graph
 → Engineering Intent → Engineering Action → Runtime Prompt → Execution Host
