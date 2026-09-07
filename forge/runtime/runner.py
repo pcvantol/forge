@@ -25,6 +25,7 @@ from forge.models.runtime_prompt import (
 from forge.models.codex_runtime_prompt import (
     CodexCliRuntimePrompt, ExecutionHostCompatibility, RepositoryState,
 )
+from forge.models.producer import Producer, ProducerContract, ProducerIdentity, RuntimePromptEnvelope
 from forge.models.intent import IntentReference
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
@@ -138,6 +139,21 @@ def _prompt(document: Mapping[str, Any]) -> RuntimePrompt | CodexCliRuntimePromp
 
 
 def _request(document: Mapping[str, Any]) -> ExecutionRequest:
+    contract_document = document.get("producer_contract")
+    contract = None
+    if isinstance(contract_document, Mapping):
+        producer = contract_document["producer"]
+        prompt = contract_document["runtime_prompt"]
+        metadata = contract_document.get("execution_metadata", {})
+        if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping):
+            raise MissionRunnerError("persisted Producer Contract is malformed")
+        contract = ProducerContract(
+            Producer(ProducerIdentity(str(producer["identity"]["id"]), str(producer["identity"]["type"]), str(producer["identity"]["version"]))),
+            str(contract_document["correlation_id"]), str(contract_document["engineering_action_id"]),
+            RuntimePromptEnvelope(str(prompt["id"]), str(prompt["version"]), str(prompt["format"]), str(prompt["content"]), str(prompt["content_digest"])),
+            tuple(str(item) for item in contract_document["execution_constraints"]), tuple((str(k), str(v)) for k,v in metadata.items()),
+            mission_id=contract_document.get("mission_id"),
+        )
     return ExecutionRequest(
         host_id=str(document["host_id"]), mission_id=str(document["mission_id"]),
         intent_id=str(document["intent_id"]), intent_revision=str(document["intent_revision"]),
@@ -146,6 +162,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
         correlation_id=str(document["correlation_id"]), dispatched_at=str(document["dispatched_at"]),
         retry_of_correlation_id=document.get("retry_of_correlation_id"),
         original_correlation_id=document.get("original_correlation_id"),
+        producer_contract=contract,
     )
 
 
@@ -164,6 +181,7 @@ def _request_document(request: ExecutionRequest) -> dict[str, Any]:
         "dispatched_at": request.dispatched_at,
         "retry_of_correlation_id": request.retry_of_correlation_id,
         "original_correlation_id": request.original_correlation_id,
+        "producer_contract": request.producer_contract.to_dict(),
     }
 
 
