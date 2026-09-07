@@ -83,7 +83,14 @@ class InstallationOperatorService:
    if not binding or binding['status']!='ACTIVE': raise PermissionError('active binding required')
    rows=self.db._connection.execute('SELECT * FROM governance_capability_grants WHERE installation_id=? AND operator_id=? ORDER BY capability',(context.installation_id,operator)).fetchall()
    authorities=tuple(r['capability'] for r in self.db._connection.execute('SELECT capability FROM governance_authority WHERE installation_id=? AND operator_id=? ORDER BY capability',(context.installation_id,operator)))
-   if authorities==legacy+('OWNER_PROGRAMME_AUTHORIZATION',): return
+   expected=tuple(sorted((*legacy,'OWNER_PROGRAMME_AUTHORIZATION')))
+   if authorities==expected:
+    if len(rows)!=4 or tuple(r['capability'] for r in rows)!=expected: raise PermissionError('upgraded capability grants are incomplete')
+    upgraded=next(r for r in rows if r['capability']=='OWNER_PROGRAMME_AUTHORIZATION')
+    document=json.loads(upgraded['bootstrap_provenance']); digest='sha256:'+hashlib.sha256(json.dumps(document,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    old={r['grant_id']:r['digest'] for r in rows if r['capability']!='OWNER_PROGRAMME_AUTHORIZATION'}
+    if digest!=upgraded['digest'] or document.get('kind')!='G001_OWNER_PROGRAMME_CAPABILITY_UPGRADE_V1' or dict(document.get('legacy_grants',()))!=old or document.get('binding_version')!=binding['version']: raise PermissionError('upgraded capability provenance is invalid')
+    return
    if authorities!=legacy or tuple(r['capability'] for r in rows)!=legacy: raise PermissionError('state is not the recognized legacy capability set')
    for row in rows:
     document=json.loads(row['bootstrap_provenance']); digest='sha256:'+hashlib.sha256(json.dumps(document,sort_keys=True,separators=(',',':')).encode()).hexdigest()
