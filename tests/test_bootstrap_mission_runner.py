@@ -9,6 +9,7 @@ import unittest
 from forge.models import (
     EngineeringAction, EngineeringIntent, EngineeringActionStatus, ExecutionDispatch, ExecutionRequest,
     ExecutionEvidenceOutcome, ExecutionHostEvidence, ExecutionRepositoryEvidence,
+    ExecutionHostTemporaryUnavailable,
     IntentApproval, IntentCategory, IntentReference, IntentStatus, IntentTraceability, ProviderPromptDefinition,
     RuntimePrompt, RuntimePromptSection, RuntimePromptSectionKind,
 )
@@ -80,6 +81,14 @@ class Host:
                                      receipt_id=f"receipt-{request.action_id}", execution_duration_ms=60_000)
 
 
+class TemporarilyUnavailableHost(Host):
+    def dispatch(self, request: object) -> ExecutionDispatch:
+        raise ExecutionHostTemporaryUnavailable("host is temporarily unavailable")
+
+    def retrieve_evidence(self, dispatch: ExecutionDispatch) -> ExecutionHostEvidence | None:
+        raise ExecutionHostTemporaryUnavailable("evidence endpoint is temporarily unavailable")
+
+
 class BootstrapMissionRunnerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = TemporaryDirectory()
@@ -130,6 +139,22 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         state = runner.run("mission-1")
         self.assertEqual(state.status, MissionExecutionStatus.FAILED)
         self.assertEqual(state.execution_evidence["diagnostic_references"], ["runner:host_dispatch_failed"])  # type: ignore[index]
+
+    def test_temporary_dispatch_unavailability_keeps_the_persisted_request_recoverable(self) -> None:
+        runner = self.runner(TemporarilyUnavailableHost())
+        runner.start(mission("one"), (intent("one"),), (action(1, "one"),))
+        state = runner.run("mission-1")
+        self.assertEqual(state.status, MissionExecutionStatus.WAITING_FOR_EXECUTION)
+        self.assertIsNotNone(state.execution_correlation)
+
+    def test_temporary_evidence_unavailability_keeps_the_run_recoverable(self) -> None:
+        host = Host()
+        runner = self.runner(host)
+        runner.start(mission("one"), (intent("one"),), (action(1, "one"),))
+        waiting = runner.run("mission-1")
+        self.assertEqual(waiting.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
+        runner._host = TemporarilyUnavailableHost()  # noqa: SLF001 - restart injects a host transport
+        self.assertEqual(runner.resume("mission-1").status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
 
     def test_resume_after_restart_recovers_persisted_dispatch_without_regeneration(self) -> None:
         host = Host()

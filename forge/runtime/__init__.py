@@ -25,9 +25,10 @@ from .bootstrap import (
 )
 from .evidence import RuntimeDecisionEvidenceReference, RuntimeEvidence
 from .runner import BootstrapMissionRunner, MissionRunnerError, RuntimePromptFactory
+from .service import ForgeRuntimeService, RuntimeServiceTick
 
 __all__ = [
-    "BootstrapMissionRunner", "MissionRunnerError", "RuntimePromptFactory",
+    "BootstrapMissionRunner", "MissionRunnerError", "RuntimePromptFactory", "ForgeRuntimeService", "RuntimeServiceTick",
     "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError", "RuntimeDecisionEvidenceReference", "RuntimeEvidence",
     "RUNTIME_INSTANCE_VERSION", "RUNTIME_INITIALIZATION_VERSION", "RuntimeBootstrap", "RuntimeIdentity", "RuntimeInstance", "RuntimeLocation", "RuntimeRecovery", "RuntimeResolutionError", "RuntimeResolver", "repository_identity", "repository_uuid",
 ]

@@ -67,6 +67,10 @@ class ExecutionEvidenceOutcome(str, Enum):
     FAILED = "failed"
 
 
+class ExecutionHostTemporaryUnavailable(RuntimeError):
+    """A transport/read outage; the persisted request remains the recovery key."""
+
+
 @dataclass(frozen=True)
 class ExecutionHostContract:
     """A complete host declaration without a host implementation."""

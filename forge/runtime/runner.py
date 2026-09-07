@@ -14,6 +14,7 @@ from forge.models.execution_host import (
     ExecutionHost,
     ExecutionHostEvidence,
     ExecutionRequest,
+    ExecutionHostTemporaryUnavailable,
 )
 from forge.models.runtime_prompt import (
     ProviderPromptDefinition,
@@ -224,7 +225,8 @@ class BootstrapMissionRunner:
                 return state
             before_revision = state.revision
             state = self._advance(state)
-            if state.status is MissionExecutionStatus.WAITING_FOR_EVIDENCE and state.revision == before_revision:
+            if state.status in {MissionExecutionStatus.WAITING_FOR_EXECUTION,
+                                MissionExecutionStatus.WAITING_FOR_EVIDENCE} and state.revision == before_revision:
                 return state
 
     def _advance(self, state: MissionExecutionState) -> MissionExecutionState:
@@ -268,7 +270,11 @@ class BootstrapMissionRunner:
                 dispatch = self._host.dispatch(request)
             if dispatch.request != request:
                 raise MissionRunnerError("execution host acknowledgement did not preserve the persisted request")
-        except Exception as error:  # Host errors must become durable terminal state.
+        except ExecutionHostTemporaryUnavailable:
+            # The request was persisted before dispatch.  A later tick asks for
+            # its original acknowledgement before attempting another send.
+            return state
+        except Exception as error:  # Invalid acknowledgements fail closed.
             return self._host_failure(state, "host_dispatch_failed", error)
         envelope = {"request": _request_document(request), "host_run_id": dispatch.host_run_id}
         return self._store.transition(
@@ -284,6 +290,9 @@ class BootstrapMissionRunner:
             if evidence is None:
                 return state
             actions = self._scheduler.reconcile(self._actions(state), dispatch, evidence)
+        except ExecutionHostTemporaryUnavailable:
+            # A temporary read outage is not terminal evidence.
+            return state
         except Exception as error:  # Invalid evidence and host failures fail closed.
             return self._host_failure(state, "host_evidence_failed", error)
         evidence_document = _document(evidence)
