@@ -1,5 +1,10 @@
 # Forge V1 Implementation DAG
 
+> **Deployment reconciliation:** the installed Forge Server/storage migration,
+> pinned EP binding and restart recovery are a minimum autonomy seam. Full LAN
+> discovery, Workspace Client and installer productization are parallel/post-
+> autonomy nodes; see [Forge Server deployment target](FORGE_SERVER_DEPLOYMENT_TARGET.md).
+
 **AUTHORITY = DERIVED.** Source authority is the canonical Forge roadmap and product-owned EP/Workspace contracts. This document never allocates EP or Workspace work.
 
 ## Current bootstrap reconciliation — 2026-09-06

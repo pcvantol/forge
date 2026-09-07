@@ -66,6 +66,21 @@ EP P-NEUTRAL closure
 `P_TRANSPORT_HTTP_IS_CANONICAL_FORGE_SUBMISSION_TARGET = TRUE`
 `FORGE_EXECUTION_INTEGRATION_ON_HOLD_UNTIL_EP_REAL_PROJECT_PROOFS = TRUE`
 
+## Installed Forge Server and peer discovery — target-productization lane
+
+The canary's smallest Forge-owned prerequisite is an installed headless Forge
+Server with central product storage outside Git, stable instance identity,
+versioned HTTP application boundary, a pinned authenticated EP binding and
+restart-safe migration/recovery. The legacy repository-bound runtime must
+relocate without resetting grants, Missions or budgets and without dual
+writers. This is architecture-defined in
+[Forge Server deployment and peer-binding target](../../docs/architecture/FORGE_SERVER_DEPLOYMENT_TARGET.md).
+
+LAN DNS-SD/mDNS candidate discovery, configured/unicast/tailnet bootstrap,
+Workspace peer binding and universal installer choreography are valid later
+productization work. They do not block the first Forge→EP→Forge loop; discovery
+never authorizes a peer or silently retargets an existing binding.
+
 ## Governance-minimal producer bootstrap
 
 Forge expects EP to run steps from P-NEUTRAL through self-hosted engineering under a single bounded bootstrap authority envelope wherever repository policy permits.

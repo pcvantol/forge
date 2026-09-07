@@ -20,6 +20,9 @@ retains their identifiers and owners. Every decision below preserves the
 
 ## Topology, identity and access
 
+The installed-server target and controlled transition from the repository-bound
+bootstrap runtime are canonical in [Forge Server deployment and peer-binding target](FORGE_SERVER_DEPLOYMENT_TARGET.md). That target refines storage placement and pairing without changing Forge/EP/Workspace ownership.
+
 Forge Runtime Service, EP Server and Workspace Server are separate,
 independently restartable and independently versioned processes, even when
 installed on one machine. EP Agents are EP-managed processes. Workspace client,
