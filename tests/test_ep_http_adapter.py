@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
+from urllib.error import URLError
 
 from forge.models import Producer, ProducerContract, ProducerIdentity, RuntimePrompt, RuntimePromptEnvelope, RuntimePromptSection, RuntimePromptSectionKind, ProviderPromptDefinition
 from forge.models.execution_host import ExecutionRequest
@@ -98,6 +99,13 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(changed).encode()], [])):
             with self.assertRaisesRegex(ValueError, "conflicts"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
+
+    def test_configuration_and_transport_fail_closed_without_persisted_authority(self) -> None:
+        with self.assertRaisesRegex(ValueError, "configuration"):
+            EngineeringPlatformHttpExecutionHost(EngineeringPlatformHttpConfiguration("", "forge", "credential"), self.database)
+        with patch("forge.scheduler.ep_http_adapter.urlopen", side_effect=URLError("offline")):
+            with self.assertRaisesRegex(Exception, "transport unavailable"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database)._json("/v1/projects/forge/submissions")
 
     def test_failed_terminal_evidence_without_delivery_revision_is_preserved(self) -> None:
         self.database.save_execution_host_binding(self.request.correlation_id,
