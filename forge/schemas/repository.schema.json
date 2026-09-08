@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/repository-0.2.schema.json",
+  "title": "Forge Repository",
+  "description": "Repository identity and metadata. Its workspace role belongs only in RepositoryCatalog.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "provider", "repository", "local_path"],
+  "properties": {
+    "schema_version": {"const": "0.2"},
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "name": {"$ref": "common.schema.json#/$defs/name"},
+    "provider": {"type": "string", "enum": ["git"]},
+    "repository": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
+    "local_path": {"type": "string", "minLength": 1},
+    "metadata": {"$ref": "common.schema.json#/$defs/metadata"}
+  }
+}

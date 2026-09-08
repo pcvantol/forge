@@ -105,6 +105,7 @@ lerna-debug.log*
 # Generic build, package and release outputs
 build/
 dist/
+*.whl
 out/
 release/
 publish/

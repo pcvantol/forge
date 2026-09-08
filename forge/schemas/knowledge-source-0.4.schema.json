@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/knowledge-source-0.4.schema.json",
+  "title": "Forge Knowledge Source 0.4",
+  "description": "A versioned, external evidence provider that Forge may only consume read-only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "source_type", "locator", "version", "reference", "read_only", "access_mode", "trust_classification", "lifecycle"],
+  "properties": {
+    "schema_version": {"const": "0.4"},
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "name": {"$ref": "common.schema.json#/$defs/name"},
+    "source_type": {"type": "string", "minLength": 1},
+    "locator": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1},
+    "reference": {"type": "string", "minLength": 1},
+    "read_only": {"const": true},
+    "access_mode": {"const": "read_only"},
+    "trust_classification": {"type": "string", "enum": ["certified", "reference", "unverified"]},
+    "lifecycle": {"type": "string", "enum": ["available", "deprecated", "retired"]},
+    "metadata": {"$ref": "common.schema.json#/$defs/metadata"}
+  }
+}

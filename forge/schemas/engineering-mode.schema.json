@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/engineering-mode-0.2.schema.json",
+  "title": "Forge Engineering Mode",
+  "description": "Available modes. Bootstrap activation is governed separately from this catalog.",
+  "type": "string",
+  "enum": ["prototype", "managed", "production", "enterprise"]
+}

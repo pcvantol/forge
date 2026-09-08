@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/repository-catalog-0.2.schema.json",
+  "title": "Forge Repository Catalog",
+  "description": "A workspace's repository roles. One and only one entry must be canonical.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "entries"],
+  "properties": {
+    "schema_version": {"const": "0.2"},
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "entries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical"],
+      "properties": {
+        "canonical": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "common.schema.json#/$defs/id"}},
+        "supporting": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/id"}},
+        "documentation": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/id"}},
+        "capability": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/id"}}
+      }
+    }
+  }
+}

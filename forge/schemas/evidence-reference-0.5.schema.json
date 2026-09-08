@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/evidence-reference-0.5.schema.json",
+  "title": "Forge Evidence Reference 0.5",
+  "description": "A pointer to governed evidence; it never embeds source content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "source_id", "source_version", "reference", "location"],
+  "properties": {
+    "kind": {"type": "string", "enum": ["knowledge_source", "evidence_record", "architecture_document", "foundation_document"]},
+    "source_id": {"$ref": "common.schema.json#/$defs/id"},
+    "source_version": {"type": "string", "minLength": 1},
+    "reference": {"type": "string", "minLength": 1},
+    "location": {"type": "string", "minLength": 1}
+  }
+}

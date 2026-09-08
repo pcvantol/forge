@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/planning-document-0.5.schema.json",
+  "title": "Forge Engineering Planning Document 0.5",
+  "description": "A local declarative planning record. It grants neither approval nor execution authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["document_type", "schema_version", "workspace_id", "goals", "increment_proposals", "plans"],
+  "properties": {
+    "document_type": {"const": "forge.engineering_planning"},
+    "schema_version": {"const": "0.5"},
+    "workspace_id": {"$ref": "common.schema.json#/$defs/id"},
+    "goals": {"type": "array", "items": {"$ref": "engineering-goal-0.5.schema.json"}},
+    "increment_proposals": {"type": "array", "items": {"$ref": "engineering-increment-proposal-0.5.schema.json"}},
+    "plans": {"type": "array", "items": {"$ref": "engineering-plan-0.5.schema.json"}}
+  }
+}

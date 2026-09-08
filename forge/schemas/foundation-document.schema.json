@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/foundation-document-0.3.schema.json",
+  "title": "Forge Foundation Document",
+  "description": "The versioned local-only envelope for a complete Forge foundation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "document_type",
+    "schema_version",
+    "workspace",
+    "repositories",
+    "repository_catalog",
+    "knowledge_sources",
+    "capabilities"
+  ],
+  "properties": {
+    "document_type": {"const": "forge.foundation_document"},
+    "schema_version": {"const": "0.3"},
+    "workspace": {"$ref": "workspace.schema.json"},
+    "repositories": {"type": "array", "items": {"$ref": "repository.schema.json"}},
+    "repository_catalog": {"$ref": "repository-catalog.schema.json"},
+    "knowledge_sources": {"type": "array", "items": {"$ref": "knowledge-source.schema.json"}},
+    "capabilities": {"type": "array", "items": {"$ref": "capability.schema.json"}}
+  }
+}
