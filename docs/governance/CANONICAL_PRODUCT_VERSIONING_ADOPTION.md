@@ -1,6 +1,14 @@
 # Canonical product versioning adoption
 
-Forge adopts Forge Platform's [canonical product versioning policy](https://github.com/pcvantol/forge-platform/blob/main/docs/architecture/CANONICAL_PRODUCT_VERSIONING.md), policy v1.
+Forge adopts `BOOTSTRAP_RELEASE_CADENCE_V2` through its product-owned
+`forge-bootstrap-release-cadence-v2` policy revision. V1 receipts remain
+historical and are never reinterpreted.
+
+For one canonical engineering increment, `PATCH` is the bootstrap default;
+documentation-only work is an explicit `NO_BUMP`; a capability boundary is an
+explicit `MINOR`; and `MAJOR`/`EXACT` require their applicable release authority.
+Repair, requalification and protected merge are delivery evidence for the same
+operation and never allocate another version. CI only validates this binding.
 
 `product-version.json` (`product=forge`, `schema_version=1`, `version`) is
 Forge's only product-release version source. The checked-in baseline is
