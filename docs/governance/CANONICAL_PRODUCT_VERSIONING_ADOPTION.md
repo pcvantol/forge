@@ -22,6 +22,13 @@ qualification, artifact publication or compatibility approval. Stable release pu
 blocked unless an explicit compatibility classification, approved exact source,
 exact target version and immutable artifact identity are supplied.
 
+Engineering Platform PR [#105](https://github.com/pcvantol/engineering-platform/pull/105)
+is the pending source-level bounded version-preparation adapter. It validates a
+declared product helper, isolates its candidate, verifies its allowlisted
+receipt/projection diff and binds exact-head qualification evidence. It is not
+yet installed-runtime evidence, a version grant, a protected merge authority or
+publication proof; Forge therefore retains the fail-closed boundary below.
+
 The workflow intentionally has read-only permissions. The former token-pushed
 version commit could not prove qualification of its new SHA and could not safely
 provide exactly-once event delivery. The required protected version-preparation
