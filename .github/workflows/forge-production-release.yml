@@ -98,7 +98,7 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/forge-sbom"
           "$RUNNER_TEMP/forge-sbom/bin/pip" install --no-deps dist/*.whl
-          "$RUNNER_TEMP/forge-sbom/bin/cyclonedx-py" environment --output-file dist/forge-autonomy.cdx.json
+          cyclonedx-py environment "$RUNNER_TEMP/forge-sbom/bin/python" --output-file dist/forge-autonomy.cdx.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
