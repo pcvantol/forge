@@ -25,7 +25,10 @@ from forge.models.runtime_prompt import (
 from forge.models.codex_runtime_prompt import (
     CodexCliRuntimePrompt, ExecutionHostCompatibility, RepositoryState,
 )
-from forge.models.producer import Producer, ProducerContract, ProducerIdentity, RuntimePromptEnvelope
+from forge.models.producer import (
+    ExecutionReceiptReference, Producer, ProducerContract, ProducerIdentity,
+    RuntimePromptEnvelope,
+)
 from forge.models.intent import IntentReference
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
@@ -141,19 +144,34 @@ def _prompt(document: Mapping[str, Any]) -> RuntimePrompt | CodexCliRuntimePromp
 def _request(document: Mapping[str, Any]) -> ExecutionRequest:
     contract_document = document.get("producer_contract")
     contract = None
-    if isinstance(contract_document, Mapping):
-        producer = contract_document["producer"]
-        prompt = contract_document["runtime_prompt"]
-        metadata = contract_document.get("execution_metadata", {})
-        if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping):
+    if contract_document is not None:
+        if not isinstance(contract_document, Mapping):
             raise MissionRunnerError("persisted Producer Contract is malformed")
-        contract = ProducerContract(
-            Producer(ProducerIdentity(str(producer["identity"]["id"]), str(producer["identity"]["type"]), str(producer["identity"]["version"]))),
-            str(contract_document["correlation_id"]), str(contract_document["engineering_action_id"]),
-            RuntimePromptEnvelope(str(prompt["id"]), str(prompt["version"]), str(prompt["format"]), str(prompt["content"]), str(prompt["content_digest"])),
-            tuple(str(item) for item in contract_document["execution_constraints"]), tuple((str(k), str(v)) for k,v in metadata.items()),
-            mission_id=contract_document.get("mission_id"),
-        )
+        try:
+            producer = contract_document["producer"]
+            prompt = contract_document["runtime_prompt"]
+            metadata = contract_document["execution_metadata"]
+            constraints = contract_document["execution_constraints"]
+            receipts = contract_document.get("receipt_references", ())
+            evidence_references = contract_document.get("execution_evidence_references", ())
+            if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping):
+                raise TypeError
+            identity = producer["identity"]
+            if not isinstance(identity, Mapping) or not isinstance(receipts, list) or not isinstance(evidence_references, list):
+                raise TypeError
+            contract = ProducerContract(
+                Producer(ProducerIdentity(str(identity["id"]), str(identity["type"]), str(identity["version"])),
+                         str(producer["contract_version"])),
+                str(contract_document["correlation_id"]), str(contract_document["engineering_action_id"]),
+                RuntimePromptEnvelope(str(prompt["id"]), str(prompt["version"]), str(prompt["format"]), str(prompt["content"]), str(prompt["content_digest"])),
+                tuple(str(item) for item in constraints), tuple((str(k), str(v)) for k, v in metadata.items()),
+                mission_id=contract_document.get("mission_id"),
+                receipt_references=tuple(ExecutionReceiptReference(str(item["host_id"]), str(item["receipt_id"])) for item in receipts),
+                execution_evidence_references=tuple(str(item) for item in evidence_references),
+                contract_version=str(contract_document["contract_version"]),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise MissionRunnerError("persisted Producer Contract is malformed") from error
     return ExecutionRequest(
         host_id=str(document["host_id"]), mission_id=str(document["mission_id"]),
         intent_id=str(document["intent_id"]), intent_revision=str(document["intent_revision"]),
@@ -286,6 +304,11 @@ class BootstrapMissionRunner:
             dispatch = self._host.recover_dispatch(request)
             if dispatch is None:
                 dispatch = self._host.dispatch(request)
+            # An accepted submission may legitimately have no run yet.  Keep
+            # the persisted request in WAITING_FOR_EXECUTION and recover it on
+            # a later service tick; do not reclassify that state as failure.
+            if dispatch is None:
+                return state
             if dispatch.request != request:
                 raise MissionRunnerError("execution host acknowledgement did not preserve the persisted request")
         except ExecutionHostTemporaryUnavailable:
