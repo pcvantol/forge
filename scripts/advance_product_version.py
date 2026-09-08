@@ -10,10 +10,15 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import tempfile
+from typing import Any
 
 PRODUCT = "forge"
 VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+OPERATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
+OPERATIONS_DIRECTORY = Path(".github/product-version-operations")
+POLICY_REVISION = "canonical-product-versioning-policy-v1"
 
 
 def _pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -59,7 +64,7 @@ def determine(parsed: tuple[int, int, int], component: str | None, exact: str | 
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    mode = path.stat().st_mode
+    mode = path.stat().st_mode if path.exists() else 0o644
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -76,12 +81,111 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
-def advance(root: Path, component: str | None, exact: str | None = None, expected_version: str | None = None) -> str:
-    target, payload, (major, minor, patch) = current(root)
+def _git_head(root: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise RuntimeError("version operation requires a Git worktree with a resolved HEAD")
+    return result.stdout.strip()
+
+
+def _operation_path(root: Path, operation_id: str) -> Path:
+    if OPERATION_ID.fullmatch(operation_id) is None:
+        raise RuntimeError("operation ID must be a stable, non-path identifier")
+    return root.resolve() / OPERATIONS_DIRECTORY / f"{operation_id}.json"
+
+
+def _read_operation(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_pairs)
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        raise RuntimeError("version operation receipt is unreadable") from error
+    if not isinstance(payload, dict):
+        raise RuntimeError("version operation receipt must be an object")
+    return payload
+
+
+def _operation_input(
+    operation_id: str,
+    expected_head: str,
+    expected_version: str,
+    component: str | None,
+    exact: str | None,
+    event_lineage: str,
+    policy_revision: str,
+    target: str,
+) -> dict[str, str | None]:
+    if not event_lineage.strip():
+        raise RuntimeError("version operation requires a non-empty event or branch lineage")
+    if not policy_revision.strip():
+        raise RuntimeError("version operation requires a non-empty policy revision")
+    return {
+        "schema_version": "1",
+        "operation_id": operation_id,
+        "product": PRODUCT,
+        "component": "product",
+        "policy_revision": policy_revision,
+        "event_lineage": event_lineage,
+        "expected_head": expected_head,
+        "baseline_version": expected_version,
+        "requested_bump": component,
+        "requested_version": exact,
+        "target_version": target,
+        "projection_paths": "product-version.json",
+    }
+
+
+def _validate_existing_operation(existing: dict[str, Any], requested: dict[str, str | None]) -> None:
+    # Receipt equality, rather than a commit subject or actor, is the idempotency key.
+    if existing != requested:
+        raise RuntimeError("conflicting reuse of version operation ID")
+
+
+def advance(
+    root: Path,
+    component: str | None,
+    exact: str | None = None,
+    expected_version: str | None = None,
+    operation_id: str | None = None,
+    expected_head: str | None = None,
+    event_lineage: str | None = None,
+    policy_revision: str = POLICY_REVISION,
+) -> str:
+    target, payload, parsed = current(root)
     actual = payload["version"]
-    if expected_version is not None and expected_version != actual:
-        raise RuntimeError(f"stale version operation: expected {expected_version}, found {actual}")
-    version = determine((major, minor, patch), component, exact)
+    if operation_id is None or expected_head is None or expected_version is None or event_lineage is None:
+        raise RuntimeError("apply requires operation ID, expected head, expected version, and event lineage")
+    if VERSION.fullmatch(expected_version) is None:
+        raise RuntimeError("expected version must be stable X.Y.Z")
+    # Calculate from the declared baseline, never from a source that may have
+    # been changed by an interrupted first attempt.
+    version = determine(tuple(int(part) for part in expected_version.split(".")), component, exact)
+    requested = _operation_input(
+        operation_id, expected_head, expected_version, component, exact, event_lineage, policy_revision, version
+    )
+    receipt = _operation_path(root, operation_id)
+    existing = _read_operation(receipt)
+    if existing is not None:
+        _validate_existing_operation(existing, requested)
+        if actual not in (expected_version, version):
+            raise RuntimeError("version operation receipt conflicts with canonical source")
+        # A crash after receipt staging but before the source replacement can be
+        # resumed. It never derives a fresh bump from the partially changed source.
+        if actual == version:
+            return version
+    else:
+        if _git_head(root) != expected_head:
+            raise RuntimeError("stale version operation: expected Git head no longer matches")
+        if expected_version != actual:
+            raise RuntimeError(f"stale version operation: expected {expected_version}, found {actual}")
+        receipt.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(receipt, json.dumps(requested, indent=2, sort_keys=True) + "\n")
     if version == actual:
         return version
     payload["version"] = version
@@ -95,6 +199,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bump", choices=("patch", "minor"))
     parser.add_argument("--set-version")
     parser.add_argument("--expected-version")
+    parser.add_argument("--operation-id")
+    parser.add_argument("--expected-head")
+    parser.add_argument("--event-lineage")
+    parser.add_argument("--policy-revision", default=POLICY_REVISION)
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
@@ -109,7 +217,19 @@ def main(argv: list[str] | None = None) -> int:
         _, payload, parsed = current(args.source_root)
         print(json.dumps({"product": PRODUCT, "baseline": payload["version"], "target": determine(parsed, args.bump, args.set_version), "writes": []}, sort_keys=True))
     else:
-        print(f"PRODUCT_VERSION={advance(args.source_root, args.bump, args.set_version, args.expected_version)}")
+        print(
+            "PRODUCT_VERSION="
+            + advance(
+                args.source_root,
+                args.bump,
+                args.set_version,
+                args.expected_version,
+                args.operation_id,
+                args.expected_head,
+                args.event_lineage,
+                args.policy_revision,
+            )
+        )
     return 0
 
 

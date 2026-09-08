@@ -9,10 +9,16 @@ Forge schema, Mission, Producer Contract, Execution Host Contract or provider
 compatibility versions.
 
 The helper separates read-only `--check`, non-mutating planning, and an
-explicit guarded apply (`--bump patch|minor` or `--set-version X.Y.Z` with an
-optional expected baseline). It performs a single-file atomic replacement, but
-does not claim a cross-file transaction, commit, push, qualification, artifact
-publication or compatibility approval. Stable release publication remains
+explicit guarded apply (`--bump patch|minor` or `--set-version X.Y.Z`). An
+apply requires an operation ID, expected Git head, expected baseline version,
+event/branch lineage and policy revision. It writes a committed durable receipt
+under `.github/product-version-operations/`; the same operation ID and inputs
+return the same target, while altered inputs conflict. The receipt is staged
+before the manifest so an interrupted local write can be resumed without
+deriving a second bump. Each file uses atomic replacement, but this is not a
+cross-file transaction: a caller must commit and qualify the complete resulting
+candidate as one delivery boundary. The helper does not commit, push,
+qualification, artifact publication or compatibility approval. Stable release publication remains
 blocked unless an explicit compatibility classification, approved exact source,
 exact target version and immutable artifact identity are supplied.
 
