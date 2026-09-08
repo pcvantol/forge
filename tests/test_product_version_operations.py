@@ -56,6 +56,17 @@ class ProductVersionOperationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "conflicting reuse"):
             apply(self.root, self.head, lineage="refs/heads/feature/other")
 
+    def test_docs_only_operation_does_not_allocate_or_allow_reclassification(self) -> None:
+        self.assertEqual(
+            versioning.advance(self.root, "none", expected_version="2.3.0", operation_id="version-docs-0001",
+                               expected_head=self.head, event_lineage="increment:docs-1"),
+            "2.3.0",
+        )
+        self.assertEqual(json.loads((self.root / "product-version.json").read_text())["version"], "2.3.0")
+        with self.assertRaisesRegex(RuntimeError, "conflicting reuse"):
+            versioning.advance(self.root, "patch", expected_version="2.3.0", operation_id="version-docs-0001",
+                               expected_head=self.head, event_lineage="increment:docs-1")
+
     def test_stale_expected_head_writes_neither_receipt_nor_version(self) -> None:
         (self.root / "unrelated").write_text("changed", encoding="utf-8")
         subprocess.run(["git", "-C", str(self.root), "add", "unrelated"], check=True)
