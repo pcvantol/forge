@@ -135,10 +135,16 @@ jobs:
           raise SystemExit('partial PyPI release is a publication identity conflict')
           PY
           echo 'already_published=true' >> "$GITHUB_OUTPUT"
+      - name: Select only the qualified Python distributions
+        run: |
+          set -euo pipefail
+          mkdir pypi-dist
+          cp dist/*.whl dist/*.tar.gz pypi-dist/
+          test "$(find pypi-dist -type f | wc -l)" = 2
       - name: Publish the already-qualified immutable distributions
         if: steps.existing.outputs.already_published != 'true'
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
-        with: { packages-dir: dist }
+        with: { packages-dir: pypi-dist }
 
   verify-pypi-publication:
     needs: [release-context, build-and-qualify, publish-pypi]
