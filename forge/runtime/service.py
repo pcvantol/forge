@@ -4,7 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from time import sleep
+from threading import Event
 from typing import Callable, Iterator, Protocol
 
 try:  # macOS/Linux runtime product path
@@ -67,17 +67,27 @@ class ForgeRuntimeService:
     """
 
     def __init__(self, loop: RuntimeLoop, states: MissionStateStore, *, runtime_database_path: Path | str,
-                 wait: Callable[[float], None] = sleep, minimum_backoff: float = 0.25,
+                 wait: Callable[[float], None] | None = None, minimum_backoff: float = 0.25,
                  maximum_backoff: float = 5.0) -> None:
         if minimum_backoff <= 0 or maximum_backoff < minimum_backoff:
             raise ValueError("runtime service backoff bounds are invalid")
         self._loop, self._states = loop, states
         self._lock = RuntimeServiceLock(runtime_database_path)
         self._wait, self._minimum_backoff, self._maximum_backoff = wait, minimum_backoff, maximum_backoff
+        self._wake, self._stopped = Event(), Event()
 
     @property
     def mutation_lock(self) -> RuntimeServiceLock:
         return self._lock
+
+    def wake(self) -> None:
+        """Wake a default wait early when new work, pause, or stop arrives."""
+        self._wake.set()
+
+    def stop(self) -> None:
+        """Request a controlled stop without waiting for the current backoff."""
+        self._stopped.set()
+        self.wake()
 
     def tick(self) -> RuntimeServiceTick:
         with self._lock.acquire():
@@ -94,7 +104,7 @@ class ForgeRuntimeService:
     def serve(self, *, keep_running: Callable[[], bool]) -> None:
         """Run with bounded interruptible backoff; caller controls pause/stop."""
         delay = self._minimum_backoff
-        while keep_running():
+        while keep_running() and not self._stopped.is_set():
             try:
                 tick = self.tick()
             except RuntimeServiceBusy:
@@ -104,7 +114,11 @@ class ForgeRuntimeService:
                 continue
             # Do not sleep through a requested pause/shutdown.  The bounded
             # delay also prevents a WAITING_FOR_EVIDENCE poll from busy-looping.
-            if not keep_running():
+            if not keep_running() or self._stopped.is_set():
                 break
-            self._wait(delay)
+            if self._wait is None:
+                self._wake.wait(delay)
+                self._wake.clear()
+            else:
+                self._wait(delay)
             delay = min(self._maximum_backoff, delay * 2)

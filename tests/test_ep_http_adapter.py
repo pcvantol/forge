@@ -117,12 +117,45 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
         readback = json.loads(json.dumps(self.readback))
         readback["result"].update({"outcome": "FAILED", "delivery_qualified": False})
+        readback["run"].update({"state": "FAILED"})
         readback["evidence"]["repository"]["revision"] = None
         readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
         with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(readback).encode(), raw], [])):
             evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture"))
         self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.FAILED)
         self.assertIsNone(evidence.repository_evidence.repository_revision)
+
+    def _terminal_retrieval(self, readback: dict, artifact: dict):
+        self.database.save_execution_host_binding(self.request.correlation_id,
+            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"})
+        raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(readback).encode(), raw], [])):
+            return EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture"))
+
+    def test_terminal_outcome_qualification_digest_and_flags_must_have_parity(self) -> None:
+        cases = (
+            ("artifact outcome", lambda r, a: a["run"].update({"outcome": "FAILED"})),
+            ("report state", lambda r, a: a["report"].update({"terminal_state": "FAILED"})),
+            ("qualification", lambda r, a: r["result"].update({"delivery_qualified": False})),
+            ("missing accepted digest", lambda r, a: (r["submission"].pop("accepted_request_digest"), a["submission"].pop("accepted_request_digest"))),
+            ("invalid accepted digest type", lambda r, a: (r["submission"].update({"accepted_request_digest": []}), a["submission"].update({"accepted_request_digest": []}))),
+            ("terminal flag", lambda r, a: r["run"].update({"terminal": False})),
+        )
+        for label, mutate in cases:
+            with self.subTest(label=label):
+                readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+                mutate(readback, artifact)
+                with self.assertRaises(ValueError):
+                    self._terminal_retrieval(readback, artifact)
+                self.database._connection.execute("DELETE FROM execution_host_bindings")
+
+    def test_complete_requires_qualified_delivery_revision(self) -> None:
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        readback["evidence"]["repository"]["revision"] = None
+        artifact["repository"].update({"revision": None, "revision_required": False})
+        with self.assertRaisesRegex(ValueError, "qualified delivery revision"):
+            self._terminal_retrieval(readback, artifact)
 
 
 if __name__ == "__main__":

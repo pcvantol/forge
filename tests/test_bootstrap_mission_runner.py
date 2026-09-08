@@ -12,6 +12,7 @@ from forge.models import (
     ExecutionHostTemporaryUnavailable,
     IntentApproval, IntentCategory, IntentReference, IntentStatus, IntentTraceability, ProviderPromptDefinition,
     RuntimePrompt, RuntimePromptSection, RuntimePromptSectionKind,
+    Producer, ProducerContract, ProducerIdentity, RuntimePromptEnvelope, ExecutionReceiptReference,
 )
 from forge.models.mission import EngineeringMission, MissionIntentMembership, MissionScope
 from forge.models.codex_runtime_prompt import CodexCliRuntimePromptRequest, ExecutionHostCompatibility, RepositoryState
@@ -195,7 +196,7 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         )
         active = EngineeringAction(1, "one", "one", "1", "Run one.", ("repository evidence",), status=EngineeringActionStatus.ACTIVE)
         rendered = CodexCliRuntimePromptRenderer().render(CodexCliRuntimePromptRequest(
-            EngineeringMission("mission-1", "1", "Mission", "Complete actions.", MissionScope(("runner",), ("planner",)), (MissionIntentMembership(1, "one", "1"),)),
+            EngineeringMission("mission-1", "7", "Mission", "Complete actions.", MissionScope(("runner",), ("planner",)), (MissionIntentMembership(1, "one", "1"),)),
             approved, active, RepositoryState("forge", "abc", "sha256:" + "a" * 64, "now"), ("bounded",), ("test",),
             ExecutionHostCompatibility("2.4", "GENESIS", ("codex_cli",), "platform>=1.5"),
         ))
@@ -205,6 +206,38 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         restored = _request(_request_document(request))
         self.assertIsInstance(restored.runtime_prompt, type(rendered))
         self.assertEqual(restored.original_correlation_id, "retry-1")
+        self.assertEqual(dict(restored.producer_contract.execution_metadata)["mission_revision"], "7")
+
+    def test_present_null_contract_fails_closed_but_absent_legacy_contract_is_supported(self) -> None:
+        from forge.runtime.runner import _request, _request_document
+        request = ExecutionRequest("host", "mission-1", "one", "1", "one", prompt_factory({}, action(1, "one")),
+                                   "workspace", "forge", "correlation", "now")
+        document = _request_document(request)
+        legacy = dict(document); legacy.pop("producer_contract")
+        self.assertEqual(_request(legacy).producer_contract.correlation_id, "correlation")
+        document["producer_contract"] = None
+        with self.assertRaisesRegex(MissionRunnerError, "Producer Contract"):
+            _request(document)
+
+    def test_nondefault_producer_contract_roundtrips_losslessly(self) -> None:
+        from forge.runtime.runner import _request, _request_document
+        prompt = prompt_factory({}, action(1, "one"))
+        contract = ProducerContract(
+            Producer(ProducerIdentity("producer", "FORGE", "1.0"), "1.0"), "correlation", "one",
+            RuntimePromptEnvelope(prompt.id, "1.0", "text/markdown", "non-default prompt", "sha256:" + "c" * 64),
+            ("constraint-a", "constraint-b"),
+            (("custom", "metadata"), ("intent_id", "one"), ("intent_revision", "1"), ("mission_revision", "7")),
+            mission_id="mission-1", receipt_references=(ExecutionReceiptReference("host", "receipt-a"),),
+            execution_evidence_references=("evidence-a",), contract_version="1.0",
+        )
+        original = ExecutionRequest("host", "mission-1", "one", "1", "one", prompt, "workspace", "forge",
+                                    "correlation", "now", producer_contract=contract)
+        restored = _request(_request_document(original))
+        self.assertEqual(restored.producer_contract.to_dict(), original.producer_contract.to_dict())
+        self.assertEqual(restored.producer_contract.digest(), original.producer_contract.digest())
+        malformed = _request_document(original); malformed["producer_contract"]["producer"]["identity"]["id"] = None
+        with self.assertRaisesRegex(MissionRunnerError, "Producer Contract"):
+            _request(malformed)
 
 
 if __name__ == "__main__":

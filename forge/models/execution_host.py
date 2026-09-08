@@ -164,6 +164,12 @@ class ExecutionRequest:
             ("repository_id", self.repository_id),
             ("workspace_id", self.workspace_id),
         )
+        # A rendered runtime prompt is the materialized Mission provenance.
+        # Carry its actual immutable revision through the Producer Contract;
+        # adapters must never supply a transport default such as "1".
+        mission_revision = getattr(self.runtime_prompt, "mission_revision", None)
+        if isinstance(mission_revision, str) and mission_revision:
+            metadata += (("mission_revision", mission_revision),)
         return ProducerContract(
             producer=Producer(prompt_producer),
             correlation_id=self.correlation_id,

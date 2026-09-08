@@ -84,17 +84,31 @@ class InstallationOperatorService:
    rows=self.db._connection.execute('SELECT * FROM governance_capability_grants WHERE installation_id=? AND operator_id=? ORDER BY capability',(context.installation_id,operator)).fetchall()
    authorities=tuple(r['capability'] for r in self.db._connection.execute('SELECT capability FROM governance_authority WHERE installation_id=? AND operator_id=? ORDER BY capability',(context.installation_id,operator)))
    expected=tuple(sorted((*legacy,'OWNER_PROGRAMME_AUTHORIZATION')))
+   legacy_rows=tuple(r for r in rows if r['capability'] in legacy)
+   def valid_legacy_grants():
+    if len(legacy_rows)!=3 or tuple(r['capability'] for r in legacy_rows)!=legacy:return False
+    for row in legacy_rows:
+     try: document=json.loads(row['bootstrap_provenance'])
+     except (TypeError,ValueError): return False
+     digest='sha256:'+hashlib.sha256(json.dumps(document,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+     if digest!=row['digest'] or document.get('capability')!=row['capability'] or document.get('installation_id')!=context.installation_id or document.get('operator_id')!=operator:return False
+     kind=document.get('kind')
+     if kind=='LOCAL_INSTALLATION_BOOTSTRAP_V1':
+      if document.get('binding_version')!=binding['version'] or not isinstance(document.get('first_bind_at'),str):return False
+     elif kind=='EXISTING_G001_GOVERNANCE_ADOPTION_V1':
+      if document.get('prior_binding_version')!=binding['version'] or not isinstance(document.get('prior_binding_created_at'),str):return False
+     else:return False
+    return True
    if authorities==expected:
     if len(rows)!=4 or tuple(r['capability'] for r in rows)!=expected: raise PermissionError('upgraded capability grants are incomplete')
+    if not valid_legacy_grants(): raise PermissionError('legacy capability provenance is invalid')
     upgraded=next(r for r in rows if r['capability']=='OWNER_PROGRAMME_AUTHORIZATION')
     document=json.loads(upgraded['bootstrap_provenance']); digest='sha256:'+hashlib.sha256(json.dumps(document,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     old={r['grant_id']:r['digest'] for r in rows if r['capability']!='OWNER_PROGRAMME_AUTHORIZATION'}
     if digest!=upgraded['digest'] or document.get('kind')!='G001_OWNER_PROGRAMME_CAPABILITY_UPGRADE_V1' or dict(document.get('legacy_grants',()))!=old or document.get('binding_version')!=binding['version']: raise PermissionError('upgraded capability provenance is invalid')
     return
    if authorities!=legacy or tuple(r['capability'] for r in rows)!=legacy: raise PermissionError('state is not the recognized legacy capability set')
-   for row in rows:
-    document=json.loads(row['bootstrap_provenance']); digest='sha256:'+hashlib.sha256(json.dumps(document,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-    if digest!=row['digest'] or document.get('capability')!=row['capability'] or document.get('installation_id')!=context.installation_id or document.get('operator_id')!=operator: raise PermissionError('legacy capability provenance is invalid')
+   if not valid_legacy_grants(): raise PermissionError('legacy capability provenance is invalid')
    now=_timestamp(); provenance={'kind':'G001_OWNER_PROGRAMME_CAPABILITY_UPGRADE_V1','upgrade_version':'1','decision_source':decision_source,'legacy_grants':[(r['grant_id'],r['digest']) for r in rows],'binding_version':binding['version'],'added_capability':'OWNER_PROGRAMME_AUTHORIZATION','occurred_at':now,'installation_id':context.installation_id,'operator_id':operator,'capability':'OWNER_PROGRAMME_AUTHORIZATION'}; encoded=json.dumps(provenance,sort_keys=True,separators=(',',':')); digest='sha256:'+hashlib.sha256(encoded.encode()).hexdigest()
    self.db._insert_governance_grant(digest,context.installation_id,operator,'OWNER_PROGRAMME_AUTHORIZATION',encoded,digest,now); self.db._insert_governance_authority(context.installation_id,operator,'OWNER_PROGRAMME_AUTHORIZATION',now); self._audit(context.installation_id,NamedOperatorIdentity(context.generated_uid,0),'LEGACY_CAPABILITY_UPGRADE',now,'ALLOW')
  def revoke(self, context):

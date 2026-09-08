@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Thread
+from time import monotonic, sleep
+import subprocess
+import sys
 import unittest
 
 from forge.runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeServiceLock
@@ -48,6 +52,38 @@ class RuntimeServiceTests(unittest.TestCase):
                 with self.assertRaises(RuntimeServiceBusy):
                     with RuntimeServiceLock(path).acquire():
                         pass
+
+    def test_stop_wakes_default_backoff_without_waiting_for_its_cap(self) -> None:
+        with TemporaryDirectory() as root:
+            state = _State("mission", MissionExecutionStatus.WAITING_FOR_EVIDENCE, 4)
+            service = ForgeRuntimeService(_Loop(state, progresses=False), _States(state),
+                runtime_database_path=Path(root) / "runtime.db", minimum_backoff=5, maximum_backoff=5)
+            thread = Thread(target=lambda: service.serve(keep_running=lambda: True))
+            started = monotonic(); thread.start(); sleep(0.05); service.stop(); thread.join(timeout=1)
+            self.assertFalse(thread.is_alive())
+            self.assertLess(monotonic() - started, 1)
+
+    def test_separate_process_mutator_cannot_share_runtime_lease_and_exit_releases_it(self) -> None:
+        with TemporaryDirectory() as root:
+            path, ready = Path(root) / "runtime.db", Path(root) / "ready"
+            program = ("from pathlib import Path; from forge.runtime.service import RuntimeServiceLock; "
+                       "import sys,time; p=Path(sys.argv[1]); ready=Path(sys.argv[2]); "
+                       "\nwith RuntimeServiceLock(p).acquire():\n ready.touch(); time.sleep(30)")
+            child = subprocess.Popen([sys.executable, "-c", program, str(path), str(ready)])
+            try:
+                for _ in range(100):
+                    if ready.exists(): break
+                    sleep(0.01)
+                self.assertTrue(ready.exists())
+                with self.assertRaises(RuntimeServiceBusy):
+                    with RuntimeServiceLock(path).acquire():
+                        pass
+            finally:
+                child.kill(); child.wait(timeout=2)
+            # flock releases on abrupt process termination; a later mutator
+            # can claim the same canonical runtime without stale ownership.
+            with RuntimeServiceLock(path).acquire():
+                pass
 
 
 if __name__ == "__main__":

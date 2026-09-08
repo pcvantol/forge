@@ -74,3 +74,18 @@ class T(unittest.TestCase):
    def fetchall(self): return [{'capability':capability,'bootstrap_provenance':'not-json','digest':'sha256:'+'0'*64} for capability in ('ARCHITECTURE_APPROVAL','BUSINESS_APPROVAL','OWNER_PROGRAMME_AUTHORIZATION','SECURITY_APPROVAL')]
   service=InstallationOperatorService(type('Db',(),{'_connection':type('Connection',(),{'execute':lambda *args:Cursor()})()})(),lambda:NamedOperatorIdentity('generated-a',501))
   self.assertFalse(service._valid_adoption_provenance(OperatorContext('installation','generated-a',1),{'created_at':'now','version':1}))
+ def test_legacy_upgrade_reopens_idempotently_and_rejects_tampered_legacy_provenance(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); path=root/'runtime.db'; identity=NamedOperatorIdentity('generated-a',501); db=RuntimeDatabase(root,path=path); service=InstallationOperatorService(db,lambda:identity); context=service.first_bind()
+   # Isolated historic-state fixture: remove only the programme capability to
+   # represent the recognized three-capability predecessor product.
+   db._connection.executescript('DROP TRIGGER governance_authority_immutable_delete; DROP TRIGGER governance_capability_grants_immutable_delete;')
+   db._connection.execute("DELETE FROM governance_authority WHERE capability='OWNER_PROGRAMME_AUTHORIZATION'")
+   db._connection.execute("DELETE FROM governance_capability_grants WHERE capability='OWNER_PROGRAMME_AUTHORIZATION'"); db._connection.commit()
+   service.upgrade_legacy_governance_capabilities(context,decision_source='owner-decision')
+   db.close(); db=RuntimeDatabase(root,path=path); service=InstallationOperatorService(db,lambda:identity); service.upgrade_legacy_governance_capabilities(context,decision_source='owner-decision')
+   db._connection.execute('DROP TRIGGER governance_capability_grants_immutable_update')
+   db._connection.execute("UPDATE governance_capability_grants SET bootstrap_provenance='{}' WHERE capability='ARCHITECTURE_APPROVAL'"); db._connection.commit()
+   with self.assertRaisesRegex(PermissionError,'legacy capability provenance'):
+    service.upgrade_legacy_governance_capabilities(context,decision_source='owner-decision')
+   db.close()

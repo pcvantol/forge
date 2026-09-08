@@ -144,7 +144,11 @@ def _prompt(document: Mapping[str, Any]) -> RuntimePrompt | CodexCliRuntimePromp
 def _request(document: Mapping[str, Any]) -> ExecutionRequest:
     contract_document = document.get("producer_contract")
     contract = None
-    if contract_document is not None:
+    # Absence is an explicit historical compatibility route. Presence is a
+    # claim that a canonical Producer Contract was persisted, so null or any
+    # malformed representation must fail closed rather than silently becoming
+    # a freshly synthesized default contract.
+    if "producer_contract" in document:
         if not isinstance(contract_document, Mapping):
             raise MissionRunnerError("persisted Producer Contract is malformed")
         try:
@@ -154,21 +158,35 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
             constraints = contract_document["execution_constraints"]
             receipts = contract_document.get("receipt_references", ())
             evidence_references = contract_document.get("execution_evidence_references", ())
-            if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping):
+            if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping) or not isinstance(constraints, list):
                 raise TypeError
             identity = producer["identity"]
             if not isinstance(identity, Mapping) or not isinstance(receipts, list) or not isinstance(evidence_references, list):
                 raise TypeError
+            def required(value: Any) -> str:
+                if not isinstance(value, str) or not value:
+                    raise TypeError
+                return value
+            if any(not isinstance(key, str) or not key or not isinstance(value, str) or not value for key, value in metadata.items()):
+                raise TypeError
+            if any(not isinstance(item, str) or not item for item in constraints):
+                raise TypeError
+            if any(not isinstance(item, str) or not item for item in evidence_references):
+                raise TypeError
+            if any(not isinstance(item, Mapping) or set(item) != {"host_id", "receipt_id"}
+                   or not isinstance(item["host_id"], str) or not item["host_id"]
+                   or not isinstance(item["receipt_id"], str) or not item["receipt_id"] for item in receipts):
+                raise TypeError
+            mission_id = required(contract_document["mission_id"])
             contract = ProducerContract(
-                Producer(ProducerIdentity(str(identity["id"]), str(identity["type"]), str(identity["version"])),
-                         str(producer["contract_version"])),
-                str(contract_document["correlation_id"]), str(contract_document["engineering_action_id"]),
-                RuntimePromptEnvelope(str(prompt["id"]), str(prompt["version"]), str(prompt["format"]), str(prompt["content"]), str(prompt["content_digest"])),
-                tuple(str(item) for item in constraints), tuple((str(k), str(v)) for k, v in metadata.items()),
-                mission_id=contract_document.get("mission_id"),
-                receipt_references=tuple(ExecutionReceiptReference(str(item["host_id"]), str(item["receipt_id"])) for item in receipts),
-                execution_evidence_references=tuple(str(item) for item in evidence_references),
-                contract_version=str(contract_document["contract_version"]),
+                Producer(ProducerIdentity(required(identity["id"]), required(identity["type"]), required(identity["version"])),
+                         required(producer["contract_version"])),
+                required(contract_document["correlation_id"]), required(contract_document["engineering_action_id"]),
+                RuntimePromptEnvelope(required(prompt["id"]), required(prompt["version"]), required(prompt["format"]),
+                                      required(prompt["content"]), required(prompt["content_digest"])),
+                tuple(constraints), tuple(metadata.items()), mission_id=mission_id,
+                receipt_references=tuple(ExecutionReceiptReference(item["host_id"], item["receipt_id"]) for item in receipts),
+                execution_evidence_references=tuple(evidence_references), contract_version=required(contract_document["contract_version"]),
             )
         except (KeyError, TypeError, ValueError) as error:
             raise MissionRunnerError("persisted Producer Contract is malformed") from error
