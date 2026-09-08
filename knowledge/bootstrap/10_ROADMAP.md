@@ -4,6 +4,31 @@
 
 This is Forge's canonical strategic roadmap. Roadmap presence does not authorize execution; bounded Engineering Intents/Missions and governance remain required. Forge evolves capability-first while preserving repository-first knowledge, human governance and execution-host independence.
 
+## Policy governance and native release management — documented target
+
+The coordinated `POLICY_GOVERNANCE_AND_EFFECTIVE_PROFILES_V1` increment defines
+[policy ownership and lifecycle](../../docs/architecture/POLICY_GOVERNANCE_AND_EFFECTIVE_PROFILES.md),
+a [source-pinned policy inventory](../../docs/architecture/POLICY_INVENTORY.md), and
+the [scoped implementation roadmap/DAG](../../docs/roadmap/POLICY_GOVERNANCE_V1.md)
+with its [machine-readable documentary graph](../../docs/roadmap/policy-governance-v1.json).
+These are documentation deliverables; the services and management UI remain PLANNED.
+
+Forge owns planning/progression and native `VERSION_RELEASE_MANAGEMENT_V1`;
+EP owns effective execution/assurance profiles and operational repair accounting;
+Workspace owns Policy & Automation UX; Forge Platform owns policy-aware artifact
+composition and installation. Policies, grants, runtime consumption and hard
+implementation limits are distinct. A new candidate SHA does not reset repairs.
+
+Local progression is `POL-0 -> POL-F -> POL-B -> POL-Q`, with native release
+planning `POL-F -> VR-F -> VR-Q`. EP-owned POL-E/VR-X join at the corresponding
+integration gates; POL-WC can be designed in parallel, POL-W is post-autonomy UI,
+and POL-P qualifies production installer composition after release evidence.
+The scoped DAG does not alter the executable bootstrap node set or live grants.
+Relevant policy/provenance seams must be real for the operations being claimed;
+full UI or migration of every legacy setting is not a new first-canary prerequisite.
+Pending Forge #48 and #49 retain their respective graph and implementation lanes;
+this documentation neither merges them nor claims their features implemented.
+
 ## Strategic progression
 
 ```text
