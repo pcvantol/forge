@@ -15,7 +15,7 @@ from forge.runtime.database import RuntimeDatabase
 from forge.scheduler.ep_http_adapter import EngineeringPlatformHttpConfiguration, EngineeringPlatformHttpExecutionHost
 
 
-FIXTURES = Path("/Users/pcvantol/Documents/GitHub/engineering-platform/tests/fixtures")
+FIXTURES = Path(__file__).with_name("fixtures")
 
 
 class _Response:
