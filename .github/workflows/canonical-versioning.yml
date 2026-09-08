@@ -1,0 +1,15 @@
+name: Canonical product versioning
+
+on:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+jobs:
+  validate-version-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+      - run: python3 scripts/advance_product_version.py --check
