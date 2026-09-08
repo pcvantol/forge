@@ -30,3 +30,21 @@ policy revision before automated feature-patch/main-minor allocation is enabled.
 Until then this repository has no automatic version writer; builds consume the
 committed source only. This is product-owned groundwork, not Forge's future
 generic version/release planner.
+
+## Candidate delivery and release guard
+
+Forge's active `main` ruleset requires a pull request and the exact `Test and
+static validation` status. The normal PR workflow checks out the PR head, so a
+version-preparation commit pushed to an existing PR receives qualification for
+that new candidate rather than borrowing the preceding head's result. The
+repository currently has no authorized GitHub App, trusted dispatch route, or
+write-capable workflow that can create that preparation commit; the helper and
+workflow therefore do not attempt one.
+
+Before any existing authorized publication route can act, its caller must run
+`--verify-release-candidate --release-branch release-X.Y.Z --approved-head
+<exact-sha> --approved-version X.Y.Z`. This read-only guard requires the
+current branch name, canonical source and exact checked-out head to agree. It
+does not treat a branch name as approval, establish compatibility, inspect a
+registry, create a tag, or publish an artifact. Those facts must be supplied
+and recorded by the authorized release route.

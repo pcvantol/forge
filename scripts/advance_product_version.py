@@ -93,6 +93,18 @@ def _git_head(root: Path) -> str:
     return result.stdout.strip()
 
 
+def _git_branch(root: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), "symbolic-ref", "--quiet", "--short", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise RuntimeError("release candidate verification requires a named Git branch")
+    return result.stdout.strip()
+
+
 def _operation_path(root: Path, operation_id: str) -> Path:
     if OPERATION_ID.fullmatch(operation_id) is None:
         raise RuntimeError("operation ID must be a stable, non-path identifier")
@@ -145,6 +157,26 @@ def _validate_existing_operation(existing: dict[str, Any], requested: dict[str, 
     # Receipt equality, rather than a commit subject or actor, is the idempotency key.
     if existing != requested:
         raise RuntimeError("conflicting reuse of version operation ID")
+
+
+def verify_release_candidate(root: Path, release_branch: str, approved_head: str, approved_version: str) -> str:
+    """Read-only source guard; approval and publication remain external facts."""
+    match = re.fullmatch(r"release-(" + VERSION.pattern.removeprefix("^").removesuffix("$") + r")", release_branch)
+    if match is None:
+        raise RuntimeError("release branch must be exactly release-X.Y.Z")
+    branch_version = match.group(1)
+    if VERSION.fullmatch(approved_version) is None:
+        raise RuntimeError("approved release version must be stable X.Y.Z")
+    if branch_version != approved_version:
+        raise RuntimeError("release branch version must equal the approved release version")
+    _, payload, _ = current(root)
+    if payload["version"] != approved_version:
+        raise RuntimeError("canonical product version does not equal the approved release version")
+    if _git_branch(root) != release_branch:
+        raise RuntimeError("current branch is not the declared release branch")
+    if _git_head(root) != approved_head:
+        raise RuntimeError("current Git head is not the approved exact release source")
+    return approved_version
 
 
 def advance(
@@ -203,10 +235,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-head")
     parser.add_argument("--event-lineage")
     parser.add_argument("--policy-revision", default=POLICY_REVISION)
+    parser.add_argument("--verify-release-candidate", action="store_true")
+    parser.add_argument("--release-branch")
+    parser.add_argument("--approved-head")
+    parser.add_argument("--approved-version")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-    if args.check:
+    if args.verify_release_candidate:
+        if args.check or args.plan or args.bump or args.set_version:
+            parser.error("--verify-release-candidate is read-only and cannot combine with version mutation modes")
+        if not args.release_branch or not args.approved_head or not args.approved_version:
+            parser.error("release candidate verification requires branch, approved head, and approved version")
+        print(
+            "RELEASE_CANDIDATE=PASS version="
+            + verify_release_candidate(args.source_root, args.release_branch, args.approved_head, args.approved_version)
+        )
+    elif args.check:
         if args.bump or args.set_version or args.plan:
             parser.error("--check cannot change or plan a version")
         _, payload, _ = current(args.source_root)

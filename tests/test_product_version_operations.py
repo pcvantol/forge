@@ -76,3 +76,18 @@ class ProductVersionOperationTests(unittest.TestCase):
     def test_apply_requires_explicit_operation_provenance(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "apply requires"):
             versioning.advance(self.root, "patch")
+
+    def test_release_candidate_binds_exact_branch_head_and_version(self) -> None:
+        subprocess.run(["git", "-C", str(self.root), "branch", "-m", "release-2.3.0"], check=True)
+        self.assertEqual(
+            versioning.verify_release_candidate(self.root, "release-2.3.0", self.head, "2.3.0"), "2.3.0"
+        )
+        with self.assertRaisesRegex(RuntimeError, "branch version"):
+            versioning.verify_release_candidate(self.root, "release-2.3.1", self.head, "2.3.0")
+        with self.assertRaisesRegex(RuntimeError, "approved exact"):
+            versioning.verify_release_candidate(self.root, "release-2.3.0", "0" * 40, "2.3.0")
+
+    def test_release_candidate_rejects_branch_only_authority(self) -> None:
+        subprocess.run(["git", "-C", str(self.root), "branch", "-m", "release-2.3.1"], check=True)
+        with self.assertRaisesRegex(RuntimeError, "canonical product version"):
+            versioning.verify_release_candidate(self.root, "release-2.3.1", self.head, "2.3.1")
