@@ -18,7 +18,7 @@ PRODUCT = "forge"
 VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 OPERATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
 OPERATIONS_DIRECTORY = Path(".github/product-version-operations")
-POLICY_REVISION = "canonical-product-versioning-policy-v1"
+POLICY_REVISION = "forge-bootstrap-release-cadence-v2"
 
 
 def _pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -56,6 +56,8 @@ def determine(parsed: tuple[int, int, int], component: str | None, exact: str | 
             raise RuntimeError("the requested release version must be stable X.Y.Z")
         return exact
     major, minor, patch = parsed
+    if component == "none":
+        return f"{major}.{minor}.{patch}"
     if component == "patch":
         return f"{major}.{minor}.{patch + 1}"
     if component == "minor":
@@ -137,6 +139,9 @@ def _operation_input(
         raise RuntimeError("version operation requires a non-empty event or branch lineage")
     if not policy_revision.strip():
         raise RuntimeError("version operation requires a non-empty policy revision")
+    release_class = "EXACT" if exact is not None else {"none": "NO_BUMP", "patch": "PATCH", "minor": "MINOR"}.get(component)
+    if release_class is None:
+        raise RuntimeError("unsupported bootstrap release classification")
     return {
         "schema_version": "1",
         "operation_id": operation_id,
@@ -149,6 +154,8 @@ def _operation_input(
         "requested_bump": component,
         "requested_version": exact,
         "target_version": target,
+        "release_class": release_class,
+        "classification_rationale": event_lineage,
         "projection_paths": "product-version.json",
     }
 
@@ -228,7 +235,7 @@ def advance(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", type=Path, default=Path.cwd())
-    parser.add_argument("--bump", choices=("patch", "minor"))
+    parser.add_argument("--bump", choices=("none", "patch", "minor"))
     parser.add_argument("--set-version")
     parser.add_argument("--expected-version")
     parser.add_argument("--operation-id")
