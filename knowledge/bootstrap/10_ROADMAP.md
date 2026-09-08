@@ -182,7 +182,7 @@ Forge distinguishes:
 - **Expected Mission** — dynamic, confidence-bearing inference from current Project Context; never canonical backlog authority;
 - **Mission Candidate** — advisory concrete possible next Mission;
 - **Mission** — governed canonical work;
-- **Living Mission Graph** — dynamic Intent/Action dependency graph inside one Mission;
+- **Living Mission Graph** — dynamic Intent/Action dependency graph inside one approved Mission;
 - **Roadmap/DAG Insight** — Forge inference that the approved plan may need structural change;
 - **Roadmap Change Proposal** — explicit before/after changeset requiring applicable governance before canonical mutation.
 
