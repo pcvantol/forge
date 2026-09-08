@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.3.0",
+  "classification_rationale": "merge:50af9c1d7d95aee5275b8beda2874926d9a75b6e",
+  "component": "product",
+  "event_lineage": "merge:50af9c1d7d95aee5275b8beda2874926d9a75b6e",
+  "expected_head": "50af9c1d7d95aee5275b8beda2874926d9a75b6e",
+  "operation_id": "forge-autonomy-pypi-231",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.3.1"
+}
