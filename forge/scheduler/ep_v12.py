@@ -1,4 +1,4 @@
-"""Fail-closed Forge consumer mapping for EP producer readback v1.1."""
+"""Fail-closed Forge consumer mapping for EP producer readback v1.2."""
 from __future__ import annotations
 
 import hashlib
@@ -13,6 +13,7 @@ from forge.models.execution_host import (
 
 
 _OUTCOMES = frozenset(item.value.upper() for item in ExecutionEvidenceOutcome)
+_READBACK_KEYS = frozenset({"contract_version", "submission", "producer", "correlation", "provenance", "disposition", "run", "result", "evidence"})
 
 
 def _object(value: Any, name: str) -> Mapping[str, Any]:
@@ -52,7 +53,7 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     all readback/artifact fields used below must therefore be explicitly
     present, correctly typed, and mutually consistent.
     """
-    if readback.get("contract_version") != "1.1":
+    if set(readback) != _READBACK_KEYS or readback.get("contract_version") != "1.2":
         raise ValueError("unsupported EP readback contract")
     evidence = _object(readback.get("evidence"), "readback evidence")
     terminal = _object(evidence.get("terminal_artifact"), "terminal artifact reference")
@@ -69,13 +70,13 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
 
     artifact_digest = "sha256:" + hashlib.sha256(artifact).hexdigest()
     if _sha256(terminal.get("digest"), "terminal artifact digest") != artifact_digest:
-        raise ValueError("EP terminal artifact digest mismatch")
+        raise ValueError("EP_TERMINAL_EVIDENCE_DIGEST_MISMATCH")
     try:
         document = json.loads(artifact)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("EP terminal artifact is invalid JSON") from error
     document = _object(document, "artifact document")
-    if document.get("artifact_type") != "EP_TERMINAL_EVIDENCE" or document.get("contract_version") != "1.1":
+    if document.get("artifact_type") != "EP_TERMINAL_EVIDENCE" or document.get("contract_version") != "1.2":
         raise ValueError("unsupported EP terminal artifact contract")
 
     artifact_correlation = _object(document.get("correlation"), "artifact correlation")
@@ -128,6 +129,36 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     elif qualified_readback:
         # A terminal failed/blocked run is never a Forge successful delivery.
         raise ValueError("EP non-complete terminal evidence cannot be delivery-qualified")
+
+    # EP owns assurance policy. Forge only verifies that the immutable
+    # terminal record carries its bound assurance outcome and findings proof.
+    assurance = _object(document.get("assurance"), "artifact assurance")
+    profile = _object(assurance.get("profile"), "assurance profile")
+    _string(profile.get("version"), "assurance profile version")
+    _sha256(profile.get("digest"), "assurance profile digest")
+    if not isinstance(profile.get("candidate_sha"), str) or len(profile["candidate_sha"]) != 40:
+        raise ValueError("EP terminal assurance candidate identity is invalid")
+    if assurance.get("quality_review") not in {"PASS", "FAIL", "UNRESOLVED"} or assurance.get("security_review") not in {"PASS", "FAIL", "UNRESOLVED"}:
+        raise ValueError("EP terminal assurance review result is invalid")
+    repair = _object(assurance.get("repair_rounds"), "assurance repair rounds")
+    if any(not isinstance(repair.get(key), int) or isinstance(repair.get(key), bool) or repair[key] < 0 for key in ("used", "maximum")):
+        raise ValueError("EP terminal assurance repair rounds are invalid")
+    findings = _object(assurance.get("findings"), "assurance findings")
+    if any(not isinstance(findings.get(key), int) or isinstance(findings.get(key), bool) or findings[key] < 0 for key in ("open_blocking", "open_non_blocking")):
+        raise ValueError("EP terminal assurance finding counts are invalid")
+    findings_artifact = findings.get("artifact")
+    if findings_artifact is not None:
+        findings_artifact = _object(findings_artifact, "assurance findings artifact")
+        _string(findings_artifact.get("id"), "assurance findings artifact id")
+        if findings_artifact.get("digest_algorithm") != "sha256":
+            raise ValueError("EP terminal assurance findings digest algorithm is invalid")
+        digest = _string(findings_artifact.get("digest"), "assurance findings artifact digest")
+        if len(digest) != 64:
+            raise ValueError("EP terminal assurance findings digest is invalid")
+        try:
+            int(digest, 16)
+        except ValueError as error:
+            raise ValueError("EP terminal assurance findings digest is invalid") from error
 
     prompt = _object(provenance.get("runtime_prompt"), "runtime prompt")
     report_id = _string(artifact_report.get("id"), "artifact report id")

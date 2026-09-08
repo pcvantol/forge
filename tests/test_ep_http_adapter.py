@@ -1,4 +1,4 @@
-"""HTTP consumer tests against EP's pinned v1.1 shared fixtures."""
+"""HTTP consumer tests for the strict EP producer-readback v1.2 boundary."""
 from __future__ import annotations
 
 import hashlib
@@ -50,7 +50,17 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.config = EngineeringPlatformHttpConfiguration("https://ep.test", "forge", "credential")
         self.request = _request()
         self.readback = json.loads((FIXTURES / "forge-producer-readback-v1.1.json").read_text())
-        self.artifact = (FIXTURES / "forge-terminal-evidence-v1.1.json").read_bytes()
+        self.readback["contract_version"] = "1.2"
+        self.readback["disposition"] = {"state": "QUEUED", "terminal": False, "execution_eligible": True,
+            "revision": 0, "operation_id": None, "event_reference": None, "reason": "NOT_RECORDED",
+            "actor_reference": "NOT_RECORDED", "recorded_at": None}
+        artifact = json.loads((FIXTURES / "forge-terminal-evidence-v1.1.json").read_text())
+        artifact["contract_version"] = "1.2"
+        artifact["assurance"] = {"status": "PASS", "profile": {"version": "validation-profile@1",
+            "digest": "sha256:" + "b" * 64, "candidate_sha": "c" * 40}, "quality_review": "PASS",
+            "security_review": "PASS", "repair_rounds": {"used": 0, "maximum": 3},
+            "findings": {"open_blocking": 0, "open_non_blocking": 0, "artifact": None}}
+        self.artifact = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
 
     def tearDown(self) -> None:
         self.database.close(); self.temporary.cleanup()
@@ -65,8 +75,10 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
     def test_accepted_submission_recovers_after_reopen_without_process_memory(self) -> None:
         waiting = {**self.readback, "run": None}
         observed: list[object] = []
+        compatible = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
+            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.2"]}}
         with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([
-            json.dumps({"submission_id": "submission-fixture"}).encode(), json.dumps(waiting).encode()], observed)):
+            json.dumps(compatible).encode(), json.dumps({"submission_id": "submission-fixture"}).encode(), json.dumps(waiting).encode()], observed)):
             host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
             self.assertIsNone(host.dispatch(self.request))
         self.assertEqual(self.database.execution_host_binding(self.request.correlation_id)["submission_id"], "submission-fixture")
@@ -77,6 +89,15 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             dispatch = EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
         self.assertEqual(dispatch.host_run_id, "run-fixture")
         self.assertEqual(observed[0].get_header("Authorization"), "Bearer credential")
+
+    def test_capability_preflight_rejects_legacy_and_never_posts(self) -> None:
+        legacy = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
+            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.1"], "terminal_evidence": ["1.1"]}}
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(legacy).encode()], observed)):
+            with self.assertRaisesRegex(ValueError, "INCOMPATIBLE"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).dispatch(self.request)
+        self.assertEqual(observed[0].get_method(), "GET")
 
     def test_valid_hash_from_another_run_is_rejected_after_raw_artifact_fetch(self) -> None:
         self.database.save_execution_host_binding(self.request.correlation_id,

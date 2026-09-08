@@ -27,7 +27,7 @@ No installed runtime was inspected for this increment.
 | F-PROGRAMME-GRANT | `forge/programme_authorization.py`, `forge/governance_authority.py` | Separate concrete authorization/grant, exact-head qualification, Action-lineage repair authorization and squash boundary | Keep grant distinct from policy and consumption; no UI profile selection grants write/merge authority |
 | F-SINGLE-FLIGHT | `forge/models/agent_policy.py`, `forge/mission_scheduler.py`, `forge/autonomous_orchestrator.py` | IMPLEMENTATION_LIMIT: single active Mission/Action assumptions | Catalogue visibly; parallel capability must be separately implemented/qualified, not enabled by a new numeric setting |
 | F-BACKOFF | `forge/runtime/service.py` | Constructor-level operational bounds, default 0.25 to 5 seconds, wakeable wait | Publish supported range and effective runtime evidence without implying existing admin API |
-| F-EVIDENCE-GATES | `forge/scheduler/ep_v11.py`, `forge/runtime/runner.py` | Contract/integrity validation and persisted request recovery | Retain invariants; evidence honesty/correlation is not an optional policy |
+| F-EVIDENCE-GATES | `forge/scheduler/ep_v12.py`, `forge/runtime/runner.py` | Contract/integrity validation and persisted request recovery | Retain invariants; evidence honesty/correlation is not an optional policy |
 | F-VERSION-RELEASE | Pending #49, observed `a0602ba702fcf0ec3807599526257c410084b02f` | PENDING_PR repository-local manifest/helper/push workflow, not native managed-project release planning | Reconcile with FORGE::VERSION_RELEASE_MANAGEMENT_V1 and SemVer findings before adoption; no code changed here |
 
 ## Observed governance drift and disposition
