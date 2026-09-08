@@ -4,6 +4,29 @@
 
 This is Forge's canonical strategic roadmap. Roadmap presence does not authorize execution; bounded Engineering Intents/Missions and governance remain required. Forge evolves capability-first while preserving repository-first knowledge, human governance and execution-host independence.
 
+## Project Hygiene and Repository Reconciliation — documented target
+
+`FORGE::PROJECT_HYGIENE_AND_REPOSITORY_RECONCILIATION_V1` extends Project
+Intelligence with scoped post-EA/provider delta observations, bounded periodic
+and on-demand scans, a source-backed Branch Provenance Ledger and reconciliation
+cases. See the [architecture](../../docs/architecture/PROJECT_HYGIENE_AND_REPOSITORY_RECONCILIATION.md),
+[scoped roadmap](../../docs/roadmap/PROJECT_HYGIENE_V1.md) and
+[documentary DAG](../../docs/roadmap/project-hygiene-v1.json).
+
+Local sequence: EP `HY-E` observations -> Forge `HY-F` cases/projections ->
+`HY-S` semantic/residual reasoning; EP `HY-C` reuses safe cleanup primitives;
+`HY-Q` joins their contracts. Workspace read-only `HY-WO` need not wait for
+mutation UI `HY-WM`; Forge Platform `HY-P` preserves release/install authority.
+All implementation/qualification nodes remain PLANNED. This changes no executable
+programme graph, live grant, package version or installed runtime.
+
+EP own-run cleanup is not a Mission. A Forge reconciliation case is not a Mission
+or execution authorization either; genuine residual product work follows existing
+governed engineering intake. Semantic equivalence alone never authorizes deletion.
+Protected/active/unknown-owned work and untracked/ignored runtime data are retained.
+Only relevant source/operation conflicts block a release: neither this full
+capability nor deletion of unrelated old branches is a new first-canary gate.
+
 ## Policy governance and native release management — documented target
 
 The coordinated `POLICY_GOVERNANCE_AND_EFFECTIVE_PROFILES_V1` increment defines
@@ -159,7 +182,7 @@ Forge distinguishes:
 - **Expected Mission** — dynamic, confidence-bearing inference from current Project Context; never canonical backlog authority;
 - **Mission Candidate** — advisory concrete possible next Mission;
 - **Mission** — governed canonical work;
-- **Living Mission Graph** — dynamic Intent/Action dependency graph inside one approved Mission;
+- **Living Mission Graph** — dynamic Intent/Action dependency graph inside one Mission;
 - **Roadmap/DAG Insight** — Forge inference that the approved plan may need structural change;
 - **Roadmap Change Proposal** — explicit before/after changeset requiring applicable governance before canonical mutation.
 
