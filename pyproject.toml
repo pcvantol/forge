@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forge-autonomy"
+dynamic = ["version"]
+description = "Forge mission planning, producer contracts, and evidence interpretation runtime."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Forge maintainers" }]
+dependencies = []
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+]
+
+[project.urls]
+Homepage = "https://github.com/pcvantol/forge"
+Repository = "https://github.com/pcvantol/forge"
+Issues = "https://github.com/pcvantol/forge/issues"
+
+[project.scripts]
+forge = "forge.__main__:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["forge", "forge.*"]
+exclude = ["tests", "tests.*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "forge._version.__version__"}
+
+[tool.setuptools.package-data]
+forge = ["schemas/*.json"]

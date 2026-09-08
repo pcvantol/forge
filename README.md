@@ -1,5 +1,20 @@
 # Forge
 
+## Python distribution
+
+Forge is published to PyPI as **`forge-autonomy`**.  Its Python import package
+and command are deliberately distinct from the distribution name:
+
+```text
+pip install forge-autonomy
+import forge
+forge --version
+```
+
+`product-version.json` is the sole version authority.  Build and release
+qualification verify that its value equals the wheel metadata and installed
+CLI version; a package build never allocates or changes a version.
+
 ## Managed repository status
 
 Forge is the first-class repository [`pcvantol/forge`](https://github.com/pcvantol/forge),

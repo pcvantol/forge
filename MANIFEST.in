@@ -1,0 +1,8 @@
+include product-version.json
+recursive-include schemas *.json
+recursive-include forge/schemas *.json
+global-exclude *.py[cod] .DS_Store
+prune .engineering
+prune .forge
+prune dist
+prune build

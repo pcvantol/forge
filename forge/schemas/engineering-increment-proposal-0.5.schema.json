@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/engineering-increment-proposal-0.5.schema.json",
+  "title": "Forge Engineering Increment Proposal 0.5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "goal_id", "scope", "expected_outcome", "affected_capabilities", "dependencies", "risk_level", "rationale", "evidence_references"],
+  "properties": {
+    "schema_version": {"const": "0.5"},
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "goal_id": {"$ref": "common.schema.json#/$defs/id"},
+    "scope": {"type": "string", "minLength": 1},
+    "expected_outcome": {"type": "string", "minLength": 1},
+    "affected_capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "dependencies": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/id"}},
+    "risk_level": {"type": "string", "enum": ["low", "medium", "high"]},
+    "rationale": {"type": "string", "minLength": 1},
+    "evidence_references": {"type": "array", "items": {"$ref": "evidence-reference-0.5.schema.json"}}
+  }
+}

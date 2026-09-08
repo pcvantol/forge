@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/workspace-0.2.schema.json",
+  "title": "Forge Workspace",
+  "description": "A software-product workspace. Repository membership is held by a separate catalog.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "repository_catalog_id", "engineering_mode", "governance_profile"],
+  "properties": {
+    "schema_version": {"const": "0.2"},
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "name": {"$ref": "common.schema.json#/$defs/name"},
+    "repository_catalog_id": {"$ref": "common.schema.json#/$defs/id"},
+    "engineering_mode": {"$ref": "engineering-mode.schema.json"},
+    "governance_profile": {"$ref": "governance-profile.schema.json"},
+    "metadata": {"$ref": "common.schema.json#/$defs/metadata"}
+  }
+}

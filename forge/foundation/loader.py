@@ -29,7 +29,12 @@ from forge.models import (
 DOCUMENT_TYPE = "forge.foundation_document"
 DOCUMENT_VERSION = "0.3"
 COMPONENT_VERSION = "0.2"
-_SCHEMA_DIRECTORY = Path(__file__).resolve().parents[2] / "schemas"
+# Source checkouts keep schemas at the repository root.  Wheels install the
+# same vetted resource set beneath ``forge/schemas``; no runtime state is
+# ever stored beside these immutable resources.
+_SOURCE_SCHEMA_DIRECTORY = Path(__file__).resolve().parents[2] / "schemas"
+_INSTALLED_SCHEMA_DIRECTORY = Path(__file__).resolve().parents[1] / "schemas"
+_SCHEMA_DIRECTORY = _SOURCE_SCHEMA_DIRECTORY if _SOURCE_SCHEMA_DIRECTORY.is_dir() else _INSTALLED_SCHEMA_DIRECTORY
 _SUPPORTED_DOCUMENT_SCHEMAS = {DOCUMENT_VERSION: "foundation-document.schema.json"}
 
 

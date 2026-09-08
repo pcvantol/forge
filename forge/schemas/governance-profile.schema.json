@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/governance-profile-0.2.schema.json",
+  "title": "Forge Governance Profile",
+  "description": "Available governance profiles. Bootstrap activation is governed separately from this catalog.",
+  "type": "string",
+  "enum": ["solo", "two_person", "team", "enterprise"]
+}

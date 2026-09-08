@@ -23,7 +23,9 @@ from forge.models import (
 
 DOCUMENT_TYPE = "forge.engineering_planning"
 DOCUMENT_VERSION = "0.5"
-_SCHEMA_DIRECTORY = Path(__file__).resolve().parents[2] / "schemas"
+_SOURCE_SCHEMA_DIRECTORY = Path(__file__).resolve().parents[2] / "schemas"
+_INSTALLED_SCHEMA_DIRECTORY = Path(__file__).resolve().parents[1] / "schemas"
+_SCHEMA_DIRECTORY = _SOURCE_SCHEMA_DIRECTORY if _SOURCE_SCHEMA_DIRECTORY.is_dir() else _INSTALLED_SCHEMA_DIRECTORY
 _SCHEMA_NAMES = {
     "planning-document-0.5.schema.json",
     "engineering-goal-0.5.schema.json",
