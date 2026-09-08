@@ -67,6 +67,10 @@ class ExecutionEvidenceOutcome(str, Enum):
     FAILED = "failed"
 
 
+class ExecutionHostTemporaryUnavailable(RuntimeError):
+    """A transport/read outage; the persisted request remains the recovery key."""
+
+
 @dataclass(frozen=True)
 class ExecutionHostContract:
     """A complete host declaration without a host implementation."""
@@ -160,6 +164,12 @@ class ExecutionRequest:
             ("repository_id", self.repository_id),
             ("workspace_id", self.workspace_id),
         )
+        # A rendered runtime prompt is the materialized Mission provenance.
+        # Carry its actual immutable revision through the Producer Contract;
+        # adapters must never supply a transport default such as "1".
+        mission_revision = getattr(self.runtime_prompt, "mission_revision", None)
+        if isinstance(mission_revision, str) and mission_revision:
+            metadata += (("mission_revision", mission_revision),)
         return ProducerContract(
             producer=Producer(prompt_producer),
             correlation_id=self.correlation_id,
@@ -201,19 +211,21 @@ class ExecutionRepositoryEvidence:
     correlation_id: str
     host_run_id: str
     repository_id: str
-    repository_revision: str
+    repository_revision: str | None
     report_id: str
     content_digest: str
 
     def __post_init__(self) -> None:
         if not all((self.mission_id, self.intent_id, self.intent_revision, self.action_id,
                     self.runtime_prompt_id, self.correlation_id, self.host_run_id,
-                    self.repository_id, self.repository_revision, self.report_id,
+                    self.repository_id, self.report_id,
                     self.content_digest)):
             raise ValueError("repository evidence identity, provenance, revision, report, and digest are required")
         digest = self.content_digest.removeprefix("sha256:")
         if not self.content_digest.startswith("sha256:") or len(digest) != 64:
             raise ValueError("repository evidence digest must be sha256")
+        if self.repository_revision is not None and not self.repository_revision:
+            raise ValueError("repository evidence revision cannot be empty")
 
 
 @dataclass(frozen=True)
@@ -245,6 +257,8 @@ class ExecutionHostEvidence:
             self.correlation_id, self.host_run_id, self.report_id,
         ):
             raise ValueError("execution host evidence must match its repository evidence run and report")
+        if self.outcome is ExecutionEvidenceOutcome.COMPLETE and not repository.repository_revision:
+            raise ValueError("complete execution evidence requires a delivery revision")
         for references, label in ((self.log_references, "log"), (self.diagnostic_references, "diagnostic"), (self.metric_references, "metric"), (self.validation_references, "validation")):
             if any(not reference for reference in references) or len(references) != len(set(references)):
                 raise ValueError(f"execution host evidence {label} references must be unique and non-empty")
@@ -268,7 +282,7 @@ class ExecutionHost(Protocol):
     a request before dispatching it without treating process memory as state.
     """
 
-    def dispatch(self, request: ExecutionRequest) -> ExecutionDispatch: ...
+    def dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None: ...
 
     def recover_dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None: ...
 

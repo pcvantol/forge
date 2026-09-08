@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 31
+RUNTIME_SCHEMA_VERSION = 32
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -38,7 +38,7 @@ _TABLES = frozenset((
     "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations", "action_derivation_reattempt_authorizations", "action_derivation_reattempt_consumptions",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
-    "mission_amendments", "action_derivation_canary_closures",
+    "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings",
 ))
 _TOKEN_PREFLIGHT_FAILURE_FIELDS = frozenset((
     "failure_id", "mission_id", "provider_id", "occurred_at", "main_head", "policy_digest",
@@ -151,7 +151,8 @@ class RuntimeDatabase:
         self._action_derivation_canary_closure_write_state = {"permitted": False}
         try:
             self._configure()
-            self._migrate(forge_version)
+            while self._connection.execute("PRAGMA user_version").fetchone()[0] != RUNTIME_SCHEMA_VERSION:
+                self._migrate(forge_version)
             self._initialize_runtime_identity()
             self.validate_integrity()
         except Exception:
@@ -438,6 +439,7 @@ class RuntimeDatabase:
                         UNIQUE (mission_id, action_id, iteration),
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
+                    CREATE TABLE IF NOT EXISTS execution_host_bindings (correlation_id TEXT PRIMARY KEY, document TEXT NOT NULL);
                     CREATE TABLE installation_operator_binding (installation_id TEXT PRIMARY KEY, generated_uid TEXT NOT NULL, uid INTEGER NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
                     CREATE TABLE installation_operator_audit (audit_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, generated_uid TEXT NOT NULL, operation TEXT NOT NULL, occurred_at TEXT NOT NULL, result TEXT NOT NULL);
                     CREATE TRIGGER installation_operator_audit_immutable_update BEFORE UPDATE ON installation_operator_audit
@@ -1232,6 +1234,17 @@ class RuntimeDatabase:
             except Exception:
                 self._connection.rollback()
                 raise
+        elif version == 31:
+            with self._connection:
+                # Some supported historic test/runtime states were created by
+                # the current bootstrap schema and then assigned an older
+                # pragma version to exercise their migration.  The binding is
+                # additive, so its presence is safe; still advance the
+                # version atomically instead of treating that state as a
+                # second authority or an incomplete migration.
+                self._connection.execute("CREATE TABLE IF NOT EXISTS execution_host_bindings (correlation_id TEXT PRIMARY KEY, document TEXT NOT NULL)")
+                self._set_metadata({"schema_version":"32","migration_version":"32","last_migration":"32"})
+                self._connection.execute("PRAGMA user_version=32")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1517,6 +1530,18 @@ class RuntimeDatabase:
             "SELECT document FROM scheduler_submissions WHERE submission_id = ?", (submission_id,)
         ).fetchone()
         return json.loads(row["document"]) if row is not None else None
+
+    def execution_host_binding(self, correlation_id: str) -> dict[str, Any] | None:
+        row=self._connection.execute("SELECT document FROM execution_host_bindings WHERE correlation_id=?",(correlation_id,)).fetchone()
+        return None if row is None else json.loads(row["document"])
+
+    def save_execution_host_binding(self, correlation_id: str, document: Mapping[str, Any]) -> dict[str, Any]:
+        if not correlation_id or document.get("correlation_id") != correlation_id: raise RuntimeDatabaseError("execution host binding correlation is invalid")
+        existing=self.execution_host_binding(correlation_id)
+        if existing is not None and any(existing.get(key) not in (None,value) for key,value in document.items()): raise RuntimeIntegrityError("execution host binding is immutable")
+        merged={**(existing or {}),**document}
+        with self._connection:self._connection.execute("INSERT INTO execution_host_bindings VALUES (?,?) ON CONFLICT(correlation_id) DO UPDATE SET document=excluded.document",(correlation_id,self._dump(merged)))
+        return merged
 
     def outstanding_scheduler_submission(self, mission_id: str) -> dict[str, Any] | None:
         rows = self._connection.execute(

@@ -69,6 +69,8 @@ class CandidateQualification:
     owner_workflow_evidence: str
     owner_workflow_head_sha: str
     merge_method: str = "squash"
+    mission_id: str | None = None
+    action_id: str | None = None
 
     def __post_init__(self) -> None:
         if (self.pull_request <= 0 or not _SHA.fullmatch(self.head_sha)
@@ -122,20 +124,23 @@ class ProgrammeAuthorizationGate:
     def record_repair_attempt(self, authorization_id: str, candidate: CandidateQualification) -> str:
         authorization = self._authorization(authorization_id)
         self._validate_candidate(authorization, candidate, require_passes=False)
-        existing = self._repair_attempts(authorization_id, candidate.pull_request, candidate.head_sha)
+        if not candidate.mission_id or not candidate.action_id:
+            raise PermissionError("repair authorization requires the Forge Mission and Engineering Action lineage")
+        existing = self._repair_attempts(authorization_id, candidate.mission_id, candidate.action_id)
         if existing >= authorization.repair_attempt_limit:
-            raise PermissionError("bounded repair budget exhausted for this exact PR head")
+            raise PermissionError("bounded repair budget exhausted for this Engineering Action lineage")
         attempt = existing + 1
         return self.repository.record(GovernanceDecision(
-            decision_id=f"{authorization_id}:repair:{candidate.pull_request}:{candidate.head_sha}:{attempt}",
-            subject_id=f"{authorization.programme_id}:repair:pr-{candidate.pull_request}:attempt-{attempt}",
+            decision_id=f"{authorization_id}:repair:{candidate.mission_id}:{candidate.action_id}:{attempt}",
+            subject_id=f"{authorization.programme_id}:repair:{candidate.mission_id}:{candidate.action_id}:attempt-{attempt}",
             subject_revision=candidate.head_sha,
             capability=GovernanceCapability.OWNER_PROGRAMME_AUTHORIZATION,
             decision="repair-authorized",
             scope=candidate.changed_scopes,
             gates=("same-approved-scope", "exact-head"),
             predecessor_digest=self._decision_digest(authorization_id),
-            evidence={"kind": "BOUNDED_REPAIR_ATTEMPT_V1", "authorization_id": authorization_id,
+            evidence={"kind": "BOUNDED_ACTION_REPAIR_ATTEMPT_V2", "authorization_id": authorization_id,
+                      "mission_id": candidate.mission_id, "action_id": candidate.action_id,
                       "pull_request": candidate.pull_request, "head_sha": candidate.head_sha,
                       "attempt": attempt},
         ), self.context)
@@ -171,7 +176,7 @@ class ProgrammeAuthorizationGate:
             raise PermissionError("authorization evidence is absent")
         return row["digest"]
 
-    def _repair_attempts(self, authorization_id: str, pull_request: int, head_sha: str) -> int:
+    def _repair_attempts(self, authorization_id: str, mission_id: str, action_id: str) -> int:
         rows = self.repository.database._connection.execute(
             "SELECT document FROM governance_decisions WHERE capability = ?",
             (GovernanceCapability.OWNER_PROGRAMME_AUTHORIZATION.value,),
@@ -179,8 +184,11 @@ class ProgrammeAuthorizationGate:
         import json
         return sum(
             1 for row in rows
-            if (lambda evidence: evidence.get("kind") == "BOUNDED_REPAIR_ATTEMPT_V1"
-                and evidence.get("authorization_id") == authorization_id
-                and evidence.get("pull_request") == pull_request
-                and evidence.get("head_sha") == head_sha)(json.loads(row["document"]).get("evidence", {}))
+            if (lambda evidence: evidence.get("authorization_id") == authorization_id and (
+                (evidence.get("kind") == "BOUNDED_ACTION_REPAIR_ATTEMPT_V2"
+                 and evidence.get("mission_id") == mission_id and evidence.get("action_id") == action_id)
+                # V1 had no Action identity. Count it conservatively rather
+                # than silently resetting a pre-existing programme budget.
+                or evidence.get("kind") == "BOUNDED_REPAIR_ATTEMPT_V1"
+            ))(json.loads(row["document"]).get("evidence", {}))
         )
