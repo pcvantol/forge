@@ -14,6 +14,7 @@ from forge.models.execution_host import (
     ExecutionHost,
     ExecutionHostEvidence,
     ExecutionRequest,
+    ExecutionHostTemporaryUnavailable,
 )
 from forge.models.runtime_prompt import (
     ProviderPromptDefinition,
@@ -23,6 +24,10 @@ from forge.models.runtime_prompt import (
 )
 from forge.models.codex_runtime_prompt import (
     CodexCliRuntimePrompt, ExecutionHostCompatibility, RepositoryState,
+)
+from forge.models.producer import (
+    ExecutionReceiptReference, Producer, ProducerContract, ProducerIdentity,
+    RuntimePromptEnvelope,
 )
 from forge.models.intent import IntentReference
 from forge.scheduler import BootstrapMissionScheduler
@@ -137,6 +142,54 @@ def _prompt(document: Mapping[str, Any]) -> RuntimePrompt | CodexCliRuntimePromp
 
 
 def _request(document: Mapping[str, Any]) -> ExecutionRequest:
+    contract_document = document.get("producer_contract")
+    contract = None
+    # Absence is an explicit historical compatibility route. Presence is a
+    # claim that a canonical Producer Contract was persisted, so null or any
+    # malformed representation must fail closed rather than silently becoming
+    # a freshly synthesized default contract.
+    if "producer_contract" in document:
+        if not isinstance(contract_document, Mapping):
+            raise MissionRunnerError("persisted Producer Contract is malformed")
+        try:
+            producer = contract_document["producer"]
+            prompt = contract_document["runtime_prompt"]
+            metadata = contract_document["execution_metadata"]
+            constraints = contract_document["execution_constraints"]
+            receipts = contract_document.get("receipt_references", ())
+            evidence_references = contract_document.get("execution_evidence_references", ())
+            if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping) or not isinstance(constraints, list):
+                raise TypeError
+            identity = producer["identity"]
+            if not isinstance(identity, Mapping) or not isinstance(receipts, list) or not isinstance(evidence_references, list):
+                raise TypeError
+            def required(value: Any) -> str:
+                if not isinstance(value, str) or not value:
+                    raise TypeError
+                return value
+            if any(not isinstance(key, str) or not key or not isinstance(value, str) or not value for key, value in metadata.items()):
+                raise TypeError
+            if any(not isinstance(item, str) or not item for item in constraints):
+                raise TypeError
+            if any(not isinstance(item, str) or not item for item in evidence_references):
+                raise TypeError
+            if any(not isinstance(item, Mapping) or set(item) != {"host_id", "receipt_id"}
+                   or not isinstance(item["host_id"], str) or not item["host_id"]
+                   or not isinstance(item["receipt_id"], str) or not item["receipt_id"] for item in receipts):
+                raise TypeError
+            mission_id = required(contract_document["mission_id"])
+            contract = ProducerContract(
+                Producer(ProducerIdentity(required(identity["id"]), required(identity["type"]), required(identity["version"])),
+                         required(producer["contract_version"])),
+                required(contract_document["correlation_id"]), required(contract_document["engineering_action_id"]),
+                RuntimePromptEnvelope(required(prompt["id"]), required(prompt["version"]), required(prompt["format"]),
+                                      required(prompt["content"]), required(prompt["content_digest"])),
+                tuple(constraints), tuple(metadata.items()), mission_id=mission_id,
+                receipt_references=tuple(ExecutionReceiptReference(item["host_id"], item["receipt_id"]) for item in receipts),
+                execution_evidence_references=tuple(evidence_references), contract_version=required(contract_document["contract_version"]),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise MissionRunnerError("persisted Producer Contract is malformed") from error
     return ExecutionRequest(
         host_id=str(document["host_id"]), mission_id=str(document["mission_id"]),
         intent_id=str(document["intent_id"]), intent_revision=str(document["intent_revision"]),
@@ -145,6 +198,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
         correlation_id=str(document["correlation_id"]), dispatched_at=str(document["dispatched_at"]),
         retry_of_correlation_id=document.get("retry_of_correlation_id"),
         original_correlation_id=document.get("original_correlation_id"),
+        producer_contract=contract,
     )
 
 
@@ -163,6 +217,7 @@ def _request_document(request: ExecutionRequest) -> dict[str, Any]:
         "dispatched_at": request.dispatched_at,
         "retry_of_correlation_id": request.retry_of_correlation_id,
         "original_correlation_id": request.original_correlation_id,
+        "producer_contract": request.producer_contract.to_dict(),
     }
 
 
@@ -224,7 +279,8 @@ class BootstrapMissionRunner:
                 return state
             before_revision = state.revision
             state = self._advance(state)
-            if state.status is MissionExecutionStatus.WAITING_FOR_EVIDENCE and state.revision == before_revision:
+            if state.status in {MissionExecutionStatus.WAITING_FOR_EXECUTION,
+                                MissionExecutionStatus.WAITING_FOR_EVIDENCE} and state.revision == before_revision:
                 return state
 
     def _advance(self, state: MissionExecutionState) -> MissionExecutionState:
@@ -266,9 +322,18 @@ class BootstrapMissionRunner:
             dispatch = self._host.recover_dispatch(request)
             if dispatch is None:
                 dispatch = self._host.dispatch(request)
+            # An accepted submission may legitimately have no run yet.  Keep
+            # the persisted request in WAITING_FOR_EXECUTION and recover it on
+            # a later service tick; do not reclassify that state as failure.
+            if dispatch is None:
+                return state
             if dispatch.request != request:
                 raise MissionRunnerError("execution host acknowledgement did not preserve the persisted request")
-        except Exception as error:  # Host errors must become durable terminal state.
+        except ExecutionHostTemporaryUnavailable:
+            # The request was persisted before dispatch.  A later tick asks for
+            # its original acknowledgement before attempting another send.
+            return state
+        except Exception as error:  # Invalid acknowledgements fail closed.
             return self._host_failure(state, "host_dispatch_failed", error)
         envelope = {"request": _request_document(request), "host_run_id": dispatch.host_run_id}
         return self._store.transition(
@@ -284,6 +349,9 @@ class BootstrapMissionRunner:
             if evidence is None:
                 return state
             actions = self._scheduler.reconcile(self._actions(state), dispatch, evidence)
+        except ExecutionHostTemporaryUnavailable:
+            # A temporary read outage is not terminal evidence.
+            return state
         except Exception as error:  # Invalid evidence and host failures fail closed.
             return self._host_failure(state, "host_evidence_failed", error)
         evidence_document = _document(evidence)

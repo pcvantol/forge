@@ -1,7 +1,7 @@
 import os,shutil,sqlite3,tempfile,unittest
 from pathlib import Path
 from forge.runtime.database import RuntimeDatabase,RuntimeIntegrityError
-from forge.operator_identity import InstallationOperatorService,MacOSGeneratedUIDIdentityAdapter,NamedOperatorIdentity
+from forge.operator_identity import InstallationOperatorService,MacOSGeneratedUIDIdentityAdapter,NamedOperatorIdentity,OperatorContext
 class T(unittest.TestCase):
  def test_trusted_binding_rejects_strings_wrong_and_revoked(self):
   with tempfile.TemporaryDirectory() as d:
@@ -55,3 +55,37 @@ class T(unittest.TestCase):
    with self.assertRaises(TypeError): service.first_bind('1900-01-01T00:00:00Z')
    with patch('forge.operator_identity._timestamp',return_value='2042-02-03T04:05:06Z'): service.first_bind()
    row=db._connection.execute("SELECT occurred_at FROM installation_operator_audit WHERE operation='FIRST_BIND'").fetchone(); self.assertEqual(row[0],'2042-02-03T04:05:06Z'); db.close()
+ def test_identity_and_upgrade_entrypoints_fail_closed_without_their_trusted_preconditions(self):
+  class Failed: returncode=1; stdout=''
+  class Malformed: returncode=0; stdout='GeneratedUID: not-a-uuid'
+  class WrongLabel: returncode=0; stdout='Unexpected: 123E4567-E89B-42D3-A456-426614174000'
+  from unittest.mock import patch
+  with patch('forge.operator_identity.os.getuid',return_value=501),patch('forge.operator_identity.pwd.getpwuid',return_value=type('P',(),{'pw_name':'operator'})()):
+   with self.assertRaises(PermissionError): MacOSGeneratedUIDIdentityAdapter(runner=lambda *args,**kwargs:Failed()).resolve()
+   with self.assertRaises(PermissionError): MacOSGeneratedUIDIdentityAdapter(runner=lambda *args,**kwargs:WrongLabel()).resolve()
+   with self.assertRaises(PermissionError): MacOSGeneratedUIDIdentityAdapter(runner=lambda *args,**kwargs:Malformed()).resolve()
+  with tempfile.TemporaryDirectory() as d:
+   db=RuntimeDatabase(Path(d),path=Path(d)/'runtime.db'); service=InstallationOperatorService(db,lambda:NamedOperatorIdentity('generated-a',501)); context=service.first_bind()
+   with self.assertRaises(PermissionError): service._bootstrap_governance_after_first_bind()
+   with self.assertRaises(PermissionError): service.upgrade_legacy_governance_capabilities(context,decision_source='')
+   db.close()
+ def test_corrupt_adoption_provenance_is_not_recognized(self):
+  class Cursor:
+   def fetchall(self): return [{'capability':capability,'bootstrap_provenance':'not-json','digest':'sha256:'+'0'*64} for capability in ('ARCHITECTURE_APPROVAL','BUSINESS_APPROVAL','OWNER_PROGRAMME_AUTHORIZATION','SECURITY_APPROVAL')]
+  service=InstallationOperatorService(type('Db',(),{'_connection':type('Connection',(),{'execute':lambda *args:Cursor()})()})(),lambda:NamedOperatorIdentity('generated-a',501))
+  self.assertFalse(service._valid_adoption_provenance(OperatorContext('installation','generated-a',1),{'created_at':'now','version':1}))
+ def test_legacy_upgrade_reopens_idempotently_and_rejects_tampered_legacy_provenance(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d); path=root/'runtime.db'; identity=NamedOperatorIdentity('generated-a',501); db=RuntimeDatabase(root,path=path); service=InstallationOperatorService(db,lambda:identity); context=service.first_bind()
+   # Isolated historic-state fixture: remove only the programme capability to
+   # represent the recognized three-capability predecessor product.
+   db._connection.executescript('DROP TRIGGER governance_authority_immutable_delete; DROP TRIGGER governance_capability_grants_immutable_delete;')
+   db._connection.execute("DELETE FROM governance_authority WHERE capability='OWNER_PROGRAMME_AUTHORIZATION'")
+   db._connection.execute("DELETE FROM governance_capability_grants WHERE capability='OWNER_PROGRAMME_AUTHORIZATION'"); db._connection.commit()
+   service.upgrade_legacy_governance_capabilities(context,decision_source='owner-decision')
+   db.close(); db=RuntimeDatabase(root,path=path); service=InstallationOperatorService(db,lambda:identity); service.upgrade_legacy_governance_capabilities(context,decision_source='owner-decision')
+   db._connection.execute('DROP TRIGGER governance_capability_grants_immutable_update')
+   db._connection.execute("UPDATE governance_capability_grants SET bootstrap_provenance='{}' WHERE capability='ARCHITECTURE_APPROVAL'"); db._connection.commit()
+   with self.assertRaisesRegex(PermissionError,'legacy capability provenance'):
+    service.upgrade_legacy_governance_capabilities(context,decision_source='owner-decision')
+   db.close()

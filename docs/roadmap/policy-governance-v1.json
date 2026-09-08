@@ -1,0 +1,22 @@
+{
+  "document_kind": "ARCHITECTURE_ROADMAP_DAG",
+  "schema_version": "1.0",
+  "increment_id": "POLICY_GOVERNANCE_AND_EFFECTIVE_PROFILES_V1",
+  "execution_authority": false,
+  "runtime_configuration": false,
+  "implementation_status": "PLANNED",
+  "semantic_contract": "docs/architecture/POLICY_GOVERNANCE_AND_EFFECTIVE_PROFILES.md",
+  "nodes": [
+    {"id": "POL-0", "owners": ["forge", "engineering-platform", "workspace", "forge-platform"], "kind": "documentation", "depends_on": [], "status": "PROPOSED_DOCUMENTATION"},
+    {"id": "POL-F", "owners": ["forge"], "kind": "implementation", "depends_on": ["POL-0"], "status": "PLANNED"},
+    {"id": "POL-E", "owners": ["engineering-platform"], "kind": "implementation", "depends_on": ["POL-0"], "status": "PLANNED"},
+    {"id": "POL-WC", "owners": ["workspace"], "kind": "consumer_contract", "depends_on": ["POL-0"], "status": "PLANNED"},
+    {"id": "POL-B", "owners": ["forge", "engineering-platform"], "kind": "integration", "depends_on": ["POL-F", "POL-E"], "status": "PLANNED"},
+    {"id": "POL-Q", "owners": ["forge", "engineering-platform"], "kind": "qualification", "depends_on": ["POL-B"], "status": "PLANNED"},
+    {"id": "POL-W", "owners": ["workspace"], "kind": "ui", "depends_on": ["POL-WC", "POL-Q"], "status": "PLANNED", "first_canary_blocker": false},
+    {"id": "VR-F", "owners": ["forge"], "kind": "implementation", "depends_on": ["POL-F"], "status": "PLANNED"},
+    {"id": "VR-X", "owners": ["engineering-platform"], "kind": "implementation", "depends_on": ["POL-E"], "status": "PLANNED"},
+    {"id": "VR-Q", "owners": ["forge", "engineering-platform"], "kind": "qualification", "depends_on": ["VR-F", "VR-X", "POL-Q"], "status": "PLANNED"},
+    {"id": "POL-P", "owners": ["forge-platform"], "kind": "composition_qualification", "depends_on": ["POL-Q", "VR-Q"], "status": "PLANNED", "first_canary_blocker": false}
+  ]
+}
