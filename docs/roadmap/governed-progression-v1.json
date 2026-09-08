@@ -1,0 +1,21 @@
+{
+  "document_kind": "ARCHITECTURE_ROADMAP_DAG",
+  "schema_version": "1.0",
+  "increment_id": "GOVERNED_PROGRESSION_AND_DELIVERY_AUTHORITY_V1",
+  "execution_authority": false,
+  "runtime_configuration": false,
+  "implementation_status": "PLANNED",
+  "semantic_contract": "docs/architecture/GOVERNED_PROGRESSION_AND_DELIVERY_AUTHORITY.md",
+  "parent_roadmap": "docs/roadmap/POLICY_GOVERNANCE_V1.md",
+  "nodes": [
+    {"id": "GP-0", "owners": ["forge", "engineering-platform", "workspace", "forge-platform"], "kind": "documentation", "depends_on": [], "status": "DOCUMENTATION_ONLY"},
+    {"id": "GP-F", "owners": ["forge"], "kind": "implementation", "depends_on": ["GP-0"], "status": "PLANNED"},
+    {"id": "GP-DC", "owners": ["forge", "engineering-platform", "forge-platform"], "kind": "consumer_contract", "depends_on": ["GP-0"], "status": "PLANNED"},
+    {"id": "GP-E", "owners": ["engineering-platform"], "kind": "implementation", "depends_on": ["GP-0"], "status": "PLANNED"},
+    {"id": "GP-Q", "owners": ["forge", "engineering-platform"], "kind": "qualification", "depends_on": ["GP-F", "GP-E"], "status": "PLANNED"},
+    {"id": "GP-WC", "owners": ["workspace"], "kind": "consumer_contract", "depends_on": ["GP-0"], "status": "PLANNED"},
+    {"id": "GP-W", "owners": ["workspace"], "kind": "ui", "depends_on": ["GP-WC", "GP-Q"], "status": "PLANNED", "first_canary_blocker": false},
+    {"id": "GP-X", "owners": ["forge", "engineering-platform"], "kind": "external_integration_qualification", "depends_on": ["GP-Q", "GP-DC"], "status": "PLANNED", "first_canary_blocker": false},
+    {"id": "GP-P", "owners": ["forge-platform"], "kind": "composition_qualification", "depends_on": ["GP-X"], "status": "PLANNED", "first_canary_blocker": false}
+  ]
+}
