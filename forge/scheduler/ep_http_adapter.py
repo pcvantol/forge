@@ -1,4 +1,4 @@
-"""Concrete, strict HTTP v1.1 Engineering Platform Execution Host adapter.
+"""Concrete, strict HTTP v1.2 Engineering Platform Execution Host adapter.
 
 The runtime database remains the recovery authority. This adapter keeps only
 the EP submission/run binding which follows from a persisted Forge request.
@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from forge.models.execution_host import ExecutionDispatch, ExecutionHostEvidence, ExecutionHostTemporaryUnavailable, ExecutionRequest
-from .ep_v11 import terminal_evidence
+from .ep_v12 import terminal_evidence
 
 
 class ExecutionHostBindingStore(Protocol):
@@ -30,7 +30,10 @@ class EngineeringPlatformHttpConfiguration:
 
 
 class EngineeringPlatformHttpExecutionHost:
-    """EP v1.1 transport with durable, request-first idempotency."""
+    """EP v1.2 transport with compatibility preflight and durable idempotency."""
+
+    SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)
+    _COMPATIBILITY_KEYS = frozenset({"contract_version", "producer", "instance", "contracts"})
 
     def __init__(self, config: EngineeringPlatformHttpConfiguration, bindings: ExecutionHostBindingStore) -> None:
         if not config.base_url or not config.project_id or not config.bearer_token:
@@ -109,6 +112,11 @@ class EngineeringPlatformHttpExecutionHost:
                     "retry_of_correlation_id": request.retry_of_correlation_id}}}
 
     def _validate_readback(self, request: ExecutionRequest, binding: Mapping[str, Any], readback: Mapping[str, Any]) -> None:
+        if readback.get("contract_version") not in self.SUPPORTED_PRODUCER_READBACK_CONTRACTS:
+            raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
+        required = {"contract_version", "submission", "producer", "correlation", "provenance", "disposition", "run", "result", "evidence"}
+        if set(readback) != required:
+            raise ValueError("EP_READBACK_SCHEMA_INVALID")
         correlation, submission, producer = readback.get("correlation"), readback.get("submission"), readback.get("producer")
         root_provenance = readback.get("provenance")
         provenance = root_provenance.get("forge_execution") if isinstance(root_provenance, Mapping) else None
@@ -133,6 +141,25 @@ class EngineeringPlatformHttpExecutionHost:
         if not isinstance(prompt, Mapping) or dict(prompt) != {"id": binding["runtime_prompt_id"], "content_digest": binding["runtime_prompt_digest"]}:
             raise ValueError("EP readback Runtime Prompt does not bind persisted request")
 
+    def preflight(self) -> dict[str, Any]:
+        """Verify EP identity and v1.2 support without submitting anything."""
+        declaration = self._json("/v1/producer-compatibility")
+        if set(declaration) != self._COMPATIBILITY_KEYS or declaration.get("contract_version") != "1.0":
+            raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
+        producer, instance, contracts = declaration.get("producer"), declaration.get("instance"), declaration.get("contracts")
+        if (not isinstance(producer, Mapping) or producer.get("id") != "engineering-platform"
+                or not isinstance(producer.get("version"), str) or not producer["version"]
+                or not isinstance(instance, Mapping) or not isinstance(instance.get("id"), str) or not instance["id"]
+                or not isinstance(contracts, Mapping)):
+            raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
+        versions = contracts.get("producer_readback")
+        if not isinstance(versions, list) or versions != ["1.2"]:
+            raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
+        terminal_versions = contracts.get("terminal_evidence")
+        if not isinstance(terminal_versions, list) or terminal_versions != ["1.2"]:
+            raise ValueError("EP_TERMINAL_CONTRACT_INCOMPATIBLE")
+        return declaration
+
     def _readback(self, request: ExecutionRequest, binding: Mapping[str, Any]) -> dict[str, Any] | None:
         submission_id = binding.get("submission_id")
         if not isinstance(submission_id, str) or not submission_id:
@@ -144,6 +171,8 @@ class EngineeringPlatformHttpExecutionHost:
         return readback
 
     def dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None:
+        # A compatibility failure has no EP submission/action/repair side effect.
+        self.preflight()
         binding = self._binding(request)
         readback = self._readback(request, binding)
         if readback is None:
