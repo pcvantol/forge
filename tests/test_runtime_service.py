@@ -10,6 +10,7 @@ import sys
 import unittest
 
 from forge.runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeServiceLock
+from forge.runtime.database import RuntimeDatabase
 from forge.state import MissionExecutionStatus
 
 
@@ -38,11 +39,13 @@ class RuntimeServiceTests(unittest.TestCase):
         with TemporaryDirectory() as root:
             state = _State("mission", MissionExecutionStatus.WAITING_FOR_EVIDENCE, 4)
             waits: list[float] = []
+            database = RuntimeDatabase(".", path=Path(root) / "runtime.db")
             service = ForgeRuntimeService(_Loop(state, progresses=False), _States(state),
-                runtime_database_path=Path(root) / "runtime.db", wait=waits.append, minimum_backoff=0.1, maximum_backoff=0.2)
+                runtime_database=database, wait=waits.append, minimum_backoff=0.1, maximum_backoff=0.2)
             calls = iter((True, True, True, False))
             service.serve(keep_running=lambda: next(calls))
             self.assertEqual(waits, [0.1])
+            database.close()
 
     def test_service_and_mutating_cli_share_one_runtime_lease(self) -> None:
         with TemporaryDirectory() as root:
@@ -56,12 +59,14 @@ class RuntimeServiceTests(unittest.TestCase):
     def test_stop_wakes_default_backoff_without_waiting_for_its_cap(self) -> None:
         with TemporaryDirectory() as root:
             state = _State("mission", MissionExecutionStatus.WAITING_FOR_EVIDENCE, 4)
+            database = RuntimeDatabase(".", path=Path(root) / "runtime.db")
             service = ForgeRuntimeService(_Loop(state, progresses=False), _States(state),
-                runtime_database_path=Path(root) / "runtime.db", minimum_backoff=5, maximum_backoff=5)
+                runtime_database=database, minimum_backoff=5, maximum_backoff=5)
             thread = Thread(target=lambda: service.serve(keep_running=lambda: True))
             started = monotonic(); thread.start(); sleep(0.05); service.stop(); thread.join(timeout=1)
             self.assertFalse(thread.is_alive())
             self.assertLess(monotonic() - started, 1)
+            database.close()
 
     def test_separate_process_mutator_cannot_share_runtime_lease_and_exit_releases_it(self) -> None:
         with TemporaryDirectory() as root:

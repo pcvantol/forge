@@ -66,13 +66,16 @@ class ForgeRuntimeService:
     work, preserving single-flight dispatch semantics across restarts.
     """
 
-    def __init__(self, loop: RuntimeLoop, states: MissionStateStore, *, runtime_database_path: Path | str,
+    def __init__(self, loop: RuntimeLoop, states: MissionStateStore, *, runtime_database,
                  wait: Callable[[float], None] | None = None, minimum_backoff: float = 0.25,
                  maximum_backoff: float = 5.0) -> None:
         if minimum_backoff <= 0 or maximum_backoff < minimum_backoff:
             raise ValueError("runtime service backoff bounds are invalid")
+        runtime_path = getattr(runtime_database, "path", None)
+        if not isinstance(runtime_path, Path):
+            raise ValueError("runtime service requires an opened canonical RuntimeDatabase")
         self._loop, self._states = loop, states
-        self._lock = RuntimeServiceLock(runtime_database_path)
+        self._lock = RuntimeServiceLock(runtime_path)
         self._wait, self._minimum_backoff, self._maximum_backoff = wait, minimum_backoff, maximum_backoff
         self._wake, self._stopped = Event(), Event()
 
