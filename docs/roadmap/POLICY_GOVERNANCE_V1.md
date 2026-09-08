@@ -73,3 +73,17 @@ Four linked PRs; owner/source matrix agrees; catalogue entries are source-pinned
 all new graph edges reference known nodes and the graph is acyclic; roadmaps link
 to owning designs; only Markdown and documentary DAG JSON changed. Existing
 runtime, workflows, package versions, tests and deployment are untouched.
+
+## Governed progression and external delivery authority
+
+The follow-on [GOVERNED_PROGRESSION_V1 roadmap](GOVERNED_PROGRESSION_V1.md)
+elaborates scoped review cadence, Mission overrides, effective decision/fence
+resolution and environment-aware delivery through existing project/CD authorities.
+Its [design](../architecture/GOVERNED_PROGRESSION_AND_DELIVERY_AUTHORITY.md) is the
+owning detailed contract for `FORGE::GOVERNED_PROGRESSION_V1`. It preserves the
+fixed pre-Mission approvals and does not duplicate external approval controls.
+GP-0/GP-F/GP-DC/GP-E/GP-Q/GP-WC/GP-W/GP-X/GP-P are documentary decomposition,
+not replacements for POL/VR nodes or new executable bootstrap authority.
+Native release planning consumes the declared delivery authority rather than
+assuming publication/deployment ownership. All new implementation remains
+PLANNED; full external CD and Workspace UI do not gate a no-deployment canary.
