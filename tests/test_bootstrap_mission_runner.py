@@ -239,6 +239,31 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(MissionRunnerError, "Producer Contract"):
             _request(malformed)
 
+    def test_nondefault_contract_survives_persisted_state_reopen_losslessly(self) -> None:
+        from forge.runtime.runner import _request, _request_document
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = RuntimeDatabase(root); store = MissionStateStore(runtime)
+            path = runtime.path
+            prompt = prompt_factory({}, action(1, "one"))
+            contract = ProducerContract(Producer(ProducerIdentity("producer", "FORGE", "1.0")), "correlation", "one",
+                RuntimePromptEnvelope(prompt.id, "1.0", "text/markdown", "persisted content", "sha256:" + "d" * 64),
+                ("constraint-a", "constraint-b"), (("intent_id", "one"), ("intent_revision", "1"), ("mission_revision", "7")),
+                mission_id="mission-1", receipt_references=(ExecutionReceiptReference("host", "receipt-a"),),
+                execution_evidence_references=("evidence-a",))
+            request = ExecutionRequest("host", "mission-1", "one", "1", "one", prompt, "workspace", "forge", "correlation", "now", producer_contract=contract)
+            state = store.create(mission("one"), (intent("one"),), (action(1, "one"),), occurred_at="now", resume={})
+            state = store.transition(state.mission_id, MissionExecutionStatus.READY, occurred_at="now", reason="ready")
+            state = store.transition(state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at="now", reason="active")
+            store.transition(state.mission_id, MissionExecutionStatus.WAITING_FOR_EXECUTION, occurred_at="now", reason="persisted",
+                             execution_correlation={"request": _request_document(request), "host_run_id": None})
+            store.close(); runtime.close()
+            reopened = RuntimeDatabase(root); reopened_store = MissionStateStore(reopened)
+            restored = _request(reopened_store.get("mission-1").execution_correlation["request"])
+            self.assertEqual(restored.producer_contract.to_dict(), contract.to_dict())
+            self.assertEqual(restored.producer_contract.digest(), contract.digest())
+            reopened_store.close(); reopened.close()
+
 
 if __name__ == "__main__":
     unittest.main()
