@@ -121,14 +121,14 @@ def _contains_secret_value(value: Any) -> bool:
 class RuntimeDatabase:
     """The sole Forge runtime database owner.
 
-    ``path`` is injectable for tests, but production defaults to
-    ``.forge/runtime.db`` beneath the supplied workspace root (or current
-    directory).  Opening is fail-closed: migrations and integrity validation
-    complete before callers receive the database.
+    ``path`` is injectable for controlled bootstrap and tests. Installed
+    production opens only the resolved ``forge.db`` in Forge's data root.
+    Opening is fail-closed: migrations and integrity validation complete
+    before callers receive the database.
     """
 
     def __init__(self, workspace_root: Path | str = ".", *, path: Path | str | None = None,
-                 forge_version: str = "0.0") -> None:
+                 forge_version: str = "0.0", installation_scoped: bool = False) -> None:
         if path is None:
             # Canonical creation and registration are a single inter-process
             # transaction owned by RuntimeBootstrap.  Keep this compatibility
@@ -138,8 +138,9 @@ class RuntimeDatabase:
             self.__dict__.update(opened.__dict__)
             return
         self.repository_root = canonical_repository_root(workspace_root)
-        # Explicit paths are reserved for bootstrap and relocation after their
-        # resolver/claim step.
+        self._installation_scoped = installation_scoped
+        # Explicit paths are reserved for bootstrap and controlled tests after
+        # their resolver/claim step.
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(self.path)
@@ -1256,16 +1257,18 @@ class RuntimeDatabase:
             created_at = now
         values = {
             "runtime_id": metadata.get("runtime_id") or f"forge-runtime-{uuid.uuid4()}",
-            "repository_identity": metadata.get("repository_identity") or repository_identity(self.repository_root),
-            "repository_root": metadata.get("repository_root") or str(self.repository_root),
+            "repository_identity": metadata.get("repository_identity") or (
+                "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)),
+            "repository_root": metadata.get("repository_root") or (
+                "forge-data-root" if self._installation_scoped else str(self.repository_root)),
             "database_version": str(RUNTIME_SCHEMA_VERSION), "instance_version": "1",
             "initialization_version": metadata.get("initialization_version") or RUNTIME_INITIALIZATION_VERSION,
-            "database_location": str(self.path.resolve()),
+            "database_location": "forge.db" if self._installation_scoped else str(self.path.resolve()),
             "created_at": created_at, "last_access_at": now, "status": "active",
         }
-        if values["repository_identity"] != repository_identity(self.repository_root):
+        if not self._installation_scoped and values["repository_identity"] != repository_identity(self.repository_root):
             raise RuntimeIntegrityError("runtime database belongs to a different repository")
-        current_repository_uuid = repository_uuid(self.repository_root)
+        current_repository_uuid = None if self._installation_scoped else repository_uuid(self.repository_root)
         stored_repository_uuid = metadata.get("repository_uuid")
         if stored_repository_uuid and current_repository_uuid and stored_repository_uuid != current_repository_uuid:
             raise RuntimeIntegrityError("runtime database repository UUID is inconsistent")
@@ -1322,9 +1325,10 @@ class RuntimeDatabase:
             raise RuntimeIntegrityError("runtime database schema version is inconsistent")
         self._require_canary_closure_structure()
         identity = self.runtime_identity
-        if identity.repository_identity != repository_identity(self.repository_root) or not identity.runtime_id or identity.status != "active":
+        expected_identity = "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)
+        if identity.repository_identity != expected_identity or not identity.runtime_id or identity.status != "active":
             raise RuntimeIntegrityError("runtime identity is inconsistent")
-        current_repository_uuid = repository_uuid(self.repository_root)
+        current_repository_uuid = None if self._installation_scoped else repository_uuid(self.repository_root)
         if identity.repository_uuid and current_repository_uuid and identity.repository_uuid != current_repository_uuid:
             raise RuntimeIntegrityError("runtime identity repository UUID is inconsistent")
         if self._connection.execute("PRAGMA foreign_key_check").fetchone() is not None:

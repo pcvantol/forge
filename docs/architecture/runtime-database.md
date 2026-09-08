@@ -3,10 +3,10 @@
 ## Boundary
 
 The Runtime Database is the SQLite storage implementation of one persistent
-[Runtime Instance](runtime-bootstrap.md). Its default is Git-common metadata
-at `.git/forge-runtime/runtime.db`, outside repository cleanup paths; a
-configured Runtime Root or explicit relocation may locate it elsewhere. The
-canonical location is resolved and claimed before opening and is not committed.
+[Runtime Instance](runtime-bootstrap.md). Its canonical installed location is
+`forge.db` beneath the product-owned [canonical data root](canonical-data-root.md),
+not Git metadata, a checkout, the current directory, or package resources.
+The canonical location is resolved and claimed before opening and is not committed.
 Repository Truth remains the architectural source of truth, and the Engineering
 Platform Execution Host retains its own independent Execution Database.
 

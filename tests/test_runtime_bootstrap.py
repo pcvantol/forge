@@ -46,7 +46,6 @@ class RuntimeBootstrapTests(unittest.TestCase):
         database = RuntimeBootstrap(self.root, configured_location=configured, forge_version="test").open()
         self.addCleanup(database.close)
         self.assertEqual(database.path, configured.resolve())
-        self.assertEqual(RuntimeResolver(self.root).resolve().path, configured.resolve())
 
     def test_runtime_identity_is_immutable(self) -> None:
         database = self._database()
@@ -69,27 +68,21 @@ class RuntimeBootstrapTests(unittest.TestCase):
         self.assertEqual(recovered["planning_state"]["planner_version"], "test")
         self.assertEqual(recovered["source"], "runtime_instance")
 
-    def test_multiple_runtime_candidates_fail_closed(self) -> None:
+    def test_checkout_candidates_are_not_discovered(self) -> None:
         database = self._database()
         database.close()
         duplicate = self.root / ".forge" / "duplicate" / "runtime-copy.db"
         duplicate.parent.mkdir(parents=True)
         duplicate.write_bytes(database.path.read_bytes())
-        with self.assertRaises(RuntimeResolutionError):
-            RuntimeResolver(self.root).resolve()
+        self.assertEqual(RuntimeResolver(self.root).resolve().path, database.path.resolve())
 
-    def test_relocation_preserves_runtime_identity_and_recovers_records(self) -> None:
+    def test_distinct_explicit_roots_have_distinct_instances(self) -> None:
         database = self._database()
-        self._persist_complete_runtime_slice(database)
         identity = database.runtime_identity.runtime_id
         database.close()
-        destination = self.root / "runtime-store" / "canonical.db"
-        location = RuntimeResolver(self.root).relocate(destination)
-        self.assertEqual(location.path, destination.resolve())
-        recovered = RuntimeBootstrap(self.root, forge_version="test").open()
+        recovered = RuntimeBootstrap(data_root=self.root / "runtime-store", forge_version="test").open()
         self.addCleanup(recovered.close)
-        self.assertEqual(recovered.runtime_identity.runtime_id, identity)
-        self.assertEqual(RuntimeRecovery(recovered).recover()["execution_receipts"][0]["receipt_id"], "receipt-1")
+        self.assertNotEqual(recovered.runtime_identity.runtime_id, identity)
 
 
 if __name__ == "__main__":

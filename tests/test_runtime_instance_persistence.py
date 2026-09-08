@@ -60,22 +60,22 @@ class RuntimeInstancePersistenceTests(unittest.TestCase):
         self.addCleanup(database.close)
         identity = database.runtime_identity
         resolver = RuntimeResolver(self.repository)
-        self.assertEqual(database.path, (self.repository / ".git" / "forge-runtime" / "runtime.db").resolve())
+        self.assertEqual(database.path, (self.repository / "forge.db").resolve())
         self.assertEqual(resolver.resolve().path, database.path)
         self.assertEqual(identity.initialization_version, "1")
         self.assertEqual(identity.repository_uuid, "fixture-repository-uuid")
         for table in ("mission_state", "decision_evidence", "architecture_reviews", "mission_recommendations", "execution_receipts", "planning_state", "bootstrap_portfolio_state"):
             self.assertEqual(database._connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 0)
 
-    def test_existing_claim_wins_over_a_different_configured_location(self) -> None:
+    def test_explicit_database_location_is_a_separate_explicit_instance(self) -> None:
         first = self._open()
         runtime_id = first.runtime_identity.runtime_id
         first.close()
         alternate = self.root / "another-runtime" / "runtime.db"
         opened = RuntimeBootstrap(self.repository, configured_location=alternate, forge_version="test").open()
         self.addCleanup(opened.close)
-        self.assertEqual(opened.runtime_identity.runtime_id, runtime_id)
-        self.assertFalse(alternate.exists())
+        self.assertNotEqual(opened.runtime_identity.runtime_id, runtime_id)
+        self.assertTrue(alternate.exists())
 
     def test_runtime_survives_repository_cleanup_and_workspace_relocation(self) -> None:
         database = self._open()
@@ -105,7 +105,7 @@ class RuntimeInstancePersistenceTests(unittest.TestCase):
         location = database.path
         database.close()
         location.unlink()
-        with self.assertRaisesRegex(RuntimeResolutionError, "location is missing"):
+        with self.assertRaisesRegex(RuntimeResolutionError, "missing forge.db"):
             RuntimeResolver(self.repository, configured_runtime_root=self.runtime_root).resolve()
 
     def test_multiple_instances_and_registry_identity_mismatch_fail_closed(self) -> None:
@@ -113,14 +113,14 @@ class RuntimeInstancePersistenceTests(unittest.TestCase):
         database.close()
         duplicate = self.repository / ".forge" / "runtime-copy.db"
         duplicate.parent.mkdir()
-        shutil.copy2(self.runtime_root / repository_identity(self.repository) / "runtime.db", duplicate)
-        with self.assertRaisesRegex(RuntimeResolutionError, "multiple"):
-            RuntimeResolver(self.repository, configured_runtime_root=self.runtime_root).resolve()
+        shutil.copy2(self.runtime_root / "forge.db", duplicate)
+        self.assertEqual(RuntimeResolver(self.repository, configured_runtime_root=self.runtime_root).resolve().path,
+                         (self.runtime_root / "forge.db").resolve())
         duplicate.unlink()
-        registry = RuntimeResolver(self.repository, configured_runtime_root=self.runtime_root).registry_path
-        registry.write_text('{"registry_version":"1","runtime_id":"wrong"}', encoding="utf-8")
-        with self.assertRaises(RuntimeResolutionError):
-            RuntimeResolver(self.repository, configured_runtime_root=self.runtime_root).resolve()
+        marker = self.runtime_root / "instance" / "runtime-instance.json"
+        marker.write_text("stable-instance\n", encoding="utf-8")
+        self.assertEqual(RuntimeResolver(self.repository, configured_runtime_root=self.runtime_root).resolve().path,
+                         (self.runtime_root / "forge.db").resolve())
 
 
 if __name__ == "__main__":

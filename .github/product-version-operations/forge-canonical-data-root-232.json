@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.3.1",
+  "classification_rationale": "FORGE_CANONICAL_DATA_ROOT_AND_INSTALLED_STORAGE_V1",
+  "component": "product",
+  "event_lineage": "FORGE_CANONICAL_DATA_ROOT_AND_INSTALLED_STORAGE_V1",
+  "expected_head": "5ae52d084c1ff24d56a76adcd2732242cc16e799",
+  "operation_id": "forge-canonical-data-root-232",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.3.2"
+}
