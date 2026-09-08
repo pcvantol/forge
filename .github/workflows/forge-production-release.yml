@@ -56,7 +56,7 @@ jobs:
           ref: ${{ needs.release-context.outputs.source_sha }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with: { python-version: '3.11' }
-      - run: python3 -m pip install --upgrade build twine pip-audit 'bandit[toml]' cyclonedx-bom
+      - run: python3 -m pip install --upgrade 'setuptools>=83' build twine pip-audit 'bandit[toml]' cyclonedx-bom
       - name: Build exactly one artifact set and qualify source
         env:
           VERSION: ${{ needs.release-context.outputs.version }}
