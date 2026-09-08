@@ -192,7 +192,7 @@ class ActionDerivationCanaryClosureTests(unittest.TestCase):
     def test_schema30_migrates_the_bounded_closure_store_before_reopen(self) -> None:
         path = self._schema30_fixture()
         self.db = RuntimeDatabase(Path(self.directory.name), path=path, forge_version="test")
-        self.assertEqual(self.db.metadata["schema_version"], "31")
+        self.assertEqual(self.db.metadata["schema_version"], "32")
         tables = {row["name"] for row in self.db._connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         triggers = {row["name"] for row in self.db._connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
         self.assertIn("action_derivation_canary_closures", tables)
