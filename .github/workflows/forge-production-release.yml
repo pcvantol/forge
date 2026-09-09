@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: forge-production-release
+  cancel-in-progress: false
+
 jobs:
   release-context:
     runs-on: ubuntu-latest
@@ -140,10 +144,10 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with: { packages-dir: pypi-dist }
 
-  verify-pypi-publication:
+  registry-readback-and-published-evidence:
     needs: [release-context, build-and-qualify, publish-pypi]
     runs-on: ubuntu-latest
-    permissions: { contents: read }
+    permissions: { contents: write }
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -174,17 +178,7 @@ jobs:
           cd "$RUNNER_TEMP"
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-pypi/bin/python" -I -c 'import forge, pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
           test "$("$RUNNER_TEMP/forge-pypi/bin/forge" --version)" = "$VERSION"
-
-  record-release-complete:
-    needs: [release-context, build-and-qualify, publish-pypi, verify-pypi-publication]
-    runs-on: ubuntu-latest
-    permissions: { contents: write }
-    steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
-          path: dist
-      - name: Record immutable publication identity and terminal release evidence
+      - name: Persist immutable PyPI readback as PUBLISHED evidence
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.release-context.outputs.version }}
@@ -193,7 +187,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="forge-v$VERSION"
-          RECEIPT="forge-release-complete-$VERSION-$SOURCE_SHA.json"
+          RECEIPT="forge-release-published-$VERSION-$SOURCE_SHA.json"
           python3 - "$RECEIPT" <<'PY'
           import json, os, sys
           from pathlib import Path
@@ -212,17 +206,89 @@ jobs:
               'version': os.environ['VERSION'],
               'source_revision': os.environ['SOURCE_SHA'],
               'policy_revision': 'forge-bootstrap-release-cadence-v2',
-              'publication': {'state': 'PUBLISHED', 'registry': 'pypi', 'artifact_digests': digests,
-                              'resumed_existing_publication': os.environ['ALREADY_PUBLISHED'] == 'true'},
-              'state': 'RELEASE_COMPLETE',
+              'artifacts': digests,
+              'registry': 'pypi',
+              'resumed_existing_publication': os.environ['ALREADY_PUBLISHED'] == 'true',
+              'state': 'PUBLISHED',
           }
           Path(sys.argv[1]).write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
           PY
           if gh release view "$TAG" --json targetCommitish >/dev/null 2>&1; then
             test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
             mkdir existing-release
-            gh release download "$TAG" --pattern "$RECEIPT" --dir existing-release
-            cmp "$RECEIPT" "existing-release/$RECEIPT"
+            if gh release download "$TAG" --pattern "$RECEIPT" --dir existing-release; then
+              cmp "$RECEIPT" "existing-release/$RECEIPT"
+            else
+              gh release upload "$TAG" "$RECEIPT"
+            fi
           else
             gh release create "$TAG" "$RECEIPT" --target "$SOURCE_SHA" --title "Forge $VERSION" --generate-notes
           fi
+          rm -rf existing-release
+          test ! -e existing-release
+
+  record-release-complete:
+    needs: [release-context, build-and-qualify, publish-pypi, registry-readback-and-published-evidence]
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
+          path: dist
+      - name: Promote verified immutable PUBLISHED evidence to RELEASE_COMPLETE
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+          SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
+          ALREADY_PUBLISHED: ${{ needs.publish-pypi.outputs.already_published }}
+        run: |
+          set -euo pipefail
+          TAG="forge-v$VERSION"
+          PUBLISHED_RECEIPT="forge-release-published-$VERSION-$SOURCE_SHA.json"
+          RECEIPT="forge-release-complete-$VERSION-$SOURCE_SHA.json"
+          mkdir release-evidence
+          gh release download "$TAG" --pattern "$PUBLISHED_RECEIPT" --dir release-evidence
+          python3 - "$PUBLISHED_RECEIPT" "$RECEIPT" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+
+          published = json.loads((Path('release-evidence') / sys.argv[1]).read_text())
+          if published.get('state') != 'PUBLISHED':
+              raise SystemExit('published receipt has an invalid state')
+          digests = {}
+          for line in Path('dist/SHA256SUMS').read_text().splitlines():
+              digest, filename = line.split(maxsplit=1)
+              digests[filename] = f'sha256:{digest}'
+          required = {f'forge_autonomy-{os.environ["VERSION"]}-py3-none-any.whl', f'forge_autonomy-{os.environ["VERSION"]}.tar.gz'}
+          if set(digests) != required:
+              raise SystemExit('qualified release artifact set is incomplete')
+          expected = {
+              'operation_id': f'forge-{os.environ["VERSION"]}-{os.environ["SOURCE_SHA"]}',
+              'product': 'forge',
+              'component': 'forge-autonomy',
+              'version': os.environ['VERSION'],
+              'source_revision': os.environ['SOURCE_SHA'],
+              'policy_revision': 'forge-bootstrap-release-cadence-v2',
+              'artifacts': digests,
+              'registry': 'pypi',
+              'resumed_existing_publication': os.environ['ALREADY_PUBLISHED'] == 'true',
+          }
+          if any(published.get(key) != value for key, value in expected.items()):
+              raise SystemExit('published receipt does not match the qualified release identity')
+          receipt = {
+              'schema_version': 1,
+              **expected,
+              'publication': {'state': 'PUBLISHED', 'registry': 'pypi', 'artifact_digests': digests,
+                              'resumed_existing_publication': os.environ['ALREADY_PUBLISHED'] == 'true'},
+              'state': 'RELEASE_COMPLETE',
+          }
+          Path(sys.argv[2]).write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          PY
+          if gh release download "$TAG" --pattern "$RECEIPT" --dir release-evidence; then
+            cmp "$RECEIPT" "release-evidence/$RECEIPT"
+          else
+            gh release upload "$TAG" "$RECEIPT"
+          fi
+          rm -rf release-evidence
+          test ! -e release-evidence
