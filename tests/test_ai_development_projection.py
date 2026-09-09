@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PROJECTION = ROOT / "docs" / "ai-development"
 VALIDATOR = PROJECTION / "validate_projection.py"
-SOURCE_SHA = "ec070e399ff4dbd92e760370002995fe4f4d52d6"
+SOURCE_SHA = "6ec3b443c3ab3bdf76c626c2046d3778db570eb0"
 
 
 def validate(directory: Path) -> subprocess.CompletedProcess[str]:
