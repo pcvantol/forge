@@ -6,7 +6,7 @@ python3 -m unittest discover -s tests -v
 python3 scripts/advance_product_version.py --check
 python3 docs/ai-development/validate_projection.py \
   --profile forge \
-  --source-commit ec070e399ff4dbd92e760370002995fe4f4d52d6 \
+  --source-commit 6ec3b443c3ab3bdf76c626c2046d3778db570eb0 \
   --extension-identity FORGE_DEVELOPMENT_EXTENSION
 
 python3 - <<'PY'
