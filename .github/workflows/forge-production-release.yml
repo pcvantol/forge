@@ -388,17 +388,18 @@ jobs:
           # A failed scoped cleanup is durable release history.  A rerun may
           # advance only the exact retained pending operation, rather than
           # silently recreating a new PUBLISHED record from an action artifact.
-          mkdir "$RUNNER_TEMP/forge-pending-readback"
-          if gh release download "$TAG" --pattern "$PENDING" --dir "$RUNNER_TEMP/forge-pending-readback"; then
+          PENDING_READBACK="$(mktemp -d "$RUNNER_TEMP/forge-pending-readback-XXXXXX")"
+          pending_receipt_present=0
+          if gh release download "$TAG" --pattern "$PENDING" --dir "$PENDING_READBACK"; then
             python3 - "$OPERATION_ID" \
               "published-input/release-evidence/operations/$OPERATION_ID.json" \
-              "$RUNNER_TEMP/forge-pending-readback/$PENDING" <<'PY'
+              "$PENDING_READBACK/$PENDING" <<'PY'
           import json
           import sys
           from pathlib import Path
 
           sys.path.insert(0, "scripts")
-          from release_operation import ReleaseOperation, ReleaseOperationError
+          from release_operation import ReleaseOperation, ReleaseOperationError, ReleaseOperationStore
 
           operation_id, published_path, pending_path = sys.argv[1:]
           published = ReleaseOperation.parse(json.loads(Path(published_path).read_text(encoding="utf-8")))
@@ -408,11 +409,22 @@ jobs:
               or pending.operation_id != operation_id
               or pending.state != "CLEANUP_PENDING"
               or not published.same_identity(pending)
+              or pending.qualification != published.qualification
               or pending.publication_receipt != published.publication_receipt
           ):
               raise ReleaseOperationError("durable cleanup-pending receipt does not match PUBLISHED release identity")
-          Path(published_path).write_bytes(Path(pending_path).read_bytes())
+          store = ReleaseOperationStore(Path(published_path).parents[1])
+          store.acquire(operation_id)
+          try:
+              current = store.load(operation_id)
+              if current != published:
+                  raise ReleaseOperationError("release operation changed before cleanup-pending hydration")
+              store.replace(current, pending)
+          finally:
+              store.release(operation_id)
           PY
+            cmp "$PENDING_READBACK/$PENDING" "published-input/release-evidence/operations/$OPERATION_ID.json"
+            pending_receipt_present=1
           fi
           python3 scripts/release_operation.py \
             --validate-qualified \
@@ -432,21 +444,30 @@ jobs:
           )
           test -d published-readback
           test -d published-input/dist
+          target_exists() {
+            test -e "$1" || test -L "$1"
+          }
           cleanup_failed=0
           failed_targets=()
-          for target in published-readback published-input/dist; do
-            if test -e "$target" && ! rm -rf -- "$target"; then
-              cleanup_failed=1
-              failed_targets+=("$target")
+          for target in published-readback published-input/dist "$PENDING_READBACK"; do
+            if target_exists "$target"; then
+              if ! rm -rf -- "$target" || target_exists "$target"; then
+                cleanup_failed=1
+                failed_targets+=("$target")
+              fi
             fi
           done
           if test "$cleanup_failed" = 1; then
+            if test "$pending_receipt_present" = 1; then
+              echo 'Existing durable CLEANUP_PENDING receipt retained after repeat cleanup failure.' >&2
+              exit 1
+            fi
             python3 - "${failed_targets[@]}" > cleanup-pending.json <<'PY'
           import json
           import sys
           print(json.dumps({
               "result": "CLEANUP_PENDING",
-              "targets": ["published-readback", "published-input/dist"],
+              "targets": ["published-readback", "published-input/dist", "pending-readback"],
               "failed_targets": sys.argv[1:],
               "error": "failed to remove an operation-local temporary path",
           }, sort_keys=True))
@@ -462,12 +483,15 @@ jobs:
               --sdist-digest "$SDIST_DIGEST" \
               --evidence-file cleanup-pending.json > /dev/null
             cp "published-input/release-evidence/operations/$OPERATION_ID.json" "$PENDING"
-            mkdir "$RUNNER_TEMP/forge-pending-readback"
-            if gh release download "$TAG" --pattern "$PENDING" --dir "$RUNNER_TEMP/forge-pending-readback"; then
-              cmp "$PENDING" "$RUNNER_TEMP/forge-pending-readback/$PENDING"
+            PENDING_CONFIRMATION="$(mktemp -d "$RUNNER_TEMP/forge-pending-confirmation-XXXXXX")"
+            if gh release download "$TAG" --pattern "$PENDING" --dir "$PENDING_CONFIRMATION"; then
+              cmp "$PENDING" "$PENDING_CONFIRMATION/$PENDING"
             else
               gh release upload "$TAG" "$PENDING"
             fi
+            rm -rf -- "$PENDING_CONFIRMATION"
+            test ! -e "$PENDING_CONFIRMATION"
+            test ! -L "$PENDING_CONFIRMATION"
             exit 1
           fi
           if test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true; then
@@ -478,7 +502,7 @@ jobs:
           import json
           print(json.dumps({
               "result": "COMPLETE",
-              "temporary_paths": ["published-readback", "published-input/dist"],
+              "temporary_paths": ["published-readback", "published-input/dist", "pending-readback"],
               "github_release": {"draft": False},
           }, sort_keys=True))
           PY
