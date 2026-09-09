@@ -14,6 +14,11 @@ same normalized declaration contract, including the validation boundary.
 The existing project and repository IDs are preserved; registration is not a
 reason to delete and recreate records.
 
+For Forge, the canonical declaration fixes `FORGE_PROJECT_ID = forge`,
+`FORGE_AUTHORITY_REPOSITORY_ID = forge`, and `FORGE_REPOSITORY_ID = forge`.
+It is the authoritative Forge-owned declaration consumed by EP
+attachment/admission; it is not itself an EP attachment or admission record.
+
 Workspace remains the product boundary for product identity and governance.
 It is **not** a required identity issuer for this server-local bootstrap.
 Likewise, an empty Agent-attachment list does not make an already registered
