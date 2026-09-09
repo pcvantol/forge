@@ -1,8 +1,8 @@
 """Persistent Runtime Instance resolution, bootstrap, and recovery.
 
 The Runtime Database is storage owned by a Runtime Instance; it is never the
-identity of that instance.  Resolution uses a durable, repository-scoped
-registry and validates every persisted boundary before SQLite is opened.
+identity of that instance. Resolution uses the product-owned data root and
+validates every persisted boundary before SQLite is opened.
 """
 
 from __future__ import annotations
@@ -12,9 +12,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import sqlite3
 import subprocess
 from typing import Any
+
+from .data_root import DataRootResolver, RUNTIME_DIRECTORIES
 
 try:
     import fcntl
@@ -23,7 +24,6 @@ except ImportError:  # pragma: no cover - supported Forge hosts are POSIX.
 
 
 RUNTIME_INSTANCE_VERSION = "1"
-RUNTIME_REGISTRY_VERSION = "1"
 RUNTIME_INITIALIZATION_VERSION = "1"
 
 
@@ -148,191 +148,94 @@ def repository_uuid(repository_root: Path | str) -> str | None:
 
 
 class RuntimeResolver:
-    """Resolve exactly one registered Runtime Instance, or fail closed."""
+    """Resolve one installed Forge instance beneath the product-owned data root.
 
-    def __init__(self, repository_root: Path | str, *, configured_location: Path | str | None = None,
-                 configured_runtime_root: Path | str | None = None) -> None:
+    ``repository_root`` remains an API-compatibility argument only.  It is not
+    consulted for location, identity, discovery, or writes.
+    """
+
+    def __init__(self, repository_root: Path | str = ".", *, configured_location: Path | str | None = None,
+                 configured_runtime_root: Path | str | None = None, data_root: Path | str | None = None,
+                 environment: dict[str, str] | None = None) -> None:
         self.repository_root = Path(repository_root).resolve()
-        self.canonical_root = canonical_repository_root(self.repository_root)
+        if configured_location is not None and (configured_runtime_root is not None or data_root is not None):
+            raise RuntimeResolutionError("choose a data root or an explicit database location, not both")
+        explicit_root = data_root if data_root is not None else configured_runtime_root
+        # Supplying a path to the long-standing library API is an explicit
+        # test/embedder root, never an inferred checkout location. Installed
+        # entrypoints use ``data_root`` (or the resolver default) instead.
+        self.compatibility_workspace = explicit_root is None and configured_location is None and repository_root != "."
+        self.data_root = (Path(repository_root).expanduser().resolve() if self.compatibility_workspace
+                          else Path(configured_location).expanduser().resolve().parent if configured_location is not None
+                          else DataRootResolver(cli_data_root=explicit_root, environment=environment).resolve())
         self.configured_location = None if configured_location is None else Path(configured_location).expanduser().resolve()
-        self.configured_runtime_root = None if configured_runtime_root is None else Path(configured_runtime_root).expanduser().resolve()
 
     @property
     def default_location(self) -> Path:
-        if self.configured_runtime_root is not None:
-            return self.configured_runtime_root / repository_identity(self.repository_root) / "runtime.db"
-        return self._git_metadata_root() / "forge-runtime" / "runtime.db"
+        return self.data_root / "forge.db"
 
     @property
-    def registry_path(self) -> Path:
-        """Canonical registry is Git-common metadata and shared by all worktrees."""
-        return self._git_metadata_root() / "forge-runtime-instance.json"
+    def instance_marker_path(self) -> Path:
+        return self.data_root / "instance" / "runtime-instance.json"
 
     @property
     def initialization_lock_path(self) -> Path:
-        """One repository-wide inter-process claim lock, independent of storage choice."""
-        return self._git_metadata_root() / "forge-runtime-instance.lock"
-
-    def _git_metadata_root(self) -> Path:
-        git_dir = self.canonical_root / ".git"
-        return git_dir if git_dir.exists() else self.canonical_root
+        return self.data_root / "locks" / "runtime.lock"
 
     def resolve(self) -> RuntimeLocation:
-        registered = self._registered_location()
-        candidates: dict[Path, str] = {}
-        for path, source in ((self.configured_location, "configured"), (registered, "registered"),
-                             (self.default_location, "repository_default")):
-            if path is not None and path.is_file():
-                candidates[path.resolve()] = source
-        forge_dir = self.canonical_root / ".forge"
-        if forge_dir.is_dir():
-            for candidate in forge_dir.rglob("runtime*.db"):
-                if candidate.is_file():
-                    candidates.setdefault(candidate.resolve(), "discovery")
-        if len(candidates) > 1:
-            raise RuntimeResolutionError("multiple Runtime Instance candidates found")
-        if candidates:
-            path, source = next(iter(candidates.items()))
-            self._validate_candidate_identity(path)
-            if registered is None:
-                self._register(path)
-            return RuntimeLocation(path, source, False)
-        if self._registry_exists():
-            raise RuntimeResolutionError("registered Runtime Instance location is missing")
-        target = self.configured_location or self.default_location
-        return RuntimeLocation(target, "configured" if self.configured_location else "repository_default", True)
-
-    def relocate(self, destination: Path | str) -> RuntimeLocation:
-        """Migrate one validated instance atomically without changing identity."""
-        source = self.resolve()
-        if source.bootstrap:
-            raise RuntimeResolutionError("cannot relocate a Runtime Instance that has not been bootstrapped")
-        destination_path = Path(destination).expanduser().resolve()
-        if destination_path == source.path:
-            return source
-        if destination_path.exists():
-            raise RuntimeResolutionError("runtime relocation destination already exists")
-        destination_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination_path.with_suffix(destination_path.suffix + ".relocating")
-        try:
-            with sqlite3.connect(source.path) as source_connection, sqlite3.connect(temporary) as destination_connection:
-                source_connection.backup(destination_connection)
-            from .database import RuntimeDatabase
-            checked = RuntimeDatabase(self.repository_root, path=temporary)
-            try:
-                checked.validate_integrity()
-            finally:
-                checked.close()
-            temporary.replace(destination_path)
-            opened = RuntimeDatabase(self.repository_root, path=destination_path)
-            try:
-                opened.validate_integrity()
-            finally:
-                opened.close()
-            self._register(destination_path, replace=True)
-            source.path.unlink()
-            for suffix in ("-wal", "-shm"):
-                sidecar = Path(str(source.path) + suffix)
-                if sidecar.exists():
-                    sidecar.unlink()
-            return RuntimeLocation(destination_path, "relocated", False)
-        except Exception:
-            if temporary.exists():
-                temporary.unlink()
-            raise
-
-    def _registry_exists(self) -> bool:
-        return self.registry_path.exists()
-
-    def _registered_location(self) -> Path | None:
-        if not self.registry_path.exists():
-            return None
-        if not self.registry_path.is_file():
-            raise RuntimeResolutionError("Runtime Instance registry is not a file")
-        try:
-            payload = json.loads(self.registry_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as error:
-            raise RuntimeResolutionError("Runtime Instance registry is malformed") from error
-        expected = {"registry_version", "runtime_id", "repository_identity", "instance_location", "created_at", "status"}
-        if not isinstance(payload, dict) or not expected <= payload.keys() or payload["registry_version"] != RUNTIME_REGISTRY_VERSION:
-            raise RuntimeResolutionError("Runtime Instance registry is incomplete or unsupported")
-        if payload["repository_identity"] != repository_identity(self.repository_root):
-            raise RuntimeResolutionError("Runtime Instance registry belongs to a different repository")
-        if not all(isinstance(payload[key], str) and payload[key] for key in expected - {"registry_version"}):
-            raise RuntimeResolutionError("Runtime Instance registry has invalid identity metadata")
-        return Path(payload["instance_location"]).expanduser().resolve()
-
-    def _register(self, location: Path, instance: RuntimeInstance | None = None, *, replace: bool = False) -> None:
-        if instance is None:
-            instance = self._instance_from_database(location)
-        if instance.identity.repository_identity != repository_identity(self.repository_root):
-            raise RuntimeResolutionError("Runtime Instance belongs to a different repository")
-        if self._registry_exists():
-            existing = self._registered_location()
-            if existing is not None and existing != location.resolve() and not replace:
-                raise RuntimeResolutionError("Runtime Instance registry already claims a different location")
-        payload = {"registry_version": RUNTIME_REGISTRY_VERSION, **instance.to_dict()}
-        payload["instance_location"] = str(location.resolve())
-        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.registry_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-        os.replace(temporary, self.registry_path)
-
-    def _instance_from_database(self, path: Path) -> RuntimeInstance:
-        metadata = self._read_metadata(path)
-        identity = RuntimeIdentity.from_metadata(metadata)
-        return RuntimeInstance(identity, path.resolve(), identity.last_access_at, identity.status)
-
-    def _read_metadata(self, path: Path) -> dict[str, str]:
-        try:
-            connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-            try:
-                rows = connection.execute("SELECT key, value FROM runtime_metadata").fetchall()
-            finally:
-                connection.close()
-        except sqlite3.Error as error:
-            raise RuntimeResolutionError("runtime candidate is not a readable Forge Runtime Database") from error
-        return dict(rows)
-
-    def _validate_candidate_identity(self, path: Path) -> None:
-        instance = self._instance_from_database(path)
-        if instance.identity.repository_identity != repository_identity(self.repository_root):
-            raise RuntimeResolutionError("Runtime Instance candidate belongs to a different repository")
-        if instance.status != "active" or not instance.last_access_at:
-            raise RuntimeResolutionError("Runtime Instance candidate metadata is inconsistent")
-        if self._registry_exists():
-            registered = json.loads(self.registry_path.read_text(encoding="utf-8"))
-            if registered["runtime_id"] != instance.identity.runtime_id:
-                raise RuntimeResolutionError("Runtime Instance registry identity does not match database")
+        path = self.configured_location or self.default_location
+        if path.is_file():
+            return RuntimeLocation(path.resolve(), "configured" if self.configured_location else "data_root", False)
+        if self.configured_location is None and self.instance_marker_path.exists():
+            raise RuntimeResolutionError("initialized Forge data root is missing forge.db")
+        return RuntimeLocation(path, "configured" if self.configured_location else "data_root", True)
 
 
 class RuntimeBootstrap:
     """Discover an existing Runtime Instance or create exactly one new instance."""
 
-    def __init__(self, repository_root: Path | str, *, configured_location: Path | str | None = None,
-                 configured_runtime_root: Path | str | None = None, forge_version: str = "0.0") -> None:
+    def __init__(self, repository_root: Path | str = ".", *, configured_location: Path | str | None = None,
+                 configured_runtime_root: Path | str | None = None, data_root: Path | str | None = None,
+                 environment: dict[str, str] | None = None, forge_version: str = "0.0") -> None:
         self.resolver = RuntimeResolver(repository_root, configured_location=configured_location,
-                                        configured_runtime_root=configured_runtime_root)
+                                        configured_runtime_root=configured_runtime_root, data_root=data_root, environment=environment)
         self.forge_version = forge_version
 
     def open(self):
         from .database import RuntimeDatabase
         if fcntl is None:
             raise RuntimeResolutionError("Runtime Instance initialization lock is unavailable")
-        self.resolver.initialization_lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self._create_root_layout()
         with self.resolver.initialization_lock_path.open("a+", encoding="utf-8") as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise RuntimeResolutionError("another mutating Forge runtime owns this data root") from error
             try:
                 location = self.resolver.resolve()
-                database = RuntimeDatabase(self.resolver.repository_root, path=location.path, forge_version=self.forge_version)
+                database = RuntimeDatabase(self.resolver.repository_root, path=location.path, forge_version=self.forge_version,
+                                          installation_scoped=not self.resolver.compatibility_workspace)
                 try:
-                    self.resolver._register(database.path)
+                    marker = self.resolver.instance_marker_path
+                    temporary = marker.with_suffix(".tmp")
+                    temporary.write_text(database.runtime_identity.runtime_id + "\n", encoding="utf-8")
+                    os.chmod(temporary, 0o600)
+                    os.replace(temporary, marker)
                 except Exception:
                     database.close()
                     raise
                 return database
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    def _create_root_layout(self) -> None:
+        root = self.resolver.data_root
+        root.mkdir(parents=True, exist_ok=True)
+        os.chmod(root, 0o700)
+        for name in RUNTIME_DIRECTORIES:
+            directory = root / name
+            directory.mkdir(exist_ok=True)
+            os.chmod(directory, 0o700)
 
 
 class RuntimeRecovery:

@@ -25,31 +25,25 @@ Truth remains the architectural authority.
 
 ## Resolution, persistence, and bootstrap
 
-Repository Identity is derived from the Git repository's initial commit, not
-an absolute filesystem path. It is therefore stable across branch and
-worktree transitions and repository relocation. Where a host supplies an
-explicit Git `forge.repositoryUUID`, Forge persists it as immutable supporting
-identity metadata. The durable registry and default database live in Git-common
-metadata, outside cleanup-prone `.forge`, and are shared by all worktrees. A
-configured Runtime Root may place the database outside the repository; the
-single canonical registry remains in Git-common metadata so future executions
-discover the same instance without relying on caller configuration.
+The installed Runtime Instance belongs to the product-owned
+[canonical data root](canonical-data-root.md), not a repository. Its durable
+marker, lock, and database are all below that root. Git metadata and the
+historical `.git/forge-runtime` location are legacy bootstrap material only;
+installed Forge never discovers or silently migrates them.
 
-`RuntimeResolver` resolves exactly one candidate from configured location,
-registered instance location, repository default, and local discovery. It
-validates the registry, immutable Runtime Identity, repository identity,
+`RuntimeResolver` resolves exactly one candidate beneath the selected data
+root. It validates the instance marker, immutable Runtime Identity,
 instance version, schema/migration version, instance status, SQLite integrity,
 Mission/Decision/Receipt references, and Planning State before startup.
-Ambiguity, a corrupt registry, identity mismatch, invalid references, or a
-missing registered location fails closed. A prior registration never permits
-bootstrap to silently fabricate a replacement instance.
+An invalid instance marker, identity mismatch, invalid references, an unknown
+newer schema, or a marked root with a missing database fails closed. A marked
+root never permits bootstrap to silently fabricate a replacement instance.
 
-`RuntimeBootstrap` acquires one repository-wide inter-process initialization
-lock before resolving, creating, and registering. It first discovers a valid
-instance, or creates a new instance only when no registry exists and no
-candidate exists. The registry claim is atomic, so competing configured
-locations cannot produce multiple instances. It never overwrites an existing
-Runtime Instance; explicit relocation is the sole controlled registry update.
+`RuntimeBootstrap` acquires one data-root inter-process initialization lock
+before resolving and creating. It creates an instance only when the selected
+root has no instance marker. The marker claim is atomic, so competing mutating
+processes cannot create two instances. It never overwrites an existing Runtime
+Instance.
 
 Initialization creates only the empty runtime infrastructure: Mission State,
 Decision Evidence, Architecture Reviews, Mission Recommendations, Execution
@@ -57,14 +51,12 @@ Receipts, Planning State, Bootstrap Portfolio State, and metadata storage. It
 does not infer, import, or mark any Mission complete. In particular, it does
 not materialise historical bootstrap Portfolio Seed Missions.
 
-## Relocation and recovery
+## Recovery
 
-Explicit relocation copies SQLite through its backup API, validates the
-destination, activates its registry entry atomically, then removes the old
-database. The Runtime ID and Repository Identity are preserved. This is the
-only migration path; a workspace move, branch switch, worktree switch, host
-restart, Forge restart, or repository cleanup merely resolves the same
-registered instance.
+Recovery is root-scoped. An operator takes a SQLite-consistent backup with its
+instance marker and restores it only to an explicitly selected, stopped data
+root. A workspace move, branch switch, worktree switch, host restart, Forge
+restart, or repository cleanup has no effect on installed state.
 
 `RuntimeRecovery` reads only the validated Runtime Instance projection. It
 does not inspect repository source, old databases, caches, or Execution Host
