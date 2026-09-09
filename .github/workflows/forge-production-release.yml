@@ -380,10 +380,40 @@ jobs:
           set -euo pipefail
           TAG="forge-v$VERSION"
           PUBLISHED_RECEIPT="forge-release-published-$VERSION-$SOURCE_SHA.json"
+          PENDING="forge-cleanup-pending-$VERSION-$SOURCE_SHA.json"
           RECEIPT="forge-release-complete-$VERSION-$SOURCE_SHA.json"
           mkdir published-readback
           gh release download "$TAG" --pattern "$PUBLISHED_RECEIPT" --dir published-readback
           cmp "published-input/release-evidence/operations/$OPERATION_ID.json" "published-readback/$PUBLISHED_RECEIPT"
+          # A failed scoped cleanup is durable release history.  A rerun may
+          # advance only the exact retained pending operation, rather than
+          # silently recreating a new PUBLISHED record from an action artifact.
+          mkdir "$RUNNER_TEMP/forge-pending-readback"
+          if gh release download "$TAG" --pattern "$PENDING" --dir "$RUNNER_TEMP/forge-pending-readback"; then
+            python3 - "$OPERATION_ID" \
+              "published-input/release-evidence/operations/$OPERATION_ID.json" \
+              "$RUNNER_TEMP/forge-pending-readback/$PENDING" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "scripts")
+          from release_operation import ReleaseOperation, ReleaseOperationError
+
+          operation_id, published_path, pending_path = sys.argv[1:]
+          published = ReleaseOperation.parse(json.loads(Path(published_path).read_text(encoding="utf-8")))
+          pending = ReleaseOperation.parse(json.loads(Path(pending_path).read_text(encoding="utf-8")))
+          if (
+              published.operation_id != operation_id
+              or pending.operation_id != operation_id
+              or pending.state != "CLEANUP_PENDING"
+              or not published.same_identity(pending)
+              or pending.publication_receipt != published.publication_receipt
+          ):
+              raise ReleaseOperationError("durable cleanup-pending receipt does not match PUBLISHED release identity")
+          Path(published_path).write_bytes(Path(pending_path).read_bytes())
+          PY
+          fi
           python3 scripts/release_operation.py \
             --validate-qualified \
             --evidence-root published-input/release-evidence \
@@ -431,7 +461,6 @@ jobs:
               --wheel-digest "$WHEEL_DIGEST" \
               --sdist-digest "$SDIST_DIGEST" \
               --evidence-file cleanup-pending.json > /dev/null
-            PENDING="forge-cleanup-pending-$VERSION-$SOURCE_SHA.json"
             cp "published-input/release-evidence/operations/$OPERATION_ID.json" "$PENDING"
             mkdir "$RUNNER_TEMP/forge-pending-readback"
             if gh release download "$TAG" --pattern "$PENDING" --dir "$RUNNER_TEMP/forge-pending-readback"; then

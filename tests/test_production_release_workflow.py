@@ -26,10 +26,13 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("needs: [release-context, build-and-qualify, publish-pypi, registry-readback-and-published-evidence]", workflow)
         self.assertIn("gh release download \"$TAG\" --pattern \"$PUBLISHED_RECEIPT\" --dir published-readback", workflow)
         self.assertIn("CLEANUP_PENDING", workflow)
+        self.assertIn("forge-pending-readback", workflow)
+        self.assertIn("durable cleanup-pending receipt does not match PUBLISHED release identity", workflow)
         self.assertIn("Unexpected PyPI identity lookup status", workflow)
         self.assertIn('for artifact in "$wheel" "$sdist"; do', workflow)
         self.assertIn("registry-readback-digests.json", workflow)
         self.assertLess(workflow.index('for target in published-readback published-input/dist; do'), workflow.index("--complete"))
+        self.assertLess(workflow.index("durable cleanup-pending receipt"), workflow.index("--complete"))
         self.assertIn("--wheel-digest \"$WHEEL_DIGEST\"", workflow)
 
 
