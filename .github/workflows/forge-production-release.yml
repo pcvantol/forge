@@ -21,6 +21,7 @@ jobs:
     outputs:
       version: ${{ steps.context.outputs.version }}
       source_sha: ${{ steps.context.outputs.source_sha }}
+      operation_id: ${{ steps.context.outputs.operation_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
         with:
@@ -42,12 +43,17 @@ jobs:
           grep -Fq 'SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)' forge/scheduler/ep_http_adapter.py
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          # The complete protected-main revision is part of the durable operation
+          # identity.  A shortened SHA could collide with another candidate.
+          echo "operation_id=forge-release-$VERSION-$SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
   build-and-qualify:
     needs: release-context
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # A draft release is the durable, immutable qualified-operation record
+      # before the PyPI mutation.  It is not a published Forge release.
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
         with:
@@ -57,6 +63,8 @@ jobs:
       - run: python3 -m pip install --upgrade 'setuptools>=83' build twine pip-audit 'bandit[toml]' cyclonedx-bom
       - name: Build exactly one artifact set and qualify source
         env:
+          OPERATION_ID: ${{ needs.release-context.outputs.operation_id }}
+          SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
           VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           set -euo pipefail
@@ -97,10 +105,78 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/forge-sbom"
           "$RUNNER_TEMP/forge-sbom/bin/pip" install --no-deps dist/*.whl
           cyclonedx-py environment "$RUNNER_TEMP/forge-sbom/bin/python" --output-file dist/forge-autonomy.cdx.json
+      - name: Retain the qualified operation before publication
+        env:
+          OPERATION_ID: ${{ needs.release-context.outputs.operation_id }}
+          SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir release-evidence
+          python3 - "$SOURCE_SHA" dist/SHA256SUMS > qualification.json <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          digests = {}
+          for line in Path(sys.argv[2]).read_text(encoding="utf-8").splitlines():
+              digest, filename = line.split(maxsplit=1)
+              digests[filename] = "sha256:" + digest
+          print(json.dumps({
+              "exact_main_sha": sys.argv[1],
+              "artifact_digests": digests,
+              "qualification": "forge-production-distribution",
+          }, sort_keys=True))
+          PY
+          python3 scripts/release_operation.py \
+            --prepare-qualified \
+            --evidence-root release-evidence \
+            --operation-id "$OPERATION_ID" \
+            --version "$VERSION" \
+            --policy-revision forge-bootstrap-release-cadence-v2 \
+            --source-revision "$SOURCE_SHA" \
+            --wheel "dist/forge_autonomy-$VERSION-py3-none-any.whl" \
+            --sdist "dist/forge_autonomy-$VERSION.tar.gz" \
+            --evidence-file qualification.json > qualified-operation.json
+          cmp qualified-operation.json "release-evidence/operations/$OPERATION_ID.json"
+          rm -f qualification.json qualified-operation.json
+      - name: Persist the qualified operation outside the runner before PyPI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_ID: ${{ needs.release-context.outputs.operation_id }}
+          SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="forge-v$VERSION"
+          QUALIFIED="forge-release-qualified-$VERSION-$SOURCE_SHA.json"
+          cp "release-evidence/operations/$OPERATION_ID.json" "$QUALIFIED"
+          if gh release view "$TAG" --json targetCommitish >/dev/null 2>&1; then
+            test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
+            mkdir "$RUNNER_TEMP/forge-qualified-readback"
+            if ! gh release download "$TAG" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"; then
+              echo 'Existing release lacks its original durable qualified-operation receipt.' >&2
+              exit 1
+            fi
+            cmp "$QUALIFIED" "$RUNNER_TEMP/forge-qualified-readback/$QUALIFIED"
+          else
+            status_code="$(curl --silent --show-error --location --output pypi.json --write-out '%{http_code}' "https://pypi.org/pypi/forge-autonomy/$VERSION/json")" || {
+              echo 'PyPI identity lookup failed before durable operation retention.' >&2
+              exit 1
+            }
+            case "$status_code" in
+              404) gh release create "$TAG" "$QUALIFIED" --draft --target "$SOURCE_SHA" --title "Forge $VERSION" ;;
+              200) echo 'Existing PyPI publication has no durable original release receipt.' >&2; exit 1 ;;
+              *) echo "Unexpected PyPI identity lookup status: $status_code" >&2; exit 1 ;;
+            esac
+          fi
+          rm -f pypi.json "$QUALIFIED"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
-          path: dist/
+          path: |
+            dist/
+            release-evidence/
           if-no-files-found: error
 
   publish-pypi:
@@ -108,22 +184,57 @@ jobs:
     runs-on: ubuntu-latest
     environment: { name: pypi }
     permissions:
+      contents: read
       id-token: write
     outputs:
       already_published: ${{ steps.existing.outputs.already_published }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+        with:
+          ref: ${{ needs.release-context.outputs.source_sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
-          path: dist
+          path: release-input
+      - name: Recheck the retained qualified operation before PyPI mutation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_ID: ${{ needs.release-context.outputs.operation_id }}
+          SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_operation.py \
+            --validate-qualified \
+            --evidence-root release-input/release-evidence \
+            --operation-id "$OPERATION_ID" \
+            --version "$VERSION" \
+            --policy-revision forge-bootstrap-release-cadence-v2 \
+            --source-revision "$SOURCE_SHA" \
+            --wheel "release-input/dist/forge_autonomy-$VERSION-py3-none-any.whl" \
+            --sdist "release-input/dist/forge_autonomy-$VERSION.tar.gz"
+          TAG="forge-v$VERSION"
+          QUALIFIED="forge-release-qualified-$VERSION-$SOURCE_SHA.json"
+          mkdir "$RUNNER_TEMP/forge-qualified-readback"
+          gh release download "$TAG" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"
+          cmp "release-input/release-evidence/operations/$OPERATION_ID.json" \
+            "$RUNNER_TEMP/forge-qualified-readback/$QUALIFIED"
       - id: existing
         env:
           VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           set -euo pipefail
           wheel="forge_autonomy-$VERSION-py3-none-any.whl"; sdist="forge_autonomy-$VERSION.tar.gz"
-          curl --fail --silent --show-error "https://pypi.org/pypi/forge-autonomy/$VERSION/json" -o pypi.json || { echo 'already_published=false' >> "$GITHUB_OUTPUT"; exit 0; }
-          python3 - "$wheel" "$sdist" dist/SHA256SUMS pypi.json <<'PY'
+          status_code="$(curl --silent --show-error --location --output pypi.json --write-out '%{http_code}' "https://pypi.org/pypi/forge-autonomy/$VERSION/json")" || {
+            echo 'PyPI identity lookup failed.' >&2
+            exit 1
+          }
+          case "$status_code" in
+            404) echo 'already_published=false' >> "$GITHUB_OUTPUT"; exit 0 ;;
+            200) ;;
+            *) echo "Unexpected PyPI identity lookup status: $status_code" >&2; exit 1 ;;
+          esac
+          python3 - "$wheel" "$sdist" release-input/dist/SHA256SUMS pypi.json <<'PY'
           import json, sys
           expected = {line.split()[1]: line.split()[0] for line in open(sys.argv[3])}
           files = {item['filename']: item['digests']['sha256'] for item in json.load(open(sys.argv[4]))['urls']}
@@ -137,7 +248,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir pypi-dist
-          cp dist/*.whl dist/*.tar.gz pypi-dist/
+          VERSION="${{ needs.release-context.outputs.version }}"
+          cp "release-input/dist/forge_autonomy-$VERSION-py3-none-any.whl" pypi-dist/
+          cp "release-input/dist/forge_autonomy-$VERSION.tar.gz" pypi-dist/
           test "$(find pypi-dist -type f | wc -l)" = 2
       - name: Publish the already-qualified immutable distributions
         if: steps.existing.outputs.already_published != 'true'
@@ -149,20 +262,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+        with:
+          ref: ${{ needs.release-context.outputs.source_sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
-          path: dist
+          path: release-input
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with: { python-version: '3.11' }
-      - name: Read back, hash, and reinstall the published wheel
+      - name: Read back, hash, and reinstall both published distributions
         env:
           VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           set -euo pipefail
           wheel="forge_autonomy-$VERSION-py3-none-any.whl"; sdist="forge_autonomy-$VERSION.tar.gz"
           curl --fail --silent --show-error "https://pypi.org/pypi/forge-autonomy/$VERSION/json" -o pypi.json
-          python3 - "$wheel" "$sdist" dist/SHA256SUMS pypi.json <<'PY'
+          python3 - "$wheel" "$sdist" release-input/dist/SHA256SUMS pypi.json <<'PY'
           import json, sys
           expected = {line.split()[1]: line.split()[0] for line in open(sys.argv[3])}
           files = {item['filename']: item for item in json.load(open(sys.argv[4]))['urls']}
@@ -170,125 +286,192 @@ jobs:
               assert name in files and files[name]['digests']['sha256'] == expected[name], 'remote hash mismatch'
               print(files[name]['url'])
           PY
-          wheel_url="$(python3 -c 'import json; print(next(x["url"] for x in json.load(open("pypi.json"))["urls"] if x["filename"] == "'"$wheel"'"))')"
-          curl --fail --silent --show-error --location "$wheel_url" -o "$wheel"
-          grep " $wheel$" dist/SHA256SUMS | sha256sum --check
+          mkdir registry-readback
+          for artifact in "$wheel" "$sdist"; do
+            artifact_url="$(python3 - "$artifact" <<'PY'
+          import json
+          import sys
+          artifact = sys.argv[1]
+          print(next(item["url"] for item in json.load(open("pypi.json", encoding="utf-8"))["urls"] if item["filename"] == artifact))
+          PY
+            )"
+            curl --fail --silent --show-error --location "$artifact_url" -o "registry-readback/$artifact"
+            (cd registry-readback && grep " $artifact$" ../release-input/dist/SHA256SUMS | sha256sum --check)
+          done
+          python3 - registry-readback "$wheel" "$sdist" > registry-readback-digests.json <<'PY'
+          from hashlib import sha256
+          import json
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+          observed = {name: "sha256:" + sha256((root / name).read_bytes()).hexdigest() for name in sys.argv[2:]}
+          print(json.dumps({"registry": "pypi", "observed_artifact_digests": observed}, sort_keys=True))
+          PY
           python3 -m venv "$RUNNER_TEMP/forge-pypi"
-          "$RUNNER_TEMP/forge-pypi/bin/pip" install --no-deps "$wheel"
+          "$RUNNER_TEMP/forge-pypi/bin/pip" install --no-deps "registry-readback/$wheel"
           cd "$RUNNER_TEMP"
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-pypi/bin/python" -I -c 'import forge, pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
           test "$("$RUNNER_TEMP/forge-pypi/bin/forge" --version)" = "$VERSION"
       - name: Persist immutable PyPI readback as PUBLISHED evidence
         env:
           GH_TOKEN: ${{ github.token }}
+          OPERATION_ID: ${{ needs.release-context.outputs.operation_id }}
           VERSION: ${{ needs.release-context.outputs.version }}
           SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
-          ALREADY_PUBLISHED: ${{ needs.publish-pypi.outputs.already_published }}
         run: |
           set -euo pipefail
           TAG="forge-v$VERSION"
           RECEIPT="forge-release-published-$VERSION-$SOURCE_SHA.json"
-          python3 - "$RECEIPT" <<'PY'
-          import json, os, sys
+          python3 - registry-readback-digests.json > publication.json <<'PY'
+          import json
+          import sys
           from pathlib import Path
-          digests = {}
-          for line in Path('dist/SHA256SUMS').read_text().splitlines():
-              digest, filename = line.split(maxsplit=1)
-              digests[filename] = f'sha256:{digest}'
-          required = {f'forge_autonomy-{os.environ["VERSION"]}-py3-none-any.whl', f'forge_autonomy-{os.environ["VERSION"]}.tar.gz'}
-          if set(digests) != required:
-              raise SystemExit('qualified release artifact set is incomplete')
-          receipt = {
-              'schema_version': 1,
-              'operation_id': f'forge-{os.environ["VERSION"]}-{os.environ["SOURCE_SHA"]}',
-              'product': 'forge',
-              'component': 'forge-autonomy',
-              'version': os.environ['VERSION'],
-              'source_revision': os.environ['SOURCE_SHA'],
-              'policy_revision': 'forge-bootstrap-release-cadence-v2',
-              'artifacts': digests,
-              'registry': 'pypi',
-              'resumed_existing_publication': os.environ['ALREADY_PUBLISHED'] == 'true',
-              'state': 'PUBLISHED',
-          }
-          Path(sys.argv[1]).write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+
+          observed = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print(json.dumps({**observed, "readback": "PASS"}, sort_keys=True))
           PY
-          if gh release view "$TAG" --json targetCommitish >/dev/null 2>&1; then
-            test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
-            mkdir existing-release
-            if gh release download "$TAG" --pattern "$RECEIPT" --dir existing-release; then
-              cmp "$RECEIPT" "existing-release/$RECEIPT"
-            else
-              gh release upload "$TAG" "$RECEIPT"
-            fi
+          python3 scripts/release_operation.py \
+            --mark-published \
+            --evidence-root release-input/release-evidence \
+            --operation-id "$OPERATION_ID" \
+            --version "$VERSION" \
+            --policy-revision forge-bootstrap-release-cadence-v2 \
+            --source-revision "$SOURCE_SHA" \
+            --wheel "release-input/dist/forge_autonomy-$VERSION-py3-none-any.whl" \
+            --sdist "release-input/dist/forge_autonomy-$VERSION.tar.gz" \
+            --evidence-file publication.json > published-operation.json
+          cp "release-input/release-evidence/operations/$OPERATION_ID.json" "$RECEIPT"
+          test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
+          mkdir "$RUNNER_TEMP/forge-published-readback"
+          if gh release download "$TAG" --pattern "$RECEIPT" --dir "$RUNNER_TEMP/forge-published-readback"; then
+            cmp "$RECEIPT" "$RUNNER_TEMP/forge-published-readback/$RECEIPT"
           else
-            gh release create "$TAG" "$RECEIPT" --target "$SOURCE_SHA" --title "Forge $VERSION" --generate-notes
+            gh release upload "$TAG" "$RECEIPT"
           fi
-          rm -rf existing-release
-          test ! -e existing-release
+          rm -f publication.json published-operation.json "$RECEIPT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: forge-published-evidence-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
+          path: |
+            release-input/dist/
+            release-input/release-evidence/
+          if-no-files-found: error
 
   record-release-complete:
     needs: [release-context, build-and-qualify, publish-pypi, registry-readback-and-published-evidence]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+        with:
+          ref: ${{ needs.release-context.outputs.source_sha }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
-          path: dist
-      - name: Promote verified immutable PUBLISHED evidence to RELEASE_COMPLETE
+          name: forge-published-evidence-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
+          path: published-input
+      - name: Complete cleanup after durable PUBLISHED evidence
         env:
+          OPERATION_ID: ${{ needs.release-context.outputs.operation_id }}
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.release-context.outputs.version }}
           SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
-          ALREADY_PUBLISHED: ${{ needs.publish-pypi.outputs.already_published }}
         run: |
           set -euo pipefail
           TAG="forge-v$VERSION"
           PUBLISHED_RECEIPT="forge-release-published-$VERSION-$SOURCE_SHA.json"
           RECEIPT="forge-release-complete-$VERSION-$SOURCE_SHA.json"
-          mkdir release-evidence
-          gh release download "$TAG" --pattern "$PUBLISHED_RECEIPT" --dir release-evidence
-          python3 - "$PUBLISHED_RECEIPT" "$RECEIPT" <<'PY'
-          import json, os, sys
-          from pathlib import Path
-
-          published = json.loads((Path('release-evidence') / sys.argv[1]).read_text())
-          if published.get('state') != 'PUBLISHED':
-              raise SystemExit('published receipt has an invalid state')
-          digests = {}
-          for line in Path('dist/SHA256SUMS').read_text().splitlines():
-              digest, filename = line.split(maxsplit=1)
-              digests[filename] = f'sha256:{digest}'
-          required = {f'forge_autonomy-{os.environ["VERSION"]}-py3-none-any.whl', f'forge_autonomy-{os.environ["VERSION"]}.tar.gz'}
-          if set(digests) != required:
-              raise SystemExit('qualified release artifact set is incomplete')
-          expected = {
-              'operation_id': f'forge-{os.environ["VERSION"]}-{os.environ["SOURCE_SHA"]}',
-              'product': 'forge',
-              'component': 'forge-autonomy',
-              'version': os.environ['VERSION'],
-              'source_revision': os.environ['SOURCE_SHA'],
-              'policy_revision': 'forge-bootstrap-release-cadence-v2',
-              'artifacts': digests,
-              'registry': 'pypi',
-              'resumed_existing_publication': os.environ['ALREADY_PUBLISHED'] == 'true',
-          }
-          if any(published.get(key) != value for key, value in expected.items()):
-              raise SystemExit('published receipt does not match the qualified release identity')
-          receipt = {
-              'schema_version': 1,
-              **expected,
-              'publication': {'state': 'PUBLISHED', 'registry': 'pypi', 'artifact_digests': digests,
-                              'resumed_existing_publication': os.environ['ALREADY_PUBLISHED'] == 'true'},
-              'state': 'RELEASE_COMPLETE',
-          }
-          Path(sys.argv[2]).write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          mkdir published-readback
+          gh release download "$TAG" --pattern "$PUBLISHED_RECEIPT" --dir published-readback
+          cmp "published-input/release-evidence/operations/$OPERATION_ID.json" "published-readback/$PUBLISHED_RECEIPT"
+          python3 scripts/release_operation.py \
+            --validate-qualified \
+            --evidence-root published-input/release-evidence \
+            --operation-id "$OPERATION_ID" \
+            --version "$VERSION" \
+            --policy-revision forge-bootstrap-release-cadence-v2 \
+            --source-revision "$SOURCE_SHA" \
+            --wheel "published-input/dist/forge_autonomy-$VERSION-py3-none-any.whl" \
+            --sdist "published-input/dist/forge_autonomy-$VERSION.tar.gz" > /dev/null
+          read -r WHEEL_DIGEST SDIST_DIGEST < <(python3 - "published-input/release-evidence/operations/$OPERATION_ID.json" <<'PY'
+          import json
+          import sys
+          record = json.load(open(sys.argv[1], encoding="utf-8"))
+          print(record["artifacts"]["wheel"], record["artifacts"]["sdist"])
           PY
-          if gh release download "$TAG" --pattern "$RECEIPT" --dir release-evidence; then
-            cmp "$RECEIPT" "release-evidence/$RECEIPT"
+          )
+          test -d published-readback
+          test -d published-input/dist
+          cleanup_failed=0
+          failed_targets=()
+          for target in published-readback published-input/dist; do
+            if test -e "$target" && ! rm -rf -- "$target"; then
+              cleanup_failed=1
+              failed_targets+=("$target")
+            fi
+          done
+          if test "$cleanup_failed" = 1; then
+            python3 - "${failed_targets[@]}" > cleanup-pending.json <<'PY'
+          import json
+          import sys
+          print(json.dumps({
+              "result": "CLEANUP_PENDING",
+              "targets": ["published-readback", "published-input/dist"],
+              "failed_targets": sys.argv[1:],
+              "error": "failed to remove an operation-local temporary path",
+          }, sort_keys=True))
+          PY
+            python3 scripts/release_operation.py \
+              --mark-cleanup-pending \
+              --evidence-root published-input/release-evidence \
+              --operation-id "$OPERATION_ID" \
+              --version "$VERSION" \
+              --policy-revision forge-bootstrap-release-cadence-v2 \
+              --source-revision "$SOURCE_SHA" \
+              --wheel-digest "$WHEEL_DIGEST" \
+              --sdist-digest "$SDIST_DIGEST" \
+              --evidence-file cleanup-pending.json > /dev/null
+            PENDING="forge-cleanup-pending-$VERSION-$SOURCE_SHA.json"
+            cp "published-input/release-evidence/operations/$OPERATION_ID.json" "$PENDING"
+            mkdir "$RUNNER_TEMP/forge-pending-readback"
+            if gh release download "$TAG" --pattern "$PENDING" --dir "$RUNNER_TEMP/forge-pending-readback"; then
+              cmp "$PENDING" "$RUNNER_TEMP/forge-pending-readback/$PENDING"
+            else
+              gh release upload "$TAG" "$PENDING"
+            fi
+            exit 1
+          fi
+          if test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true; then
+            gh release edit "$TAG" --draft=false
+          fi
+          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = false
+          python3 - > cleanup-complete.json <<'PY'
+          import json
+          print(json.dumps({
+              "result": "COMPLETE",
+              "temporary_paths": ["published-readback", "published-input/dist"],
+              "github_release": {"draft": False},
+          }, sort_keys=True))
+          PY
+          python3 scripts/release_operation.py \
+            --complete \
+            --evidence-root published-input/release-evidence \
+            --operation-id "$OPERATION_ID" \
+            --version "$VERSION" \
+            --policy-revision forge-bootstrap-release-cadence-v2 \
+            --source-revision "$SOURCE_SHA" \
+            --wheel-digest "$WHEEL_DIGEST" \
+            --sdist-digest "$SDIST_DIGEST" \
+            --evidence-file cleanup-complete.json > /dev/null
+          cp "published-input/release-evidence/operations/$OPERATION_ID.json" "$RECEIPT"
+          mkdir "$RUNNER_TEMP/forge-complete-readback"
+          if gh release download "$TAG" --pattern "$RECEIPT" --dir "$RUNNER_TEMP/forge-complete-readback"; then
+            cmp "$RECEIPT" "$RUNNER_TEMP/forge-complete-readback/$RECEIPT"
           else
             gh release upload "$TAG" "$RECEIPT"
           fi
-          rm -rf release-evidence
-          test ! -e release-evidence
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: forge-release-evidence-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
+          path: forge-release-complete-*.json
+          if-no-files-found: error

@@ -37,14 +37,45 @@ receipt/projection diff and binds exact-head qualification evidence. It is not
 yet installed-runtime evidence, a version grant, a protected merge authority or
 publication proof; Forge therefore retains the fail-closed boundary below.
 
-The workflow intentionally has read-only permissions. The former token-pushed
-version commit could not prove qualification of its new SHA and could not safely
-provide exactly-once event delivery. The required protected version-preparation
-delivery route must bind operation ID, event/branch lineage, expected head and
-policy revision before automated feature-patch/main-minor allocation is enabled.
-Until then this repository has no automatic version writer; builds consume the
-committed source only. This is product-owned groundwork, not Forge's future
-generic version/release planner.
+The version-preparation workflow intentionally has no source-writing authority.
+The former token-pushed version commit could not prove qualification of its new
+SHA and could not safely provide exactly-once event delivery. The required
+protected version-preparation delivery route must bind operation ID,
+event/branch lineage, expected head and policy revision before automated
+feature-patch/main-minor allocation is enabled. Until then this repository has
+no automatic version writer; builds consume the committed source only. This is
+product-owned groundwork, not Forge's future generic version/release planner.
+
+The separately dispatched production-release workflow accepts only the exact
+current protected `main` SHA. It builds the one wheel/sdist pair, qualifies
+those exact bytes, and retains a
+`forge-release-<version>-<complete-source-SHA>` operation before its PyPI mutation.
+The operation binds the policy revision, complete source SHA, wheel SHA-256 and
+sdist SHA-256, is serialized with concurrent releases, and is rechecked before
+publication. Changed bytes or provenance under one operation or published
+release identity fail closed.
+
+The operation state is explicit: `PREPARED → QUALIFIED → PUBLISHED →
+RELEASE_COMPLETE`, with `CLEANUP_PENDING` if an operation-local cleanup step
+cannot be completed. PyPI registry digest readback and an installed-wheel
+qualification precede `PUBLISHED`; `RELEASE_COMPLETE` is written only after a
+separate GitHub Release receipt readback and cleanup attempt. A rerun with the
+same immutable identity can verify an existing PyPI publication without
+rewriting its bytes. Publication, local installation, runtime selection and
+operational cleanup remain distinct operations.
+
+The exact `QUALIFIED` record is first attached to a draft GitHub Release before
+the PyPI mutation. That draft is durable provenance, not a published Forge
+release: an existing PyPI version without its original matching qualified
+receipt fails closed rather than being adopted. The subsequent `PUBLISHED`,
+`CLEANUP_PENDING` and `RELEASE_COMPLETE` receipts are compared byte-for-byte
+before they are attached. This makes a lost response after publication or a
+runner crash resumable from the original candidate and exact artifacts. Both
+the wheel and source distribution are downloaded and hashed during registry
+readback. Finalization removes its exact operation-local readback and artifact
+input paths before it can record `RELEASE_COMPLETE`; durable receipts remain
+retained. No release, PyPI publication, installation, service update, or
+removal of a real local artifact cache has been performed by this source change.
 
 ## Candidate delivery and release guard
 
