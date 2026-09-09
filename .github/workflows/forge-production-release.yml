@@ -1,53 +1,182 @@
 name: Forge production release
 
 on:
+  create:
   workflow_dispatch:
     inputs:
-      source_sha:
-        description: Exact already-merged origin/main commit to qualify and release
+      release_branch:
+        description: Existing release-X.Y.Z branch to qualify or resume
         required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    runs-on: ubuntu-24.04
+  release-context:
+    if: >-
+      (github.event_name == 'create' && github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release-')) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.context.outputs.version }}
+      source_sha: ${{ steps.context.outputs.source_sha }}
+      branch: ${{ steps.context.outputs.branch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
-        with: {ref: ${{ inputs.source_sha }}, fetch-depth: 0}
-      - name: Verify protected source and qualify it
-        env: {SOURCE_SHA: ${{ inputs.source_sha }}}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin main
-          test "$SOURCE_SHA" = "$(git rev-parse HEAD)"
-          test "$SOURCE_SHA" = "$(git rev-parse origin/main)"
-          test -z "$(git status --porcelain)"
-          bash scripts/validate.sh
-      - name: Build exact source bundle
-        id: bundle
-        run: |
-          set -euo pipefail
-          VERSION="$(python3 -c 'import json; print(json.load(open("product-version.json"))["version"])')"
-          BUNDLE="forge-${VERSION}-${{ inputs.source_sha }}.tar.gz"
-          git archive --format=tar.gz --prefix="forge-${VERSION}/" HEAD > "$BUNDLE"
-          printf 'version=%s\nfilename=%s\ndigest=sha256:%s\n' "$VERSION" "$BUNDLE" "$(sha256sum "$BUNDLE" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - name: Publish immutable GitHub release asset
-        env: {GH_TOKEN: ${{ github.token }}}
-        run: gh release create "forge-v${{ steps.bundle.outputs.version }}" "${{ steps.bundle.outputs.filename }}" --target "${{ inputs.source_sha }}" --title "Forge ${{ steps.bundle.outputs.version }}" --generate-notes
-      - name: Read back digest and retain completion evidence
+        with:
+          ref: ${{ github.event_name == 'create' && github.event.ref || inputs.release_branch }}
+          fetch-depth: 0
+      - id: context
         env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.bundle.outputs.version }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
-          DIGEST: ${{ steps.bundle.outputs.digest }}
+          RELEASE_BRANCH: ${{ github.event_name == 'create' && github.event.ref || inputs.release_branch }}
         run: |
           set -euo pipefail
-          mkdir readback evidence
-          gh release download "forge-v$VERSION" --pattern "${{ steps.bundle.outputs.filename }}" --dir readback
-          test "sha256:$(sha256sum "readback/${{ steps.bundle.outputs.filename }}" | cut -d' ' -f1)" = "$DIGEST"
-          python3 -c 'import json,os,pathlib; pathlib.Path("evidence/release-complete.json").write_text(json.dumps({"state":"RELEASE_COMPLETE","product":"forge","version":os.environ["VERSION"],"source_revision":os.environ["SOURCE_SHA"],"artifact_digest":os.environ["DIGEST"],"registry":"github-release"},sort_keys=True)+"\n")'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a # v7.0.1
-        with: {name: forge-release-evidence-${{ steps.bundle.outputs.version }}, path: evidence/}
+          [[ "$RELEASE_BRANCH" =~ ^release-([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || { echo 'Release branch must be release-X.Y.Z.' >&2; exit 1; }
+          VERSION="${RELEASE_BRANCH#release-}"
+          test -z "$(git status --porcelain)"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor origin/main HEAD || { echo 'Release source must contain current main.' >&2; exit 1; }
+          test "$(python3 -c 'import json; print(json.load(open("product-version.json"))["version"])')" = "$VERSION"
+          test -f pyproject.toml
+          grep -Fq 'name = "forge-autonomy"' pyproject.toml
+          grep -Fq 'SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)' forge/scheduler/ep_http_adapter.py
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "branch=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
+
+  build-and-qualify:
+    needs: release-context
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+        with:
+          ref: ${{ needs.release-context.outputs.source_sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with: { python-version: '3.11' }
+      - run: python3 -m pip install --upgrade 'setuptools>=83' build twine pip-audit 'bandit[toml]' cyclonedx-bom
+      - name: Build exactly one artifact set and qualify source
+        env:
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          before="$(git status --porcelain)"
+          python3 -m build
+          test "$before" = "$(git status --porcelain)"
+          test -f "dist/forge_autonomy-$VERSION-py3-none-any.whl"
+          test -f "dist/forge_autonomy-$VERSION.tar.gz"
+          python3 -m twine check dist/*
+          python3 scripts/qualify_distribution.py --wheel "dist/forge_autonomy-$VERSION-py3-none-any.whl" --sdist "dist/forge_autonomy-$VERSION.tar.gz"
+          bash scripts/validate.sh
+          python3 -m unittest discover -s tests -p 'test_ep_http_adapter.py' -v
+          pip-audit
+          bandit -r forge --severity-level high
+          sha256sum "dist/forge_autonomy-$VERSION-py3-none-any.whl" "dist/forge_autonomy-$VERSION.tar.gz" > dist/SHA256SUMS
+      - name: Qualify the wheel away from the checkout
+        env:
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/forge-wheel"
+          "$RUNNER_TEMP/forge-wheel/bin/pip" install --no-deps "dist/forge_autonomy-$VERSION-py3-none-any.whl"
+          cd "$RUNNER_TEMP"
+          PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-wheel/bin/python" -I -c 'import forge, pathlib, tempfile; from importlib.metadata import version; from forge._version import canonical_version; from forge.qualification.installed_smoke import run, assert_runtime_persistence; assert version("forge-autonomy") == canonical_version() == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run(); root=tempfile.TemporaryDirectory(); workspace=pathlib.Path(root.name)/"workspace"; workspace.mkdir(); assert_runtime_persistence(str(workspace), str(pathlib.Path(root.name)/"runtime"), canonical_version()); root.cleanup()'
+          "$RUNNER_TEMP/forge-wheel/bin/forge" --help >/dev/null
+          test "$("$RUNNER_TEMP/forge-wheel/bin/forge" --version)" = "$VERSION"
+      - name: Rebuild from an isolated source distribution
+        env:
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/forge-sdist" && tar -xzf "dist/forge_autonomy-$VERSION.tar.gz" -C "$RUNNER_TEMP/forge-sdist"
+          cd "$RUNNER_TEMP/forge-sdist/forge_autonomy-$VERSION"
+          python3 -m build --wheel
+          test -f "dist/forge_autonomy-$VERSION-py3-none-any.whl"
+      - name: Generate runtime SBOM
+        run: |
+          python3 -m venv "$RUNNER_TEMP/forge-sbom"
+          "$RUNNER_TEMP/forge-sbom/bin/pip" install --no-deps dist/*.whl
+          cyclonedx-py environment "$RUNNER_TEMP/forge-sbom/bin/python" --output-file dist/forge-autonomy.cdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
+          path: dist/
+          if-no-files-found: error
+
+  publish-pypi:
+    needs: [release-context, build-and-qualify]
+    runs-on: ubuntu-latest
+    environment: { name: pypi }
+    permissions:
+      id-token: write
+    outputs:
+      already_published: ${{ steps.existing.outputs.already_published }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
+          path: dist
+      - id: existing
+        env:
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          wheel="forge_autonomy-$VERSION-py3-none-any.whl"; sdist="forge_autonomy-$VERSION.tar.gz"
+          curl --fail --silent --show-error "https://pypi.org/pypi/forge-autonomy/$VERSION/json" -o pypi.json || { echo 'already_published=false' >> "$GITHUB_OUTPUT"; exit 0; }
+          python3 - "$wheel" "$sdist" dist/SHA256SUMS pypi.json <<'PY'
+          import json, sys
+          expected = {line.split()[1]: line.split()[0] for line in open(sys.argv[3])}
+          files = {item['filename']: item['digests']['sha256'] for item in json.load(open(sys.argv[4]))['urls']}
+          wanted = sys.argv[1:3]
+          if any(name in files and files[name] != expected[name] for name in wanted): raise SystemExit('PUBLICATION_IDENTITY_CONFLICT')
+          if all(name in files and files[name] == expected[name] for name in wanted): raise SystemExit(0)
+          raise SystemExit('partial PyPI release is a publication identity conflict')
+          PY
+          echo 'already_published=true' >> "$GITHUB_OUTPUT"
+      - name: Select only the qualified Python distributions
+        run: |
+          set -euo pipefail
+          mkdir pypi-dist
+          cp dist/*.whl dist/*.tar.gz pypi-dist/
+          test "$(find pypi-dist -type f | wc -l)" = 2
+      - name: Publish the already-qualified immutable distributions
+        if: steps.existing.outputs.already_published != 'true'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with: { packages-dir: pypi-dist }
+
+  verify-pypi-publication:
+    needs: [release-context, build-and-qualify, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
+          path: dist
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with: { python-version: '3.11' }
+      - name: Read back, hash, and reinstall the published wheel
+        env:
+          VERSION: ${{ needs.release-context.outputs.version }}
+        run: |
+          set -euo pipefail
+          wheel="forge_autonomy-$VERSION-py3-none-any.whl"; sdist="forge_autonomy-$VERSION.tar.gz"
+          curl --fail --silent --show-error "https://pypi.org/pypi/forge-autonomy/$VERSION/json" -o pypi.json
+          python3 - "$wheel" "$sdist" dist/SHA256SUMS pypi.json <<'PY'
+          import json, sys
+          expected = {line.split()[1]: line.split()[0] for line in open(sys.argv[3])}
+          files = {item['filename']: item for item in json.load(open(sys.argv[4]))['urls']}
+          for name in sys.argv[1:3]:
+              assert name in files and files[name]['digests']['sha256'] == expected[name], 'remote hash mismatch'
+              print(files[name]['url'])
+          PY
+          wheel_url="$(python3 -c 'import json; print(next(x["url"] for x in json.load(open("pypi.json"))["urls"] if x["filename"] == "'"$wheel"'"))')"
+          curl --fail --silent --show-error --location "$wheel_url" -o "$wheel"
+          grep " $wheel$" dist/SHA256SUMS | sha256sum --check
+          python3 -m venv "$RUNNER_TEMP/forge-pypi"
+          "$RUNNER_TEMP/forge-pypi/bin/pip" install --no-deps "$wheel"
+          cd "$RUNNER_TEMP"
+          PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-pypi/bin/python" -I -c 'import forge, pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
+          test "$("$RUNNER_TEMP/forge-pypi/bin/forge" --version)" = "$VERSION"
