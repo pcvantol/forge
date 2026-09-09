@@ -24,18 +24,20 @@ executable bootstrap programme or alter live grants.
 | Installed artifact composition, update/uninstall/rollback and installation state | Forge Platform and product-owned installation contracts |
 
 Forge may consume authorized read-only provider facts through declared adapters;
-local host inspection and all Git/filesystem mutation remain EP-owned. Neither
+local host inspection and all target-repository/ref/worktree mutation remain
+EP-owned. Forge still writes its own cases and projections in Forge-owned central
+runtime storage; that is not permission to mutate a target repository. Neither
 Forge nor Workspace reads EP CENTRAL, walks another product's data-root or uses
 an LLM shell as a substitute adapter. Project identity comes from the canonical
 repository declaration, never a branch prefix or incidental checkout path.
 
 ## Three kinds of work; no Mission for every maintenance question
 
-**Run finalization cleanup** is an EP lifecycle responsibility. After proven
-delivery within its own run, EP conditionally cleans only its owned resources
-under the run's valid coordinating lease. No Forge Mission, project-wide scan
-or semantic model is needed. A cleanup warning must not overwrite proven
-delivery or fabricate a failed run.
+**Run finalization cleanup** is an EP lifecycle responsibility. For its own
+proven-delivered resources, EP reconciles delivery and conditionally cleans only
+its owned branch/worktree while retaining the valid coordination lease until
+safe finalization. No Forge Mission, project-wide scan or semantic model is needed.
+A cleanup warning must not overwrite proven delivery or fabricate a failed run.
 
 **Project hygiene** is a bounded Forge application operation/case. Requests such
 as “what remains on this old branch?” or “inspect stale branches” resolve to
@@ -165,12 +167,12 @@ EP owns the actual decision at the side-effect boundary. Its
 [owning contract](https://github.com/pcvantol/engineering-platform/blob/main/docs/engineering/REPOSITORY_HYGIENE_AND_SAFE_CLEANUP.md)
 requires all applicable gates together: authenticated scoped actor/delegation,
 permitted operation, current expected ref/worktree state, verified ownership or
-explicit approved adoption, no conflicting active owner/PR/run/lease,
-protected-ref policy, retention checks, current repository facts and retained
-recovery evidence where required. Analysis authority, scan permission and
-provider push access are not delete authority. The EP finalizer's own valid
-coordination lease is not a conflicting owner; it remains held through cleanup.
-A separate maintenance operation cannot borrow another run's lease/privileges.
+explicit approved adoption, no conflicting active owner/PR/run/lease, protected-ref
+policy, retention checks, current repository facts and retained recovery evidence
+where required. Analysis authority, scan permission and provider push access are
+not delete authority. The finalizer's own valid coordination lease is not a
+conflicting owner; retain it during cleanup of its proven-delivered resources.
+A separate maintenance command cannot borrow another run's finalizer authority.
 
 Separate local ref deletion, remote ref deletion and owned worktree removal.
 A request freezes the exact set and expected object IDs plus proposal/evidence/
@@ -196,14 +198,16 @@ publish source or create release-triggering refs.
 
 ## Policy and Workspace interaction
 
-Use existing policy definition/assignment/effective-evaluation services. A
-project profile controls observation triggers, analysis escalation/budgets,
-protected/retained refs, evidence freshness, adoption and retention rules, and
-which bounded cleanup classes may use existing delegation. Mandatory controls
-combine; allowed scopes intersect; budgets use remaining ceilings. A Mission
-assignment can narrow relevant scope, not grant deletion of unrelated branches.
-Risk/semantic ambiguity may require a gate; deterministic own-run cleanup within
-an existing grant must not demand a new human click every time.
+Reuse the product-owned policy definition/assignment/effective-evaluation
+contracts and their qualified services as available; this design does not claim
+that the full policy management implementation already exists. A project profile
+controls observation triggers, analysis escalation/budgets, protected/retained
+refs, evidence freshness, adoption and retention rules, and which bounded cleanup
+classes may use existing delegation. Mandatory controls combine; allowed scopes
+intersect; budgets use remaining ceilings. A Mission assignment can narrow
+relevant scope, not grant deletion of unrelated branches. Risk/semantic ambiguity
+may require a gate; deterministic own-run cleanup within an existing grant must
+not demand a new human click every time.
 
 Workspace chat and Repository Health share the same typed request/decision
 boundary. “Explain this branch” is read-only. “Reconcile it” permits analysis,
@@ -254,15 +258,18 @@ active PR/run/lease; dirty and ignored files; protected/release refs; malicious
 repository instructions; stale proposal/actor/grant; concurrent external push;
 unsupported atomic delete; archive failure; lost acknowledgement/partial cleanup;
 restart without duplicate command; no Mission for inspection; residual requiring
-real governance; no evidence downgrade of successful delivery; and scope-correct
-release preflight. Shared versioned fixtures must qualify both producer facts and
-consumer meaning before activation. New protocol routes/tables are future owning
-implementation work, not invented here.
+real governance; valid own-finalizer lease versus conflicting owner; no evidence
+downgrade of successful delivery; and scope-correct release preflight. Shared
+versioned fixtures must qualify both producer facts and consumer meaning before
+activation. New protocol routes/tables are future owning implementation work,
+not invented here.
 
 ## Source baseline for this documentation decision
 
-Read on 2026-09-08: Forge `d88180d2ad934cfd8ff2cc7209cf49de8c2baa88`,
-EP `d1ac70e76d00fd9cb838ca12625830967402e45f`, Workspace
+Original source reading on 2026-09-08: Forge
+`d88180d2ad934cfd8ff2cc7209cf49de8c2baa88`, EP
+`d1ac70e76d00fd9cb838ca12625830967402e45f`, Workspace
 `4277d5c179972f22da5c6304aa068752ea8ed19d`, Forge Platform
-`863d543d470c653d4360c206692c432d514160a9`. These are document/source pins,
-not installed-product or current-host observations.
+`863d543d470c653d4360c206692c432d514160a9`. These are historical document/source
+pins, not installed-product or current-host observations. Final reviewed heads,
+base compatibility and merge evidence are recorded in the coordinated PR closure.

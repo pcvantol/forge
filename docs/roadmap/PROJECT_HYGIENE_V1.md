@@ -27,22 +27,24 @@ development contracts, active programme graphs, grants and budgets are unchanged
 | HY-P | Forge Platform | Qualified composition/activation boundaries where hygiene is consumed; source-specific assessment, artifact retention and no installer cleanup bypass | HY-Q | PLANNED |
 
 ```text
-HY-0 -> HY-E -> HY-F -> HY-S --+
-          |        |          |
-          +-> HY-C +---------->HY-Q -> HY-P
-HY-0 -> HY-WC --+               |
-HY-F ----------> HY-WO -------->HY-WM
-                               ^
-                               +--- HY-Q
+HY-0 -> HY-E -> HY-F -> HY-S
+HY-E -> HY-C
+HY-0 -> HY-WC
+{HY-WC, HY-F}       -> HY-WO
+{HY-F, HY-S, HY-C}  -> HY-Q
+{HY-WO, HY-Q}      -> HY-WM
+HY-Q               -> HY-P
 ```
 
-The dependency table/JSON are the precise edge definition; arrows above are
-orientation. HY-C reuses and strengthens existing own-run cleanup rather than
-creating a second finalizer. Its standalone path does not require Forge semantic
-analysis. HY-WO can ship read-only without HY-C/HY-Q/HY-WM; unavailable deletion
-must not block useful observation. HY-Q includes the full governed cleanup
-roundtrip, not just the read-only slice. HY-P qualifies only the hygiene features
-actually included in a composition and does not require a Workspace client.
+Braces mean AND-dependencies. The table, graph and JSON describe the same 10
+nodes and 13 edges. HY-C reuses and strengthens existing own-run cleanup rather
+than creating a second finalizer. Its standalone path does not require Forge
+semantic analysis. The finalizer retains its own valid coordination lease while
+cleaning proven-delivered resources; only a conflicting owner is disqualifying.
+HY-WO can ship read-only without HY-C/HY-Q/HY-WM; unavailable deletion must not
+block useful observation. HY-Q qualifies the full governed cleanup roundtrip,
+not just the read-only slice. HY-P qualifies only the features actually included
+in a composition and does not require a Workspace client.
 
 ## Rollout and existing programme alignment
 
@@ -51,11 +53,20 @@ read-only case/diagnostic projection. A bounded subset can be chosen as product
 work in an already governed Mission/canary. That does not implement the full
 scanner, semantic analyzer or destructive-maintenance capability.
 
+After a successful first canary, reuse the delivered read-only subset where
+present, then complete HY-E/HY-F before adding semantic HY-S or destructive
+HY-C/HY-Q. Workspace HY-WC contract work can proceed in parallel; HY-WO consumes
+qualified read-only facts without waiting for cleanup UI. These lanes may run
+alongside the existing cross-repository Action DAG milestone: neither is a new
+mandatory predecessor of the other. The first canary is not claimed complete
+by this documentation or by one manual branch reconciliation.
+
 Scheduled project-wide observation and semantic escalation follow actual
 contract/resource readiness. Require finite per-project budgets, durable cursors,
 permission/freshness-aware inventories and no second Mission/Action scheduler.
-Use existing policy services and granted operation scopes as qualified; do not
-require completion of the entire POL/GP management UI to use a bounded profile.
+Use product-owned policy services and granted operation scopes as qualified;
+do not require completion of the entire POL/GP management UI for a bounded
+profile, and do not infer activation from a documentary policy reference.
 
 Automatic cleanup remains disabled until the relevant HY-C/HY-Q proof, scoped
 policy activation, actual actor authority and retained recovery requirements
@@ -81,3 +92,6 @@ Each completed node needs its owning PR/source, supported contract revisions,
 positive and negative tests, scope, remaining exclusions and exact qualification
 receipts. Documentation merges close HY-0 only as documentation delivery; they
 leave the implementation nodes PLANNED.
+
+Coordinated owning PRs: Forge #59, EP #108, Workspace #17 and Forge Platform #20.
+Only their actual merges establish the four-product documentation closure.
