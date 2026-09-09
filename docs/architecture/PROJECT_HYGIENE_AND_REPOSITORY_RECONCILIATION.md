@@ -31,10 +31,11 @@ repository declaration, never a branch prefix or incidental checkout path.
 
 ## Three kinds of work; no Mission for every maintenance question
 
-**Run finalization cleanup** is an EP lifecycle responsibility. For its own
-completed run, EP reconciles delivery and conditionally cleans only its owned
-branch/worktree. No Forge Mission, project-wide scan or semantic model is needed.
-A cleanup warning must not overwrite proven delivery or fabricate a failed run.
+**Run finalization cleanup** is an EP lifecycle responsibility. After proven
+delivery within its own run, EP conditionally cleans only its owned resources
+under the run's valid coordinating lease. No Forge Mission, project-wide scan
+or semantic model is needed. A cleanup warning must not overwrite proven
+delivery or fabricate a failed run.
 
 **Project hygiene** is a bounded Forge application operation/case. Requests such
 as “what remains on this old branch?” or “inspect stale branches” resolve to
@@ -164,10 +165,12 @@ EP owns the actual decision at the side-effect boundary. Its
 [owning contract](https://github.com/pcvantol/engineering-platform/blob/main/docs/engineering/REPOSITORY_HYGIENE_AND_SAFE_CLEANUP.md)
 requires all applicable gates together: authenticated scoped actor/delegation,
 permitted operation, current expected ref/worktree state, verified ownership or
-explicit approved adoption, no active owner/PR/run/lease, protected-ref policy,
-retention checks, current repository facts and retained recovery evidence where
-required. Analysis authority, scan permission and provider push access are not
-delete authority.
+explicit approved adoption, no conflicting active owner/PR/run/lease,
+protected-ref policy, retention checks, current repository facts and retained
+recovery evidence where required. Analysis authority, scan permission and
+provider push access are not delete authority. The EP finalizer's own valid
+coordination lease is not a conflicting owner; it remains held through cleanup.
+A separate maintenance operation cannot borrow another run's lease/privileges.
 
 Separate local ref deletion, remote ref deletion and owned worktree removal.
 A request freezes the exact set and expected object IDs plus proposal/evidence/
