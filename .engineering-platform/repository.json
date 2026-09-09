@@ -11,6 +11,6 @@
   "validation": {
     "kind": "script",
     "entrypoint": "bash scripts/validate.sh",
-    "description": "Forge repository and architecture contract validation"
+    "description": "Forge repository and product contract validation"
   }
 }
