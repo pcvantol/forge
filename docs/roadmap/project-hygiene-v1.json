@@ -1,0 +1,23 @@
+{
+  "document_kind": "ARCHITECTURE_ROADMAP_DAG",
+  "schema_version": "1.0",
+  "increment_id": "PROJECT_HYGIENE_AND_REPOSITORY_RECONCILIATION_V1",
+  "execution_authority": false,
+  "runtime_configuration": false,
+  "implementation_status": "PLANNED",
+  "semantic_contract": "docs/architecture/PROJECT_HYGIENE_AND_REPOSITORY_RECONCILIATION.md",
+  "parent_roadmap": "knowledge/bootstrap/10_ROADMAP.md",
+  "first_canary_blocker": false,
+  "nodes": [
+    {"id": "HY-0", "owners": ["forge", "engineering-platform", "workspace", "forge-platform"], "kind": "documentation", "depends_on": [], "status": "DOCUMENTATION_ONLY"},
+    {"id": "HY-E", "owners": ["engineering-platform"], "kind": "observation_contract", "depends_on": ["HY-0"], "status": "PLANNED"},
+    {"id": "HY-F", "owners": ["forge"], "kind": "implementation", "depends_on": ["HY-E"], "status": "PLANNED"},
+    {"id": "HY-S", "owners": ["forge"], "kind": "implementation", "depends_on": ["HY-F"], "status": "PLANNED"},
+    {"id": "HY-C", "owners": ["engineering-platform"], "kind": "maintenance_execution", "depends_on": ["HY-E"], "status": "PLANNED"},
+    {"id": "HY-Q", "owners": ["forge", "engineering-platform"], "kind": "qualification", "depends_on": ["HY-F", "HY-S", "HY-C"], "status": "PLANNED"},
+    {"id": "HY-WC", "owners": ["workspace"], "kind": "consumer_contract", "depends_on": ["HY-0"], "status": "PLANNED"},
+    {"id": "HY-WO", "owners": ["workspace"], "kind": "read_only_ui", "depends_on": ["HY-WC", "HY-F"], "status": "PLANNED"},
+    {"id": "HY-WM", "owners": ["workspace"], "kind": "governed_mutation_ui", "depends_on": ["HY-WO", "HY-Q"], "status": "PLANNED"},
+    {"id": "HY-P", "owners": ["forge-platform"], "kind": "composition_qualification", "depends_on": ["HY-Q"], "status": "PLANNED"}
+  ]
+}
