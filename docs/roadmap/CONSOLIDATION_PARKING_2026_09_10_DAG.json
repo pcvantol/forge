@@ -58,8 +58,9 @@
     {"id":"F-RELEASE61","disposition":"RESOLVED_NO_UNIQUE_RESIDUAL","depends_on":["F-LOCAL"],"acceptance":"Semantic comparison found no unique residual"},
     {"id":"F-CLEANUP","disposition":"COMPLETE","depends_on":["F-PRODUCTIZATION","F-RELEASE61"],"acceptance":"Authorized auxiliary worktree and branch cleanup complete"},
     {"id":"F-LOCAL-MAIN","disposition":"COMPLETE","depends_on":["F-LOCAL"],"acceptance":"Local main equals origin/main before and after protected documentation delivery"},
+    {"id":"F-PEER-CONFIG","disposition":"SOURCE_DELIVERED_QUALIFIED_CONFIGURATION_NOT_PERFORMED","depends_on":[],"acceptance":"Durable secret-free EP binding, Keychain resolution, shared existing-adapter factory and read-only v1.2 compatibility preflight are source-qualified on isolated fixtures; no installed peer, Mission, grant or submission is created"},
     {"id":"F-CONSUMER","disposition":"PARKED","depends_on":["E-PRODUCER"],"acceptance":"Minimum compatible installed producer and exact immutable terminal evidence; readiness audit determines the required capability"},
-    {"id":"F-E2E","disposition":"PARKED_ORIGINAL_GOAL","depends_on":["F-CONSUMER"],"acceptance":"Approved Mission; Forge-derived A; EP executes A; Forge reconciles A; durable restart/reopen; Forge-derived successor B without owner relay; EP executes B; evidence-derived Mission COMPLETE"},
+    {"id":"F-E2E","disposition":"PARKED_ORIGINAL_GOAL","depends_on":["F-PEER-CONFIG","F-CONSUMER"],"acceptance":"Approved Mission; Forge-derived A; EP executes A; Forge reconciles A; durable restart/reopen; Forge-derived successor B without owner relay; EP executes B; evidence-derived Mission COMPLETE"},
     {"id":"F-LATER","disposition":"PARKED","depends_on":[],"acceptance":"Retain existing Living Mission Graph, outer loop, learning, policy, release, hygiene and optimization roadmaps without blanket first-E2E gates"}
   ]
 }

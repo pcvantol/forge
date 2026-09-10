@@ -115,12 +115,17 @@ class ExecutionRequest:
     retry_of_correlation_id: str | None = None
     original_correlation_id: str | None = None
     producer_contract: ProducerContract | None = None
+    repository_identity: str | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.mission_id, self.intent_id, self.intent_revision,
                     self.action_id, self.workspace_id, self.repository_id,
                     self.correlation_id, self.dispatched_at)):
             raise ValueError("execution request identity, context, correlation, and dispatch time are required")
+        if self.repository_identity is None:
+            object.__setattr__(self, "repository_identity", self.repository_id)
+        elif not isinstance(self.repository_identity, str) or not self.repository_identity:
+            raise ValueError("execution request repository identity binding is invalid")
         prompt_identity = (
             getattr(self.runtime_prompt, "source_intent_id", getattr(self.runtime_prompt, "intent_id", None)),
             getattr(self.runtime_prompt, "source_intent_revision", getattr(self.runtime_prompt, "intent_revision", None)),

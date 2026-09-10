@@ -3,89 +3,17 @@
 This module deliberately cannot invoke a provider or retain secret material.
 """
 from dataclasses import dataclass
-from enum import Enum
 from hashlib import sha256
-from typing import Protocol, Callable
 import json
-import re
-import subprocess
 import uuid
-from urllib.parse import urlparse, parse_qsl, urlencode
 from .operator_identity import InstallationOperatorService, OperatorContext
 from .runtime.database import _timestamp
-
-class SecretState(str, Enum):
-    RESOLVABLE='RESOLVABLE'; MISSING='MISSING'; REVOKED='REVOKED'; ROTATED_INVALID='ROTATED_INVALID'; STORE_UNAVAILABLE='STORE_UNAVAILABLE'; INVALID_REFERENCE='INVALID_REFERENCE'; ACCESS_DENIED='ACCESS_DENIED'
-
-@dataclass(frozen=True)
-class SecretReference:
-    scheme: str
-    identifier: str
-    def __post_init__(self):
-        self.validate()
-        object.__setattr__(self, 'identifier', self._canonical_identifier())
-    def validate(self):
-        try:
-            if self.scheme != 'keychain' or not isinstance(self.identifier,str) or not self.identifier or len(self.identifier) > 512:
-                raise ValueError
-            if any(ord(char) < 32 for char in self.identifier) or '%' in self.identifier:
-                raise ValueError
-            parsed=urlparse(self.identifier)
-            if parsed.scheme or parsed.username or parsed.password or parsed.port or parsed.fragment or not parsed.netloc:
-                raise ValueError
-            parts=parsed.path.split('/')
-            if len(parts) != 2 or not parts[1] or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',parsed.netloc) or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',parts[1]):
-                raise ValueError
-            query=parse_qsl(parsed.query,keep_blank_values=True,strict_parsing=True)
-            if len(query) != len({key for key,_ in query}) or any(key not in {'namespace','version'} or not re.fullmatch(r'[A-Za-z0-9._-]{1,128}',value) for key,value in query):
-                raise ValueError
-        except (UnicodeError, ValueError):
-            raise ValueError('invalid secret reference') from None
-    def _canonical_identifier(self):
-        parsed=urlparse(self.identifier)
-        query=dict(parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True))
-        suffix=urlencode([(key, query[key]) for key in ('namespace','version') if key in query])
-        return f'//{parsed.netloc}/{parsed.path[1:]}' + (f'?{suffix}' if suffix else '')
-    @property
-    def fingerprint(self): return 'sha256:' + sha256(self.serialized.encode()).hexdigest()
-    @property
-    def serialized(self): return f'{self.scheme}:{self.identifier}'
-    @classmethod
-    def parse(cls, value):
-        scheme, identifier = value.split(':', 1)
-        return cls(scheme, identifier)
-
-class SecureStorePort(Protocol):
-    def status(self, reference: SecretReference) -> SecretState: ...
-
-class MacOSKeychainSecureStoreAdapter:
-    """Explicit-reference-only adapter; it never enumerates Keychain items."""
-    executable = '/usr/bin/security'
-    def __init__(self, runner: Callable[..., object] = subprocess.run, timeout: float = 5.0):
-        self._runner, self._timeout = runner, timeout
-    @staticmethod
-    def _parts(reference: SecretReference):
-        reference.validate()
-        if reference.scheme != 'keychain': raise ValueError('unexpected secure-store scheme')
-        parsed=urlparse(reference.identifier)
-        if parsed.scheme or not parsed.netloc: raise ValueError('invalid keychain reference')
-        path=[parsed.netloc, *[item for item in parsed.path.split('/') if item]]
-        query=parse_qsl(parsed.query, keep_blank_values=True)
-        if len(path) != 2 or not all(path) or len(query) != len(set(query)) or any(k not in {'namespace','version'} or not v for k,v in query):
-            raise ValueError('invalid keychain reference')
-        return path[0], path[1]
-    def resolve(self, reference: SecretReference) -> tuple[SecretState, str | None]:
-        try: service, account = self._parts(reference)
-        except ValueError: return SecretState.INVALID_REFERENCE, None
-        try:
-            result=self._runner([self.executable, 'find-generic-password', '-s', service, '-a', account, '-w'], capture_output=True, text=True, timeout=self._timeout, check=False)
-        except (OSError, subprocess.TimeoutExpired): return SecretState.STORE_UNAVAILABLE, None
-        if result.returncode == 0: return SecretState.RESOLVABLE, result.stdout.rstrip('\n')
-        error=(result.stderr or '').lower()
-        if 'could not be found' in error or 'item not found' in error: return SecretState.MISSING, None
-        if 'not allowed' in error or 'user interaction is not allowed' in error: return SecretState.ACCESS_DENIED, None
-        return SecretState.STORE_UNAVAILABLE, None
-    def status(self, reference): return self.resolve(reference)[0]
+from .secure_store import (
+    MacOSKeychainSecureStoreAdapter,
+    SecretReference,
+    SecretState,
+    SecureStorePort,
+)
 
 @dataclass(frozen=True)
 class ProviderSecurityHealth:

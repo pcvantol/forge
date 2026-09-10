@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/schemas/engineering-platform-peer-configuration-1.0.schema.json",
+  "title": "Forge Engineering Platform peer configuration 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "binding_id",
+    "configuration_revision",
+    "configuration_digest",
+    "owning_forge_runtime_id",
+    "peer_product",
+    "endpoint",
+    "expected_ep_instance_id",
+    "execution_host_id",
+    "ep_project_id",
+    "ep_repository_id",
+    "repository_identity",
+    "producer_readback_contract",
+    "terminal_evidence_contract",
+    "credential_reference",
+    "allow_loopback_http",
+    "timeout_seconds",
+    "created_at",
+    "created_by",
+    "updated_at",
+    "updated_by"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "binding_id": {"$ref": "#/$defs/identity"},
+    "configuration_revision": {"type": "integer", "minimum": 1},
+    "configuration_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "owning_forge_runtime_id": {"$ref": "#/$defs/identity"},
+    "peer_product": {"const": "engineering-platform"},
+    "endpoint": {"type": "string", "format": "uri"},
+    "expected_ep_instance_id": {"$ref": "#/$defs/identity"},
+    "execution_host_id": {"$ref": "#/$defs/identity"},
+    "ep_project_id": {"$ref": "#/$defs/identity"},
+    "ep_repository_id": {"$ref": "#/$defs/identity"},
+    "repository_identity": {"$ref": "#/$defs/identity"},
+    "producer_readback_contract": {"const": "1.2"},
+    "terminal_evidence_contract": {"const": "1.2"},
+    "credential_reference": {
+      "type": "string",
+      "pattern": "^keychain://[A-Za-z0-9._-]{1,128}/[A-Za-z0-9._-]{1,128}(\\?(namespace|version)=[A-Za-z0-9._-]{1,128}(&(namespace|version)=[A-Za-z0-9._-]{1,128})?)?$"
+    },
+    "allow_loopback_http": {"type": "boolean"},
+    "timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 60},
+    "created_at": {"type": "string", "format": "date-time"},
+    "created_by": {"$ref": "#/$defs/identity"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "updated_by": {"$ref": "#/$defs/identity"}
+  },
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.4.1",
+  "classification_rationale": "FORGE_DURABLE_EP_PEER_CONFIGURATION_V1",
+  "component": "product",
+  "event_lineage": "FORGE_DURABLE_EP_PEER_CONFIGURATION_V1",
+  "expected_head": "6902f667baac4fc9584a11bf669128077c7344fa",
+  "operation_id": "FORGE_DURABLE_EP_PEER_CONFIGURATION_V1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.5.0"
+}

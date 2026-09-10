@@ -3,17 +3,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 from forge.models import Producer, ProducerContract, ProducerIdentity, RuntimePrompt, RuntimePromptEnvelope, RuntimePromptSection, RuntimePromptSectionKind, ProviderPromptDefinition
 from forge.models.execution_host import ExecutionRequest
 from forge.models import ExecutionDispatch, ExecutionEvidenceOutcome
 from forge.runtime.database import RuntimeDatabase
-from forge.scheduler.ep_http_adapter import EngineeringPlatformHttpConfiguration, EngineeringPlatformHttpExecutionHost
+from forge.scheduler.ep_http_adapter import (
+    EngineeringPlatformHttpConfiguration,
+    EngineeringPlatformHttpExecutionHost,
+    _NoRedirectHandler,
+)
 
 
 FIXTURES = Path(__file__).with_name("fixtures")
@@ -47,8 +52,15 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = TemporaryDirectory()
         self.database = RuntimeDatabase(".", path=Path(self.temporary.name) / "runtime.db", forge_version="test")
-        self.config = EngineeringPlatformHttpConfiguration("https://ep.test", "forge", "credential")
+        self.config = EngineeringPlatformHttpConfiguration(
+            "https://ep.test", "forge", "credential",
+            expected_instance_id="instance-fixture", repository_id="forge", repository_identity="forge",
+            peer_binding_id="ep-primary", peer_configuration_revision=1,
+            peer_configuration_digest="sha256:" + "d" * 64,
+        )
         self.request = _request()
+        self.compatible = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
+            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.2"]}}
         self.readback = json.loads((FIXTURES / "forge-producer-readback-v1.1.json").read_text())
         self.readback["contract_version"] = "1.2"
         self.readback["disposition"] = {"state": "QUEUED", "terminal": False, "execution_eligible": True,
@@ -65,6 +77,12 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.database.close(); self.temporary.cleanup()
 
+    def _seed_binding(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        host._binding(self.request)
+        self.database.save_execution_host_binding(self.request.correlation_id,
+            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"})
+
     @staticmethod
     def _urlopen(responses: list[bytes], observed: list[object]):
         def call(request, *, timeout):
@@ -75,17 +93,16 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
     def test_accepted_submission_recovers_after_reopen_without_process_memory(self) -> None:
         waiting = {**self.readback, "run": None}
         observed: list[object] = []
-        compatible = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
-            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.2"]}}
-        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([
-            json.dumps(compatible).encode(), json.dumps({"submission_id": "submission-fixture"}).encode(), json.dumps(waiting).encode()], observed)):
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+            json.dumps(self.compatible).encode(), json.dumps({"submission_id": "submission-fixture"}).encode(), json.dumps(waiting).encode()], observed)):
             host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
             self.assertIsNone(host.dispatch(self.request))
         self.assertEqual(self.database.execution_host_binding(self.request.correlation_id)["submission_id"], "submission-fixture")
         self.database.close()
         self.database = RuntimeDatabase(".", path=Path(self.temporary.name) / "runtime.db", forge_version="test")
         observed = []
-        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(self.readback).encode()], observed)):
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(self.readback).encode()], observed)):
             dispatch = EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
         self.assertEqual(dispatch.host_run_id, "run-fixture")
         self.assertEqual(observed[0].get_header("Authorization"), "Bearer credential")
@@ -94,43 +111,102 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         legacy = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
             "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.1"], "terminal_evidence": ["1.1"]}}
         observed: list[object] = []
-        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(legacy).encode()], observed)):
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(legacy).encode()], observed)):
             with self.assertRaisesRegex(ValueError, "INCOMPATIBLE"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).dispatch(self.request)
         self.assertEqual(observed[0].get_method(), "GET")
 
+    def test_preflight_enforces_exact_product_instance_and_declaration_schema(self) -> None:
+        cases = (
+            ("EP_INSTANCE_IDENTITY_MISMATCH", {**self.compatible, "instance": {"id": "other-instance"}}),
+            ("MALFORMED", {**self.compatible, "producer": {"id": "other-product", "version": "1"}}),
+            ("MALFORMED", {**self.compatible, "unexpected": True}),
+        )
+        for error, declaration in cases:
+            with self.subTest(error=error):
+                observed: list[object] = []
+                with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], observed)):
+                    with self.assertRaisesRegex(ValueError, error):
+                        EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
+                self.assertEqual([request.get_method() for request in observed], ["GET"])
+
+    def test_preflight_authentication_rejection_is_safe_and_never_posts(self) -> None:
+        rejected = HTTPError("https://ep.test/v1/producer-compatibility", 401, "denied", {}, None)
+        with patch("forge.scheduler.ep_http_adapter._open", side_effect=rejected) as transport:
+            with self.assertRaisesRegex(ValueError, "401") as error:
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
+        self.assertNotIn("credential", str(error.exception))
+        self.assertEqual(transport.call_args.args[0].get_method(), "GET")
+
+    def test_redirects_and_header_injection_are_rejected(self) -> None:
+        self.assertIsNone(_NoRedirectHandler().redirect_request(None, None, 302, "redirect", {}, "https://other.test"))
+        with self.assertRaisesRegex(ValueError, "configuration"):
+            EngineeringPlatformHttpExecutionHost(
+                replace(self.config, bearer_token="credential\r\nInjected: value"), self.database,
+            )
+
+    def test_request_scope_mismatch_blocks_before_network_or_submission(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        for request in (
+            replace(self.request, host_id="other-host"),
+            replace(self.request, repository_id="other-repository"),
+            replace(self.request, repository_identity="other-source"),
+        ):
+            with self.subTest(request=request):
+                with patch("forge.scheduler.ep_http_adapter._open") as transport:
+                    with self.assertRaisesRegex(ValueError, "SCOPE_MISMATCH"):
+                        host.dispatch(request)
+                transport.assert_not_called()
+
+    def test_correlation_cannot_be_retargeted_and_historical_binding_fails_closed(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        host._binding(self.request)
+        changed = replace(self.config, peer_configuration_revision=2,
+                          peer_configuration_digest="sha256:" + "e" * 64)
+        with patch("forge.scheduler.ep_http_adapter._open") as transport:
+            with self.assertRaisesRegex(ValueError, "RETARGETING_BLOCKED"):
+                EngineeringPlatformHttpExecutionHost(changed, self.database).dispatch(self.request)
+        transport.assert_not_called()
+
+        self.database._connection.execute("DELETE FROM execution_host_bindings")
+        self.database.save_execution_host_binding(
+            self.request.correlation_id,
+            {"correlation_id": self.request.correlation_id, "submission_id": "historic-submission"},
+        )
+        with self.assertRaisesRegex(ValueError, "HISTORICAL_BINDING"):
+            host.recover_dispatch(self.request)
+
     def test_valid_hash_from_another_run_is_rejected_after_raw_artifact_fetch(self) -> None:
-        self.database.save_execution_host_binding(self.request.correlation_id,
-            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"})
+        self._seed_binding()
         substituted = json.loads(self.artifact)
         substituted["run"]["id"] = "other-run"
         raw = json.dumps(substituted, sort_keys=True, separators=(",", ":")).encode() + b"\n"
         readback = json.loads(json.dumps(self.readback))
         readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
         observed: list[object] = []
-        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(readback).encode(), raw], observed)):
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], observed)):
             with self.assertRaisesRegex(ValueError, "artifact"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture"))
-        self.assertEqual(len(observed), 2, "the adapter must fetch and hash real artifact bytes before rejecting it")
+        self.assertEqual(len(observed), 3, "the adapter must preflight, fetch and hash real artifact bytes before rejecting it")
 
     def test_existing_dispatch_with_a_different_run_is_an_identity_error(self) -> None:
-        self.database.save_execution_host_binding(self.request.correlation_id,
-            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"})
+        self._seed_binding()
         changed = json.loads(json.dumps(self.readback)); changed["run"]["id"] = "other-run"
-        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(changed).encode()], [])):
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(changed).encode()], [])):
             with self.assertRaisesRegex(ValueError, "conflicts"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
 
     def test_configuration_and_transport_fail_closed_without_persisted_authority(self) -> None:
         with self.assertRaisesRegex(ValueError, "configuration"):
             EngineeringPlatformHttpExecutionHost(EngineeringPlatformHttpConfiguration("", "forge", "credential"), self.database)
-        with patch("forge.scheduler.ep_http_adapter.urlopen", side_effect=URLError("offline")):
+        with patch("forge.scheduler.ep_http_adapter._open", side_effect=URLError("offline")):
             with self.assertRaisesRegex(Exception, "transport unavailable"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database)._json("/v1/projects/forge/submissions")
 
     def test_failed_terminal_evidence_without_delivery_revision_is_preserved(self) -> None:
-        self.database.save_execution_host_binding(self.request.correlation_id,
-            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"})
+        self._seed_binding()
         artifact = json.loads(self.artifact)
         artifact["run"].update({"outcome": "FAILED", "delivery_qualified": False})
         artifact["report"]["terminal_state"] = "FAILED"
@@ -141,17 +217,18 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         readback["run"].update({"state": "FAILED"})
         readback["evidence"]["repository"]["revision"] = None
         readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
-        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(readback).encode(), raw], [])):
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
             evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture"))
         self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.FAILED)
         self.assertIsNone(evidence.repository_evidence.repository_revision)
 
     def _terminal_retrieval(self, readback: dict, artifact: dict):
-        self.database.save_execution_host_binding(self.request.correlation_id,
-            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"})
+        self._seed_binding()
         raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
         readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
-        with patch("forge.scheduler.ep_http_adapter.urlopen", self._urlopen([json.dumps(readback).encode(), raw], [])):
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
             return EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture"))
 
     def test_terminal_outcome_qualification_digest_and_flags_must_have_parity(self) -> None:

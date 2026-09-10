@@ -12,7 +12,7 @@ from forge.action_derivation_canary_closure import CanonicalActionDerivationCana
 from forge.action_derivation_qualification import CanonicalActionDerivationQualificationService
 from forge.governance_authority import CanonicalGovernanceRepository
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
-from forge.runtime import RuntimeDatabase, RuntimeDatabaseError, RuntimeIntegrityError
+from forge.runtime import RUNTIME_SCHEMA_VERSION, RuntimeDatabase, RuntimeDatabaseError, RuntimeIntegrityError
 
 
 class ActionDerivationCanaryClosureTests(unittest.TestCase):
@@ -192,7 +192,7 @@ class ActionDerivationCanaryClosureTests(unittest.TestCase):
     def test_schema30_migrates_the_bounded_closure_store_before_reopen(self) -> None:
         path = self._schema30_fixture()
         self.db = RuntimeDatabase(Path(self.directory.name), path=path, forge_version="test")
-        self.assertEqual(self.db.metadata["schema_version"], "32")
+        self.assertEqual(self.db.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         tables = {row["name"] for row in self.db._connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         triggers = {row["name"] for row in self.db._connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
         self.assertIn("action_derivation_canary_closures", tables)
