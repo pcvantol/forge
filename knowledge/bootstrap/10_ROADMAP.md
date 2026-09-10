@@ -117,6 +117,13 @@ previously absent B without rewriting A, survive restart with B current, and
 complete only from explicit per-criterion evidence. This is source
 qualification, not the live Forge→EP canary.
 
+Dynamic successor containment additionally requires B (and every later
+provider-derived successor) to carry an immutable current-snapshot binding to
+an `UNSATISFIED` approved Mission criterion or to a causally evidenced blocker
+created by current Mission work. Same-repository optional improvements remain
+follow-up rather than executable Mission work. No general autonomous
+progression budget exists yet; that is separate non-canary hardening.
+
 Forge owns the active Intent/Action dependency graph inside an approved Mission. After each terminal EP result it reconciles evidence, refreshes Project Context, evaluates Mission success criteria, and may add, split, supersede, reorder or retire not-yet-materialized work. A materialized/submitted Action remains immutable.
 
 The first real qualification must prove:

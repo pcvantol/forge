@@ -67,6 +67,15 @@ EngineeringAction
 
 A planned node may change before materialization. Once an Action is materialized for submission, its execution identity, target, objective, dependency snapshot and expected evidence are immutable. New evidence creates a new/revised successor Action or graph edge; Forge never rewrites historical execution identity.
 
+A newly derived successor is not Mission work merely because its repository,
+scope or write scope is allowed. Before materialization it must bind to at
+least one currently unsatisfied approved Mission criterion, or to a technical
+blocker directly caused by current Mission Action history and supported by
+current causal evidence. The append-only derivation record retains that exact
+criterion/blocker, planning-snapshot, evidence and objective binding. Unknown,
+already-proven, stale, optional or Mission-expanding work fails closed and is
+not released as an executable node.
+
 `UNMATERIALIZED_PLAN_MAY_CHANGE = TRUE`
 `MATERIALIZED_ACTION_IS_IMMUTABLE = TRUE`
 

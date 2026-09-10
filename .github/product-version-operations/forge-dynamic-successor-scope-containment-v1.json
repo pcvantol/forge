@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.4.0",
+  "classification_rationale": "FORGE_DYNAMIC_SUCCESSOR_SCOPE_CONTAINMENT_V1",
+  "component": "product",
+  "event_lineage": "FORGE_DYNAMIC_SUCCESSOR_SCOPE_CONTAINMENT_V1",
+  "expected_head": "c37fb64403aacab7b5f2a23c101578737400033d",
+  "operation_id": "forge-dynamic-successor-scope-containment-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.4.1"
+}

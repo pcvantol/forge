@@ -14,14 +14,68 @@ from hashlib import sha256
 import json
 from typing import Any
 
+from .mission_completion import MissionCriterionEvaluationStatus, mission_criterion_id
 from .mission_planner import MissionPlannerInput, PlanningEvidence
 
 
-ACTION_DERIVATION_SCHEMA_VERSION = "1.0"
+ACTION_DERIVATION_SCHEMA_VERSION = "1.1"
 
 
 def _digest(value: object) -> str:
     return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+
+@dataclass(frozen=True)
+class MissionCriterionSnapshot:
+    """One approved criterion and its Forge-derived status in this snapshot."""
+
+    criterion_id: str
+    criterion: str
+    status: MissionCriterionEvaluationStatus
+
+    def __post_init__(self) -> None:
+        if not self.criterion_id or not self.criterion:
+            raise ValueError("Mission criterion snapshot requires identity and criterion")
+
+    def to_dict(self) -> dict[str, str]:
+        return {"criterion_id": self.criterion_id, "criterion": self.criterion,
+                "status": self.status.value}
+
+
+class MissionGapClassification(str, Enum):
+    UNPROVEN_MISSION_CRITERION = "UNPROVEN_MISSION_CRITERION"
+    MISSION_CAUSED_BLOCKER = "MISSION_CAUSED_BLOCKER"
+
+
+@dataclass(frozen=True)
+class MissionGapBinding:
+    """Immutable claim connecting proposed work to current Mission necessity."""
+
+    classification: MissionGapClassification
+    criterion_ids: tuple[str, ...]
+    triggering_evidence_refs: tuple[str, ...]
+    planning_snapshot_digest: str
+    causal_objective: str
+    mission_caused_by_action_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.classification, MissionGapClassification):
+            raise ValueError("Mission-gap binding classification is invalid")
+        if not self.triggering_evidence_refs or not self.planning_snapshot_digest or not self.causal_objective:
+            raise ValueError("Mission-gap binding requires current evidence, snapshot, and causal objective")
+        for name in ("criterion_ids", "triggering_evidence_refs", "mission_caused_by_action_ids"):
+            values = getattr(self, name)
+            if len(values) != len(set(values)) or any(not item for item in values):
+                raise ValueError(f"Mission-gap binding {name} must be unique and non-empty when supplied")
+            object.__setattr__(self, name, tuple(sorted(values)))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"classification": self.classification.value,
+                "criterion_ids": list(self.criterion_ids),
+                "triggering_evidence_refs": list(self.triggering_evidence_refs),
+                "planning_snapshot_digest": self.planning_snapshot_digest,
+                "causal_objective": self.causal_objective,
+                "mission_caused_by_action_ids": list(self.mission_caused_by_action_ids)}
 
 
 @dataclass(frozen=True)
@@ -34,6 +88,7 @@ class PlanningSnapshot:
     mission_digest: str
     mission_state_digest: str
     evidence: tuple[PlanningEvidence, ...]
+    criteria: tuple[MissionCriterionSnapshot, ...]
     digest: str
     schema_version: str = ACTION_DERIVATION_SCHEMA_VERSION
 
@@ -41,6 +96,14 @@ class PlanningSnapshot:
     def from_planner_input(cls, planning_input: MissionPlannerInput) -> "PlanningSnapshot":
         mission_digest = _digest(planning_input.mission.to_dict())
         state_digest = _digest(asdict(planning_input.mission_state))
+        explicit_states = {item.criterion_id: item.status for item in planning_input.mission_state.criterion_states}
+        criteria = tuple(MissionCriterionSnapshot(
+            mission_criterion_id(planning_input.mission.id, criterion), criterion,
+            explicit_states.get(
+                mission_criterion_id(planning_input.mission.id, criterion),
+                MissionCriterionEvaluationStatus.UNSATISFIED,
+            ),
+        ) for criterion in planning_input.mission.acceptance_criteria)
         document = {
             "schema_version": ACTION_DERIVATION_SCHEMA_VERSION,
             "mission_id": planning_input.mission.id,
@@ -48,11 +111,12 @@ class PlanningSnapshot:
             "mission_digest": mission_digest,
             "mission_state_digest": state_digest,
             "evidence": [item.to_dict() for item in planning_input.evidence],
+            "criteria": [item.to_dict() for item in criteria],
         }
         digest = _digest(document)
         return cls(f"planning-snapshot-{digest[7:23]}", planning_input.mission.id,
                    planning_input.mission_state.revision, mission_digest, state_digest,
-                   planning_input.evidence, digest)
+                   planning_input.evidence, criteria, digest)
 
     def is_current_for(self, planning_input: MissionPlannerInput) -> bool:
         return self == self.from_planner_input(planning_input)
@@ -61,7 +125,8 @@ class PlanningSnapshot:
         return {"schema_version": self.schema_version, "id": self.id, "mission_id": self.mission_id,
                 "mission_revision": self.mission_revision, "mission_digest": self.mission_digest,
                 "mission_state_digest": self.mission_state_digest,
-                "evidence": [item.to_dict() for item in self.evidence], "digest": self.digest}
+                "evidence": [item.to_dict() for item in self.evidence],
+                "criteria": [item.to_dict() for item in self.criteria], "digest": self.digest}
 
 
 @dataclass(frozen=True)
@@ -98,6 +163,7 @@ class DerivedActionProposal:
     human_gates: tuple[str, ...]
     risk_inputs: tuple[str, ...]
     provenance: ProposalProvenance
+    mission_gap: MissionGapBinding | None = None
 
     def __post_init__(self) -> None:
         if not all((self.logical_action_id, self.scope, self.objective, self.expected_evidence, self.validation_strategy, self.priority >= 1)):
@@ -117,7 +183,8 @@ class DerivedActionProposal:
                         "write_scopes": self.write_scopes, "expected_evidence": self.expected_evidence,
                         "validation_strategy": self.validation_strategy, "priority": self.priority,
                         "postponed": self.postponed, "human_gates": self.human_gates,
-                        "risk_inputs": self.risk_inputs})
+                        "risk_inputs": self.risk_inputs,
+                        "mission_gap": None if self.mission_gap is None else self.mission_gap.to_dict()})
 
 
 def classify_replan_identity(previous: DerivedActionProposal | None, current: DerivedActionProposal,

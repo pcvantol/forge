@@ -75,6 +75,38 @@ evidence-triggered successor derivation, immutable completed history, durable
 restart before the successor, and evidence-derived completion. It makes no
 claim that the live Forge→EP canary has run.
 
+## Dynamic-successor Mission containment
+
+A provider-derived successor is executable only when its immutable derivation
+record binds the Action to current Mission necessity. `UNPROVEN_MISSION_CRITERION`
+names at least one approved criterion whose current Forge evaluation is
+`UNSATISFIED`. `MISSION_CAUSED_BLOCKER` instead names the already materialized
+Mission Action that caused a technical blocker and current causal Repository
+Truth or Execution Evidence. Both classifications bind the exact planning
+snapshot, triggering evidence references and the proposed Action objective.
+
+Forge rejects the successor before materialization when the criterion is
+unknown or already `PROVEN`, the binding or causal evidence is absent/stale,
+the objective does not match the declared gap, or the blocker does not trace to
+current Mission Action history. Existing scope, write-scope, human-gate and risk
+validation remains cumulative. Work that is attractive but not required by an
+unmet criterion or Mission-caused blocker receives the non-executing
+`FOLLOW_UP_NOT_CURRENT_MISSION` disposition. Being inside the repository or
+write scope is never sufficient Mission membership.
+
+The binding cannot add or alter the Mission objective, approved scope,
+acceptance criteria, required capabilities, governance constraints or write
+authority. A need outside that immutable envelope follows existing governance
+refinement/waiting semantics and does not become an Action.
+
+`SUCCESSOR_HAS_MISSION_GAP_BINDING = TRUE`
+
+No Mission/action-count progression budget exists in the current Forge
+planning policy. The repair budget and maximum-parallel-action constraint are
+different controls and are not generalized here.
+
+`AUTONOMOUS_PROGRESSION_BUDGET = SEPARATE_NON_CANARY_HARDENING`
+
 ## Blocking, governance pause, and resume
 
 `BLOCKED` and `FAILED` are deterministic pauses. The unresolved Action remains
