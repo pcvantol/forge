@@ -5,23 +5,61 @@
   "execution_authorized": false,
   "scope": "Consolidation and parked evidence dependencies, not a replacement execution DAG",
   "observed_date": "2026-09-10",
-  "base_main": "847b552c1c9d4824a2b57bca96a28d4bc851cc09",
-  "local_inventory": "USER_REPORTED_PARTIAL_NO_DIRECT_HOST_ACCESS",
+  "base_main": "1ce16bf44585be7c8a84b8e3e54c9671ff83d0ab",
+  "local_inventory": "USER_REPORTED_AND_LOCAL_READBACK_CLEANUP_COMPLETE",
+  "cleanup_evidence": {
+    "baseline_worktrees": 1,
+    "local_feature_branches": 0,
+    "unpreserved_wip": 0
+  },
   "owner_graphs": {
     "engineering-platform": "https://github.com/pcvantol/engineering-platform/blob/main/docs/development/CONSOLIDATION_PARKING_2026_09_10_DAG.json",
     "workspace": "https://github.com/pcvantol/workspace/blob/main/docs/CONSOLIDATION_PARKING_2026_09_10_DAG.json",
     "forge-platform": "https://github.com/pcvantol/forge-platform/blob/main/docs/roadmap/CONSOLIDATION_PARKING_2026_09_10_DAG.json"
   },
-  "external_nodes": [{"id":"E-PRODUCER","owner":"pcvantol/engineering-platform","evidence":"UNVERIFIED","meaning":"Actual compatible installed producer and assurance, not all installer work"}],
+  "owner_documentation_merges": {
+    "engineering-platform": "264f2a2c12224c83b79919add782b93db74fcfac",
+    "workspace": "f220f61ce214416287d6c696d63642dbe0e7d2a7",
+    "forge-platform": "cb6a10a4ffca90e2b689af62349da2075fe47a77"
+  },
+  "external_nodes": [
+    {"id":"E-PRODUCER","owner":"pcvantol/engineering-platform","disposition":"PARKED","evidence":"CAPABILITY_UNVERIFIED","meaning":"Only the actually required compatible installed producer capability; not all of 175 or the installer programme"}
+  ],
+  "original_forge_e2e_finish_line": [
+    "approved Mission",
+    "Forge derives Action A",
+    "EP executes A",
+    "Forge reconciles A",
+    "Forge restart/reopen from durable state",
+    "Forge derives successor B without owner relay",
+    "EP executes B",
+    "evidence-derived Mission COMPLETE"
+  ],
+  "forge_e2e_forbidden_dependencies": [
+    "FP-INSTALLER",
+    "W-CONTROL-PLANE",
+    "W-POLICY-HYGIENE",
+    "E-LATER",
+    "subagent optimization",
+    "full repository cleanup"
+  ],
+  "cross_product_validation": {
+    "node_ids_unique_in_intended_namespace": true,
+    "local_dependencies_resolve": true,
+    "documented_external_references_resolve": true,
+    "acyclic": true,
+    "all_execution_authorized_false": true,
+    "forge_e2e_forbidden_dependencies_absent": true
+  },
   "nodes": [
-    {"id":"F-LOCAL","disposition":"OPEN_EVIDENCE_GAP","depends_on":[],"acceptance":"Exact paths/tips/ignored/stash/lease evidence; reported 13 branches and 12 worktrees retained"},
-    {"id":"F-PRODUCTIZATION","disposition":"PARKED_PRESERVE_AND_ASSESS","depends_on":["F-LOCAL"],"acceptance":"Classify one modified document and eight untracked items against current owning main"},
-    {"id":"F-ORCHESTRATOR","disposition":"PARKED_UNREVIEWED_SOURCE","depends_on":["F-LOCAL"],"acceptance":"Retain three untracked code/test files and .engineering; explicit scope/architecture assessment before any implementation"},
-    {"id":"F-RELEASE61","disposition":"PARKED_RECONCILIATION_REQUIRED","depends_on":["F-LOCAL"],"acceptance":"Per-file proof for closed unmerged PR61; no assumed supersession"},
-    {"id":"F-CLEANUP","disposition":"CONDITIONAL_NO_DELETE_AUTHORITY","depends_on":["F-LOCAL"],"acceptance":"Nine named clean candidates require per-target ownership, complete content, retention and expected-tip checks"},
-    {"id":"F-LOCAL-MAIN","disposition":"FAST_FORWARD_CANDIDATE_NOT_EXECUTED","depends_on":["F-LOCAL"],"acceptance":"Fresh ancestry and worktree/lock checks; preserve dirty primary checkout"},
-    {"id":"F-CONSUMER","disposition":"PARKED","depends_on":["E-PRODUCER"],"acceptance":"Explicit EP v1.2, exact immutable bytes/hash/schema/identities; zero submissions on incompatibility"},
-    {"id":"F-E2E","disposition":"PARKED_ORIGINAL_GOAL","depends_on":["F-CONSUMER"],"acceptance":"Approved Mission, real A, exact evidence, Forge restart, newly derived B without owner relay, evidence-proven COMPLETE"},
-    {"id":"F-LATER","disposition":"PARKED","depends_on":[],"acceptance":"Retain existing detailed roadmap/DAG edges for cross-repo, outer loop, learning, policy and hygiene; no blanket new canary gates"}
+    {"id":"F-LOCAL","disposition":"RESOLVED","depends_on":[],"acceptance":"One baseline worktree, zero local feature branches and zero unpreserved WIP"},
+    {"id":"F-PRODUCTIZATION","disposition":"RESOLVED_SUPERSEDED_OR_PRESENT_ON_MAIN","depends_on":["F-LOCAL"],"acceptance":"Every formerly preserved byte is present on main or superseded by a stronger main implementation; no unique residual"},
+    {"id":"F-ORCHESTRATOR","disposition":"PARKED_REMOTE_UNREVIEWED_SOURCE","depends_on":[],"ref":"parking/2026-09-10/bootstrap-orchestrator-v0","sha":"40fa8b91bc7f0940dfa89ddbf43abb0adfd2e15e","acceptance":"Preserve exact remote source and assess scope/architecture before any future delivery; not an E2E prerequisite"},
+    {"id":"F-RELEASE61","disposition":"RESOLVED_NO_UNIQUE_RESIDUAL","depends_on":["F-LOCAL"],"acceptance":"Semantic comparison found no unique residual"},
+    {"id":"F-CLEANUP","disposition":"COMPLETE","depends_on":["F-PRODUCTIZATION","F-RELEASE61"],"acceptance":"Authorized auxiliary worktree and branch cleanup complete"},
+    {"id":"F-LOCAL-MAIN","disposition":"COMPLETE","depends_on":["F-LOCAL"],"acceptance":"Local main equals origin/main before and after protected documentation delivery"},
+    {"id":"F-CONSUMER","disposition":"PARKED","depends_on":["E-PRODUCER"],"acceptance":"Minimum compatible installed producer and exact immutable terminal evidence; readiness audit determines the required capability"},
+    {"id":"F-E2E","disposition":"PARKED_ORIGINAL_GOAL","depends_on":["F-CONSUMER"],"acceptance":"Approved Mission; Forge-derived A; EP executes A; Forge reconciles A; durable restart/reopen; Forge-derived successor B without owner relay; EP executes B; evidence-derived Mission COMPLETE"},
+    {"id":"F-LATER","disposition":"PARKED","depends_on":[],"acceptance":"Retain existing Living Mission Graph, outer loop, learning, policy, release, hygiene and optimization roadmaps without blanket first-E2E gates"}
   ]
 }
