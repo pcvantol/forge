@@ -1,0 +1,253 @@
+"""Qualification of the read-only Codex ChatGPT-session provider."""
+from __future__ import annotations
+
+import json
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+from forge.models import DerivationPolicy, PlanningSnapshot, ProviderSideEffectState
+from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
+from forge.planner import (
+    AIMissionPlanner, BoundedActionDerivationProvider, CodexCliChatGPTSessionPlanningProvider,
+    CodexCliChatGPTSessionPlanningProviderConfiguration, CodexCliSessionReadinessChecker,
+    CodexCliSessionReadinessState, ProviderDerivationRequest, ProviderSubmissionAmbiguous,
+)
+from forge.planner.action_derivation import ActionDerivationValidator, ProposalValidationError
+from forge.provider_security import (
+    CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE, CODEX_CLI_CHATGPT_SESSION_TYPE,
+    PlanningProviderSecurityService, ProviderAuthenticationMode,
+)
+from forge.runtime.database import RuntimeDatabase
+from forge.secure_store import SecretState
+from tests.test_action_derivation import input_model
+
+
+class Store:
+    def status(self, _reference):
+        return SecretState.RESOLVABLE
+
+
+class Result:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+def document(*, scope="planner-contract", extra=False):
+    result = {
+        "kind": "proposals",
+        "proposals": [{
+            "logical_action_id": "derive-contract", "scope": scope,
+            "objective": "Implement bounded derived planning.", "dependencies": [], "write_scopes": [],
+            "expected_evidence": ["unit test"], "validation_strategy": ["unit test"],
+            "priority": 1, "postponed": False, "human_gates": ["architecture-review"],
+            "risk_inputs": ["scope-drift"], "source_evidence_refs": ["mission_state"],
+            "mission_gap": None,
+        }],
+    }
+    if extra:
+        result["proposals"][0]["untrusted_extra"] = True
+    return result
+
+
+def complete_document():
+    result = document()
+    second = dict(result["proposals"][0])
+    second.update({"logical_action_id": "derive-docs", "scope": "planner-docs", "dependencies": ["derive-contract"],
+                   "expected_evidence": ["documentation test"], "validation_strategy": ["documentation test"]})
+    result["proposals"].append(second)
+    return result
+
+
+class Runner:
+    def __init__(self, output=None, *, version="0.153.4", login="Logged in using ChatGPT", exec_error=None):
+        self.output = output if output is not None else document()
+        self.version, self.login, self.exec_error = version, login, exec_error
+        self.calls = []
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((tuple(command), kwargs))
+        if "--version" in command:
+            return Result(stdout=f"codex-cli {self.version}\n")
+        if command[-2:] == ["login", "status"]:
+            return Result(0 if "logged in" in self.login.lower() else 1, self.login)
+        if self.exec_error:
+            raise self.exec_error
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text(json.dumps(self.output), encoding="utf-8")
+        return Result()
+
+
+class CodexCliSessionTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.db = RuntimeDatabase(self.root, path=self.root / "runtime.db")
+        self.addCleanup(self.db.close)
+        self.operators = InstallationOperatorService(self.db, lambda: NamedOperatorIdentity("codex-session-test", 501))
+        self.service = PlanningProviderSecurityService(self.db, Store(), self.operators)
+        self.context = self.operators.first_bind()
+        self.input = input_model()
+        self.snapshot = PlanningSnapshot.from_planner_input(self.input)
+        self.policy = DerivationPolicy(("forge/planner",), ("architecture-review",), ("scope-drift",))
+
+    def configure(self, *, model=None, profile=None):
+        return self.service.configure(
+            configuration_id="codex-config", provider_id="codex-session", operator_context=self.context,
+            authentication_mode=ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION,
+            provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,
+            external_session_type=CODEX_CLI_CHATGPT_SESSION_TYPE,
+            executable_path="/usr/local/bin/codex", adapter_version="1.0", model=model, profile=profile,
+            timeout_seconds=30, input_token_bound=64000, context_token_bound=128000, output_token_bound=16000,
+        )
+
+    def provider(self, runner, *, checker=None):
+        configuration = CodexCliChatGPTSessionPlanningProviderConfiguration.from_canonical_session(
+            self.service, "codex-session")
+        return CodexCliChatGPTSessionPlanningProvider(
+            configuration, runner=runner,
+            readiness_checker=checker or CodexCliSessionReadinessChecker(runner=runner, path_usable=lambda _path: True),
+        )
+
+    def request(self, *, snapshot=None, model=None):
+        return ProviderDerivationRequest("derivation-1", snapshot or self.snapshot, "codex-session", model)
+
+    def test_session_configuration_is_durable_and_carries_no_secret_reference(self):
+        result = self.configure(profile="default")
+        self.assertEqual(result["authentication_mode"], "EXTERNAL_AUTHENTICATED_SESSION")
+        self.assertEqual(result["provider_type"], CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE)
+        self.assertNotIn("secret_reference", result)
+        policy = self.service.invocation_policy("codex-session")
+        self.assertIsNone(policy.secret_reference)
+        self.assertEqual(policy.profile, "default")
+        persisted = " ".join(str(tuple(row)) for row in self.db._connection.execute(
+            "SELECT * FROM planning_provider_external_session_config"
+        ))
+        self.assertNotIn("synthetic-auth-secret", persisted)
+        self.db.close()
+        self.db = RuntimeDatabase(self.root, path=self.root / "runtime.db")
+        self.operators = InstallationOperatorService(self.db, lambda: NamedOperatorIdentity("codex-session-test", 501))
+        self.service = PlanningProviderSecurityService(self.db, Store(), self.operators)
+        self.assertEqual(self.service.invocation_policy("codex-session").profile, "default")
+
+    def test_session_mode_rejects_fake_secret_reference_and_secret_mode_remains_compatible(self):
+        from forge.provider_security import SecretReference
+        with self.assertRaisesRegex(ValueError, "cannot carry a secret"):
+            self.service.configure(
+                configuration_id="codex-config", provider_id="codex-session", operator_context=self.context,
+                authentication_mode=ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION,
+                provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,
+                external_session_type=CODEX_CLI_CHATGPT_SESSION_TYPE,
+                executable_path="/usr/local/bin/codex", adapter_version="1.0",
+                reference=SecretReference("keychain", "//not-a-fake/codex"),
+                timeout_seconds=30, input_token_bound=64000, context_token_bound=128000, output_token_bound=16000,
+            )
+        configured = self.service.configure(
+            configuration_id="openai-config", provider_id="openai", operator_context=self.context,
+            reference=SecretReference("keychain", "//forge.openai/planning"), model="gpt-5.6",
+            timeout_seconds=30, input_token_bound=64000, context_token_bound=128000, output_token_bound=16000,
+        )
+        self.assertEqual(configured["authentication_mode"], "SECRET_REFERENCE")
+
+    def test_readiness_is_non_generating_and_fails_closed_for_missing_login_and_version(self):
+        self.configure()
+        missing = CodexCliSessionReadinessChecker(path_usable=lambda _path: False).check(
+            self.service.invocation_policy("codex-session"))
+        self.assertEqual(missing.state, CodexCliSessionReadinessState.NOT_INSTALLED)
+        old_runner = Runner(version="0.152.9")
+        old = CodexCliSessionReadinessChecker(runner=old_runner, path_usable=lambda _path: True).check(
+            self.service.invocation_policy("codex-session"))
+        self.assertEqual(old.state, CodexCliSessionReadinessState.UNSUPPORTED_VERSION)
+        signed_out_runner = Runner(login="Not logged in")
+        signed_out = CodexCliSessionReadinessChecker(runner=signed_out_runner, path_usable=lambda _path: True).check(
+            self.service.invocation_policy("codex-session"))
+        self.assertEqual(signed_out.state, CodexCliSessionReadinessState.NOT_SIGNED_IN)
+        self.assertFalse(any("exec" in command for command, _kwargs in signed_out_runner.calls))
+
+        stderr_status = Runner()
+        original = stderr_status.__call__
+        def status_on_stderr(command, **kwargs):
+            result = original(command, **kwargs)
+            if command[-2:] == ["login", "status"]:
+                return Result(result.returncode, "", "Logged in using ChatGPT")
+            return result
+        ready = CodexCliSessionReadinessChecker(runner=status_on_stderr, path_usable=lambda _path: True).check(
+            self.service.invocation_policy("codex-session"))
+        self.assertEqual(ready.state, CodexCliSessionReadinessState.READY)
+
+    def test_explicit_model_without_supported_status_route_is_unverified_or_unavailable(self):
+        self.configure(model="selected-model")
+        runner = Runner()
+        unavailable = CodexCliSessionReadinessChecker(
+            runner=runner, path_usable=lambda _path: True, model_availability=lambda _policy: False,
+        ).check(self.service.invocation_policy("codex-session"))
+        self.assertEqual(unavailable.state, CodexCliSessionReadinessState.MODEL_UNAVAILABLE)
+        unverified = CodexCliSessionReadinessChecker(
+            runner=runner, path_usable=lambda _path: True,
+        ).check(self.service.invocation_policy("codex-session"))
+        self.assertEqual(unverified.state, CodexCliSessionReadinessState.UNVERIFIED)
+
+    def test_read_only_exec_uses_schema_and_bounded_executor_contract(self):
+        self.configure()
+        runner = Runner()
+        provider = self.provider(runner)
+        response = BoundedActionDerivationProvider(provider).invoke(
+            self.request(), approved_scopes=("planner-contract", "planner-docs"), derivation_policy=self.policy,
+        )
+        self.assertEqual(len(response.proposals or ()), 1)
+        command, kwargs = next((item for item in runner.calls if "exec" in item[0]))
+        self.assertIn("--ephemeral", command)
+        self.assertIn("--ignore-user-config", command)
+        self.assertIn("--ignore-rules", command)
+        self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
+        self.assertIn("--output-schema", command)
+        self.assertIn("--skip-git-repo-check", command)
+        self.assertNotEqual(Path(kwargs["cwd"]), Path.cwd())
+        self.assertNotIn("OPENAI_API_KEY", kwargs["env"])
+        self.assertNotIn("CODEX_ACCESS_TOKEN", kwargs["env"])
+        evidence = self.db._connection.execute(
+            "SELECT document FROM planning_provider_external_session_audit WHERE operation='invocation' ORDER BY occurred_at"
+        ).fetchall()
+        self.assertEqual([json.loads(row["document"])["state"] for row in evidence], ["STARTED", "HAPPENED_AND_CONFIRMED"])
+
+    def test_malformed_or_extra_structured_output_is_never_a_proposal(self):
+        self.configure()
+        response = self.provider(Runner(document(extra=True))).invoke(
+            self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy,
+        )
+        self.assertIsNone(response.proposals)
+        self.assertEqual(response.evidence.status, "contract_invalid")
+
+    def test_scope_expansion_is_rejected_by_existing_deterministic_validator(self):
+        self.configure()
+        response = self.provider(Runner(document(scope="outside"))).invoke(
+            self.request(), approved_scopes=("planner-contract", "planner-docs"), derivation_policy=self.policy,
+        )
+        with self.assertRaises(ProposalValidationError):
+            ActionDerivationValidator().validate(response.proposals or (), self.snapshot, self.input, self.policy)
+
+    def test_existing_pipeline_validates_then_materializes_session_proposals(self):
+        self.configure()
+        result = AIMissionPlanner(self.provider(Runner(complete_document()))).plan(self.input, self.policy)
+        self.assertIsNone(result.governance_refinement)
+        self.assertEqual([action.id for intent in result.plan.intents for action in intent.actions],
+                         ["derive-contract", "derive-docs"])
+
+    def test_process_ambiguity_has_no_blind_retry(self):
+        self.configure()
+        runner = Runner(exec_error=subprocess.TimeoutExpired(["codex", "exec"], 30))
+        provider = self.provider(runner)
+        with self.assertRaises(ProviderSubmissionAmbiguous):
+            provider.invoke(self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy)
+        self.assertEqual(len([call for call, _kwargs in runner.calls if "exec" in call]), 1)
+        self.assertIs(provider.reconcile(self.request()), ProviderSideEffectState.MAY_HAVE_HAPPENED)
+        events = [json.loads(row["document"])["state"] for row in self.db._connection.execute(
+            "SELECT document FROM planning_provider_external_session_audit WHERE operation='invocation'"
+        )]
+        self.assertEqual(events, ["STARTED", "MAY_HAVE_HAPPENED"])
+
+
+if __name__ == "__main__":
+    unittest.main()

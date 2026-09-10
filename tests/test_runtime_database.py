@@ -321,6 +321,26 @@ class RuntimeDatabaseTests(unittest.TestCase):
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='token_preflight_failures'"
         ).fetchone())
 
+    def test_schema33_migrates_external_session_configuration_before_restart(self) -> None:
+        self.database.close()
+        connection = sqlite3.connect(self.database.path)
+        for trigger in ("planning_provider_external_session_audit_no_update",
+                        "planning_provider_external_session_audit_no_delete"):
+            connection.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+        connection.execute("DROP TABLE planning_provider_external_session_audit")
+        connection.execute("DROP TABLE planning_provider_external_session_config")
+        connection.execute("UPDATE runtime_metadata SET value='33' WHERE key IN ('schema_version','migration_version','last_migration')")
+        connection.execute("PRAGMA user_version=33")
+        connection.commit(); connection.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
+        self.assertTrue(self.database._connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='planning_provider_external_session_config'"
+        ).fetchone())
+        triggers = {row["name"] for row in self.database._connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+        self.assertTrue({"planning_provider_external_session_audit_no_update",
+                         "planning_provider_external_session_audit_no_delete"} <= triggers)
+
     def test_execution_receipts_are_immutable(self) -> None:
         self.database.save_mission_state(self._mission())
         self.database.record_execution_receipt(receipt_id="receipt-1", mission_id="mission-1", execution_host="host", execution_run_id="run", engineering_report_id="report", correlation_identity="correlation", executed_at="2026-08-04T00:00:00Z", outcome="complete")
