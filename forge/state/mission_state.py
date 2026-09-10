@@ -10,11 +10,23 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, is_dataclass
 from enum import Enum
+from hashlib import sha256
 import json
 from typing import Any, Mapping, Sequence
 
 
-MISSION_STATE_SCHEMA_VERSION = "1.4"
+MISSION_STATE_SCHEMA_VERSION = "1.5"
+
+
+def _digest(value: object) -> str:
+    return "sha256:" + sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def _is_digest(value: object) -> bool:
+    return (isinstance(value, str) and value.startswith("sha256:") and len(value) == 71
+            and all(character in "0123456789abcdef" for character in value[7:]))
 
 
 class MissionExecutionStatus(str, Enum):
@@ -87,13 +99,14 @@ class MissionExecutionState:
     approval_record: Mapping[str, Any] | None = None
     delegations: tuple[Mapping[str, Any], ...] = ()
     integration: Mapping[str, Any] | None = None
+    planning_history: tuple[Mapping[str, Any], ...] = ()
     schema_version: str = MISSION_STATE_SCHEMA_VERSION
 
 
 _ALLOWED_TRANSITIONS: dict[MissionExecutionStatus, frozenset[MissionExecutionStatus]] = {
     MissionExecutionStatus.CREATED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.READY: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED)),
-    MissionExecutionStatus.ACTIVE: frozenset((MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.WAITING_INTEGRATION, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
+    MissionExecutionStatus.ACTIVE: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.AWAITING_APPROVAL, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.WAITING_INTEGRATION, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
     MissionExecutionStatus.WAITING_FOR_EXECUTION: frozenset((MissionExecutionStatus.WAITING_FOR_EVIDENCE, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
     MissionExecutionStatus.WAITING_FOR_EVIDENCE: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.AWAITING_APPROVAL, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
     MissionExecutionStatus.AWAITING_APPROVAL: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.ARCHIVED)),
@@ -225,6 +238,7 @@ class MissionStateStore:
             "pause_reason": None, "approval_record": None,
             "delegations": [],
             "integration": None,
+            "planning_history": [],
             "revision": 1,
         }
         document["lifecycle"] = MissionExecutionStatus.CREATED.value
@@ -261,6 +275,7 @@ class MissionStateStore:
             "execution_policy": None if execution_policy is None else _document(execution_policy, "execution policy"),
             "pause_reason": None, "approval_record": None, "revision": 1,
             "delegations": [], "integration": None,
+            "planning_history": [],
         }
         document["lifecycle"] = MissionExecutionStatus.CREATED.value
         document["state_history"] = [{"sequence": 1, "from_status": None, "to_status": MissionExecutionStatus.CREATED.value, "occurred_at": occurred_at, "reason": "dispatcher_intake"}]
@@ -297,6 +312,7 @@ class MissionStateStore:
         approval_record: Mapping[str, Any] | None = None,
         delegations: Sequence[Mapping[str, Any]] | None = None,
         integration: Mapping[str, Any] | None = None,
+        planning_history: Sequence[Mapping[str, Any]] | None = None,
     ) -> MissionExecutionState:
         if not occurred_at or not reason:
             raise MissionStateStoreError("transition time and reason are required")
@@ -305,6 +321,17 @@ class MissionStateStore:
             raise MissionStateStoreError(f"mission state transition {current.status.value} -> {status.value} is not permitted")
         next_actions = _documents(actions, "action") if actions is not None else current.actions
         next_intents = _documents(intents, "intent") if intents is not None else current.intents
+        next_planning_history = (_documents(planning_history, "planning history")
+                                 if planning_history is not None else current.planning_history)
+        completed = {str(item.get("id")): dict(item) for item in current.actions if item.get("status") == "COMPLETE"}
+        next_by_id = {str(item.get("id")): dict(item) for item in next_actions}
+        if any(next_by_id.get(identifier) != document for identifier, document in completed.items()):
+            raise MissionStateStoreError("completed Engineering Action history is immutable")
+        if tuple(next_planning_history[:len(current.planning_history)]) != current.planning_history:
+            raise MissionStateStoreError("planning derivation history is append-only")
+        derivation_ids = [item.get("derivation_id") for item in next_planning_history]
+        if any(not isinstance(item, str) or not item for item in derivation_ids) or len(derivation_ids) != len(set(derivation_ids)):
+            raise MissionStateStoreError("planning derivation history requires unique identities")
         current_intent, current_action = _current_work(next_actions, next_intents)
         document = self._as_document(current)
         history = list(document["execution_history"])
@@ -329,6 +356,7 @@ class MissionStateStore:
             "approval_record": _document(approval_record, "approval record") if approval_record is not None else document.get("approval_record"),
             "delegations": [_document(item, "delegation") for item in delegations] if delegations is not None else document.get("delegations", []),
             "integration": _document(integration, "integration") if integration is not None else document.get("integration"),
+            "planning_history": list(next_planning_history),
             "revision": current.revision + 1,
         })
         if status is MissionExecutionStatus.COMPLETED:
@@ -349,6 +377,57 @@ class MissionStateStore:
                 raise MissionStateStoreError("completed mission state requires correlated complete host evidence")
             if document["progress"]["percent_complete"] != 100:
                 raise MissionStateStoreError("completed mission state requires every action to be complete")
+            mission = document["mission"]
+            if mission.get("status") == "approved_for_engineering":
+                completion_evaluation = document.get("completion")
+                criteria = completion_evaluation.get("criteria") if isinstance(completion_evaluation, dict) else None
+                from forge.models.mission_completion import mission_criterion_id
+                expected_criteria = {
+                    mission_criterion_id(str(mission_id), str(criterion)): str(criterion)
+                    for criterion in mission.get("acceptance_criteria", ())
+                }
+                criteria_are_documents = (isinstance(criteria, list) and bool(criteria)
+                                           and all(isinstance(item, dict) for item in criteria))
+                actual_criteria = ({item.get("criterion_id"): item.get("criterion") for item in criteria}
+                                   if criteria_are_documents else {})
+                canonical_references: dict[str, dict[str, Any]] = {}
+                for historical in document["execution_history"]:
+                    historical_repository = historical.get("repository_evidence")
+                    if (historical.get("outcome") != "complete"
+                            or not isinstance(historical_repository, dict)
+                            or historical_repository.get("mission_id") != mission_id
+                            or any(historical.get(key) != historical_repository.get(key)
+                                   for key in ("correlation_id", "host_run_id", "report_id"))):
+                        continue
+                    reference = {
+                        "receipt_id": historical.get("receipt_id"),
+                        "action_id": historical_repository.get("action_id"),
+                        "report_id": historical.get("report_id"),
+                        "repository_revision": historical_repository.get("repository_revision"),
+                        "repository_evidence_digest": historical_repository.get("content_digest"),
+                    }
+                    if all(reference.values()):
+                        canonical_references[str(reference["receipt_id"])] = reference
+                criteria_bind_current_evidence = criteria_are_documents and all(
+                    item.get("repository_truth") == document.get("repository_truth")
+                    and isinstance(item.get("execution_evidence"), list)
+                    and bool(item["execution_evidence"])
+                    and all(isinstance(reference, dict)
+                            and canonical_references.get(str(reference.get("receipt_id"))) == reference
+                            for reference in item["execution_evidence"])
+                    for item in criteria
+                )
+                if (not isinstance(completion_evaluation, dict)
+                        or completion_evaluation.get("schema_version") != "1.0"
+                        or completion_evaluation.get("mission_id") != mission_id
+                        or completion_evaluation.get("mission_digest") != _digest(mission)
+                        or not _is_digest(completion_evaluation.get("evidence_digest"))
+                        or completion_evaluation.get("all_required_criteria_proven") is not True
+                        or not criteria_are_documents
+                        or actual_criteria != expected_criteria
+                        or not criteria_bind_current_evidence
+                        or any(item.get("status") != "PROVEN" for item in criteria)):
+                    raise MissionStateStoreError("completed approved Mission requires every criterion to be proven")
         document["lifecycle"] = status.value
         document.setdefault("state_history", []).append({"sequence": document["revision"], "from_status": current.status.value, "to_status": status.value, "occurred_at": occurred_at, "reason": reason})
         self._runtime.save_mission_state(document)
@@ -404,12 +483,13 @@ class MissionStateStore:
             "approval_record": None if state.approval_record is None else dict(state.approval_record),
             "delegations": [dict(item) for item in state.delegations],
             "integration": None if state.integration is None else dict(state.integration),
+            "planning_history": [dict(item) for item in state.planning_history],
         }
 
     @staticmethod
     def _decode(serialized: str) -> MissionExecutionState:
         document = json.loads(serialized)
-        if document.get("schema_version") not in {"1.0", "1.1", "1.2", "1.3", MISSION_STATE_SCHEMA_VERSION}:
+        if document.get("schema_version") not in {"1.0", "1.1", "1.2", "1.3", "1.4", MISSION_STATE_SCHEMA_VERSION}:
             raise MissionStateStoreError("mission state schema version is unsupported")
         return MissionExecutionState(
             mission_id=document["mission_id"], mission=document["mission"], intents=tuple(document["intents"]),
@@ -425,5 +505,6 @@ class MissionStateStore:
             approval_record=document.get("approval_record"),
             delegations=tuple(document.get("delegations", ())),
             integration=document.get("integration"),
+            planning_history=tuple(document.get("planning_history", ())),
             schema_version=document["schema_version"],
         )

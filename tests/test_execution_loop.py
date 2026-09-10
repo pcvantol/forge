@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -13,10 +15,12 @@ from forge.capabilities import (CapabilityAvailability, CapabilityExecutionMode,
 from forge.governance import execution_policy_for_profile
 from forge.models import (
     ApprovedScope, ArchitectureMission, ArchitectureMissionStatus, EngineeringActionStatus,
+    CanonicalExecutionEvidenceReference, MissionCompletionEvidence, MissionCriterionEvidenceBinding,
     ExecutionDispatch, ExecutionEvidenceOutcome, ExecutionHostEvidence, ExecutionRepositoryEvidence,
     IntentReference, MissionPlannerInput, MissionPlanningState, PlannedActionDefinition,
     PlanningEvidence, PlanningInputKind, RequiredDiscipline, ProviderPromptDefinition,
-    RuntimePrompt, RuntimePromptSection, RuntimePromptSectionKind,
+    RepositoryTruthReference, RuntimePrompt, RuntimePromptSection, RuntimePromptSectionKind,
+    mission_criterion_id,
 )
 from forge.planner import MissionPlanner
 from forge.state import MissionExecutionStatus, MissionStateStore
@@ -113,11 +117,30 @@ class ExecutionLoopTests(unittest.TestCase):
         def planning_input(state: object) -> MissionPlannerInput:
             self.planning_calls += 1
             return planning(state)
+        def repository_truth(_state: object, _evidence: object):
+            return {"source_id": "repository", "revision": "revision", "locator": "repository://forge/revision",
+                    "content_digest": digest("d")}
+        def completion_evidence(state, evidence, truth):
+            completed = {item["id"] for item in state.actions if item["status"] == "COMPLETE"} | {evidence.repository_evidence.action_id}
+            if completed != {item["id"] for item in state.actions}:
+                return None
+            reference = CanonicalExecutionEvidenceReference(
+                evidence.receipt_id, evidence.repository_evidence.action_id, evidence.report_id,
+                evidence.repository_evidence.repository_revision, evidence.repository_evidence.content_digest,
+            )
+            truth_reference = RepositoryTruthReference(truth["source_id"], truth["revision"], truth["locator"], truth["content_digest"])
+            return MissionCompletionEvidence(
+                mission().id, "sha256:" + sha256(json.dumps(
+                    mission().to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                ).encode()).hexdigest(),
+                (MissionCriterionEvidenceBinding(mission_criterion_id(mission().id, "complete"), (reference,), truth_reference),),
+            )
         return ExecutionLoop(self.dispatcher, self.store, MissionPlanner(), host, planning_input, prompt,
-                             lambda _state, _evidence: {"source_id": "repository", "revision": "revision", "content_digest": digest("d")},
+                             repository_truth,
                              host_id="host", workspace_id="workspace", repository_id="forge",
                              clock=lambda: "2026-08-04T10:00:00Z", correlation_id_factory=correlation,
-                             execution_policy=policy, governance_profile=profile, capability_registry=registry)
+                             execution_policy=policy, governance_profile=profile, capability_registry=registry,
+                             completion_evidence=completion_evidence)
 
     def test_multiple_actions_progress_completion_evidence_and_completion_notifications(self) -> None:
         state = self.loop(Host({"contract-action": ExecutionEvidenceOutcome.COMPLETE, "docs-action": ExecutionEvidenceOutcome.COMPLETE})).run()
@@ -126,7 +149,7 @@ class ExecutionLoopTests(unittest.TestCase):
         self.assertEqual(state.progress["percent_complete"], 100)
         self.assertEqual(len(state.execution_history), 2)
         self.assertEqual(self.planning_calls, 2)  # Initial plan plus deterministic remaining-work replan.
-        self.assertEqual(state.completion["repository_truth_updated"], True)  # type: ignore[index]
+        self.assertEqual(state.completion["all_required_criteria_proven"], True)  # type: ignore[index]
         self.assertEqual(self.dispatcher.completed, ["mission-loop"])
 
     def test_blocking_resume_requires_authorization_and_never_repeats_completed_actions(self) -> None:

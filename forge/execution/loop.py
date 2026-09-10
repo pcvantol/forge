@@ -8,16 +8,22 @@ Mission or its scope.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+from hashlib import sha256
+import json
 from typing import Any, Callable, Mapping, Protocol
 
 from forge.capabilities import (CapabilityRegistry, DelegationApprovalState,
                                 DelegationRequest, DelegationResultState)
+from forge.completion import MissionCompletionEvaluator
 from forge.dispatcher import MissionDispatcher
 from forge.governance import ApprovalRecord, ExecutionPolicy, ExecutionPolicyKind, PauseBoundary, execution_policy_for_profile
 from forge.models.action import EngineeringAction, EngineeringActionStatus
+from forge.models.architecture_mission import ArchitectureMission
 from forge.models.execution_host import ExecutionHost, ExecutionHostEvidence
-from forge.models.mission_planner import MissionPlannerInput, MissionPlanningState
-from forge.planner import MissionPlanner
+from forge.models.mission_completion import MissionCompletionEvidence
+from forge.models.action_derivation import DerivationPolicy
+from forge.models.mission_planner import MissionPlan, MissionPlannerInput, MissionPlanningState, PlanningInputKind
+from forge.planner import AIMissionPlanner, DerivationResult, MissionPlanner
 from forge.runtime import BootstrapMissionRunner, RuntimePromptFactory
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
@@ -33,6 +39,13 @@ class PlanningInputFactory(Protocol):
 
 class RepositoryTruthFactory(Protocol):
     def __call__(self, state: MissionExecutionState, evidence: ExecutionHostEvidence | None) -> Mapping[str, Any]: ...
+
+
+class MissionCompletionEvidenceFactory(Protocol):
+    """Forge-owned association of approved criteria with canonical evidence."""
+
+    def __call__(self, state: MissionExecutionState, evidence: ExecutionHostEvidence,
+                 repository_truth: Mapping[str, Any]) -> MissionCompletionEvidence | None: ...
 
 
 @dataclass(frozen=True)
@@ -89,6 +102,10 @@ class ExecutionLoop:
         execution_policy: ExecutionPolicy | None = None,
         governance_profile: str = "solo",
         capability_registry: CapabilityRegistry | None = None,
+        ai_planner: AIMissionPlanner | None = None,
+        derivation_policy: DerivationPolicy | None = None,
+        completion_evidence: MissionCompletionEvidenceFactory | None = None,
+        completion_evaluator: MissionCompletionEvaluator | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise ExecutionLoopError("execution host, workspace, and repository identities are required")
@@ -98,6 +115,10 @@ class ExecutionLoop:
         self._clock, self._correlation_id_factory = clock, correlation_id_factory
         self._execution_policy = execution_policy or execution_policy_for_profile(governance_profile)
         self._capability_registry = capability_registry
+        self._ai_planner = ai_planner
+        self._derivation_policy = derivation_policy
+        self._completion_evidence = completion_evidence
+        self._completion_evaluator = completion_evaluator or MissionCompletionEvaluator()
 
     def run(self) -> MissionExecutionState | None:
         """Run the one dispatched Mission until terminal or awaiting host evidence."""
@@ -203,18 +224,93 @@ class ExecutionLoop:
         )
 
     def _plan(self, state: MissionExecutionState) -> MissionExecutionState:
-        input_value = self._planning_input(state)
+        input_value = self._current_planning_input(state)
         if input_value.mission.id != state.mission_id:
             raise ExecutionLoopError("planner input must belong to the active Mission")
-        plan = self._planner.replan(input_value)
+        plan, derivation = self._select_plan(input_value, state)
         actions = tuple(action for intent in plan.intents for action in intent.actions)
         if not actions:
             raise ExecutionLoopError("approved Mission planning produced no executable Engineering Actions")
         truth = self._repository_truth(state, None)
         return self._states.transition(
-            state.mission_id, MissionExecutionStatus.READY, occurred_at=self._clock(), reason="deterministic_plan_persisted",
+            state.mission_id, MissionExecutionStatus.READY, occurred_at=self._clock(),
+            reason="dynamic_derivation_materialized" if derivation is not None else "deterministic_plan_persisted",
             intents=plan.intents, actions=actions, repository_truth=truth,
+            planning_history=state.planning_history if derivation is None else (*state.planning_history, derivation),
         )
+
+    def _current_planning_input(self, state: MissionExecutionState) -> MissionPlannerInput:
+        source = self._planning_input(state)
+        if source.mission.id != state.mission_id or source.mission.to_dict() != dict(state.mission):
+            raise ExecutionLoopError("planner input must bind the exact approved Mission")
+        completed = tuple(sorted(str(action["id"]) for action in state.actions
+                                 if action["status"] == EngineeringActionStatus.COMPLETE.value))
+        blocked = tuple(sorted(str(action["id"]) for action in state.actions
+                               if action["status"] in {EngineeringActionStatus.BLOCKED.value, EngineeringActionStatus.FAILED.value}))
+        return replace(source, mission_state=MissionPlanningState(state.mission_id, state.revision, completed, blocked))
+
+    @staticmethod
+    def _dynamic_mode(planning_input: MissionPlannerInput) -> bool:
+        flags = tuple(scope.allow_provider_derivation for scope in planning_input.approved_scopes)
+        if any(flags) and not all(flags):
+            raise ExecutionLoopError("mixed static and provider-derived Mission scopes are not supported")
+        if any(flags) and any(scope.actions for scope in planning_input.approved_scopes):
+            raise ExecutionLoopError("provider-derived Mission scopes cannot contain preconfigured Actions")
+        return all(flags)
+
+    def _select_plan(self, planning_input: MissionPlannerInput,
+                     state: MissionExecutionState) -> tuple[MissionPlan, Mapping[str, Any] | None]:
+        if not self._dynamic_mode(planning_input):
+            return self._planner.replan(planning_input), None
+        if self._ai_planner is None or self._derivation_policy is None:
+            raise ExecutionLoopError("provider-derived Mission has no authorized derivation composition")
+        result = self._ai_planner.plan(planning_input, self._derivation_policy)
+        if result.governance_refinement is not None:
+            raise ExecutionLoopError("provider-derived Mission requires governance refinement")
+        if result.plan is None or result.validated is None:
+            raise ExecutionLoopError("provider-derived Mission produced no validated materialization")
+        return result.plan, self._derivation_record(result, planning_input, state)
+
+    def _derivation_record(self, result: DerivationResult, planning_input: MissionPlannerInput,
+                           state: MissionExecutionState) -> Mapping[str, Any]:
+        assert result.validated is not None and result.plan is not None and self._derivation_policy is not None
+        proposals = result.validated.proposals
+        provenance = proposals[0].provenance
+        proposal_documents = tuple({
+            "logical_action_id": proposal.logical_action_id,
+            "semantic_digest": proposal.semantic_digest(),
+            "provenance": asdict(proposal.provenance),
+        } for proposal in proposals)
+        validation_source = {
+            "snapshot_digest": result.snapshot.digest,
+            "policy": asdict(self._derivation_policy),
+            "proposals": proposal_documents,
+        }
+        validation_digest = "sha256:" + sha256(json.dumps(
+            validation_source, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")).hexdigest()
+        return {
+            "schema_version": "1.0",
+            "derivation_id": provenance.derivation_id,
+            "mission_id": planning_input.mission.id,
+            "parent_derivation_id": None if not state.planning_history else state.planning_history[-1]["derivation_id"],
+            "lifecycle": "MATERIALIZED",
+            "planning_snapshot": result.snapshot.to_dict(),
+            "planning_snapshot_digest": result.snapshot.digest,
+            "provider_id": provenance.provider_id,
+            "provider_model": provenance.provider_model,
+            "implementation_version": provenance.implementation_version,
+            "policy_digest": "sha256:" + sha256(json.dumps(
+                asdict(self._derivation_policy), sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")).hexdigest(),
+            "validation_status": "PASS",
+            "validation_digest": validation_digest,
+            "validated_before_materialization": True,
+            "materialized_plan_id": result.plan.id,
+            "materialized_plan_digest": result.plan.input_digest,
+            "materialized_action_ids": [proposal.logical_action_id for proposal in proposals],
+            "completed_action_ids_at_derivation": list(planning_input.mission_state.completed_action_ids),
+        }
 
     def _delegate_if_required(self, state: MissionExecutionState) -> MissionExecutionState:
         if self._capability_registry is None:
@@ -253,9 +349,10 @@ class ExecutionLoop:
         return tuple(updated if item.get("id") == updated["id"] else item for item in state.delegations)
 
     def _replan_after_delegation(self, state: MissionExecutionState) -> None:
-        source = self._planning_input(state)
-        completed = tuple(sorted(action["id"] for action in state.actions if action["status"] == EngineeringActionStatus.COMPLETE.value))
-        plan = self._planner.replan(replace(source, mission_state=MissionPlanningState(state.mission_id, state.revision + 1, completed)))
+        source = self._current_planning_input(state)
+        if self._dynamic_mode(source):
+            raise ExecutionLoopError("provider-derived Mission continuation requires canonical terminal Host evidence")
+        plan = self._planner.replan(source)
         remaining = tuple(sorted(action["id"] for action in state.actions if action["status"] != EngineeringActionStatus.COMPLETE.value))
         planned = tuple(sorted(action.id for intent in plan.intents for action in intent.actions))
         if planned != remaining:
@@ -277,11 +374,17 @@ class ExecutionLoop:
                                        reason="authorized_recovery", actions=actions, resume=resume)
 
     def _runner(self) -> BootstrapMissionRunner:
-        def completion(state: MissionExecutionState, evidence: ExecutionHostEvidence) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+        def completion(state: MissionExecutionState, evidence: ExecutionHostEvidence):
             truth = self._repository_truth(state, evidence)
-            completion_state = {"success_criteria_satisfied": True, "execution_evidence_complete": True,
-                                "repository_truth_updated": True, "repository_truth_digest": truth.get("content_digest")}
-            return truth, completion_state
+            mission = ArchitectureMission.from_dict(dict(state.mission))
+            evidence_contract = (None if self._completion_evidence is None
+                                 else self._completion_evidence(state, evidence, truth))
+            current = asdict(evidence)
+            current["outcome"] = evidence.outcome.value
+            evaluation = self._completion_evaluator.evaluate(
+                mission, truth, (*state.execution_history, current), evidence_contract,
+            )
+            return truth, evaluation
 
         return BootstrapMissionRunner(self._states, BootstrapMissionScheduler(), self._host, self._prompt_factory,
                                       host_id=self._host_id, workspace_id=self._workspace_id, repository_id=self._repository_id,
@@ -314,7 +417,7 @@ class ExecutionLoop:
                   "completed_action_id": current.id}
         return self._states.transition(state.mission_id, MissionExecutionStatus.AWAITING_APPROVAL,
                                        occurred_at=self._clock(), reason="execution_policy_pause", actions=actions,
-                                       execution_evidence=asdict(evidence), pause_reason=reason,
+                                       pause_reason=reason,
                                        resume={**state.resume, "next_action_id": next_action, "pause_boundary": boundary.value})
 
     @staticmethod
@@ -327,16 +430,64 @@ class ExecutionLoop:
         intent_ids = {item["id"] for item in state.intents if capability in item.get("capability_impact", ())}
         return all(item.status is EngineeringActionStatus.COMPLETE for item in actions if item.intent_id in intent_ids)
 
-    def _replan_after_evidence(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...], _evidence: ExecutionHostEvidence) -> None:
-        """Re-evaluate only remaining approved work; the original plan stays canonical."""
-        source = self._planning_input(state)
-        completed = tuple(sorted(action.id for action in actions if action.status is EngineeringActionStatus.COMPLETE))
-        replanning = replace(source, mission_state=MissionPlanningState(state.mission_id, state.revision + 1, completed))
-        plan = self._planner.replan(replanning)
+    def _replan_after_evidence(self, state: MissionExecutionState,
+                               evidence: ExecutionHostEvidence) -> MissionExecutionState:
+        """Validate static work or derive new immutable successor work."""
+        replanning = self._current_planning_input(state)
+        actions = tuple(self._action(item) for item in state.actions)
         remaining = tuple(sorted(action.id for action in actions if action.status is not EngineeringActionStatus.COMPLETE))
-        planned = tuple(sorted(action.id for intent in plan.intents for action in intent.actions))
-        if planned != remaining:
-            raise ExecutionLoopError("replanning must preserve every unresolved approved Engineering Action")
+        if not self._dynamic_mode(replanning):
+            plan = self._planner.replan(replanning)
+            planned = tuple(sorted(action.id for intent in plan.intents for action in intent.actions))
+            if planned != remaining:
+                raise ExecutionLoopError("replanning must preserve every unresolved approved Engineering Action")
+            if not remaining:
+                raise ExecutionLoopError("Mission criteria remain unmet and static planning has no successor")
+            return state
+
+        self._assert_current_replan_evidence(state, replanning, evidence)
+        plan, derivation = self._select_plan(replanning, state)
+        assert derivation is not None
+        existing_ids = {action.id for action in actions}
+        proposed = tuple(action for intent in plan.intents for action in intent.actions)
+        if not proposed:
+            raise ExecutionLoopError("Mission criteria remain unmet and derivation produced no successor")
+        if existing_ids & {action.id for action in proposed}:
+            raise ExecutionLoopError("derived successor cannot reuse a materialized Engineering Action identity")
+        next_order = max((action.order for action in actions), default=0) + 1
+        renumbered: dict[tuple[str, str], tuple[EngineeringAction, ...]] = {}
+        for intent in plan.intents:
+            current: list[EngineeringAction] = []
+            for action in intent.actions:
+                current.append(replace(action, order=next_order))
+                next_order += 1
+            renumbered[(intent.id, intent.revision)] = tuple(current)
+        new_intents = tuple(replace(intent, actions=renumbered[(intent.id, intent.revision)]) for intent in plan.intents)
+        new_actions = tuple(action for intent in new_intents for action in intent.actions)
+        return self._states.transition(
+            state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._clock(),
+            reason="dynamic_successor_materialized", intents=(*state.intents, *new_intents),
+            actions=(*actions, *new_actions), planning_history=(*state.planning_history, derivation),
+        )
+
+    @staticmethod
+    def _assert_current_replan_evidence(state: MissionExecutionState,
+                                        planning_input: MissionPlannerInput,
+                                        evidence: ExecutionHostEvidence) -> None:
+        truth = state.repository_truth or {}
+        truth_digest = truth.get("content_digest")
+        if not isinstance(truth_digest, str):
+            raise ExecutionLoopError("dynamic replan requires persisted current Repository Truth")
+        truth_evidence = tuple(item for item in planning_input.evidence
+                               if item.kind is PlanningInputKind.REPOSITORY_TRUTH)
+        execution_evidence = tuple(item for item in planning_input.evidence
+                                   if item.kind is PlanningInputKind.EXECUTION_EVIDENCE)
+        mission_state_evidence = tuple(item for item in planning_input.evidence
+                                       if item.kind is PlanningInputKind.MISSION_STATE)
+        if (not any(item.content_digest == truth_digest for item in truth_evidence)
+                or not any(item.content_digest == evidence.repository_evidence.content_digest for item in execution_evidence)
+                or not any(item.revision == str(state.revision) for item in mission_state_evidence)):
+            raise ExecutionLoopError("dynamic replan input does not bind current evidence and Repository Truth")
 
     @staticmethod
     def _action(document: Mapping[str, Any]) -> EngineeringAction:

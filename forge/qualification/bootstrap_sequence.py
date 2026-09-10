@@ -18,12 +18,14 @@ from forge.dispatcher import ApprovedMissionQueue, MissionDispatcher, MissionDis
 from forge.execution import ExecutionLoop
 from forge.intake import MissionIntake
 from forge.models import (
-    ApprovedScope, CodexCliRuntimePromptRequest, EngineeringEffort, ExecutionHostCompatibility,
+    ApprovedScope, CanonicalExecutionEvidenceReference, CodexCliRuntimePromptRequest, EngineeringEffort, ExecutionHostCompatibility,
     IntentApproval, IntentCategory, IntentReference, IntentStatus, IntentTraceability,
+    MissionCompletionEvidence, MissionCriterionEvidenceBinding,
     MissionCandidate, MissionCandidateMaturity, MissionCandidateStatus, MissionPlannerInput,
     MissionPlanningState, PlannedActionDefinition, PlanningEvidence, PlanningInputKind,
-    RecommendationCategory, RecommendationConfidence, RecommendationConfidenceLevel,
+    RecommendationCategory, RecommendationConfidence, RecommendationConfidenceLevel, RepositoryTruthReference,
     RecommendationDependencies, RepositoryState, RequiredDiscipline,
+    mission_criterion_id,
 )
 from forge.models.action import EngineeringAction
 from forge.models.intent import EngineeringIntent
@@ -248,7 +250,26 @@ def run_bootstrap_sequence_qualification(root: Path, evidence_source: Engineerin
             generated = EngineeringIntent(str(intent["id"]), str(intent["revision"]), "Bootstrap intent", str(intent["objective"]), IntentCategory.IMPLEMENTATION, IntentTraceability((reference,), (reference,), (reference,), (reference,), (reference,)), approval=IntentApproval("architect", "2026-08-04T12:00:00Z", reference), status=IntentStatus.APPROVED)
             mission = EngineeringMission(action.intent_id.split(":intent:")[0], "1", "Bootstrap Mission", "Complete canonical mission.", MissionScope(("bootstrap",), ("portfolio reordering",)), (MissionIntentMembership(1, generated.id, generated.revision),), status=MissionStatus.ACTIVE)
             return CodexCliRuntimePromptRenderer().render(CodexCliRuntimePromptRequest(mission, generated, action, RepositoryState("forge", "qualification-revision", _digest({"mission": mission.id}), "2026-08-04T12:00:00Z"), ("canonical pipeline",), ("qualification validation",), ExecutionHostCompatibility("2.4", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0")))
-        loop = ExecutionLoop(dispatcher, states, MissionPlanner(), host, planning, prompt, lambda state, evidence: {"source_id": "forge", "revision": "qualification-revision", "content_digest": _digest({"mission": state.mission_id, "evidence": None if evidence is None else evidence.report_id})}, host_id="engineering-platform-1.5", workspace_id="forge", repository_id="forge", clock=clock, correlation_id_factory=correlation)
+        def repository_truth(state: Any, evidence: Any):
+            return {"source_id": "forge", "revision": "qualification-revision",
+                    "locator": f"qualification://{state.mission_id}/repository-truth",
+                    "content_digest": _digest({"mission": state.mission_id, "evidence": None if evidence is None else evidence.report_id})}
+        def completion_evidence(state: Any, evidence: Any, truth: dict[str, Any]):
+            approved = workspace.get(state.mission_id)
+            execution = CanonicalExecutionEvidenceReference(
+                evidence.receipt_id, evidence.repository_evidence.action_id, evidence.report_id,
+                evidence.repository_evidence.repository_revision, evidence.repository_evidence.content_digest,
+            )
+            repository = RepositoryTruthReference(truth["source_id"], truth["revision"], truth["locator"], truth["content_digest"])
+            return MissionCompletionEvidence(
+                approved.id, _digest(approved.to_dict()), tuple(
+                    MissionCriterionEvidenceBinding(mission_criterion_id(approved.id, criterion), (execution,), repository)
+                    for criterion in approved.acceptance_criteria
+                ),
+            )
+        loop = ExecutionLoop(dispatcher, states, MissionPlanner(), host, planning, prompt, repository_truth,
+                             host_id="engineering-platform-1.5", workspace_id="forge", repository_id="forge",
+                             clock=clock, correlation_id_factory=correlation, completion_evidence=completion_evidence)
         interrupted = False
         while not dispatcher.is_idle:
             result = loop.run()
