@@ -22,7 +22,7 @@ from forge.models.action_derivation import (DerivationPolicy, DerivedActionPropo
     MissionGapBinding, MissionGapClassification, PlanningSnapshot, ProposalProvenance,
     ProviderInvocationEvidence, ProviderSideEffectState)
 from forge.provider_security import (PlanningProviderInvocationPolicy,
-    PlanningProviderSecurityService, SecretReference, SecretState)
+    PlanningProviderSecurityService, ProviderAuthenticationMode, SecretReference, SecretState)
 from forge.runtime import RuntimeDatabaseError
 from .provider_adapter import ProviderDerivationRequest, ProviderDerivationResponse
 
@@ -105,6 +105,9 @@ class _G011PolicySnapshot:
 
     @classmethod
     def from_policy(cls, policy: PlanningProviderInvocationPolicy) -> "_G011PolicySnapshot":
+        if (getattr(policy, "authentication_mode", ProviderAuthenticationMode.SECRET_REFERENCE)
+                is not ProviderAuthenticationMode.SECRET_REFERENCE or policy.secret_reference is None):
+            raise PermissionError("OpenAI provider requires a canonical secret-reference policy")
         return cls(policy.provider_id, policy.version, True, policy.model,
                    policy.secret_reference.fingerprint, policy.timeout_seconds,
                    policy.input_token_bound, policy.context_token_bound,
@@ -255,7 +258,9 @@ class OpenAIPlanningProviderConfiguration:
                             provider_id: str) -> "OpenAIPlanningProviderConfiguration":
         # Validate readiness at configuration construction, then obtain a fresh
         # canonical policy snapshot immediately before every transport.
-        service.invocation_policy(provider_id)
+        policy = service.invocation_policy(provider_id)
+        if policy.authentication_mode is not ProviderAuthenticationMode.SECRET_REFERENCE:
+            raise PermissionError("OpenAI planning provider cannot use an external authenticated session")
         return cls(service, provider_id, _from_canonical_g011=True)
 
     @classmethod
@@ -265,7 +270,10 @@ class OpenAIPlanningProviderConfiguration:
         return cls(service, provider_id, _from_canonical_g011=True, _preflight_authority=authority)
 
     def current_policy(self) -> PlanningProviderInvocationPolicy:
-        return self.policy_service.invocation_policy(self.provider_id)
+        policy = self.policy_service.invocation_policy(self.provider_id)
+        if policy.authentication_mode is not ProviderAuthenticationMode.SECRET_REFERENCE or policy.secret_reference is None:
+            raise PermissionError("OpenAI planning provider requires a secret reference")
+        return policy
 
 class OpenAIResponsesPlanningProvider:
     """One explicit OpenAI model; response data is untrusted proposal input."""

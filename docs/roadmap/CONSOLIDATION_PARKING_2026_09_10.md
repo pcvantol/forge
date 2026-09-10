@@ -43,7 +43,7 @@ zero unpreserved WIP.
 | `F-LOCAL-MAIN` | `COMPLETE` | Baseline local main equals `origin/main`; final documentation delivery fast-forwards it again |
 | `F-PEER-CONFIG` | `SOURCE_DELIVERED_QUALIFIED_CONFIGURATION_NOT_PERFORMED` | Durable secret-free EP binding, Keychain resolution, shared adapter factory and read-only v1.2 preflight are source-qualified on isolated fixtures; no installed peer is configured |
 | `F-CONSUMER` | `PARKED` | Later prove the minimum compatible installed EP producer contract and exact durable evidence boundary |
-| `F-DYNAMIC-SOURCE` | `SOURCE_DELIVERED_QUALIFIED` | Deterministic source qualification proves dynamic A, post-evidence B, restart preservation and evidence-derived per-criterion completion; no live EP or provider call |
+| `F-DYNAMIC-SOURCE` | `SOURCE_DELIVERED_QUALIFIED` | Deterministic source qualification proves dynamic A, post-evidence B, restart preservation, evidence-derived per-criterion completion, and the read-only `CODEX_CLI_CHATGPT_SESSION` source adapter; no live EP or provider call |
 | `F-E2E` | `PARKED_ORIGINAL_GOAL_NOT_EXECUTED` | Preserve the original first serial Mission loop below; configuration and governance remain open blockers |
 | `F-LATER` | `PARKED` | Living Mission Graph, outer Mission loop, policy/progression, quality/knowledge learning, release management, Project Hygiene and optimization remain under their existing roadmaps |
 
@@ -57,8 +57,11 @@ Parking preserves bytes and provenance. It is not review, qualification,
 delivery, product readiness or a dependency of the first Forge E2E.
 
 The qualified `F-DYNAMIC-SOURCE` slice does not consume or qualify the parked
-orchestrator source. It adds no endpoint, credential, Mission, grant, installed
-runtime mutation, submission, provider generation, or canary execution.
+orchestrator source. The Codex session adapter stores no login credential and
+uses the external Codex ChatGPT session only after a later wheel refresh and
+explicit provider configuration. This source delivery adds no endpoint,
+credential, Mission, grant, installed runtime mutation, submission, provider
+generation, or canary execution.
 
 ## Original Forge E2E finish line retained exactly
 

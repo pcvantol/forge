@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 33
+RUNTIME_SCHEMA_VERSION = 34
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -35,7 +35,7 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
-    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations", "action_derivation_reattempt_authorizations", "action_derivation_reattempt_consumptions",
+    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_external_session_config", "planning_provider_external_session_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations", "action_derivation_reattempt_authorizations", "action_derivation_reattempt_consumptions",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings",
@@ -496,6 +496,23 @@ class RuntimeDatabase:
                         occurred_at TEXT NOT NULL, document TEXT NOT NULL,
                         FOREIGN KEY(configuration_id) REFERENCES planning_provider_security_config(configuration_id)
                     );
+                    CREATE TABLE IF NOT EXISTS planning_provider_external_session_config (
+                        configuration_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL UNIQUE,
+                        provider_type TEXT NOT NULL, authentication_mode TEXT NOT NULL,
+                        external_session_type TEXT NOT NULL, executable_path TEXT NOT NULL,
+                        adapter_version TEXT NOT NULL, profile TEXT, enabled INTEGER NOT NULL,
+                        operator_id TEXT NOT NULL, version INTEGER NOT NULL,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                        model TEXT, timeout_seconds INTEGER NOT NULL,
+                        input_token_bound INTEGER NOT NULL, context_token_bound INTEGER NOT NULL,
+                        output_token_bound INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS planning_provider_external_session_audit (
+                        audit_id TEXT PRIMARY KEY, configuration_id TEXT NOT NULL,
+                        operator_id TEXT NOT NULL, operation TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL, document TEXT NOT NULL,
+                        FOREIGN KEY(configuration_id) REFERENCES planning_provider_external_session_config(configuration_id)
+                    );
                     CREATE TABLE IF NOT EXISTS planning_provider_generation_permits (
                         permit_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL,
                         policy_version INTEGER NOT NULL, policy_digest TEXT NOT NULL,
@@ -544,6 +561,10 @@ class RuntimeDatabase:
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
                     CREATE TRIGGER IF NOT EXISTS planning_provider_security_audit_no_delete BEFORE DELETE ON planning_provider_security_audit
                     BEGIN SELECT RAISE(ABORT, 'planning provider security audit is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS planning_provider_external_session_audit_no_update BEFORE UPDATE ON planning_provider_external_session_audit
+                    BEGIN SELECT RAISE(ABORT, 'planning provider external-session audit is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS planning_provider_external_session_audit_no_delete BEFORE DELETE ON planning_provider_external_session_audit
+                    BEGIN SELECT RAISE(ABORT, 'planning provider external-session audit is immutable'); END;
                     CREATE TABLE governance_authority (installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, version INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (installation_id, operator_id, capability));
                     CREATE TABLE governance_capability_grants (grant_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, operator_id TEXT NOT NULL, capability TEXT NOT NULL, bootstrap_provenance TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, operator_id, capability));
                     CREATE TABLE governance_decisions (decision_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, subject_id TEXT NOT NULL, subject_revision TEXT NOT NULL, capability TEXT NOT NULL, predecessor_digest TEXT, document TEXT NOT NULL, digest TEXT NOT NULL UNIQUE, occurred_at TEXT NOT NULL, UNIQUE(installation_id, subject_id, subject_revision, capability));
@@ -1291,6 +1312,33 @@ class RuntimeDatabase:
                 self._require_peer_configuration_structure()
                 self._set_metadata({"schema_version":"33","migration_version":"33","last_migration":"33"})
                 self._connection.execute("PRAGMA user_version=33")
+        elif version == 33:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS planning_provider_external_session_config (
+                        configuration_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL UNIQUE,
+                        provider_type TEXT NOT NULL, authentication_mode TEXT NOT NULL,
+                        external_session_type TEXT NOT NULL, executable_path TEXT NOT NULL,
+                        adapter_version TEXT NOT NULL, profile TEXT, enabled INTEGER NOT NULL,
+                        operator_id TEXT NOT NULL, version INTEGER NOT NULL,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                        model TEXT, timeout_seconds INTEGER NOT NULL,
+                        input_token_bound INTEGER NOT NULL, context_token_bound INTEGER NOT NULL,
+                        output_token_bound INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS planning_provider_external_session_audit (
+                        audit_id TEXT PRIMARY KEY, configuration_id TEXT NOT NULL,
+                        operator_id TEXT NOT NULL, operation TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL, document TEXT NOT NULL,
+                        FOREIGN KEY(configuration_id) REFERENCES planning_provider_external_session_config(configuration_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS planning_provider_external_session_audit_no_update BEFORE UPDATE ON planning_provider_external_session_audit
+                    BEGIN SELECT RAISE(ABORT, 'planning provider external-session audit is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS planning_provider_external_session_audit_no_delete BEFORE DELETE ON planning_provider_external_session_audit
+                    BEGIN SELECT RAISE(ABORT, 'planning provider external-session audit is immutable'); END;
+                """)
+                self._set_metadata({"schema_version":"34","migration_version":"34","last_migration":"34"})
+                self._connection.execute("PRAGMA user_version=34")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 

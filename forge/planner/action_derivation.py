@@ -349,7 +349,13 @@ class AIMissionPlanner:
 
     def plan(self, planning_input: MissionPlannerInput, policy: DerivationPolicy) -> DerivationResult:
         snapshot = PlanningSnapshot.from_planner_input(planning_input)
-        proposed = self._provider.derive(snapshot)
+        # A transport-backed provider may require the immutable approved-scope
+        # envelope to construct its strict provider schema.  This optional
+        # narrow hook leaves the established pure-provider contract intact and
+        # still routes every result through the same validator below.
+        derive_with_input = getattr(self._provider, "derive_with_planning_input", None)
+        proposed = (derive_with_input(snapshot, planning_input, policy)
+                    if callable(derive_with_input) else self._provider.derive(snapshot))
         if isinstance(proposed, GovernanceRefinementRequired):
             return DerivationResult(snapshot, None, proposed, None)
         validated = self._validator.validate(proposed, snapshot, planning_input, policy)

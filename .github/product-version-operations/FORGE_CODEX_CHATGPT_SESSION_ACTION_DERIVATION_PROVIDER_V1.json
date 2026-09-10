@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.5.0",
+  "classification_rationale": "FORGE_CODEX_CHATGPT_SESSION_ACTION_DERIVATION_PROVIDER_V1",
+  "component": "product",
+  "event_lineage": "FORGE_CODEX_CHATGPT_SESSION_ACTION_DERIVATION_PROVIDER_V1",
+  "expected_head": "f46b8052dd3bf8589294f66fb5088038f8733e91",
+  "operation_id": "FORGE_CODEX_CHATGPT_SESSION_ACTION_DERIVATION_PROVIDER_V1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.6.0"
+}
