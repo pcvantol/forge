@@ -7,8 +7,12 @@ and [documentary DAG](docs/roadmap/CONSOLIDATION_PARKING_2026_09_10_DAG.json)
 before selecting work. Unfinished product work is PARKED, not cancelled or
 qualified. This is not an instruction to implement the next installer,
 bootstrap-orchestrator or quality-workflow increment. Local inventories are
-owner-reported and require per-target safety checks before any cleanup.
-The documents become canonical only through their protected owning merges.
+reconciled with the completed physical cleanup: the pre-documentation baseline
+had one local `main` worktree, no local feature branches and no unpreserved WIP.
+The bootstrap-orchestrator source remains preserved only at
+`parking/2026-09-10/bootstrap-orchestrator-v0`; it is unreviewed and not a
+Forge-E2E prerequisite. The documents become canonical only through their
+protected owning merges.
 
 This is Forge's thin local bootstrap entrypoint. The generated
 [AI-development projection](docs/ai-development/GENERATED_PROJECTION.md) is

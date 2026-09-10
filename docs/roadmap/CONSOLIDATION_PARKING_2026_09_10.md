@@ -1,148 +1,121 @@
 # Forge and four-repository consolidation / parking
 
-Increment: `FOUR_REPO_CONSOLIDATION_PARKING_2026_09_10`. Recorded 2026-09-10.
-Scoped record under the [canonical Forge roadmap](../../knowledge/bootstrap/10_ROADMAP.md).
+Increment: `FOUR_REPO_CONSOLIDATION_PARKING_2026_09_10`. Reconciled
+2026-09-10. Scoped under the
+[canonical Forge roadmap](../../knowledge/bootstrap/10_ROADMAP.md).
 [Documentary DAG](CONSOLIDATION_PARKING_2026_09_10_DAG.json).
 
-## Decision, not a new engineering programme
+## Decision and evidence boundary
 
-The owner requested that the four repositories be inventoried, unfinished work
-preserved and parked, and open items retained in documentation/roadmap DAGs.
-Only documentation consolidation is active. No product implementation, runtime
-run, review-provider dispatch, release, installation, cleanup or new Mission is
-authorized here. NO_BUMP. Documentary authority begins at the owning protected
-merge; peer documents remain pending until their own delivery is verified.
+Physical cleanup of all four local repositories is complete. This
+documentation-only, `NO_BUMP` closure reconciles the existing consolidation
+record and its documentary DAG with that evidence. It creates no product
+implementation, test/workflow change, version, Mission, Action, runtime run,
+review, qualification, installer, release, grant, credential or budget change.
+`execution_authorized` remains `false`.
 
-PARKED is a planning disposition, not cancellation, runtime failure/dismissal,
-lease release or proof that an agent has stopped. Old handoff instructions to
-continue installer or quality improvements are not current pickup instructions.
-Do not automatically resume the earlier isolated EP qualification attempt.
-Later resumption requires an explicitly selected bounded task and applicable
-current authority. Missing prerequisites are recorded, not automatically built.
+`USER_REPORTED` is the supplied physical cleanup and semantic-classification
+evidence. `LOCAL_READBACK_VERIFIED` is direct Git checkout/worktree/branch
+readback before each temporary documentation worktree was created.
+`SOURCE_VERIFIED` is current GitHub main, ref and PR metadata. Each owner record
+becomes canonical through its own protected documentation merge; transient
+documentation branches are bookkeeping and are removed after merge.
 
-The existing strategic goal remains the first real serial Forge Mission loop:
-approved Mission -> Forge-derived A -> real EP execution -> verified immutable
-EP evidence -> durable Forge reconciliation -> Forge restart/reopen -> newly
-derived non-preconfigured B without owner relay -> evidence-proven completion.
-No Workspace UI, universal installer completion, all-branch cleanup, general
-Project Hygiene implementation or broad subagent optimization is a new gate.
-Necessary installed capability and mandatory assurance are not waived.
+## Forge physical closure
 
-Forge owns planning and this cross-product index. Each peer owns its actual
-status, contracts and evidence. This is a documentary graph, not an executable
-programme, shared database, runtime authority or replacement for existing DAGs.
-No peer SQL. Repo cleanup is reconciliation work, not a hidden Forge Mission.
+Pre-documentation Forge main was
+`1ce16bf44585be7c8a84b8e3e54c9671ff83d0ab`, equal locally and on
+`origin/main`. The baseline had one worktree, zero local feature branches and
+zero unpreserved WIP.
 
-## Evidence and snapshot
-
-SOURCE_VERIFIED below means GitHub readback on 2026-09-10. USER_REPORTED means
-the owner's architecture reports supplied in this task, not direct access to
-Mac worktrees. Exact local paths/SHAs, stashes, ignored files, active processes
-and leases were not independently inspected. Missing details remain open.
-
-| Product | Pinned remote main | Remote work at the pre-documentation snapshot |
+| Node | Disposition | Closure / retained acceptance |
 | --- | --- | --- |
-| Forge | `847b552c1c9d4824a2b57bca96a28d4bc851cc09` | main and release-2.3.1; no open PR |
-| EP | `d329852b06f71a10e13b91dd1d1f87982ef6b90d` | Draft #175 plus retained operational-record/version-operation and release refs |
-| Workspace | `bad3dd7d7dafd6c907af440a10f9da0ed7261714` | No open product PR; documentation #26 was opened by this consolidation task |
-| Forge Platform | `0bb24eb1094d7912de4e624b3ecd97fe73159ce9` | main only; parking PR #61 merged |
+| `F-LOCAL` | `RESOLVED` | One baseline worktree, zero local feature branches and zero unpreserved WIP |
+| `F-PRODUCTIZATION` | `RESOLVED_SUPERSEDED_OR_PRESENT_ON_MAIN` | Every formerly preserved productization byte is present on main or superseded by a stronger main implementation; no unique residual remains |
+| `F-ORCHESTRATOR` | `PARKED_REMOTE_UNREVIEWED_SOURCE` | Preserve `parking/2026-09-10/bootstrap-orchestrator-v0` at exact `40fa8b91bc7f0940dfa89ddbf43abb0adfd2e15e`; review scope/architecture before any future delivery |
+| `F-RELEASE61` | `RESOLVED_NO_UNIQUE_RESIDUAL` | Closed-PR/local release evidence comparison left no unique residual |
+| `F-CLEANUP` | `COMPLETE` | Authorized auxiliary worktree/branch cleanup completed; no active local feature lane remains |
+| `F-LOCAL-MAIN` | `COMPLETE` | Baseline local main equals `origin/main`; final documentation delivery fast-forwards it again |
+| `F-CONSUMER` | `PARKED` | Later prove the minimum compatible installed EP producer contract and exact durable evidence boundary |
+| `F-E2E` | `PARKED_ORIGINAL_GOAL` | Preserve the original first serial Mission loop below |
+| `F-LATER` | `PARKED` | Living Mission Graph, outer Mission loop, policy/progression, quality/knowledge learning, release management, Project Hygiene and optimization remain under their existing roadmaps |
 
-Remote sources: [Forge heads](https://api.github.com/repos/pcvantol/forge/git/matching-refs/heads/),
-[EP heads](https://api.github.com/repos/pcvantol/engineering-platform/git/matching-refs/heads/),
-[Workspace #26](https://github.com/pcvantol/workspace/pull/26),
-[Forge Platform #61](https://github.com/pcvantol/forge-platform/pull/61).
-These endpoint URLs are mutable; the table pins the observation. New documentary
-branches/PRs created by this task are not newly discovered product work.
+The only remaining Forge cleanup-created product-source preservation is:
 
-## Forge local inventory and per-item disposition
+- ref: `parking/2026-09-10/bootstrap-orchestrator-v0`
+- exact SHA: `40fa8b91bc7f0940dfa89ddbf43abb0adfd2e15e`
+- disposition: `PARKED_REMOTE_UNREVIEWED_SOURCE`
 
-USER_REPORTED: 13 local branches (main plus 12 features), 12 worktrees, none on
-main. Local main `03c7572` is 16 commits behind the reported remote baseline;
-locally cached origin/main was itself one commit stale. Do not synchronize by
-switching the dirty primary checkout. A future fast-forward needs current
-ancestry, ownership and worktree checks; no force/reset is authorized here.
+Parking preserves bytes and provenance. It is not review, qualification,
+delivery, product readiness or a dependency of the first Forge E2E.
 
-| Item / node | Reported state | Disposition and later acceptance |
+## Original Forge E2E finish line retained exactly
+
+```text
+approved Mission
+-> Forge derives Action A
+-> EP executes A
+-> Forge reconciles A
+-> Forge restart/reopen from durable state
+-> Forge derives successor B without owner relay
+-> EP executes B
+-> evidence-derived Mission COMPLETE
+```
+
+`F-E2E` depends locally only on `F-CONSUMER`; `F-CONSUMER` references only the
+external EP capability node `E-PRODUCER`. The next readiness audit may determine
+the actually required producer capability. This closure does **not** decide
+that all of EP #175, all installer work or any broader EP roadmap is necessary.
+
+In particular `F-E2E` has no dependency on `FP-INSTALLER`,
+`W-CONTROL-PLANE`, `W-POLICY-HYGIENE`, `E-LATER`, subagent optimization, full
+repository cleanup or bootstrap-orchestrator productization. No Workspace,
+installer or subagent prerequisite is added.
+
+## Owning peer records and remaining parked work
+
+| Product | Owning documentation merge / physical closure | Remaining parked product points |
 | --- | --- | --- |
-| F-PRODUCTIZATION: codex/forge-productization-reconciliation | Primary worktree; one changed architecture document and eight untracked items; some paths also exist on main but differ | PRESERVE_AND_ASSESS. Compare each actual file against pinned main; classify PRESENT_ON_MAIN, SUPERSEDED, GENUINE_RESIDUAL or UNRESOLVED. No merge/overwrite from filenames or stale architecture. Preserve .engineering and its target. |
-| F-ORCHESTRATOR: codex/bootstrap-orchestrator-v0 | Branch history reported integrated; untracked .engineering, forge/bootstrap_orchestrator/__init__.py, core.py and tests/test_bootstrap_orchestrator_core.py | PARKED_UNREVIEWED_SOURCE. Retain all bytes. Review whether it preserves Forge planning vs EP execution and dynamic Mission semantics before considering delivery. File names do not establish approved scope, quality or usefulness. |
-| F-RELEASE61: codex/forge-release-evidence-v1 | Clean; PR #61 closed without merge; unique commit identities | RETAIN_PENDING_SEMANTIC_RECONCILIATION. Compare the actual local tip and diff to later release implementation/tests. Supersession is suspected, not proven by PR closure or squash history. |
-| F-CLEANUP | Nine reported clean worktrees below | CONDITIONAL_CLEANUP_CANDIDATES only; inspect exact local tips and all retained files plus PR-head/post-merge commits and active ownership before any separately authorized removal. |
-| F-LOCAL | Exact paths, full local tip IDs, file-level residual classification, stash/ignored inventory and active run/lease evidence | OPEN_EVIDENCE_GAP. Aggregate reports are useful but not per-target deletion evidence. |
-| F-LOCAL-MAIN | Main behind; no worktree currently on it | FAST_FORWARD_CANDIDATE after fresh checks; preserve dirty worktrees. Not executed here. |
+| Forge Platform | `cb6a10a4ffca90e2b689af62349da2075fe47a77`; 1 worktree, 0 local feature branches, 0 unpreserved WIP; 37 delivered branches removed; 16 examined as 11 present on main, 5 superseded, 0 genuine residual, 0 unresolved | `FP-INSTALLER = PARKED_EXISTING_DAG_RETAINED`; `FP-LATER = PARKED`. [EP Server clean-install v1](https://github.com/pcvantol/forge-platform/blob/main/docs/roadmap/EP_SERVER_CLEAN_INSTALL_V1.md) remains the detailed installer DAG and is not copied or made an E2E predecessor |
+| Workspace | `f220f61ce214416287d6c696d63642dbe0e7d2a7`; 1 worktree, 0 local feature branches, 0 unpreserved WIP; 8 auxiliary worktrees/branches removed | `W-CONTROL-PLANE`, `W-POLICY-HYGIENE` and `W-RELEASE` remain PARKED; Workspace is `NOT_ON_FIRST_FORGE_E2E_CRITICAL_PATH` |
+| Engineering Platform | `264f2a2c12224c83b79919add782b93db74fcfac`; 1 worktree, 0 local feature branches, 0 stashes, 0 unpreserved WIP | #175 remains `OPEN / DRAFT / PARKED_NOT_QUALIFIED`; residual/source/provenance refs and all product decisions below remain parked |
 
-The nine F-CLEANUP branches, retained by exact name:
+Engineering Platform durable refs, fetched at full SHA:
 
-- codex/forge-cleanup-pending-first-failure-v1
-- codex/forge-cleanup-pending-resume-v1
-- codex/forge-engineering-platform-repository-declaration
-- codex/forge-ep-release-flow-parity-v1
-- codex/forge-ep-release-parity-v2
-- codex/forge-main-first-release-v1
-- codex/forge-release-completion-evidence-v1
-- codex/forge-release-evidence-projection-v1
-- codex/forge-release-prepublication-operation-v1
-
-[Forge #61](https://github.com/pcvantol/forge/pull/61) is SOURCE_VERIFIED closed,
-merged=false, historical head `3bf66d2cebc94702d45a03e0a9173b6769d896d9`.
-That is not proof of the current local tip. The release-2.3.1 ref at
-`5ae52d084c1ff24d56a76adcd2732242cc16e799` is retained as release history;
-ancestry containment is not authorization to delete a release ref.
-
-## Cross-product assessment and retained open points
-
-EP #175 stays DRAFT/PARKED/NOT_QUALIFIED. Its early parking publication cannot
-prove first-create-after-assurance; later reviews/readback cannot rewrite that
-event. Keep its head untouched. Do not close/recreate it or invent legacy run
-lineage. The future qualification strategy, exact review authority, runtime
-route and level-B merge decision remain explicit EP-owned open decisions.
-
-Workspace: USER_REPORTED eight clean feature worktrees under /private/tmp,
-associated with merged #18-#25; main nine commits behind. These are conditional
-cleanup candidates, not proof of product feature completeness. Documentation
-#26 belongs to this inventory task and must be reconciled separately.
-
-Forge Platform: USER_REPORTED 54 local branches and 52 worktrees, all clean;
-37 featurebranches associated with merged PRs, 16 without a direct PR link;
-main 41 commits behind and no unique main commits. The unnamed 16 require
-per-branch comparison. Do not delete all 51 auxiliary worktrees by inference.
-The installer is already parked through #61; use that scope/DAG, not the older
-universal-installer handoff. Source foundation does not prove installed product.
-
-Owning records (verify their protected delivery before treating them canonical):
-[EP](https://github.com/pcvantol/engineering-platform/blob/main/docs/development/CONSOLIDATION_PARKING_2026_09_10.md),
-[Workspace](https://github.com/pcvantol/workspace/blob/main/docs/CONSOLIDATION_PARKING_2026_09_10.md),
-[Forge Platform](https://github.com/pcvantol/forge-platform/blob/main/docs/roadmap/CONSOLIDATION_PARKING_2026_09_10.md).
-
-## Parked Forge work families
-
-| Node | Retained work | Later resumption evidence |
+| Ref | Exact SHA | Disposition |
 | --- | --- | --- |
-| F-CONSUMER | Installed Forge identity/storage, explicit EP v1.2 compatibility, immutable exact-byte terminal evidence and full identity/provenance binding | Exact Forge artifact/runtime and actual compatible EP producer; mismatch yields WAITING_EXTERNAL_CAPABILITY with zero submissions. No silent v1.1 fallback. |
-| F-E2E | Original single-Mission real A/restart/dynamic-B/completion proof | Current approved Mission and grants, qualified runtimes, exact receipts and durable restart evidence. Not a preconfigured A/B script. |
-| F-LATER | Cross-repository Living Mission Graph/depends_on, outer Mission loop, Project Intelligence, Quality/Knowledge Learning, policy/progression, release management and Project Hygiene | Existing owning roadmap/DAG criteria remain; not deleted or automatically added as canary prerequisites. |
+| `codex/ep-operational-installation-record-v1` | `4026ad1e671ad86d23dc9f8c56b7c4d5ddeb8819` | `PARKED_REMOTE` |
+| `codex/ep-version-operation-reconciliation-v1` | `63bb8f14bbbd176109f4da1d20e2d96dc3081125` | `PARKED_REMOTE` |
+| `parking/2026-09-10/ep-local-stash-residual` | `2982ff8ca42085e09eecf92de38e37bb71d64eec` | `PARKED_UNREVIEWED_SOURCE / NOT_QUALIFIED / NOT_DELIVERY` |
+| `parking/2026-09-10/ep-release-2.3.1-prior-tip` | `3c934ee2b1c432463c140e7dc8cee007a8a46531` | `HISTORICAL_PROVENANCE_PRESERVED`; never an execution predecessor |
+| `release-2.3.1` | `2ff4ee7441b8d8bade6c39e2c52dd62187af87ef` | `RELEASE_HISTORY` |
 
-The documentary JSON contains only consolidation/evidence relationships and
-these work-family references; it is not a full replacement implementation DAG.
-Priority is not a hard dependency. In particular F-E2E does not depend on local
-cleanup, FP clean-install-v1, Workspace UI or all SA-* optimization nodes.
+The owning [EP record](https://github.com/pcvantol/engineering-platform/blob/main/docs/development/CONSOLIDATION_PARKING_2026_09_10.md)
+retains the exact acceptance criteria. It also preserves both mandatory
+distinctions: #175 hosted/source tests are not durable current Managed lifecycle
+qualification, and the existing draft is not proof that first draft creation
+happened after assurance. No qualification or merge of #175 is authorized.
 
-## Physical consolidation protocol — deferred, not performed
+## Documentary DAG invariants
 
-A later host-local operation must capture current worktree paths/tips/locks,
-stashes, tracked/untracked/ignored files and symlink metadata without traversing
-runtime roots. Preserve unique content in an access-controlled recoverable
-location, retain exact refs/provenance and verify the recovery material before
-removal. A Git bundle alone does not retain uncommitted/untracked/ignored bytes.
-Never publish secrets or bulk .engineering contents as a parking commit.
+The four consolidation DAGs were validated together after the three peer
+merges and against this Forge candidate:
 
-Clean status, a merged PR, branch age or semantic supersession is insufficient
-alone. Check current tip versus merged PR head, later local commits, ownership,
-active EP run/PR/lease, exact expected ref, retention and recovery. Apply only
-an explicit per-target authorized cleanup; no force removal, global prune,
-stash/reset or direct-main commit to manufacture a clean state.
+- node IDs are unique in their intended `F-*`, `FP-*`, `W-*` and `E-*`
+  namespaces;
+- every local `depends_on` target resolves;
+- every documented external owner/ref resolves;
+- no dependency cycle is present;
+- all four graphs retain `execution_authorized = false`; and
+- the first Forge E2E predecessor exclusions above hold.
 
-The documentation is complete only as a record of the known remote snapshot,
-owner-supplied local inventory and remaining gaps. Physical cleanup and bytewise
-classification of unseen local files are NOT_COMPLETE. Finish this documentary
-task and stop; later engineering starts only from a selected bounded item.
+These graphs remain documentary overlays. They do not replace the existing
+product DAGs, authorize execution, or turn priority/parking into dependency.
+
+## Closure
+
+The physical repository state and consolidation documentation now agree. All
+known remaining source, product, installer, Workspace and optimization points
+are explicitly parked or preserved. This is readiness to begin a separately
+authorized Forge E2E capability-readiness audit only; the audit is not started
+by this closure.
