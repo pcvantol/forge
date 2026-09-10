@@ -20,9 +20,12 @@ from forge.governance import ApprovalRecord, ExecutionPolicy, ExecutionPolicyKin
 from forge.models.action import EngineeringAction, EngineeringActionStatus
 from forge.models.architecture_mission import ArchitectureMission
 from forge.models.execution_host import ExecutionHost, ExecutionHostEvidence
-from forge.models.mission_completion import MissionCompletionEvidence
+from forge.models.mission_completion import (MissionCompletionEvidence,
+                                              MissionCriterionEvaluationStatus)
 from forge.models.action_derivation import DerivationPolicy
-from forge.models.mission_planner import MissionPlan, MissionPlannerInput, MissionPlanningState, PlanningInputKind
+from forge.models.mission_planner import (MissionCriterionPlanningState, MissionPlan,
+                                          MissionPlannerInput, MissionPlanningState,
+                                          PlanningInputKind)
 from forge.planner import AIMissionPlanner, DerivationResult, MissionPlanner
 from forge.runtime import BootstrapMissionRunner, RuntimePromptFactory
 from forge.scheduler import BootstrapMissionScheduler
@@ -247,7 +250,13 @@ class ExecutionLoop:
                                  if action["status"] == EngineeringActionStatus.COMPLETE.value))
         blocked = tuple(sorted(str(action["id"]) for action in state.actions
                                if action["status"] in {EngineeringActionStatus.BLOCKED.value, EngineeringActionStatus.FAILED.value}))
-        return replace(source, mission_state=MissionPlanningState(state.mission_id, state.revision, completed, blocked))
+        completion_criteria = state.completion.get("criteria", ()) if state.completion else ()
+        criterion_states = tuple(MissionCriterionPlanningState(
+            str(item["criterion_id"]), MissionCriterionEvaluationStatus(str(item["status"])),
+        ) for item in completion_criteria if isinstance(item, Mapping))
+        return replace(source, mission_state=MissionPlanningState(
+            state.mission_id, state.revision, completed, blocked, criterion_states,
+        ))
 
     @staticmethod
     def _dynamic_mode(planning_input: MissionPlannerInput) -> bool:
@@ -280,6 +289,7 @@ class ExecutionLoop:
             "logical_action_id": proposal.logical_action_id,
             "semantic_digest": proposal.semantic_digest(),
             "provenance": asdict(proposal.provenance),
+            "mission_gap": None if proposal.mission_gap is None else proposal.mission_gap.to_dict(),
         } for proposal in proposals)
         validation_source = {
             "snapshot_digest": result.snapshot.digest,
@@ -290,7 +300,7 @@ class ExecutionLoop:
             validation_source, sort_keys=True, separators=(",", ":"), ensure_ascii=False
         ).encode("utf-8")).hexdigest()
         return {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "derivation_id": provenance.derivation_id,
             "mission_id": planning_input.mission.id,
             "parent_derivation_id": None if not state.planning_history else state.planning_history[-1]["derivation_id"],
@@ -309,6 +319,7 @@ class ExecutionLoop:
             "materialized_plan_id": result.plan.id,
             "materialized_plan_digest": result.plan.input_digest,
             "materialized_action_ids": [proposal.logical_action_id for proposal in proposals],
+            "proposals": list(proposal_documents),
             "completed_action_ids_at_derivation": list(planning_input.mission_state.completed_action_ids),
         }
 

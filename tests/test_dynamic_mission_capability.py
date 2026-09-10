@@ -25,6 +25,8 @@ from forge.models import (
     IntentReference,
     MissionCompletionEvidence,
     MissionCriterionEvidenceBinding,
+    MissionGapBinding,
+    MissionGapClassification,
     MissionPlannerInput,
     MissionPlanningState,
     PlannedActionDefinition,
@@ -122,7 +124,8 @@ class DerivationProvider:
         self.second = second
 
     @staticmethod
-    def proposal(snapshot, action_id: str, *, dependencies: tuple[str, ...] = (), scope: str = "forge-runtime"):
+    def proposal(snapshot, action_id: str, *, dependencies: tuple[str, ...] = (), scope: str = "forge-runtime",
+                 mission_gap: MissionGapBinding | None = None):
         provenance = ProposalProvenance(
             f"derivation-{action_id}", snapshot.id, snapshot.digest, "fixture-v1", "fixture-provider", "fixture-model",
             tuple(item.source_id for item in snapshot.evidence),
@@ -130,7 +133,32 @@ class DerivationProvider:
         return DerivedActionProposal(
             action_id, scope, f"Execute {action_id}.", dependencies, ("forge/runtime",),
             (f"evidence-{action_id}",), (f"validate-{action_id}",), 1, False,
-            ("architecture-review",), ("scope-drift",), provenance,
+            ("architecture-review",), ("scope-drift",), provenance, mission_gap,
+        )
+
+    def successor_gap(self, snapshot, action_id: str) -> MissionGapBinding | None:
+        objective = f"Execute {action_id}."
+        execution_ref = next(item.source_id for item in snapshot.evidence
+                             if item.kind is PlanningInputKind.EXECUTION_EVIDENCE)
+        criteria = {item.criterion: item.criterion_id for item in snapshot.criteria}
+        if self.second in {"missing-binding", "optional"}:
+            return None
+        if self.second in {"outside-criterion", "criterion-expansion"}:
+            criterion_ids = ("mission-criterion-outside-approved-mission",)
+        elif self.second == "proven-criterion":
+            criterion_ids = (criteria["A evidence reconciled"],)
+        else:
+            criterion_ids = (criteria["B evidence reconciled"],)
+        evidence_refs = ("stale-receipt",) if self.second == "stale-evidence" else (execution_ref,)
+        if self.second == "blocker":
+            return MissionGapBinding(
+                MissionGapClassification.MISSION_CAUSED_BLOCKER, (), evidence_refs,
+                snapshot.digest, objective, ("action-a",),
+            )
+        return MissionGapBinding(
+            MissionGapClassification.UNPROVEN_MISSION_CRITERION, criterion_ids, evidence_refs,
+            "sha256:" + "0" * 64 if self.second == "stale-binding" else snapshot.digest,
+            "Unrelated objective." if self.second == "objective-mismatch" else objective,
         )
 
     def derive(self, snapshot):
@@ -145,7 +173,8 @@ class DerivationProvider:
             return (self.proposal(self.snapshots[0], "action-b", dependencies=("action-a",)),)
         if self.second == "outside":
             return (self.proposal(snapshot, "action-b", dependencies=("action-a",), scope="outside"),)
-        return (self.proposal(snapshot, "action-b", dependencies=("action-a",)),)
+        return (self.proposal(snapshot, "action-b", dependencies=("action-a",),
+                              mission_gap=self.successor_gap(snapshot, "action-b")),)
 
 
 class DynamicMissionCapabilityTests(unittest.TestCase):
@@ -248,6 +277,9 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
                          ["derivation-action-a", "derivation-action-b"])
         self.assertTrue(all(item["validated_before_materialization"] for item in waiting.planning_history))
         self.assertEqual(waiting.planning_history[1]["completed_action_ids_at_derivation"], ["action-a"])
+        gap = waiting.planning_history[1]["proposals"][0]["mission_gap"]
+        self.assertEqual(gap["classification"], "UNPROVEN_MISSION_CRITERION")
+        self.assertEqual(gap["criterion_ids"], [mission_criterion_id(mission().id, "B evidence reconciled")])
         self.assertTrue(any(item.kind is PlanningInputKind.EXECUTION_EVIDENCE for item in provider.snapshots[1].evidence))
         execution_input = next(item for item in provider.snapshots[1].evidence
                                if item.kind is PlanningInputKind.EXECUTION_EVIDENCE)
@@ -300,6 +332,34 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
                 self.assertEqual(blocked.status, MissionExecutionStatus.BLOCKED)
                 self.assertEqual([(item["id"], item["status"]) for item in blocked.actions], [("action-a", "COMPLETE")])
                 self.assertEqual(len(blocked.execution_history), 1)
+
+    def test_successor_relevance_failures_never_materialize_inside_scope_work(self) -> None:
+        modes = (
+            "proven-criterion", "missing-binding", "outside-criterion", "stale-evidence",
+            "stale-binding", "optional", "objective-mismatch", "criterion-expansion",
+        )
+        for mode in modes:
+            with self.subTest(mode=mode):
+                self.runtime.close()
+                scoped_root = self.root / mode
+                self.runtime = RuntimeDatabase(scoped_root)
+                self.store = MissionStateStore(self.runtime)
+                self.store.create_pending(mission(), occurred_at="2026-09-10T09:59:00Z")
+                blocked = self.loop(DerivationProvider(mode)).run()
+                assert blocked is not None
+                self.assertEqual(blocked.status, MissionExecutionStatus.BLOCKED)
+                self.assertEqual([(item["id"], item["status"]) for item in blocked.actions],
+                                 [("action-a", "COMPLETE")])
+                self.assertEqual(self.host.requests[-1], "action-a")
+
+    def test_mission_caused_blocker_with_current_causal_evidence_is_executable(self) -> None:
+        waiting = self.loop(DerivationProvider("blocker")).run()
+        assert waiting is not None
+        self.assertEqual(waiting.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
+        self.assertEqual([item["id"] for item in waiting.actions], ["action-a", "action-b"])
+        gap = waiting.planning_history[1]["proposals"][0]["mission_gap"]
+        self.assertEqual(gap["classification"], "MISSION_CAUSED_BLOCKER")
+        self.assertEqual(gap["mission_caused_by_action_ids"], ["action-a"])
 
     def test_dynamic_mode_rejects_any_preconfigured_action(self) -> None:
         def invalid_planning(state):

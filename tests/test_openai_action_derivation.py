@@ -34,7 +34,7 @@ class Response:
  def __exit__(self,*args): return None
 
 def proposal():
- return {'kind':'proposals','proposals':[{'logical_action_id':'derive-contract','scope':'planner-contract','objective':'Implement bounded action derivation.','dependencies':[],'write_scopes':['forge/planner'],'expected_evidence':['unit test'],'validation_strategy':['unit test'],'priority':1,'postponed':False,'human_gates':['architecture-review'],'risk_inputs':['scope-drift'],'source_evidence_refs':['mission_state','repository_truth']}]}
+ return {'kind':'proposals','proposals':[{'logical_action_id':'derive-contract','scope':'planner-contract','objective':'Implement bounded action derivation.','dependencies':[],'write_scopes':['forge/planner'],'expected_evidence':['unit test'],'validation_strategy':['unit test'],'priority':1,'postponed':False,'human_gates':['architecture-review'],'risk_inputs':['scope-drift'],'source_evidence_refs':['mission_state','repository_truth'],'mission_gap':None}]}
 
 class OpenAIActionDerivationTests(unittest.TestCase):
  def setUp(self): self.snapshot=PlanningSnapshot.from_planner_input(input_model())
@@ -181,6 +181,11 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   self.assertEqual(properties['write_scopes'],{'type':'array','items':{'type':'string'},'maxItems':0})
   self.assertEqual(properties['human_gates'],{'type':'array','items':{'type':'string','enum':['architecture-review']},'minItems':1,'maxItems':1})
   self.assertEqual(properties['risk_inputs'],{'type':'array','items':{'type':'string','enum':['scope-drift']},'minItems':1,'maxItems':1})
+  self.assertIn('mission_gap',schema['properties']['proposals']['items']['required'])
+  gap_schema=properties['mission_gap']['anyOf'][0]
+  self.assertEqual(gap_schema['properties']['criterion_ids']['items']['enum'],
+                   [self.snapshot.criteria[0].criterion_id])
+  self.assertEqual(gap_schema['properties']['planning_snapshot_digest']['enum'],[self.snapshot.digest])
 
  def test_strict_schema_gives_every_array_an_explicit_item_schema_without_weakening_policy(self):
   adapter,_,_,request=self.adapter(lambda *args,**kwargs: None)

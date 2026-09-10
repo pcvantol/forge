@@ -78,6 +78,7 @@ class ActionDerivationEvidenceTests(unittest.TestCase):
                     "validation_strategy": ["v"], "priority": 1, "postponed": False,
                     "human_gates": ["human gate"], "risk_inputs": ["untrusted provider"],
                     "source_evidence_refs": ["mission_state"],
+                    "mission_gap": None,
                 }],
             })}]}]})
         resolver = Resolver()
@@ -138,6 +139,7 @@ class ActionDerivationEvidenceTests(unittest.TestCase):
                     "validation_strategy": ["v"], "priority": 1, "postponed": False,
                     "human_gates": ["human gate"], "risk_inputs": ["untrusted provider"],
                     "source_evidence_refs": ["mission_state"],
+                    "mission_gap": None,
                 }],
             })}]}]})
         resolver = Resolver()

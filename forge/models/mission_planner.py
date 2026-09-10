@@ -11,9 +11,10 @@ from typing import Any
 from .action import EngineeringAction
 from .architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from .intent import IntentReference
+from .mission_completion import MissionCriterionEvaluationStatus
 
 
-MISSION_PLANNER_SCHEMA_VERSION = "4.2"
+MISSION_PLANNER_SCHEMA_VERSION = "4.3"
 
 
 class PlanningInputKind(str, Enum):
@@ -105,6 +106,20 @@ class ApprovedScope:
 
 
 @dataclass(frozen=True)
+class MissionCriterionPlanningState:
+    """Forge-derived status of one approved Mission criterion at planning time."""
+
+    criterion_id: str
+    status: MissionCriterionEvaluationStatus
+
+    def __post_init__(self) -> None:
+        if not self.criterion_id:
+            raise ValueError("Mission criterion planning state requires criterion identity")
+        if not isinstance(self.status, MissionCriterionEvaluationStatus):
+            raise ValueError("Mission criterion planning state status is invalid")
+
+
+@dataclass(frozen=True)
 class MissionPlanningState:
     """Planner-visible Mission progress, without Runtime or host implementation state."""
 
@@ -112,6 +127,7 @@ class MissionPlanningState:
     revision: int
     completed_action_ids: tuple[str, ...] = ()
     blocked_action_ids: tuple[str, ...] = ()
+    criterion_states: tuple[MissionCriterionPlanningState, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.mission_id or self.revision < 1:
@@ -121,6 +137,12 @@ class MissionPlanningState:
             if len(values) != len(set(values)) or any(not item for item in values):
                 raise ValueError(f"mission planning state {name} must be unique and non-empty")
             object.__setattr__(self, name, tuple(sorted(values)))
+        criterion_ids = tuple(item.criterion_id for item in self.criterion_states)
+        if len(criterion_ids) != len(set(criterion_ids)):
+            raise ValueError("Mission criterion planning states must be unique")
+        object.__setattr__(self, "criterion_states", tuple(sorted(
+            self.criterion_states, key=lambda item: item.criterion_id,
+        )))
 
 
 @dataclass(frozen=True)

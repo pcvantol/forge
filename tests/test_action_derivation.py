@@ -6,12 +6,14 @@ import unittest
 
 from forge.models import (
     ArchitectureMission, ArchitectureMissionStatus, DerivationLifecycle, DerivationPolicy, DerivationRecord, DerivedActionProposal, DerivedActionIdentityState,
-    EngineeringEffort, IntentReference, MissionPlannerInput, MissionPlanningState,
+    EngineeringEffort, IntentReference, MissionCriterionEvaluationStatus, MissionCriterionPlanningState,
+    MissionGapBinding, MissionGapClassification, MissionPlannerInput, MissionPlanningState,
     PlanningEvidence, PlanningInputKind, PlanningSnapshot, ProposalProvenance, ProviderInvocationEvidence, ProviderSideEffectState,
-    RequiredDiscipline, ApprovedScope, classify_replan_identity,
+    RequiredDiscipline, ApprovedScope, classify_replan_identity, mission_criterion_id,
 )
 from forge.planner import (AIMissionPlanner, ActionDerivationValidator, BoundedActionDerivationProvider,
                            ProposalValidationError, ProviderDerivationRequest, ProviderDerivationResponse)
+from forge.planner.action_derivation import deterministic_validation_failure_code
 
 
 def _digest(char: str) -> str:
@@ -45,12 +47,14 @@ def input_model(**overrides: object) -> MissionPlannerInput:
 
 def proposal(*, action_id: str = "derive-contract", scope: str = "planner-contract", dependencies: tuple[str, ...] = (),
              write_scopes: tuple[str, ...] = ("forge/planner",), gates: tuple[str, ...] = ("architecture-review",),
-             risks: tuple[str, ...] = ("scope-drift",), snapshot: PlanningSnapshot | None = None) -> DerivedActionProposal:
+             risks: tuple[str, ...] = ("scope-drift",), snapshot: PlanningSnapshot | None = None,
+             mission_gap: MissionGapBinding | None = None) -> DerivedActionProposal:
     current = snapshot or PlanningSnapshot.from_planner_input(input_model())
     provenance = ProposalProvenance("derivation-1", current.id, current.digest, "1.0", "fixture-provider", "fixture-1",
                                     tuple(item.source_id for item in current.evidence))
     return DerivedActionProposal(action_id, scope, "Implement bounded derived planning.", dependencies, write_scopes,
-                                 (f"{action_id} evidence",), (f"{action_id} tests",), 10, False, gates, risks, provenance)
+                                 (f"{action_id} evidence",), (f"{action_id} tests",), 10, False, gates, risks,
+                                 provenance, mission_gap)
 
 
 class FixtureProvider:
@@ -152,6 +156,60 @@ class ActionDerivationTests(unittest.TestCase):
         self.assertEqual(classify_replan_identity(current, modified, completed=True), DerivedActionIdentityState.SUPERSEDED)
         deferred = DerivedActionProposal(**{**current.__dict__, "postponed": True})
         self.assertEqual(classify_replan_identity(current, deferred), DerivedActionIdentityState.DEFERRED)
+
+    def test_successor_requires_current_unmet_criterion_or_mission_caused_blocker(self) -> None:
+        criterion_id = mission_criterion_id("mission-1", "Deterministic plans are generated.")
+        execution = PlanningEvidence(PlanningInputKind.EXECUTION_EVIDENCE, "receipt-a", "2",
+                                     "runtime://execution/receipt-a", _digest("b"))
+        state = MissionPlanningState(
+            "mission-1", 2, ("action-a",), (),
+            (MissionCriterionPlanningState(criterion_id, MissionCriterionEvaluationStatus.UNSATISFIED),),
+        )
+        current = input_model(mission_state=state, evidence=(*self.input.evidence, execution))
+        snapshot = PlanningSnapshot.from_planner_input(current)
+        objective = "Implement bounded derived planning."
+        gap = MissionGapBinding(
+            MissionGapClassification.UNPROVEN_MISSION_CRITERION, (criterion_id,), ("receipt-a",),
+            snapshot.digest, objective,
+        )
+        proposals = (
+            proposal(snapshot=snapshot, mission_gap=gap),
+            proposal(action_id="derive-docs", scope="planner-docs", snapshot=snapshot, mission_gap=gap),
+        )
+        ActionDerivationValidator().validate(proposals, snapshot, current, self.policy)
+
+        without_gap = (proposal(snapshot=snapshot), proposals[1])
+        with self.assertRaises(ProposalValidationError) as missing:
+            ActionDerivationValidator().validate(without_gap, snapshot, current, self.policy)
+        self.assertEqual(deterministic_validation_failure_code(missing.exception),
+                         "FOLLOW_UP_NOT_CURRENT_MISSION")
+
+        proven = input_model(mission_state=MissionPlanningState(
+            "mission-1", 2, ("action-a",), (),
+            (MissionCriterionPlanningState(criterion_id, MissionCriterionEvaluationStatus.PROVEN),),
+        ), evidence=(*self.input.evidence, execution))
+        proven_snapshot = PlanningSnapshot.from_planner_input(proven)
+        proven_gap = MissionGapBinding(
+            MissionGapClassification.UNPROVEN_MISSION_CRITERION, (criterion_id,), ("receipt-a",),
+            proven_snapshot.digest, objective,
+        )
+        with self.assertRaises(ProposalValidationError) as already_proven:
+            ActionDerivationValidator().validate((
+                proposal(snapshot=proven_snapshot, mission_gap=proven_gap),
+                proposal(action_id="derive-docs", scope="planner-docs", snapshot=proven_snapshot,
+                         mission_gap=proven_gap),
+            ), proven_snapshot, proven, self.policy)
+        self.assertEqual(deterministic_validation_failure_code(already_proven.exception),
+                         "MISSION_CRITERION_ALREADY_PROVEN")
+
+        blocker = MissionGapBinding(
+            MissionGapClassification.MISSION_CAUSED_BLOCKER, (), ("receipt-a",),
+            snapshot.digest, objective, ("action-a",),
+        )
+        ActionDerivationValidator().validate((
+            proposal(snapshot=snapshot, mission_gap=blocker),
+            proposal(action_id="derive-docs", scope="planner-docs", snapshot=snapshot, mission_gap=blocker),
+        ), snapshot, current, self.policy)
 
 
 if __name__ == "__main__":

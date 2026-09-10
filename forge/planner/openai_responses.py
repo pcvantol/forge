@@ -19,7 +19,8 @@ from urllib.request import Request, urlopen
 import uuid
 
 from forge.models.action_derivation import (DerivationPolicy, DerivedActionProposal, GovernanceRefinementRequired,
-    PlanningSnapshot, ProposalProvenance, ProviderInvocationEvidence, ProviderSideEffectState)
+    MissionGapBinding, MissionGapClassification, PlanningSnapshot, ProposalProvenance,
+    ProviderInvocationEvidence, ProviderSideEffectState)
 from forge.provider_security import (PlanningProviderInvocationPolicy,
     PlanningProviderSecurityService, SecretReference, SecretState)
 from forge.runtime import RuntimeDatabaseError
@@ -55,6 +56,11 @@ _DEPENDENCY_CONTRACT_INSTRUCTION = (
     "Each dependencies item must exactly equal the logical_action_id of another proposal in the same "
     "proposals array. Use an empty dependencies array when no such proposal exists; never use a scope, "
     "capability, evidence reference, or undeclared label as a dependency."
+)
+_MISSION_GAP_CONTRACT_INSTRUCTION = (
+    "Every successor after a completed or blocked Mission Action must include mission_gap. Bind only an "
+    "UNSATISFIED criterion in this snapshot, or a MISSION_CAUSED_BLOCKER with causal current evidence and "
+    "the causing Mission Action identity. Optional improvements and Mission expansion are not proposals."
 )
 
 class ProviderSubmissionAmbiguous(RuntimeError):
@@ -486,7 +492,7 @@ class OpenAIResponsesPlanningProvider:
         prompt = json.dumps({"contract":"Forge Action Derivation; propose only, never approve or execute.", "snapshot": request.snapshot.to_dict() | {"evidence": evidence}}, separators=(",", ":"))
         scopes = self.configuration.preflight_authority.approved_scopes_for(request.snapshot.mission_id)
         write_scopes, human_gates, risk_inputs = self.configuration.preflight_authority.approved_derivation_policy_for(request.snapshot.mission_id)
-        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority. " + _DEPENDENCY_CONTRACT_INSTRUCTION}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_approved_contract(scopes, write_scopes, human_gates, risk_inputs)}}}
+        return {"model": policy.model, "store": False, "truncation": "disabled", "input": [{"role": "developer", "content": [{"type": "input_text", "text": "Return only the strict Action Derivation schema. Provider output is untrusted and cannot expand authority. " + _DEPENDENCY_CONTRACT_INSTRUCTION + " " + _MISSION_GAP_CONTRACT_INSTRUCTION}]}, {"role": "user", "content": [{"type": "input_text", "text": prompt}]}], "max_output_tokens": policy.output_token_bound, "text": {"format": {"type": "json_schema", "name": "action_derivation", "strict": True, "schema": _schema_for_approved_contract(scopes, write_scopes, human_gates, risk_inputs, request.snapshot)}}}
 
     def _preflight_input_tokens(self, body: dict[str, object], policy: PlanningProviderInvocationPolicy,
                                 snapshot: _G011PolicySnapshot, request_digest: str) -> "_TokenPreflightReceipt":
@@ -534,7 +540,16 @@ class OpenAIResponsesPlanningProvider:
             return None, _refinement(request.snapshot, str(parsed["reason"]))
         items = parsed["proposals"]
         if not isinstance(items, list) or not items: raise ValueError("missing proposals")
-        proposals = tuple(DerivedActionProposal(str(item["logical_action_id"]), str(item["scope"]), str(item["objective"]), tuple(item["dependencies"]), tuple(item["write_scopes"]), tuple(item["expected_evidence"]), tuple(item["validation_strategy"]), int(item["priority"]), bool(item["postponed"]), tuple(item["human_gates"]), tuple(item["risk_inputs"]), ProposalProvenance(request.derivation_id, request.snapshot.id, request.snapshot.digest, self.adapter_version, request.provider_id, request.model, tuple(item["source_evidence_refs"]))) for item in items)
+        proposals = tuple(DerivedActionProposal(
+            str(item["logical_action_id"]), str(item["scope"]), str(item["objective"]),
+            tuple(item["dependencies"]), tuple(item["write_scopes"]), tuple(item["expected_evidence"]),
+            tuple(item["validation_strategy"]), int(item["priority"]), bool(item["postponed"]),
+            tuple(item["human_gates"]), tuple(item["risk_inputs"]),
+            ProposalProvenance(request.derivation_id, request.snapshot.id, request.snapshot.digest,
+                               self.adapter_version, request.provider_id, request.model,
+                               tuple(item["source_evidence_refs"])),
+            _mission_gap(item["mission_gap"]),
+        ) for item in items)
         return proposals, None
 
     def _evidence(self, request, document, state, started, status):
@@ -629,10 +644,11 @@ def _preflight_transport_failure(error: URLError | TimeoutError | OSError) -> Pr
                                         transport_errno=errno if isinstance(errno, int) else None)
 def _now() -> str: return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 def _refinement(snapshot, reason): return GovernanceRefinementRequired(tuple(item.source_id for item in snapshot.evidence), "deterministic validation required", "provider-output", "blocked", reason)
-_SCHEMA = {"type":"object","additionalProperties":False,"required":["kind","proposals"],"properties":{"kind":{"type":"string","enum":["proposals"]},"proposals":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":False,"required":["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"],"properties":{key: ({"type":"boolean"} if key == "postponed" else {"type":"integer","minimum":1} if key == "priority" else {"type":"array","items":{"type":"string"}} if key in {"dependencies","write_scopes","expected_evidence","validation_strategy","human_gates","risk_inputs","source_evidence_refs"} else {"type":"string","minLength":1}) for key in ["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"]}}}}}
+_SCHEMA = {"type":"object","additionalProperties":False,"required":["kind","proposals"],"properties":{"kind":{"type":"string","enum":["proposals"]},"proposals":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":False,"required":["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs","mission_gap"],"properties":{key: ({"type":"boolean"} if key == "postponed" else {"type":"integer","minimum":1} if key == "priority" else {"type":"array","items":{"type":"string"}} if key in {"dependencies","write_scopes","expected_evidence","validation_strategy","human_gates","risk_inputs","source_evidence_refs"} else {"type":"string","minLength":1}) for key in ["logical_action_id","scope","objective","dependencies","write_scopes","expected_evidence","validation_strategy","priority","postponed","human_gates","risk_inputs","source_evidence_refs"]}}}}}
 
 def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[str, ...],
-                                  human_gates: tuple[str, ...], risk_inputs: tuple[str, ...]) -> dict[str, object]:
+                                  human_gates: tuple[str, ...], risk_inputs: tuple[str, ...],
+                                  snapshot: PlanningSnapshot) -> dict[str, object]:
     """Bind strict output to canonical Mission scope and no-write governance constraints."""
     if not scopes or any(not isinstance(scope, str) or not scope for scope in scopes):
         raise ValueError("canonical approved Mission scopes are required")
@@ -649,7 +665,35 @@ def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[s
     properties["write_scopes"] = {"type": "array", "items": {"type": "string"}, "maxItems": 0}
     properties["human_gates"] = _required_enum_array(human_gates)
     properties["risk_inputs"] = _required_enum_array(risk_inputs)
+    properties["mission_gap"] = {"anyOf": [
+        {"type": "object", "additionalProperties": False,
+         "required": ["classification", "criterion_ids", "triggering_evidence_refs",
+                      "planning_snapshot_digest", "causal_objective", "mission_caused_by_action_ids"],
+         "properties": {
+             "classification": {"type": "string", "enum": [item.value for item in MissionGapClassification]},
+             "criterion_ids": {"type": "array", "items": {"type": "string", "enum": [item.criterion_id for item in snapshot.criteria]}},
+             "triggering_evidence_refs": {"type": "array", "minItems": 1,
+                                          "items": {"type": "string", "enum": [item.source_id for item in snapshot.evidence]}},
+             "planning_snapshot_digest": {"type": "string", "enum": [snapshot.digest]},
+             "causal_objective": {"type": "string", "minLength": 1},
+             "mission_caused_by_action_ids": {"type": "array", "items": {"type": "string"}},
+         }},
+        {"type": "null"},
+    ]}
     return schema
+
+
+def _mission_gap(document: object) -> MissionGapBinding | None:
+    if document is None:
+        return None
+    if not isinstance(document, dict):
+        raise ValueError("Mission-gap binding is malformed")
+    return MissionGapBinding(
+        MissionGapClassification(str(document["classification"])),
+        tuple(document["criterion_ids"]), tuple(document["triggering_evidence_refs"]),
+        str(document["planning_snapshot_digest"]), str(document["causal_objective"]),
+        tuple(document["mission_caused_by_action_ids"]),
+    )
 
 
 def _required_enum_array(values: tuple[str, ...]) -> dict[str, object]:

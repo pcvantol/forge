@@ -9,8 +9,9 @@ from typing import Protocol
 
 from forge.models.action_derivation import (
     DerivationLifecycle, DerivationPolicy, DerivationRecord, DerivedActionProposal, GovernanceRefinementRequired,
-    PlanningSnapshot, ProposalValidationStatus, ValidatedDerivation,
+    MissionGapClassification, PlanningSnapshot, ProposalValidationStatus, ValidatedDerivation,
 )
+from forge.models.mission_completion import MissionCriterionEvaluationStatus, mission_criterion_id
 from forge.models.mission_planner import ApprovedScope, MissionPlan, MissionPlannerInput, PlannedActionDefinition
 from forge.planner.engine import MissionPlanner
 
@@ -39,6 +40,16 @@ _VALIDATION_FAILURE_CODES = {
     "derived proposal reuses a completed action identity": "COMPLETED_ACTION_ID_REUSED",
     "derived proposal provenance references evidence outside the planning snapshot": "INVALID_EVIDENCE_PROVENANCE",
     "derived proposals do not share one derivation provenance": "CONFLICTING_DERIVATION_PROVENANCE",
+    "derived successor has no Mission-gap binding": "FOLLOW_UP_NOT_CURRENT_MISSION",
+    "Mission-gap binding references an unknown Mission criterion": "MISSION_CRITERION_OUTSIDE_APPROVED_MISSION",
+    "Mission-gap binding references an already-proven Mission criterion": "MISSION_CRITERION_ALREADY_PROVEN",
+    "Mission-gap binding does not reference an unmet Mission criterion": "MISSION_CRITERION_BINDING_REQUIRED",
+    "Mission-gap binding does not bind the current planning snapshot": "STALE_MISSION_GAP_BINDING",
+    "Mission-gap binding references evidence outside the planning snapshot": "INVALID_MISSION_GAP_EVIDENCE",
+    "Mission-gap binding lacks current causal evidence": "MISSION_GAP_CAUSAL_EVIDENCE_REQUIRED",
+    "Mission-gap binding objective does not match the proposed Action objective": "MISSION_GAP_OBJECTIVE_MISMATCH",
+    "Mission-caused blocker does not bind a current Mission Action": "MISSION_BLOCKER_CAUSAL_ACTION_REQUIRED",
+    "Mission criterion planning state is incomplete or outside the approved Mission": "MISSION_CRITERION_STATE_INVALID",
 }
 
 
@@ -181,6 +192,19 @@ class ActionDerivationValidator:
         if len(ids) != len(proposals):
             raise ProposalValidationError("derived action identities must be unique")
         completed_ids = set(planning_input.mission_state.completed_action_ids)
+        blocked_ids = set(planning_input.mission_state.blocked_action_ids)
+        successor = bool(completed_ids or blocked_ids)
+        criterion_ids = {
+            mission_criterion_id(planning_input.mission.id, criterion)
+            for criterion in planning_input.mission.acceptance_criteria
+        }
+        criterion_states = {
+            item.criterion_id: item.status for item in planning_input.mission_state.criterion_states
+        }
+        if successor and set(criterion_states) != criterion_ids:
+            raise ProposalValidationError(
+                "Mission criterion planning state is incomplete or outside the approved Mission"
+            )
         if ids & completed_ids:
             raise ProposalValidationError("derived proposal reuses a completed action identity")
         provenance = {
@@ -191,6 +215,10 @@ class ActionDerivationValidator:
         if len(provenance) != 1:
             raise ProposalValidationError("derived proposals do not share one derivation provenance")
         source_evidence = tuple(sorted(item.source_id for item in snapshot.evidence))
+        causal_evidence = {
+            item.source_id for item in snapshot.evidence
+            if item.kind.value in {"repository_truth", "repository_context", "execution_evidence"}
+        }
         mission_scopes = set(planning_input.mission.scope)
         for proposal in proposals:
             if proposal.scope not in mission_scopes:
@@ -205,11 +233,55 @@ class ActionDerivationValidator:
                 raise ProposalValidationError("derived proposal weakens required human gates")
             if not set(policy.required_risk_inputs) <= set(proposal.risk_inputs):
                 raise ProposalValidationError("derived proposal omits required risk inputs")
+            if successor:
+                self._assert_successor_mission_gap(
+                    proposal, snapshot, criterion_ids, criterion_states,
+                    set(source_evidence), causal_evidence, completed_ids | blocked_ids,
+                )
             unknown = set(proposal.dependencies) - ids - completed_ids
             if unknown:
                 raise ProposalValidationError("derived proposal dependency target is unknown")
         self._assert_acyclic(proposals)
         return ValidatedDerivation(snapshot, proposals)
+
+    @staticmethod
+    def _assert_successor_mission_gap(
+        proposal: DerivedActionProposal,
+        snapshot: PlanningSnapshot,
+        approved_criterion_ids: set[str],
+        criterion_states: dict[str, MissionCriterionEvaluationStatus],
+        source_evidence: set[str],
+        causal_evidence: set[str],
+        current_action_ids: set[str],
+    ) -> None:
+        binding = proposal.mission_gap
+        if binding is None:
+            raise ProposalValidationError("derived successor has no Mission-gap binding")
+        if binding.planning_snapshot_digest != snapshot.digest:
+            raise ProposalValidationError("Mission-gap binding does not bind the current planning snapshot")
+        if not set(binding.triggering_evidence_refs) <= source_evidence:
+            raise ProposalValidationError("Mission-gap binding references evidence outside the planning snapshot")
+        if not set(binding.triggering_evidence_refs) & causal_evidence:
+            raise ProposalValidationError("Mission-gap binding lacks current causal evidence")
+        if binding.causal_objective != proposal.objective:
+            raise ProposalValidationError("Mission-gap binding objective does not match the proposed Action objective")
+        if set(binding.criterion_ids) - approved_criterion_ids:
+            raise ProposalValidationError("Mission-gap binding references an unknown Mission criterion")
+        if any(criterion_states.get(item) is MissionCriterionEvaluationStatus.PROVEN
+               for item in binding.criterion_ids):
+            raise ProposalValidationError("Mission-gap binding references an already-proven Mission criterion")
+        if binding.classification is MissionGapClassification.UNPROVEN_MISSION_CRITERION:
+            if (not binding.criterion_ids
+                    or any(criterion_states.get(item) is not MissionCriterionEvaluationStatus.UNSATISFIED
+                           for item in binding.criterion_ids)):
+                raise ProposalValidationError("Mission-gap binding does not reference an unmet Mission criterion")
+            if binding.mission_caused_by_action_ids:
+                raise ProposalValidationError("Mission-caused blocker does not bind a current Mission Action")
+            return
+        if (binding.criterion_ids
+                or not binding.mission_caused_by_action_ids
+                or not set(binding.mission_caused_by_action_ids) <= current_action_ids):
+            raise ProposalValidationError("Mission-caused blocker does not bind a current Mission Action")
 
     @staticmethod
     def _assert_acyclic(proposals: tuple[DerivedActionProposal, ...]) -> None:
