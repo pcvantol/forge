@@ -100,6 +100,7 @@ class ExecutionLoop:
         host_id: str,
         workspace_id: str,
         repository_id: str,
+        repository_identity: str | None = None,
         clock: Callable[[], str],
         correlation_id_factory: Callable[[], str],
         execution_policy: ExecutionPolicy | None = None,
@@ -115,6 +116,7 @@ class ExecutionLoop:
         self._dispatcher, self._states, self._planner, self._host = dispatcher, states, planner, host
         self._planning_input, self._prompt_factory, self._repository_truth = planning_input, prompt_factory, repository_truth
         self._host_id, self._workspace_id, self._repository_id = host_id, workspace_id, repository_id
+        self._repository_identity = repository_identity or repository_id
         self._clock, self._correlation_id_factory = clock, correlation_id_factory
         self._execution_policy = execution_policy or execution_policy_for_profile(governance_profile)
         self._capability_registry = capability_registry
@@ -399,6 +401,7 @@ class ExecutionLoop:
 
         return BootstrapMissionRunner(self._states, BootstrapMissionScheduler(), self._host, self._prompt_factory,
                                       host_id=self._host_id, workspace_id=self._workspace_id, repository_id=self._repository_id,
+                                      repository_identity=self._repository_identity,
                                       clock=self._clock, correlation_id_factory=self._correlation_id_factory,
                                       completion_context=completion, replan_after_evidence=self._replan_after_evidence,
                                       evidence_progression_gate=self._pause_after_evidence)

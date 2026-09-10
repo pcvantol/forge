@@ -5,6 +5,11 @@ Increment: `FOUR_REPO_CONSOLIDATION_PARKING_2026_09_10`. Reconciled
 [canonical Forge roadmap](../../knowledge/bootstrap/10_ROADMAP.md).
 [Documentary DAG](CONSOLIDATION_PARKING_2026_09_10_DAG.json).
 
+Implementation addendum: `FORGE_DURABLE_EP_PEER_CONFIGURATION_V1` adds the
+source-qualified `F-PEER-CONFIG` node below. It does not reinterpret the
+original documentation-only consolidation closure, qualify the installed EP
+producer, configure either installation, or authorize `F-E2E`.
+
 ## Decision and evidence boundary
 
 Physical cleanup of all four local repositories is complete. This
@@ -36,6 +41,7 @@ zero unpreserved WIP.
 | `F-RELEASE61` | `RESOLVED_NO_UNIQUE_RESIDUAL` | Closed-PR/local release evidence comparison left no unique residual |
 | `F-CLEANUP` | `COMPLETE` | Authorized auxiliary worktree/branch cleanup completed; no active local feature lane remains |
 | `F-LOCAL-MAIN` | `COMPLETE` | Baseline local main equals `origin/main`; final documentation delivery fast-forwards it again |
+| `F-PEER-CONFIG` | `SOURCE_DELIVERED_QUALIFIED_CONFIGURATION_NOT_PERFORMED` | Durable secret-free EP binding, Keychain resolution, shared adapter factory and read-only v1.2 preflight are source-qualified on isolated fixtures; no installed peer is configured |
 | `F-CONSUMER` | `PARKED` | Later prove the minimum compatible installed EP producer contract and exact durable evidence boundary |
 | `F-DYNAMIC-SOURCE` | `SOURCE_DELIVERED_QUALIFIED` | Deterministic source qualification proves dynamic A, post-evidence B, restart preservation and evidence-derived per-criterion completion; no live EP or provider call |
 | `F-E2E` | `PARKED_ORIGINAL_GOAL_NOT_EXECUTED` | Preserve the original first serial Mission loop below; configuration and governance remain open blockers |
@@ -67,15 +73,21 @@ approved Mission
 -> evidence-derived Mission COMPLETE
 ```
 
-`F-E2E` depends locally only on `F-CONSUMER`; `F-CONSUMER` references only the
-external EP capability node `E-PRODUCER`. The next readiness audit may determine
-the actually required producer capability. This closure does **not** decide
-that all of EP #175, all installer work or any broader EP roadmap is necessary.
+`F-E2E` now retains two local predecessors: source-qualified `F-PEER-CONFIG`
+and still-parked `F-CONSUMER`; `F-CONSUMER` references only the external EP
+capability node `E-PRODUCER`. `F-PEER-CONFIG` closes only the missing
+Forge-owned configuration source. Actual installed configuration, credential
+issuance, live producer qualification, governance and the canary remain
+unperformed. The next configuration-only session must refresh the Forge wheel
+from merged main before configuring the installations. This record does
+**not** decide that all of EP #175, all installer work or any broader EP roadmap
+is necessary.
 
 In particular `F-E2E` has no dependency on `FP-INSTALLER`,
 `W-CONTROL-PLANE`, `W-POLICY-HYGIENE`, `E-LATER`, subagent optimization, full
 repository cleanup or bootstrap-orchestrator productization. No Workspace,
-installer or subagent prerequisite is added.
+installer or subagent prerequisite is added. Planning-provider configuration
+remains a separate security and authority boundary.
 
 ## Owning peer records and remaining parked work
 

@@ -6,11 +6,13 @@ the EP submission/run binding which follows from a persisted Forge request.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import quote
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from forge.execution_host_configuration import canonical_endpoint
 from forge.models.execution_host import ExecutionDispatch, ExecutionHostEvidence, ExecutionHostTemporaryUnavailable, ExecutionRequest
 from .ep_v12 import terminal_evidence
 
@@ -20,13 +22,36 @@ class ExecutionHostBindingStore(Protocol):
     def save_execution_host_binding(self, correlation_id: str, document: Mapping[str, Any]) -> dict[str, Any]: ...
 
 
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Never replay a bearer credential to a redirected origin."""
+
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):  # type: ignore[no-untyped-def]
+        return None
+
+
+_NO_REDIRECT_OPENER = build_opener(_NoRedirectHandler())
+
+
+def _open(request: Request, timeout: float):
+    return _NO_REDIRECT_OPENER.open(request, timeout=timeout)
+
+
 @dataclass(frozen=True)
 class EngineeringPlatformHttpConfiguration:
     base_url: str
     project_id: str
-    bearer_token: str
+    bearer_token: str = field(repr=False)
+    expected_instance_id: str = ""
+    repository_id: str = ""
+    repository_identity: str = ""
+    allow_loopback_http: bool = False
     host_id: str = "engineering-platform"
     timeout: float = 10
+    peer_binding_id: str = ""
+    peer_configuration_revision: int = 0
+    peer_configuration_digest: str = ""
+    producer_readback_contract: str = "1.2"
+    terminal_evidence_contract: str = "1.2"
 
 
 class EngineeringPlatformHttpExecutionHost:
@@ -36,22 +61,43 @@ class EngineeringPlatformHttpExecutionHost:
     _COMPATIBILITY_KEYS = frozenset({"contract_version", "producer", "instance", "contracts"})
 
     def __init__(self, config: EngineeringPlatformHttpConfiguration, bindings: ExecutionHostBindingStore) -> None:
-        if not config.base_url or not config.project_id or not config.bearer_token:
-            raise ValueError("EP HTTP configuration requires endpoint, project, and credential")
+        required = (
+            config.base_url, config.project_id, config.bearer_token, config.expected_instance_id,
+            config.repository_id, config.repository_identity, config.host_id, config.peer_binding_id,
+            config.peer_configuration_digest,
+        )
+        if (not all(required) or config.peer_configuration_revision < 1
+                or any(character in "\r\n" for character in config.bearer_token)
+                or config.producer_readback_contract != "1.2" or config.terminal_evidence_contract != "1.2"):
+            raise ValueError("EP HTTP configuration requires a complete persisted v1.2 peer binding")
+        # The product factory already canonicalizes this.  Revalidate direct
+        # construction without ever permitting HTTP except for loopback.
+        if canonical_endpoint(config.base_url, allow_loopback_http=config.allow_loopback_http) != config.base_url:
+            raise ValueError("EP HTTP configuration endpoint is not canonical")
+        if not 0 < config.timeout <= 60:
+            raise ValueError("EP HTTP configuration timeout is invalid")
         self.config = config
         self._bindings = bindings
+
+    @staticmethod
+    def _segment(value: str) -> str:
+        return quote(value, safe="")
 
     def _json(self, path: str, *, method: str = "GET", body: Mapping[str, Any] | None = None) -> dict[str, Any]:
         data = None if body is None else json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
         request = Request(self.config.base_url.rstrip("/") + path, data=data, method=method,
                           headers={"Authorization": "Bearer " + self.config.bearer_token, "Content-Type": "application/json"})
         try:
-            with urlopen(request, timeout=self.config.timeout) as response:
-                value = json.loads(response.read())
+            with _open(request, timeout=self.config.timeout) as response:
+                raw = response.read(1_048_577)
+                if len(raw) > 1_048_576:
+                    raise ValueError("EP response exceeds consumer size limit")
+                value = json.loads(raw)
                 if not isinstance(value, dict):
                     raise ValueError("EP response must be a JSON object")
                 return value
         except HTTPError as error:
+            error.close()
             if error.code >= 500:
                 raise ExecutionHostTemporaryUnavailable("EP temporarily unavailable") from error
             raise ValueError(f"EP rejected request: {error.code}") from error
@@ -61,12 +107,13 @@ class EngineeringPlatformHttpExecutionHost:
     def _bytes(self, path: str) -> bytes:
         request = Request(self.config.base_url.rstrip("/") + path, headers={"Authorization": "Bearer " + self.config.bearer_token})
         try:
-            with urlopen(request, timeout=self.config.timeout) as response:
+            with _open(request, timeout=self.config.timeout) as response:
                 raw = response.read(1_048_577)
                 if len(raw) > 1_048_576:
                     raise ValueError("EP artifact exceeds consumer size limit")
                 return raw
         except HTTPError as error:
+            error.close()
             if error.code >= 500:
                 raise ExecutionHostTemporaryUnavailable("EP artifact temporarily unavailable") from error
             raise ValueError(f"EP artifact request rejected: {error.code}") from error
@@ -83,10 +130,23 @@ class EngineeringPlatformHttpExecutionHost:
             raise ValueError("persisted Producer Contract lacks mission_revision provenance")
         return revision
 
+    def _validate_request_scope(self, request: ExecutionRequest) -> None:
+        repository_identity = getattr(request, "repository_identity", request.repository_id)
+        if request.host_id != self.config.host_id:
+            raise ValueError("EP_REQUEST_HOST_SCOPE_MISMATCH")
+        if request.repository_id != self.config.repository_id or repository_identity != self.config.repository_identity:
+            raise ValueError("EP_REQUEST_REPOSITORY_SCOPE_MISMATCH")
+
     def _request_binding(self, request: ExecutionRequest) -> dict[str, Any]:
+        self._validate_request_scope(request)
         contract = request.producer_contract
         return {"correlation_id": request.correlation_id, "host_id": request.host_id, "project_id": self.config.project_id,
                 "repository_id": request.repository_id, "mission_id": request.mission_id,
+                "repository_identity": request.repository_identity,
+                "peer_binding_id": self.config.peer_binding_id,
+                "peer_configuration_revision": self.config.peer_configuration_revision,
+                "peer_configuration_digest": self.config.peer_configuration_digest,
+                "expected_ep_instance_id": self.config.expected_instance_id,
                 "mission_revision": self._mission_revision(request), "intent_id": request.intent_id,
                 "intent_revision": request.intent_revision, "action_id": request.action_id,
                 "runtime_prompt_id": contract.runtime_prompt.id, "runtime_prompt_digest": contract.runtime_prompt.content_digest,
@@ -94,9 +154,20 @@ class EngineeringPlatformHttpExecutionHost:
                 "retry_of_correlation_id": request.retry_of_correlation_id}
 
     def _binding(self, request: ExecutionRequest) -> dict[str, Any]:
-        # Saved before POST: an ambiguous send is retried with the exact same
-        # idempotency key, never a fresh correlation.
-        return self._bindings.save_execution_host_binding(request.correlation_id, self._request_binding(request))
+        # Saved before any network request: an ambiguous send is retried with
+        # the exact same configuration and idempotency key, never retargeted.
+        expected = self._request_binding(request)
+        existing = self._bindings.execution_host_binding(request.correlation_id)
+        configuration_keys = {
+            "peer_binding_id", "peer_configuration_revision", "peer_configuration_digest",
+            "expected_ep_instance_id", "project_id", "repository_id", "repository_identity", "host_id",
+        }
+        if existing is not None:
+            if not configuration_keys <= set(existing):
+                raise ValueError("EP_HISTORICAL_BINDING_CONFIGURATION_IDENTITY_MISSING")
+            if any(existing.get(key) != expected[key] for key in configuration_keys):
+                raise ValueError("EP_CORRELATION_CONFIGURATION_RETARGETING_BLOCKED")
+        return self._bindings.save_execution_host_binding(request.correlation_id, expected)
 
     def _payload(self, request: ExecutionRequest) -> dict[str, Any]:
         binding, contract = self._request_binding(request), request.producer_contract
@@ -147,16 +218,21 @@ class EngineeringPlatformHttpExecutionHost:
         if set(declaration) != self._COMPATIBILITY_KEYS or declaration.get("contract_version") != "1.0":
             raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         producer, instance, contracts = declaration.get("producer"), declaration.get("instance"), declaration.get("contracts")
-        if (not isinstance(producer, Mapping) or producer.get("id") != "engineering-platform"
+        if (not isinstance(producer, Mapping) or set(producer) != {"id", "version"}
+                or producer.get("id") != "engineering-platform"
                 or not isinstance(producer.get("version"), str) or not producer["version"]
-                or not isinstance(instance, Mapping) or not isinstance(instance.get("id"), str) or not instance["id"]
-                or not isinstance(contracts, Mapping)):
+                or not isinstance(instance, Mapping) or set(instance) != {"id"}
+                or not isinstance(instance.get("id"), str) or not instance["id"]
+                or not isinstance(contracts, Mapping)
+                or set(contracts) != {"producer_readback", "terminal_evidence"}):
             raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
+        if instance["id"] != self.config.expected_instance_id:
+            raise ValueError("EP_INSTANCE_IDENTITY_MISMATCH")
         versions = contracts.get("producer_readback")
-        if not isinstance(versions, list) or versions != ["1.2"]:
+        if not isinstance(versions, list) or versions != [self.config.producer_readback_contract]:
             raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
         terminal_versions = contracts.get("terminal_evidence")
-        if not isinstance(terminal_versions, list) or terminal_versions != ["1.2"]:
+        if not isinstance(terminal_versions, list) or terminal_versions != [self.config.terminal_evidence_contract]:
             raise ValueError("EP_TERMINAL_CONTRACT_INCOMPATIBLE")
         return declaration
 
@@ -164,7 +240,9 @@ class EngineeringPlatformHttpExecutionHost:
         submission_id = binding.get("submission_id")
         if not isinstance(submission_id, str) or not submission_id:
             return None
-        readback = self._json(f"/v1/projects/{self.config.project_id}/submissions/{submission_id}")
+        readback = self._json(
+            f"/v1/projects/{self._segment(self.config.project_id)}/submissions/{self._segment(submission_id)}"
+        )
         self._validate_readback(request, binding, readback)
         if readback.get("submission", {}).get("id") != submission_id:
             raise ValueError("EP readback submission identity changed")
@@ -172,11 +250,15 @@ class EngineeringPlatformHttpExecutionHost:
 
     def dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None:
         # A compatibility failure has no EP submission/action/repair side effect.
-        self.preflight()
+        self._validate_request_scope(request)
         binding = self._binding(request)
+        self.preflight()
         readback = self._readback(request, binding)
         if readback is None:
-            accepted = self._json(f"/v1/projects/{self.config.project_id}/submissions", method="POST", body=self._payload(request))
+            accepted = self._json(
+                f"/v1/projects/{self._segment(self.config.project_id)}/submissions",
+                method="POST", body=self._payload(request),
+            )
             submission_id = accepted.get("submission_id")
             if not isinstance(submission_id, str) or not submission_id:
                 raise ValueError("EP submission acknowledgement lacks submission_id")
@@ -187,6 +269,7 @@ class EngineeringPlatformHttpExecutionHost:
 
     def recover_dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None:
         binding = self._binding(request)
+        self.preflight()
         return self._dispatch_from_readback(request, binding, self._readback(request, binding))
 
     def _dispatch_from_readback(self, request: ExecutionRequest, binding: Mapping[str, Any], readback: Mapping[str, Any] | None) -> ExecutionDispatch | None:
@@ -206,6 +289,7 @@ class EngineeringPlatformHttpExecutionHost:
 
     def retrieve_evidence(self, dispatch: ExecutionDispatch) -> ExecutionHostEvidence | None:
         request, binding = dispatch.request, self._binding(dispatch.request)
+        self.preflight()
         if binding.get("host_run_id") not in (None, dispatch.host_run_id):
             raise ValueError("persisted dispatch run differs from requested evidence run")
         readback = self._readback(request, binding)
@@ -219,7 +303,9 @@ class EngineeringPlatformHttpExecutionHost:
         terminal = readback.get("evidence", {}).get("terminal_artifact")
         if not isinstance(terminal, Mapping) or not isinstance(terminal.get("id"), str):
             return None
-        raw = self._bytes(f"/v1/projects/{self.config.project_id}/artifacts/{terminal['id']}")
+        raw = self._bytes(
+            f"/v1/projects/{self._segment(self.config.project_id)}/artifacts/{self._segment(terminal['id'])}"
+        )
         evidence = terminal_evidence(readback, raw, host_id=self.config.host_id)
         observed_identity = (evidence.correlation_id, evidence.host_run_id, evidence.repository_evidence.runtime_prompt_id,
             evidence.repository_evidence.mission_id, evidence.repository_evidence.intent_id,

@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 32
+RUNTIME_SCHEMA_VERSION = 33
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -39,6 +39,7 @@ _TABLES = frozenset((
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings",
+    "execution_host_peer_configuration",
 ))
 _TOKEN_PREFLIGHT_FAILURE_FIELDS = frozenset((
     "failure_id", "mission_id", "provider_id", "occurred_at", "main_head", "policy_digest",
@@ -274,6 +275,31 @@ class RuntimeDatabase:
             if row is None or row["tbl_name"] != "action_derivation_canary_closures" or any(fragment not in sql for fragment in fragments):
                 raise RuntimeIntegrityError(f"canary closure migration found incompatible {name} trigger")
 
+    _PEER_CONFIGURATION_TABLE_SHAPE = (
+        ("singleton", "INTEGER", 0, 1), ("binding_id", "TEXT", 1, 0),
+        ("configuration_revision", "INTEGER", 1, 0),
+        ("configuration_digest", "TEXT", 1, 0), ("document", "TEXT", 1, 0),
+    )
+
+    def _require_peer_configuration_structure(self) -> None:
+        columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                        for row in self._connection.execute("PRAGMA table_info(execution_host_peer_configuration)"))
+        if columns != self._PEER_CONFIGURATION_TABLE_SHAPE:
+            raise RuntimeIntegrityError("EP peer configuration migration found incompatible table shape")
+        unique_indexes = {
+            tuple(item["name"] for item in self._connection.execute(f"PRAGMA index_info('{row['name']}')"))
+            for row in self._connection.execute("PRAGMA index_list(execution_host_peer_configuration)") if row["unique"]
+        }
+        if ("binding_id",) not in unique_indexes:
+            raise RuntimeIntegrityError("EP peer configuration migration found incompatible uniqueness constraints")
+        row = self._connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='execution_host_peer_configuration'"
+        ).fetchone()
+        sql = "" if row is None or row["sql"] is None else " ".join(row["sql"].lower().split())
+        if ("check (singleton = 1)" not in sql
+                or "check (configuration_revision > 0)" not in sql):
+            raise RuntimeIntegrityError("EP peer configuration migration found incompatible constraints")
+
     def _migrate_governance_19_to_20(self, forge_version: str) -> None:
         """Create and verify all governance objects before advancing schema metadata.
 
@@ -441,6 +467,13 @@ class RuntimeDatabase:
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
                     CREATE TABLE IF NOT EXISTS execution_host_bindings (correlation_id TEXT PRIMARY KEY, document TEXT NOT NULL);
+                    CREATE TABLE execution_host_peer_configuration (
+                        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                        binding_id TEXT NOT NULL UNIQUE,
+                        configuration_revision INTEGER NOT NULL CHECK (configuration_revision > 0),
+                        configuration_digest TEXT NOT NULL,
+                        document TEXT NOT NULL
+                    );
                     CREATE TABLE installation_operator_binding (installation_id TEXT PRIMARY KEY, generated_uid TEXT NOT NULL, uid INTEGER NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL);
                     CREATE TABLE installation_operator_audit (audit_id TEXT PRIMARY KEY, installation_id TEXT NOT NULL, generated_uid TEXT NOT NULL, operation TEXT NOT NULL, occurred_at TEXT NOT NULL, result TEXT NOT NULL);
                     CREATE TRIGGER installation_operator_audit_immutable_update BEFORE UPDATE ON installation_operator_audit
@@ -1246,6 +1279,18 @@ class RuntimeDatabase:
                 self._connection.execute("CREATE TABLE IF NOT EXISTS execution_host_bindings (correlation_id TEXT PRIMARY KEY, document TEXT NOT NULL)")
                 self._set_metadata({"schema_version":"32","migration_version":"32","last_migration":"32"})
                 self._connection.execute("PRAGMA user_version=32")
+        elif version == 32:
+            with self._connection:
+                self._connection.execute("""CREATE TABLE IF NOT EXISTS execution_host_peer_configuration (
+                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                    binding_id TEXT NOT NULL UNIQUE,
+                    configuration_revision INTEGER NOT NULL CHECK (configuration_revision > 0),
+                    configuration_digest TEXT NOT NULL,
+                    document TEXT NOT NULL
+                )""")
+                self._require_peer_configuration_structure()
+                self._set_metadata({"schema_version":"33","migration_version":"33","last_migration":"33"})
+                self._connection.execute("PRAGMA user_version=33")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1324,6 +1369,7 @@ class RuntimeDatabase:
         if self._connection.execute("PRAGMA user_version").fetchone()[0] != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database schema version is inconsistent")
         self._require_canary_closure_structure()
+        self._require_peer_configuration_structure()
         identity = self.runtime_identity
         expected_identity = "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)
         if identity.repository_identity != expected_identity or not identity.runtime_id or identity.status != "active":

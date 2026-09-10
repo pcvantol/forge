@@ -15,6 +15,59 @@ forge --version
 qualification verify that its value equals the wheel metadata and installed
 CLI version; a package build never allocates or changes a version.
 
+## Engineering Platform peer configuration
+
+Forge 2.5 adds one explicit, durable configuration route for its selected
+Engineering Platform Execution Host peer. Initialize the chosen Forge data
+root first, then configure only already-issued identities and an opaque macOS
+Keychain reference:
+
+```text
+forge --data-root "/path/to/Forge Server" server init
+forge --data-root "/path/to/Forge Server" execution-host configure \
+  --binding-id ep-primary \
+  --endpoint https://ep.example.invalid \
+  --expected-instance-id ep-instance-1 \
+  --host-id engineering-platform \
+  --project-id forge-project \
+  --repository-id forge-repository \
+  --repository-identity forge-source \
+  --credential-reference keychain://forge.ep/consumer \
+  --operator-id local-admin
+forge --data-root "/path/to/Forge Server" execution-host show
+forge --data-root "/path/to/Forge Server" execution-host preflight
+```
+
+`--repository-id` is the EP repository ID. `--repository-identity` is the
+Forge-side identity that every `ExecutionRequest.repository_identity` must
+repeat (legacy callers default it to their repository ID). No project,
+repository, consumer credential, Mission, grant, or submission is created by
+these commands.
+
+The only supported credential-reference backend is macOS Keychain generic
+password lookup. Its exact form is
+`keychain://<service>/<account>?namespace=<optional>&version=<optional>`; the
+query values are reference metadata and lookup remains fixed to the explicit
+service/account pair. Put the bearer value in that Keychain item through the
+operator's normal Keychain administration, never on the Forge command line.
+Forge persists and prints the reference, never its value. Unknown schemes,
+missing items, unavailable or access-denied Keychain state fail closed without
+credential discovery or fallback.
+
+HTTPS uses normal certificate validation. Plain HTTP requires both a loopback
+origin and `--allow-loopback-http`. URL credentials, paths, queries, fragments,
+redirects, unbounded timeouts, discovery and retargeting are rejected. To
+replace a binding, repeat `configure` with `--replace` plus both the current
+`--expected-revision` and `--expected-digest` from `show`; identical writes are
+idempotent. `show`, `status`, and `preflight` do not initialize or migrate
+storage. Preflight performs only authenticated
+`GET /v1/producer-compatibility`, verifies product, exact instance ID, and the
+explicit `1.2` readback/evidence contracts, and reports project/repository and
+mutation authority as `NOT_VERIFIED` because that route does not prove them.
+The exact instance-ID comparison is consistency evidence, not a newly invented
+cryptographic peer identity; preflight reports the latter as `NOT_ASSERTED`.
+`CONFIGURED` is therefore never presented as `LIVE_READY`.
+
 ## Managed repository status
 
 Forge is the first-class repository [`pcvantol/forge`](https://github.com/pcvantol/forge),

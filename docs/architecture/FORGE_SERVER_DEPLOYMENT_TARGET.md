@@ -26,3 +26,51 @@ This requirement applies only to a future Forge-owned HTTP API; it neither
 redefines the EP API nor makes Forge an EP proxy.
 
 The autonomy canary requires only installed Forge/EP storage, stable identities, the existing versioned authenticated Forge→EP HTTP seam, a configured/pinned EP binding and restart recovery. Workspace UI, LAN discovery and universal-installer completion are post-canary productization and must not block that proof.
+
+## Durable EP peer configuration boundary
+
+`FORGE_DURABLE_EP_PEER_CONFIGURATION_V1` implements the Forge-owned source
+boundary for one explicitly selected EP binding. Runtime schema 33 stores one
+secret-free `execution_host_peer_configuration` record in `forge.db`, separate
+from per-correlation `execution_host_bindings`. The versioned record binds its
+own identity, revision and canonical digest to the owning Forge runtime ID,
+`engineering-platform`, one fixed endpoint, expected EP instance ID, Execution
+Host ID, EP project and repository IDs, Forge repository identity, the exact
+producer-readback and terminal-evidence contract `1.2`, one opaque credential
+reference, bounded timeout, loopback-HTTP decision and creation/update
+provenance.
+
+Configuration writes are idempotent. A changed binding requires an explicit
+replacement with both the observed revision and digest. Each newly created
+correlation persists that configuration identity in the existing correlation
+binding; recovery and evidence readback reject historic records without it and
+reject any later endpoint, instance, project, repository or binding retarget.
+This does not grant Mission, submission or mutation authority.
+
+The shared `EngineeringPlatformExecutionHostFactory` is the sole product
+composition route for both CLI preflight and runtime use. It rereads the
+persisted binding, verifies the Forge runtime identity and contract, resolves
+the Keychain reference, and constructs the existing
+`EngineeringPlatformHttpExecutionHost`. That adapter now rejects request
+host/repository scope mismatches before submission and repeats exact product,
+instance and v1.2 compatibility checks for dispatch, recovery and evidence
+readback.
+
+The supported reference is
+`keychain://<service>/<account>?namespace=<optional>&version=<optional>` and is
+resolved through an explicit `/usr/bin/security find-generic-password` lookup;
+Forge never enumerates Keychain or persists the result. HTTPS retains normal
+certificate validation. HTTP is restricted to an explicitly enabled loopback
+origin. Redirects are not followed, so a bearer value is never forwarded to a
+different origin.
+
+`forge execution-host preflight` uses only EP's existing read-only
+`/v1/producer-compatibility` route. It can verify product, instance and
+contracts, but deliberately reports EP project/repository existence and
+current mutation authority as `NOT_VERIFIED`. The instance-ID comparison is
+identity consistency, not a cryptographic identity claim, which remains
+`NOT_ASSERTED`. Source qualification uses
+isolated roots, test credentials and a simulated peer. No real Forge/EP
+installation has been configured, no live E2E has run, and planning-provider
+configuration, Mission governance, installer/Workspace work and EP #175 remain
+separate and parked.

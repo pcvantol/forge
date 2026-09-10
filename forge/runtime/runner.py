@@ -200,6 +200,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
         retry_of_correlation_id=document.get("retry_of_correlation_id"),
         original_correlation_id=document.get("original_correlation_id"),
         producer_contract=contract,
+        repository_identity=document.get("repository_identity", document["repository_id"]),
     )
 
 
@@ -214,6 +215,7 @@ def _request_document(request: ExecutionRequest) -> dict[str, Any]:
         "runtime_prompt": request.runtime_prompt.to_dict(),
         "workspace_id": request.workspace_id,
         "repository_id": request.repository_id,
+        "repository_identity": request.repository_identity,
         "correlation_id": request.correlation_id,
         "dispatched_at": request.dispatched_at,
         "retry_of_correlation_id": request.retry_of_correlation_id,
@@ -239,6 +241,7 @@ class BootstrapMissionRunner:
         host_id: str,
         workspace_id: str,
         repository_id: str,
+        repository_identity: str | None = None,
         clock: Callable[[], str] | None = None,
         correlation_id_factory: Callable[[], str],
         completion_context: CompletionContextFactory | None = None,
@@ -254,6 +257,7 @@ class BootstrapMissionRunner:
         self._host_id = host_id
         self._workspace_id = workspace_id
         self._repository_id = repository_id
+        self._repository_identity = repository_identity or repository_id
         self._clock = clock or (lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"))
         self._correlation_id_factory = correlation_id_factory
         self._completion_context = completion_context
@@ -310,6 +314,7 @@ class BootstrapMissionRunner:
         request = ExecutionRequest(
             self._host_id, state.mission_id, action.intent_id, action.intent_revision, action.id, prompt,
             self._workspace_id, self._repository_id, self._correlation_id_factory(), self._now(),
+            repository_identity=self._repository_identity,
         )
         envelope = {"request": _request_document(request), "host_run_id": None}
         return self._store.transition(
