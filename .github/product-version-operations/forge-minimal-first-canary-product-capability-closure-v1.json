@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.3.2",
+  "classification_rationale": "MINIMAL_FIRST_CANARY_PRODUCT_CAPABILITY_CLOSURE_V1",
+  "component": "product",
+  "event_lineage": "MINIMAL_FIRST_CANARY_PRODUCT_CAPABILITY_CLOSURE_V1",
+  "expected_head": "be6f5e8054ae11c5f8ead84c053b4234c2932f17",
+  "operation_id": "forge-minimal-first-canary-product-capability-closure-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.4.0"
+}

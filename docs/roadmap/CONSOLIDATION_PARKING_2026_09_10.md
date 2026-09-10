@@ -37,7 +37,8 @@ zero unpreserved WIP.
 | `F-CLEANUP` | `COMPLETE` | Authorized auxiliary worktree/branch cleanup completed; no active local feature lane remains |
 | `F-LOCAL-MAIN` | `COMPLETE` | Baseline local main equals `origin/main`; final documentation delivery fast-forwards it again |
 | `F-CONSUMER` | `PARKED` | Later prove the minimum compatible installed EP producer contract and exact durable evidence boundary |
-| `F-E2E` | `PARKED_ORIGINAL_GOAL` | Preserve the original first serial Mission loop below |
+| `F-DYNAMIC-SOURCE` | `SOURCE_DELIVERED_QUALIFIED` | Deterministic source qualification proves dynamic A, post-evidence B, restart preservation and evidence-derived per-criterion completion; no live EP or provider call |
+| `F-E2E` | `PARKED_ORIGINAL_GOAL_NOT_EXECUTED` | Preserve the original first serial Mission loop below; configuration and governance remain open blockers |
 | `F-LATER` | `PARKED` | Living Mission Graph, outer Mission loop, policy/progression, quality/knowledge learning, release management, Project Hygiene and optimization remain under their existing roadmaps |
 
 The only remaining Forge cleanup-created product-source preservation is:
@@ -48,6 +49,10 @@ The only remaining Forge cleanup-created product-source preservation is:
 
 Parking preserves bytes and provenance. It is not review, qualification,
 delivery, product readiness or a dependency of the first Forge E2E.
+
+The qualified `F-DYNAMIC-SOURCE` slice does not consume or qualify the parked
+orchestrator source. It adds no endpoint, credential, Mission, grant, installed
+runtime mutation, submission, provider generation, or canary execution.
 
 ## Original Forge E2E finish line retained exactly
 

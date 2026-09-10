@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from forge.models.action import EngineeringAction, EngineeringActionStatus
+from forge.models.mission_completion import MissionCompletionEvaluation
 from forge.models.execution_host import (
     ExecutionDispatch,
     ExecutionEvidenceOutcome,
@@ -47,13 +48,13 @@ class RuntimePromptFactory(Protocol):
 class CompletionContextFactory(Protocol):
     """Resolve the final Repository Truth required by a Mission completion."""
 
-    def __call__(self, state: MissionExecutionState, evidence: ExecutionHostEvidence) -> tuple[Mapping[str, Any], Mapping[str, Any]]: ...
+    def __call__(self, state: MissionExecutionState, evidence: ExecutionHostEvidence) -> tuple[Mapping[str, Any], MissionCompletionEvaluation]: ...
 
 
 class ReplanAfterEvidence(Protocol):
-    """Validate the remaining bounded work after one completed Action."""
+    """Validate or materialize bounded successor work after persisted evidence."""
 
-    def __call__(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...], evidence: ExecutionHostEvidence) -> None: ...
+    def __call__(self, state: MissionExecutionState, evidence: ExecutionHostEvidence) -> MissionExecutionState: ...
 
 
 class EvidenceProgressionGate(Protocol):
@@ -359,19 +360,60 @@ class BootstrapMissionRunner:
             return self._store.transition(state.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._now(), reason="execution_blocked", actions=actions, execution_evidence=evidence_document)
         if evidence.outcome is ExecutionEvidenceOutcome.FAILED:
             return self._store.transition(state.mission_id, MissionExecutionStatus.FAILED, occurred_at=self._now(), reason="execution_failed", actions=actions, execution_evidence=evidence_document)
-        mission_complete = self._scheduler.progress(actions).is_complete
+        actions_complete = self._scheduler.progress(actions).is_complete
+        # Historical direct Runner callers have no approved Architecture Mission
+        # criteria.  The composed ExecutionLoop supplies the typed completion
+        # boundary below and never takes this compatibility route.
+        if self._completion_context is None:
+            if self._evidence_progression_gate is not None:
+                paused = self._evidence_progression_gate(state, actions, evidence, actions_complete)
+                if paused is not None:
+                    return paused
+            if actions_complete:
+                return self._store.transition(
+                    state.mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self._now(),
+                    reason="legacy_action_plan_completed", actions=actions, execution_evidence=evidence_document,
+                )
+            if self._replan_after_evidence is not None:
+                return self._replan_after_evidence(state, evidence)
+            return self._store.transition(state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(),
+                                          reason="execution_completed", actions=actions, execution_evidence=evidence_document)
+
+        repository_truth, completion = self._completion_context(state, evidence)
+        if not isinstance(completion, MissionCompletionEvaluation):
+            raise MissionRunnerError("Mission completion context must be a Forge-owned evaluation")
+        mission_complete = actions_complete and completion.all_required_criteria_proven
+        reconciled = self._store.transition(
+            state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(),
+            reason="terminal_evidence_reconciled", actions=actions, execution_evidence=evidence_document,
+            repository_truth=repository_truth, completion=completion.to_dict(),
+        )
+        if not mission_complete:
+            if self._replan_after_evidence is None:
+                if actions_complete:
+                    return self._store.transition(
+                        reconciled.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._now(),
+                        reason="mission_criteria_unmet_no_valid_successor",
+                    )
+            else:
+                try:
+                    reconciled = self._replan_after_evidence(reconciled, evidence)
+                except Exception:
+                    return self._store.transition(
+                        reconciled.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._now(),
+                        reason="mission_criteria_unmet_no_valid_successor",
+                    )
+        current_actions = self._actions(reconciled)
         if self._evidence_progression_gate is not None:
-            paused = self._evidence_progression_gate(state, actions, evidence, mission_complete)
+            paused = self._evidence_progression_gate(reconciled, current_actions, evidence, mission_complete)
             if paused is not None:
                 return paused
         if mission_complete:
-            repository_truth = completion = None
-            if self._completion_context is not None:
-                repository_truth, completion = self._completion_context(state, evidence)
-            return self._store.transition(state.mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self._now(), reason="mission_completed", actions=actions, execution_evidence=evidence_document, repository_truth=repository_truth, completion=completion)
-        if self._replan_after_evidence is not None:
-            self._replan_after_evidence(state, actions, evidence)
-        return self._store.transition(state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(), reason="execution_completed", actions=actions, execution_evidence=evidence_document)
+            return self._store.transition(
+                reconciled.mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self._now(),
+                reason="mission_criteria_proven",
+            )
+        return reconciled
 
     def _host_failure(self, state: MissionExecutionState, reference: str, _error: Exception) -> MissionExecutionState:
         return self._store.transition(

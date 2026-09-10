@@ -110,6 +110,13 @@ LAN DNS-SD/mDNS candidate discovery, configured/unicast/tailnet bootstrap, Works
 
 The canonical target is defined in [Living Mission Graph and cross-repository Engineering Action DAG](../../docs/architecture/LIVING_MISSION_GRAPH_AND_CROSS_REPOSITORY_ACTION_DAG.md).
 
+The minimal serial product slice is source-delivered and deterministically
+qualified: an approved provider-derived scope may start with no owner-supplied
+Actions, derive and validate A, replan only after canonical A evidence, append a
+previously absent B without rewriting A, survive restart with B current, and
+complete only from explicit per-criterion evidence. This is source
+qualification, not the live Forge→EP canary.
+
 Forge owns the active Intent/Action dependency graph inside an approved Mission. After each terminal EP result it reconciles evidence, refreshes Project Context, evaluates Mission success criteria, and may add, split, supersede, reorder or retire not-yet-materialized work. A materialized/submitted Action remains immutable.
 
 The first real qualification must prove:
@@ -125,6 +132,12 @@ OWNER_IS_NOT_ACTION_MESSAGE_BUS = TRUE
 ```
 
 This replaces a weaker canary that would predeclare Action A/B and prove only automatic scheduling.
+
+`DYNAMIC_SUCCESSOR_CAPABILITY = SOURCE_DELIVERED_QUALIFIED`
+`EVIDENCE_DERIVED_COMPLETION = SOURCE_DELIVERED_QUALIFIED`
+`F_E2E = NOT_EXECUTED`
+`CONFIGURATION_BLOCKER = STILL_OPEN`
+`GOVERNANCE_BLOCKER = STILL_OPEN`
 
 ## Cross-repository Action DAG — second Runtime autonomy milestone
 

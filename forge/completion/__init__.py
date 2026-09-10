@@ -1,5 +1,6 @@
-"""Deterministic, local-only phase completion assessment."""
+"""Deterministic, local-only completion assessment."""
 
 from .assessor import PhaseCompletionAssessor
+from .mission import MissionCompletionEvaluationError, MissionCompletionEvaluator
 
-__all__ = ["PhaseCompletionAssessor"]
+__all__ = ["MissionCompletionEvaluationError", "MissionCompletionEvaluator", "PhaseCompletionAssessor"]

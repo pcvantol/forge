@@ -30,8 +30,10 @@ the next Mission.
 `MissionStateStore` is the canonical restart-safe runtime record. In addition
 to the Mission, generated Intents and Actions, it persists current Intent and
 Action, completed and remaining Action progress, correlation, current and
-cumulative Execution Evidence, waiting reason, Repository Truth, completion
-assertions, authorised recovery, and append-only lifecycle history.
+cumulative Execution Evidence, waiting reason, Repository Truth, per-criterion
+completion evaluation, authorised recovery, append-only derivation provenance,
+and append-only lifecycle history. Completed materialized Actions cannot be
+dropped or rewritten by later planning.
 
 The read-only `ExecutionLoopObservability` projection exposes current Mission,
 Intent, Action, progress, host/lifecycle state, waiting reason and completion
@@ -41,16 +43,25 @@ percentage. It has no mutation or scheduling authority.
 
 1. The Dispatcher supplies the one persisted active Mission.
 2. For a newly admitted Mission, the loop obtains a complete, digest-pinned
-   Planner input, calls `MissionPlanner.replan`, and persists the generated
-   Intents and Actions before execution.
+   Planner input. Static scopes use `MissionPlanner.replan`. A scope explicitly
+   marked `allow_provider_derivation` must have no preconfigured Actions and
+   uses the injected `AIMissionPlanner` composition: provider output remains
+   untrusted until the existing deterministic derivation validator has accepted
+   it. The validated plan and its provenance are persisted before execution.
 3. The Bootstrap Mission Runner releases one evidence-eligible Action, renders
    it through the injected renderer, and persists its exact Host request before
    dispatch.
 4. Exact, correlated Host Evidence changes that Action only. Completed evidence
-   causes the next Planner/Action cycle; incomplete host evidence leaves the
+   is persisted, Repository Truth is refreshed, and the current Mission criteria
+   are evaluated. Static planning preserves its unresolved Action identities;
+   provider-derived planning may validate and append a newly required successor
+   that was absent before the evidence. Incomplete host evidence leaves the
    Mission waiting without guessing.
-5. Completion requires every Action complete, terminal Execution Evidence, and
-   a refreshed Repository Truth completion context. The Dispatcher then runs
+5. Completion requires every materialized Action complete and every approved
+   Mission criterion individually proven against current Repository Truth and
+   canonical terminal Host evidence. Missing, stale, prose-only, or otherwise
+   non-canonical evidence is unsatisfied. Finishing the current Action set alone
+   cannot complete the Mission. The Dispatcher then runs
    the Architecture Review and Mission Recommendation hooks. It alone may
    subsequently evaluate its queue.
 
@@ -58,6 +69,11 @@ For identical Mission, Mission State, approved scope map, Repository Truth,
 Planning Evidence and Host Evidence, the Planner and loop choose the same
 Action order and persist equivalent state. Timestamps and host correlations are
 operational evidence, not planning inputs.
+
+The deterministic source qualification covers dynamic initial derivation,
+evidence-triggered successor derivation, immutable completed history, durable
+restart before the successor, and evidence-derived completion. It makes no
+claim that the live Forge→EP canary has run.
 
 ## Blocking, governance pause, and resume
 

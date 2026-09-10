@@ -1,6 +1,9 @@
 # Living Mission Graph and cross-repository Engineering Action DAG
 
-**Status:** target Forge architecture; canonical when merged. Implementation and qualification remain separately governed.
+**Status:** canonical target architecture. The bounded serial dynamic-derivation
+and evidence-derived completion slice is source-delivered and deterministically
+qualified; live Forge→EP and cross-repository qualifications remain separately
+governed and unexecuted.
 
 ## Purpose
 
@@ -139,6 +142,12 @@ The target Runtime may release more than one eligible Action from the same Missi
 
 The current Bootstrap Mission Scheduler's single in-flight Action rule is a bootstrap implementation limit, not a target invariant. The current runner-wide repository target is likewise a bootstrap limit; target architecture requires repository identity at the Action/submission boundary.
 
+The delivered serial source slice retains that bootstrap limit. For an approved
+provider-derived scope with no Action definitions, it derives and validates an
+initial Action, reconciles canonical terminal evidence, refreshes current
+planning evidence, and may append a validated successor. Derivation lineage and
+completed materialized Actions survive a normal durable runtime reopen.
+
 ## Mission completion
 
 Mission completion is not defined as “all Actions from the initial plan are COMPLETE”. The initial plan is provisional.
@@ -150,11 +159,21 @@ A complete set of initially forecast Actions is insufficient if evidence exposes
 `MISSION_COMPLETION_IS_EVIDENCE_DERIVED = TRUE`
 `INITIAL_ACTION_LIST_IS_NOT_COMPLETION_AUTHORITY = TRUE`
 
+The delivered evaluator identifies every approved criterion and binds it to an
+exact current Repository Truth snapshot plus canonical correlated terminal Host
+evidence. Unknown or absent evidence remains unsatisfied; neither provider prose
+nor an Execution Host completion assertion has planning or completion authority.
+
 ## Qualification sequence
 
 Two separate real-world qualifications are required.
 
 ### Dynamic inner-loop canary
+
+The repository-level deterministic harness proves the Forge-owned source
+semantics below with a fake derivation provider and fake Host. The real canary
+is still unexecuted and may be claimed only after configuration, governance,
+installed producer capability, and actual terminal evidence exist.
 
 Input is one approved Mission, not a predeclared A/B script. Qualification proves:
 

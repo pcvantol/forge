@@ -36,6 +36,9 @@ _VALIDATION_FAILURE_CODES = {
     "derived proposal omits required risk inputs": "RISK_INPUTS_OMITTED",
     "derived proposal dependency target is unknown": "UNKNOWN_DEPENDENCY",
     "derived proposal dependency graph contains a cycle": "CYCLIC_DEPENDENCY",
+    "derived proposal reuses a completed action identity": "COMPLETED_ACTION_ID_REUSED",
+    "derived proposal provenance references evidence outside the planning snapshot": "INVALID_EVIDENCE_PROVENANCE",
+    "derived proposals do not share one derivation provenance": "CONFLICTING_DERIVATION_PROVENANCE",
 }
 
 
@@ -177,19 +180,32 @@ class ActionDerivationValidator:
         ids = {proposal.logical_action_id for proposal in proposals}
         if len(ids) != len(proposals):
             raise ProposalValidationError("derived action identities must be unique")
+        completed_ids = set(planning_input.mission_state.completed_action_ids)
+        if ids & completed_ids:
+            raise ProposalValidationError("derived proposal reuses a completed action identity")
+        provenance = {
+            (proposal.provenance.derivation_id, proposal.provenance.implementation_version,
+             proposal.provenance.provider_id, proposal.provenance.provider_model)
+            for proposal in proposals
+        }
+        if len(provenance) != 1:
+            raise ProposalValidationError("derived proposals do not share one derivation provenance")
+        source_evidence = tuple(sorted(item.source_id for item in snapshot.evidence))
         mission_scopes = set(planning_input.mission.scope)
         for proposal in proposals:
             if proposal.scope not in mission_scopes:
                 raise ProposalValidationError("derived proposal scope is outside approved Mission")
             if proposal.provenance.planning_snapshot_id != snapshot.id or proposal.provenance.planning_snapshot_digest != snapshot.digest:
                 raise ProposalValidationError("derived proposal provenance does not bind the current planning snapshot")
+            if not set(proposal.provenance.source_evidence_refs) <= set(source_evidence):
+                raise ProposalValidationError("derived proposal provenance references evidence outside the planning snapshot")
             if not set(proposal.write_scopes) <= set(policy.allowed_write_scopes):
                 raise ProposalValidationError("derived proposal write scope exceeds approved authority")
             if not set(policy.required_human_gates) <= set(proposal.human_gates):
                 raise ProposalValidationError("derived proposal weakens required human gates")
             if not set(policy.required_risk_inputs) <= set(proposal.risk_inputs):
                 raise ProposalValidationError("derived proposal omits required risk inputs")
-            unknown = set(proposal.dependencies) - ids
+            unknown = set(proposal.dependencies) - ids - completed_ids
             if unknown:
                 raise ProposalValidationError("derived proposal dependency target is unknown")
         self._assert_acyclic(proposals)
@@ -208,7 +224,10 @@ class ActionDerivationValidator:
                 return
             visiting.add(node)
             for dependency in graph[node]:
-                visit(dependency)
+                # A newly derived successor may depend on immutable completed
+                # history, which is outside the proposal subgraph.
+                if dependency in graph:
+                    visit(dependency)
             visiting.remove(node)
             visited.add(node)
 
@@ -229,7 +248,8 @@ def planner_input_from_derivation(
             proposal.validation_strategy, proposal.priority, proposal.postponed,
             dependencies=proposal.dependencies,
         ))
-    scopes = tuple(ApprovedScope(scope.scope, scope.capability_id, scope.architecture_references, tuple(by_scope[scope.scope]))
+    scopes = tuple(ApprovedScope(scope.scope, scope.capability_id, scope.architecture_references,
+                                 tuple(by_scope[scope.scope]), allow_provider_derivation=scope.allow_provider_derivation)
                    for scope in planning_input.approved_scopes if by_scope[scope.scope])
     # An approved Mission must still be fully represented. A provider cannot omit a scope.
     if {scope.scope for scope in scopes} != set(planning_input.mission.scope):

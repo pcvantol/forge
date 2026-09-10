@@ -91,6 +91,17 @@ from .phase_completion import (
     PhaseAssessment,
     ReproducibleEvidenceReference,
 )
+from .mission_completion import (
+    MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION,
+    CanonicalExecutionEvidenceReference,
+    MissionCompletionEvaluation,
+    MissionCompletionEvidence,
+    MissionCriterionEvidenceBinding,
+    MissionCriterionEvaluation,
+    MissionCriterionEvaluationStatus,
+    RepositoryTruthReference,
+    mission_criterion_id,
+)
 from .constitutional_validation import (
     CONSTITUTIONAL_VALIDATION_SCHEMA_VERSION,
     ConstitutionalAssessment,
@@ -394,6 +405,15 @@ __all__ = [
     "PHASE_COMPLETION_SCHEMA_VERSION",
     "PhaseAssessment",
     "ReproducibleEvidenceReference",
+    "MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION",
+    "CanonicalExecutionEvidenceReference",
+    "MissionCompletionEvaluation",
+    "MissionCompletionEvidence",
+    "MissionCriterionEvidenceBinding",
+    "MissionCriterionEvaluation",
+    "MissionCriterionEvaluationStatus",
+    "RepositoryTruthReference",
+    "mission_criterion_id",
     "CONSTITUTIONAL_VALIDATION_SCHEMA_VERSION",
     "ConstitutionalAssessment",
     "ConstitutionalAssessmentStatus",
