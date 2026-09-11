@@ -17,6 +17,7 @@ from .bootstrap import (
     RuntimeIdentity,
     RuntimeInstance,
     RuntimeLocation,
+    RuntimePlacement,
     RuntimeRecovery,
     RuntimeResolutionError,
     RuntimeResolver,
@@ -31,5 +32,5 @@ from .service import ForgeRuntimeService, RuntimeServiceTick
 __all__ = [
     "BootstrapMissionRunner", "MissionRunnerError", "RuntimePromptFactory", "ForgeRuntimeService", "RuntimeServiceTick",
     "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError", "RuntimeDecisionEvidenceReference", "RuntimeEvidence",
-    "RUNTIME_INSTANCE_VERSION", "RUNTIME_INITIALIZATION_VERSION", "RuntimeBootstrap", "RuntimeIdentity", "RuntimeInstance", "RuntimeLocation", "RuntimeRecovery", "RuntimeResolutionError", "RuntimeResolver", "repository_identity", "repository_uuid", "DataRootError", "DataRootResolver", "RUNTIME_DIRECTORIES",
+    "RUNTIME_INSTANCE_VERSION", "RUNTIME_INITIALIZATION_VERSION", "RuntimeBootstrap", "RuntimeIdentity", "RuntimeInstance", "RuntimeLocation", "RuntimePlacement", "RuntimeRecovery", "RuntimeResolutionError", "RuntimeResolver", "repository_identity", "repository_uuid", "DataRootError", "DataRootResolver", "RUNTIME_DIRECTORIES",
 ]

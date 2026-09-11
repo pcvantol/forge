@@ -5,6 +5,7 @@ from hashlib import sha256
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from forge.governance_authority import (
     ArchitecturePlanningEvidence,
@@ -21,7 +22,7 @@ from forge.intake import MissionIntake, MissionIntakeError
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
-from forge.runtime.bootstrap import RuntimeBootstrap
+from forge.runtime.bootstrap import RuntimeBootstrap, RuntimeResolutionError
 from forge.runtime.database import RUNTIME_SCHEMA_VERSION, RuntimeDatabase
 
 
@@ -258,11 +259,16 @@ class InstalledRuntimeGovernanceCompositionTests(unittest.TestCase):
     def test_public_runtime_composition_preserves_server_identity_and_decisions_across_restart(self) -> None:
         runtime_id = self.database.runtime_identity.runtime_id
         installation_id = self.context.installation_id
-        repository = CanonicalGovernanceRepository.for_runtime(self.database, lambda: self.identity)
+        with patch.object(InstallationOperatorService, "first_bind", side_effect=AssertionError("composition must not bind")), \
+             patch.object(InstallationOperatorService, "adopt_governance_capabilities", side_effect=AssertionError("composition must not grant")):
+            repository = CanonicalGovernanceRepository.for_runtime(
+                self.database, lambda: self.identity, data_root=self.server_data_root,
+            )
         self.assertIs(repository.database, self.database)
         self.assertTrue(self.database.installation_scoped)
         self.assertEqual(self.database.path.resolve(), (self.server_data_root / "forge.db").resolve())
         self.assertFalse((self.repository_root / "forge.db").exists())
+        self.assertEqual(repository.operators.context(), self.context)
 
         planning = self.planning()
         business = BusinessWorkspace.for_runtime(self.database, repository, self.context)
@@ -279,17 +285,59 @@ class InstalledRuntimeGovernanceCompositionTests(unittest.TestCase):
         self.assertEqual(repository.decision("installed-architecture")["capability"], "ARCHITECTURE_APPROVAL")
 
         self.database.close()
-        self.database = RuntimeBootstrap(
-            self.repository_root, data_root=self.server_data_root, forge_version="2.6.2",
-        ).open()
-        self.operators = InstallationOperatorService(self.database, lambda: self.identity)
+        reopened = CanonicalGovernanceRepository.open_canonical(
+            self.repository_root, lambda: self.identity, data_root=self.server_data_root,
+        )
+        self.database = reopened.database
+        self.operators = reopened.operators
         self.context = self.operators.context()
-        reopened = CanonicalGovernanceRepository.for_runtime(self.database, lambda: self.identity)
         self.assertEqual(self.database.runtime_identity.runtime_id, runtime_id)
         self.assertEqual(self.context.installation_id, installation_id)
         self.assertEqual(reopened.decision("installed-business")["decision"], "approved")
         self.assertEqual(reopened.decision("installed-architecture")["subject_id"], "installed-qualification")
         self.assertFalse((self.repository_root / "forge.db").exists())
+
+    def test_wrong_data_root_and_an_uninitialized_root_are_rejected(self) -> None:
+        other_root = self.root / "other-server-runtime"
+        other = RuntimeBootstrap(self.repository_root, data_root=other_root, forge_version="2.6.2").open()
+        try:
+            with self.assertRaisesRegex(ValueError, "resolved canonical Runtime Instance"):
+                CanonicalGovernanceRepository.for_runtime(
+                    self.database, lambda: self.identity, data_root=other_root,
+                )
+            self.assertTrue(self.operators.authorize(self.context))
+        finally:
+            other.close()
+
+        uninitialized_root = self.root / "uninitialized-server-runtime"
+        with self.assertRaisesRegex(RuntimeResolutionError, "must be initialized"):
+            CanonicalGovernanceRepository.open_canonical(
+                self.repository_root, lambda: self.identity, data_root=uninitialized_root,
+            )
+        self.assertFalse(uninitialized_root.exists())
+
+    def test_arbitrary_explicit_database_cannot_be_blessed_as_installed_authority(self) -> None:
+        arbitrary_root = self.root / "arbitrary"
+        arbitrary = RuntimeDatabase(
+            self.repository_root, path=arbitrary_root / "forge.db", forge_version="2.6.2",
+        )
+        operators = InstallationOperatorService(arbitrary, lambda: self.identity)
+        context = operators.first_bind()
+        try:
+            self.assertFalse(arbitrary.installation_scoped)
+            with self.assertRaises(TypeError):
+                RuntimeDatabase(
+                    self.repository_root, path=arbitrary_root / "forbidden.db",
+                    installation_scoped=True,
+                )
+            with self.assertRaisesRegex(ValueError, "repository-local governance cannot claim"):
+                CanonicalGovernanceRepository.for_runtime(
+                    arbitrary, lambda: self.identity, data_root=arbitrary_root,
+                )
+            self.assertTrue(operators.authorize(context))
+            self.assertFalse((self.repository_root / "forge.db").exists())
+        finally:
+            arbitrary.close()
 
 
 class GovernanceSchema19MigrationTests(unittest.TestCase):
