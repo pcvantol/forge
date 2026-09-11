@@ -177,7 +177,7 @@ class CanonicalTokenPreflightAuthority:
         return resolved
 
     def approved_derivation_policy_for(self, mission_id: str) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
-        """Return only the persisted no-write derivation constraints for a Mission."""
+        """Return only the persisted, Architecture-approved derivation constraints."""
         if self._policy_reader is not None:
             return self._policy_reader(mission_id)
         state = self._database.get_document("mission_state", mission_id)
@@ -193,8 +193,9 @@ class CanonicalTokenPreflightAuthority:
         if any(not item for item in values) or any(len(item) != len(items)
                                                     for item, items in zip(values, raw_values)):
             raise PermissionError("canonical approved Mission derivation policy is invalid")
-        if values[0] != ("NONE",):
-            raise PermissionError("provider Action Derivation supports only canonical NONE write scope")
+        write_scopes = values[0]
+        if "NONE" in write_scopes and write_scopes != ("NONE",):
+            raise PermissionError("canonical NONE write scope cannot be combined with a repository write scope")
         return values
 
     def boundary_for(self, mission_id: str) -> TokenPreflightBoundary:
@@ -657,20 +658,29 @@ _SCHEMA = {"type":"object","additionalProperties":False,"required":["kind","prop
 def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[str, ...],
                                   human_gates: tuple[str, ...], risk_inputs: tuple[str, ...],
                                   snapshot: PlanningSnapshot) -> dict[str, object]:
-    """Bind strict output to canonical Mission scope and no-write governance constraints."""
+    """Bind strict output to canonical Mission scope and derivation constraints."""
     if not scopes or any(not isinstance(scope, str) or not scope for scope in scopes):
         raise ValueError("canonical approved Mission scopes are required")
-    if write_scopes != ("NONE",) or not human_gates or not risk_inputs:
-        raise ValueError("canonical no-write derivation policy is required")
+    if (not write_scopes or len(write_scopes) != len(set(write_scopes))
+            or any(not isinstance(scope, str) or not scope for scope in write_scopes)
+            or ("NONE" in write_scopes and write_scopes != ("NONE",))
+            or not human_gates or not risk_inputs):
+        raise ValueError("canonical derivation policy is required")
     schema = json.loads(json.dumps(_SCHEMA))
     properties = schema["properties"]["proposals"]["items"]["properties"]
     properties["scope"] = {
         "type": "string", "enum": list(scopes),
     }
-    # ``NONE`` is a governance state, never a provider grant to a write path.
-    # Strict Responses schemas model every array with an explicit item schema.
-    # ``maxItems: 0`` remains the authority boundary: an item can never occur.
-    properties["write_scopes"] = {"type": "array", "items": {"type": "string"}, "maxItems": 0}
+    # ``NONE`` remains a governance state, never a provider grant to a write
+    # path.  Otherwise the strict schema exposes only the finite, canonical
+    # allow-list; deterministic validation remains the final authority check.
+    if write_scopes == ("NONE",):
+        properties["write_scopes"] = {"type": "array", "items": {"type": "string"}, "maxItems": 0}
+    else:
+        properties["write_scopes"] = {
+            "type": "array", "items": {"type": "string", "enum": list(write_scopes)},
+            "minItems": 1, "maxItems": len(write_scopes),
+        }
     properties["human_gates"] = _required_enum_array(human_gates)
     properties["risk_inputs"] = _required_enum_array(risk_inputs)
     properties["mission_gap"] = {"anyOf": [

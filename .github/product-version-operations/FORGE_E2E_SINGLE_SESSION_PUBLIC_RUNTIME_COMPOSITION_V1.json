@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.6.2",
+  "classification_rationale": "codex/forge-e2e-single-session-repair-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-e2e-single-session-repair-v1",
+  "expected_head": "fcd0ba53c7745692bdfad91b09017380e672ee97",
+  "operation_id": "FORGE_E2E_SINGLE_SESSION_PUBLIC_RUNTIME_COMPOSITION_V1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.0"
+}

@@ -1,0 +1,181 @@
+"""Installed public composition coverage for the real dynamic Mission path."""
+from __future__ import annotations
+
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+import unittest
+
+from forge.architecture import ArchitectureWorkspace
+from forge.business import BusinessWorkspace
+from forge.governance_authority import (
+    ArchitecturePlanningEvidence,
+    CanonicalGovernanceRepository,
+    MissionPlanningEvidenceEnvelope,
+)
+from forge.models.action_derivation import DerivedActionProposal, ProposalProvenance
+from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.execution_host import (
+    ExecutionDispatch,
+    ExecutionEvidenceOutcome,
+    ExecutionHostEvidence,
+    ExecutionRepositoryEvidence,
+)
+from forge.models.mission_recommendation import RequiredDiscipline
+from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
+from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
+from forge.runtime import RuntimeBootstrap
+from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
+
+
+class _Provider:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def preflight(self):
+        return SimpleNamespace(ready=True, state=SimpleNamespace(value="READY"))
+
+    def derive_with_planning_input(self, snapshot, _planning_input, _policy):
+        self.calls += 1
+        return (DerivedActionProposal(
+            "status-projection-action", "durable-status-projection", "Deliver the approved status projection.", (),
+            ("forge/__main__.py",), ("focused status validation",), ("python -m unittest",), 1, False,
+            ("protected-delivery",), ("scope-drift",),
+            ProposalProvenance(
+                f"fixture-derivation-{self.calls}", snapshot.id, snapshot.digest, "fixture-v1", "fixture", None,
+                tuple(item.source_id for item in snapshot.evidence),
+            ),
+        ),)
+
+
+class _Host:
+    def __init__(self) -> None:
+        self.config = SimpleNamespace(host_id="engineering-platform", project_id="forge", repository_id="forge",
+                                      repository_identity="forge")
+        self.dispatches = {}
+        self.return_evidence = False
+
+    def preflight(self):
+        return {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "fixture"}}
+
+    def dispatch(self, request):
+        dispatch = ExecutionDispatch(request, "ep-run-status-projection")
+        self.dispatches[request.correlation_id] = dispatch
+        return dispatch
+
+    def recover_dispatch(self, request):
+        return self.dispatches.get(request.correlation_id)
+
+    def retrieve_evidence(self, dispatch):
+        if not self.return_evidence:
+            return None
+        request = dispatch.request
+        repository = ExecutionRepositoryEvidence(
+            request.mission_id, request.intent_id, request.intent_revision, request.action_id,
+            request.runtime_prompt.id, request.correlation_id, dispatch.host_run_id, request.repository_id,
+            "fixture-protected-revision", "ep-report-status-projection", "sha256:" + "a" * 64,
+        )
+        return ExecutionHostEvidence(
+            request.host_id, request.correlation_id, dispatch.host_run_id, "ep-report-status-projection",
+            ExecutionEvidenceOutcome.COMPLETE, repository, validation_references=("focused-status-validation",),
+            execution_started_at="2026-09-11T16:00:00Z", execution_completed_at="2026-09-11T16:01:00Z",
+            receipt_id="ep-receipt-status-projection", execution_duration_ms=60_000,
+        )
+
+
+class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = TemporaryDirectory()
+        self.root = Path(self.temporary.name) / "forge-server"
+        self.identity = NamedOperatorIdentity("e2e-operator", 501)
+        self.provider, self.host = _Provider(), _Host()
+        self.runtime = self._open_runtime()
+
+    def tearDown(self) -> None:
+        self.runtime.close()
+        self.temporary.cleanup()
+
+    def _open_runtime(self) -> InstalledDynamicMissionRuntime:
+        database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        operators = InstallationOperatorService(database, lambda: self.identity)
+        try:
+            operators.context()
+        except PermissionError:
+            operators.first_bind()
+        repository = CanonicalGovernanceRepository.for_runtime(database, lambda: self.identity, data_root=self.root)
+        return InstalledDynamicMissionRuntime(
+            database, repository, data_root=str(self.root), provider=self.provider, host=self.host,
+            clock=lambda: "2026-09-11T16:00:00Z",
+        )
+
+    def _mission_and_envelope(self):
+        repository, context = self.runtime.repository, self.runtime.repository.operators.context()
+        planning = ArchitecturePlanningEvidence(
+            ("durable-status-projection",), ("forge/__main__.py",), ("no unrelated runtime work",),
+            ("scope-drift",), ("protected-delivery",), ("ep-v1.2",), 16_000, 4_000, "1",
+        )
+        business = BusinessWorkspace.for_runtime(self.runtime.database, repository, context)
+        architecture = ArchitectureWorkspace.for_runtime(self.runtime.database, repository, context)
+        business.approve(
+            decision_id="business-status-projection", candidate_id="candidate-status-projection", revision="1",
+            scope=planning.scope, gates=planning.human_gates,
+        )
+        architecture.approve(
+            decision_id="architecture-status-projection", candidate_id="candidate-status-projection", revision="1",
+            planning=planning,
+        )
+        envelope = MissionPlanningEvidenceEnvelope.compose(
+            repository, subject_id="candidate-status-projection", subject_revision="1",
+            business_decision_id="business-status-projection", architecture_decision_id="architecture-status-projection",
+            planning=planning,
+        )
+        mission_id = self.runtime.database.allocate_next_mission_id(
+            source="canonical-governance-envelope:" + envelope.digest, allocated_at="2026-09-11T16:00:00Z",
+        )
+        mission = ArchitectureMission(
+            mission_id, "candidate-status-projection", "Durable status projection", "Expose durable dispatcher posture.",
+            "Expose a safe status projection.", "Operators can inspect durable state.", "architecture-status-projection",
+            "candidate-status-projection", ("durable-status-projection",), ("no unrelated runtime work",),
+            ("status is derived from durable state",), ("configured EP v1.2",), ("ep-v1.2",),
+            ("status-projection",), (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("scope-drift",),
+            ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
+        )
+        return mission, envelope
+
+    @staticmethod
+    def _truth() -> RepositoryTruthSnapshot:
+        return RepositoryTruthSnapshot(
+            "forge-initial-truth", "forge", "fixture-initial-revision", "2026-09-11T16:00:00Z",
+            (RepositoryTruthEvidence(
+                "forge-main", "git_commit", "fixture-initial-revision", "https://example.invalid/forge",
+                "sha256:" + "b" * 64,
+            ),),
+        )
+
+    def test_admits_zero_actions_then_reopens_same_installed_instance_to_reconcile_terminal_evidence(self) -> None:
+        mission, envelope = self._mission_and_envelope()
+        admitted = self.runtime.admit(mission, envelope)
+        self.assertEqual(admitted.status.value, "APPROVED_PLANNABLE")
+        self.assertEqual(admitted.actions, ())
+        self.assertEqual(admitted.intents, ())
+
+        waiting = self.runtime.start(mission.id, self._truth())
+        self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
+        self.assertEqual(waiting.planning_invocations, 1)
+        self.assertEqual(len(waiting.action_ids), 1)
+        runtime_id = waiting.runtime_id
+        self.runtime.close()
+
+        self.host.return_evidence = True
+        self.runtime = self._open_runtime()
+        complete = self.runtime.resume(mission.id)
+        self.assertEqual(complete.runtime_id, runtime_id)
+        self.assertEqual(complete.status, "COMPLETED")
+        self.assertEqual(complete.planning_invocations, 1)
+        state = self.runtime.states.get(mission.id)
+        self.assertTrue(state.completion["all_required_criteria_proven"])
+        self.assertEqual(state.execution_history[-1]["receipt_id"], "ep-receipt-status-projection")
+
+
+if __name__ == "__main__":
+    unittest.main()
