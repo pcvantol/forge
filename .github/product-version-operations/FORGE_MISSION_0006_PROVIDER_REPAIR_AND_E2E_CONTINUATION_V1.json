@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.0",
+  "classification_rationale": "codex/forge-mission-0006-provider-repair-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-mission-0006-provider-repair-v1",
+  "expected_head": "7f40ea2ab42c7f2e12786a7ad4ecd0b4c37d9a0c",
+  "operation_id": "FORGE_MISSION_0006_PROVIDER_REPAIR_AND_E2E_CONTINUATION_V1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.1"
+}

@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import time
 from typing import Callable
 import uuid
 
@@ -44,6 +45,13 @@ _PROPOSAL_FIELDS = frozenset((
     "human_gates", "risk_inputs", "source_evidence_refs", "mission_gap",
 ))
 _GOVERNANCE_FIELDS = frozenset(("kind", "reason"))
+_LOCAL_ARGUMENT_REJECTION = re.compile(
+    r"(?:unexpected argument|unrecognized (?:argument|option)|unknown (?:argument|option)|"
+    r"invalid value .*--(?:output-schema|sandbox)|failed to (?:read|parse) .*schema|"
+    r"(?:output|json) schema .*?(?:invalid|unsupported|must be))",
+    re.IGNORECASE,
+)
+_TERMINAL_EVENT_TYPES = frozenset(("turn.completed", "turn.failed", "error"))
 
 
 class CodexCliSessionReadinessState(str, Enum):
@@ -53,6 +61,65 @@ class CodexCliSessionReadinessState(str, Enum):
     UNSUPPORTED_VERSION = "UNSUPPORTED_VERSION"
     MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
     UNVERIFIED = "UNVERIFIED"
+
+
+class CodexCliInvocationClassification(str, Enum):
+    """The bounded, durable result of one local Codex process attempt."""
+
+    NOT_STARTED = "NOT_STARTED"
+    REJECTED_BEFORE_GENERATION = "REJECTED_BEFORE_GENERATION"
+    MAY_HAVE_HAPPENED = "MAY_HAVE_HAPPENED"
+    COMPLETED_CONTRACT_INVALID = "COMPLETED_CONTRACT_INVALID"
+    COMPLETED_VALID = "COMPLETED_VALID"
+
+
+@dataclass(frozen=True)
+class CodexCliInvocationDiagnostic:
+    """Secret-free process evidence retained before the temporary directory dies.
+
+    This deliberately records categories and structured event names only.  It
+    never persists stderr, the prompt, a model response, command arguments, or
+    credential-bearing environment values.
+    """
+
+    classification: CodexCliInvocationClassification
+    process_started: bool
+    exception_type: str | None = None
+    errno: int | None = None
+    timed_out: bool = False
+    elapsed_milliseconds: int | None = None
+    returncode: int | None = None
+    error_category: str | None = None
+    terminal_events: tuple[str, ...] = ()
+
+    def document(self) -> dict[str, object]:
+        return {
+            "classification": self.classification.value,
+            "process_started": self.process_started,
+            "exception_type": self.exception_type,
+            "errno": self.errno,
+            "timed_out": self.timed_out,
+            "elapsed_milliseconds": self.elapsed_milliseconds,
+            "returncode": self.returncode,
+            "error_category": self.error_category,
+            "terminal_events": list(self.terminal_events),
+        }
+
+
+@dataclass(frozen=True)
+class _CodexCliRunResult:
+    document: object | None
+    diagnostic: CodexCliInvocationDiagnostic
+
+
+class CodexCliInvocationRejected(RuntimeError):
+    """A local process failure was proven to precede model generation."""
+
+    def __init__(self, diagnostic: CodexCliInvocationDiagnostic) -> None:
+        message = ("Codex process did not start" if diagnostic.classification is CodexCliInvocationClassification.NOT_STARTED
+                   else "Codex rejected the local request before generation")
+        super().__init__(message)
+        self.diagnostic = diagnostic
 
 
 @dataclass(frozen=True)
@@ -196,11 +263,13 @@ class CodexCliChatGPTSessionPlanningProvider:
     def __init__(self, configuration: CodexCliChatGPTSessionPlanningProviderConfiguration, *,
                  readiness_checker: CodexCliSessionReadinessChecker | None = None,
                  runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
-                 adapter_version: str = CODEX_CLI_CHATGPT_SESSION_ADAPTER_VERSION) -> None:
+                 adapter_version: str = CODEX_CLI_CHATGPT_SESSION_ADAPTER_VERSION,
+                 temporary_directory: Callable[..., object] = tempfile.TemporaryDirectory) -> None:
         self.configuration = configuration
         self._readiness_checker = readiness_checker or CodexCliSessionReadinessChecker()
         self._runner = runner
         self.adapter_version = adapter_version
+        self._temporary_directory = temporary_directory
 
     def preflight(self) -> CodexCliSessionReadiness:
         """Read the supported local CLI status without generating a proposal."""
@@ -246,20 +315,31 @@ class CodexCliChatGPTSessionPlanningProvider:
         self._record_invocation(policy, request, request_digest, "STARTED", started)
         try:
             self.configuration.policy_service._commit_generation_transport(permit, policy, policy_digest, request_digest)
-            try:
-                document = self._run_read_only(policy, request, schema)
-            except (OSError, subprocess.SubprocessError, ProviderSubmissionAmbiguous):
-                self._record_invocation(policy, request, request_digest, "MAY_HAVE_HAPPENED", _now())
-                raise ProviderSubmissionAmbiguous("Codex submission may have happened; automatic retry is forbidden") from None
+            run = self._run_read_only(policy, request, schema)
         finally:
             self.configuration.policy_service._release_generation_permit(permit)
+        if run.diagnostic.classification is CodexCliInvocationClassification.NOT_STARTED:
+            self._record_invocation(policy, request, request_digest, "NOT_STARTED", _now(), diagnostic=run.diagnostic)
+            raise CodexCliInvocationRejected(run.diagnostic)
+        if run.diagnostic.classification is CodexCliInvocationClassification.REJECTED_BEFORE_GENERATION:
+            self._record_invocation(policy, request, request_digest, "REJECTED_BEFORE_GENERATION", _now(), diagnostic=run.diagnostic)
+            raise CodexCliInvocationRejected(run.diagnostic)
+        if run.diagnostic.classification is CodexCliInvocationClassification.MAY_HAVE_HAPPENED:
+            self._record_invocation(policy, request, request_digest, "MAY_HAVE_HAPPENED", _now(), diagnostic=run.diagnostic)
+            raise ProviderSubmissionAmbiguous("Codex submission may have happened; automatic retry is forbidden")
+        document = run.document
+        if document is None:
+            raise RuntimeError("confirmed Codex result is missing its structured document")
         try:
             proposals, refinement = _parse_response(request, document, self.adapter_version)
             status = "completed"
+            diagnostic = _replace_diagnostic(run.diagnostic, CodexCliInvocationClassification.COMPLETED_VALID)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             proposals, refinement, status = None, _refinement(request.snapshot, "provider structured output was invalid"), "contract_invalid"
+            diagnostic = _replace_diagnostic(run.diagnostic, CodexCliInvocationClassification.COMPLETED_CONTRACT_INVALID)
         completed = _now()
-        self._record_invocation(policy, request, request_digest, "HAPPENED_AND_CONFIRMED", completed, status=status)
+        self._record_invocation(policy, request, request_digest, "HAPPENED_AND_CONFIRMED", completed,
+                                status=status, diagnostic=diagnostic, result_digest=_digest(document))
         evidence = ProviderInvocationEvidence(
             request.provider_id, request.model, self.adapter_version, request.digest, request.snapshot.digest,
             _digest(document), ProviderSideEffectState.HAPPENED_AND_CONFIRMED, None, started, completed, status,
@@ -274,49 +354,176 @@ class CodexCliChatGPTSessionPlanningProvider:
         return ProviderSideEffectState.MAY_HAVE_HAPPENED
 
     def _run_read_only(self, policy: PlanningProviderInvocationPolicy,
-                       request: ProviderDerivationRequest, schema: dict[str, object]) -> object:
-        with tempfile.TemporaryDirectory(prefix="forge-codex-planning-") as temporary:
-            root = Path(temporary)
+                       request: ProviderDerivationRequest, schema: dict[str, object]) -> _CodexCliRunResult:
+        """Run once and reduce all local output to bounded, non-secret evidence."""
+        began = time.monotonic()
+        try:
+            temporary = self._temporary_directory(prefix="forge-codex-planning-")
+            root = Path(temporary.name)
+        except OSError as error:
+            # No temporary working root means the executable was never
+            # reached.  Keep this narrow: cleanup after a spawn is not a
+            # proven pre-generation failure.
+            return _CodexCliRunResult(None, _diagnostic(
+                CodexCliInvocationClassification.NOT_STARTED, process_started=False,
+                exception=error, began=began, error_category="LOCAL_SETUP_FAILURE",
+            ))
+        outcome: _CodexCliRunResult | None = None
+        try:
             schema_path, output_path = root / "response-schema.json", root / "response.json"
-            schema_path.write_text(json.dumps(schema, sort_keys=True, separators=(",", ":")), encoding="utf-8")
-            command = [str(policy.executable_path)]
-            if policy.profile:
-                command.extend(("--profile", policy.profile))
-            command.extend(("exec", "--ephemeral", "--ignore-user-config", "--ignore-rules",
-                            "--sandbox", "read-only", "--skip-git-repo-check",
-                            "-C", str(root), "--output-schema", str(schema_path),
-                            "--output-last-message", str(output_path)))
-            if policy.model:
-                command.extend(("--model", policy.model))
-            command.append("-")
-            result = self._runner(command, input=json.dumps(_prompt(request), separators=(",", ":")),
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                  text=True, timeout=policy.timeout_seconds, check=False, cwd=str(root),
-                                  env=_safe_environment())
-            if result.returncode != 0:
-                raise ProviderSubmissionAmbiguous("Codex submission may have happened; automatic retry is forbidden")
             try:
-                return json.loads(output_path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                # A confirmed zero exit with no valid schema output is a
-                # completed-but-invalid result, never a retry signal.
-                return {}
+                schema_path.write_text(json.dumps(schema, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+            except OSError as error:
+                outcome = _CodexCliRunResult(None, _diagnostic(
+                    CodexCliInvocationClassification.NOT_STARTED, process_started=False,
+                    exception=error, began=began, error_category="LOCAL_SETUP_FAILURE",
+                ))
+            else:
+                command = [str(policy.executable_path)]
+                if policy.profile:
+                    command.extend(("--profile", policy.profile))
+                command.extend(("exec", "--ephemeral", "--ignore-user-config", "--ignore-rules",
+                                "--sandbox", "read-only", "--skip-git-repo-check",
+                                "-C", str(root), "--output-schema", str(schema_path), "--json",
+                                "--output-last-message", str(output_path)))
+                if policy.model:
+                    command.extend(("--model", policy.model))
+                command.append("-")
+                try:
+                    result = self._runner(command, input=json.dumps(_prompt(request), separators=(",", ":")),
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                          text=True, timeout=policy.timeout_seconds, check=False, cwd=str(root),
+                                          env=_safe_environment())
+                except subprocess.TimeoutExpired as error:
+                    outcome = _CodexCliRunResult(None, _diagnostic(
+                        CodexCliInvocationClassification.MAY_HAVE_HAPPENED, process_started=True,
+                        exception=error, timed_out=True, began=began, error_category="TIMEOUT",
+                    ))
+                except OSError as error:
+                    outcome = _CodexCliRunResult(None, _diagnostic(
+                        CodexCliInvocationClassification.NOT_STARTED, process_started=False,
+                        exception=error, began=began, error_category="PROCESS_START_FAILURE",
+                    ))
+                except subprocess.SubprocessError as error:
+                    # The runner reached a subprocess boundary but cannot
+                    # prove that no request was delivered.  Preserve its
+                    # type, never its message, and prohibit a retry.
+                    outcome = _CodexCliRunResult(None, _diagnostic(
+                        CodexCliInvocationClassification.MAY_HAVE_HAPPENED, process_started=True,
+                        exception=error, began=began, error_category="PROCESS_FAILURE",
+                    ))
+                else:
+                    events = _terminal_events(getattr(result, "stdout", None))
+                    if result.returncode != 0:
+                        category = _redacted_error_category(getattr(result, "stderr", None))
+                        classification = (CodexCliInvocationClassification.REJECTED_BEFORE_GENERATION
+                                          if category in {"LOCAL_ARGUMENT_REJECTED", "OUTPUT_SCHEMA_REJECTED"}
+                                          else CodexCliInvocationClassification.MAY_HAVE_HAPPENED)
+                        outcome = _CodexCliRunResult(None, _diagnostic(
+                            classification, process_started=True, began=began, returncode=result.returncode,
+                            error_category=category, terminal_events=events,
+                        ))
+                    else:
+                        try:
+                            document = json.loads(output_path.read_text(encoding="utf-8"))
+                        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                            # A confirmed zero exit with no valid schema output is a
+                            # completed-but-invalid result, never a retry signal.
+                            document = {}
+                        outcome = _CodexCliRunResult(document, _diagnostic(
+                            CodexCliInvocationClassification.COMPLETED_VALID, process_started=True,
+                            began=began, returncode=result.returncode, terminal_events=events,
+                        ))
+        finally:
+            try:
+                temporary.cleanup()
+            except OSError as error:
+                if outcome is not None and outcome.diagnostic.process_started:
+                    # The process did start, but its ephemeral directory could
+                    # not be conclusively cleaned after it ran.  Fail closed
+                    # rather than claiming a completed result or no submission.
+                    outcome = _CodexCliRunResult(None, _diagnostic(
+                        CodexCliInvocationClassification.MAY_HAVE_HAPPENED, process_started=True,
+                        exception=error, began=began, error_category="LOCAL_CLEANUP_FAILURE",
+                        terminal_events=outcome.diagnostic.terminal_events,
+                    ))
+        if outcome is None:
+            raise RuntimeError("Codex process produced no classified result")
+        return outcome
 
     def _record_invocation(self, policy: PlanningProviderInvocationPolicy, request: ProviderDerivationRequest,
-                           request_digest: str, state: str, occurred_at: str, *, status: str | None = None) -> None:
+                           request_digest: str, state: str, occurred_at: str, *, status: str | None = None,
+                           diagnostic: CodexCliInvocationDiagnostic | None = None,
+                           result_digest: str | None = None) -> None:
         inspection = self.configuration.policy_service.inspect(policy.provider_id)
         document = {
             "adapter_version": self.adapter_version, "provider_id": policy.provider_id,
             "provider_type": policy.provider_type, "model": policy.model, "profile": policy.profile,
             "request_digest": request_digest, "snapshot_digest": request.snapshot.digest,
             "derivation_request_digest": request.digest, "state": state, "status": status,
+            "result_digest": result_digest,
         }
+        if diagnostic is not None:
+            document["diagnostic"] = diagnostic.document()
         with self.configuration.policy_service.db._connection:
             self.configuration.policy_service.db._connection.execute(
                 "INSERT INTO planning_provider_external_session_audit VALUES (?,?,?,?,?,?)",
                 (str(uuid.uuid4()), inspection["configuration_id"], inspection["operator_id"], "invocation",
                  occurred_at, json.dumps(document, sort_keys=True, separators=(",", ":"))),
             )
+
+
+def _diagnostic(classification: CodexCliInvocationClassification, *, process_started: bool,
+                began: float, exception: BaseException | None = None, timed_out: bool = False,
+                returncode: int | None = None, error_category: str | None = None,
+                terminal_events: tuple[str, ...] = ()) -> CodexCliInvocationDiagnostic:
+    errno = getattr(exception, "errno", None)
+    return CodexCliInvocationDiagnostic(
+        classification, process_started, type(exception).__name__ if exception is not None else None,
+        errno if isinstance(errno, int) else None, timed_out,
+        max(0, int((time.monotonic() - began) * 1000)),
+        returncode if isinstance(returncode, int) else None, error_category, terminal_events,
+    )
+
+
+def _replace_diagnostic(diagnostic: CodexCliInvocationDiagnostic,
+                        classification: CodexCliInvocationClassification) -> CodexCliInvocationDiagnostic:
+    return CodexCliInvocationDiagnostic(
+        classification, diagnostic.process_started, diagnostic.exception_type, diagnostic.errno,
+        diagnostic.timed_out, diagnostic.elapsed_milliseconds, diagnostic.returncode,
+        diagnostic.error_category, diagnostic.terminal_events,
+    )
+
+
+def _redacted_error_category(stderr: object) -> str:
+    """Classify only high-confidence local CLI rejection shapes; keep text private."""
+    value = stderr if isinstance(stderr, str) else ""
+    # This bounded inspection is intentionally not persisted.  A non-zero
+    # process exit alone never proves that Codex did not generate anything.
+    if _LOCAL_ARGUMENT_REJECTION.search(value[:8192]) is None:
+        return "TERMINAL_FAILURE"
+    lowered = value[:8192].lower()
+    if "schema" in lowered:
+        return "OUTPUT_SCHEMA_REJECTED"
+    return "LOCAL_ARGUMENT_REJECTED"
+
+
+def _terminal_events(stdout: object) -> tuple[str, ...]:
+    """Extract only allow-listed terminal event names from ephemeral JSONL."""
+    if not isinstance(stdout, str):
+        return ()
+    events: set[str] = set()
+    for line in stdout.splitlines():
+        if len(line) > 8192:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        name = event.get("type") if isinstance(event, dict) else None
+        if name in _TERMINAL_EVENT_TYPES:
+            events.add(name)
+    return tuple(sorted(events))
 
 
 def _policy_digest(policy: PlanningProviderInvocationPolicy) -> str:
@@ -346,11 +553,31 @@ def _prompt(request: ProviderDerivationRequest) -> dict[str, object]:
 
 def _output_schema(scopes: tuple[str, ...], policy: DerivationPolicy,
                    snapshot: PlanningSnapshot) -> dict[str, object]:
-    proposal_schema = _schema_for_approved_contract(scopes, ("NONE",), policy.required_human_gates,
-                                                     policy.required_risk_inputs, snapshot)
-    return {"oneOf": [proposal_schema, {"type": "object", "additionalProperties": False,
-            "required": ["kind", "reason"], "properties": {"kind": {"type": "string", "enum": ["governance_refinement"]},
-            "reason": {"type": "string", "minLength": 1}}}]}
+    """Return the supported strict object-root Codex output contract.
+
+    Codex forwards this to Structured Outputs, whose strict contract requires
+    an object at the root.  A root ``oneOf`` is therefore not used.  Both
+    variants carry all root properties and use null for the inapplicable
+    branch; ``_parse_response`` enforces their exact semantic pairing before
+    any proposal reaches deterministic validation.
+    """
+    proposal_schema = _schema_for_approved_contract(
+        scopes, policy.allowed_write_scopes, policy.required_human_gates,
+        policy.required_risk_inputs, snapshot,
+    )
+    proposal_items = proposal_schema["properties"]["proposals"]["items"]
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["kind", "proposals", "reason"],
+        "properties": {
+            "kind": {"type": "string", "enum": ["proposals", "governance_refinement"]},
+            "proposals": {
+                "type": ["array", "null"], "minItems": 1, "items": proposal_items,
+            },
+            "reason": {"type": ["string", "null"], "minLength": 1},
+        },
+    }
 
 
 def _parse_response(request: ProviderDerivationRequest, document: object,
@@ -358,10 +585,12 @@ def _parse_response(request: ProviderDerivationRequest, document: object,
     if not isinstance(document, dict):
         raise ValueError("structured response is not an object")
     if document.get("kind") == "governance_refinement":
-        if set(document) != _GOVERNANCE_FIELDS or not isinstance(document.get("reason"), str) or not document["reason"]:
+        if (set(document) != {"kind", "proposals", "reason"} or document.get("proposals") is not None
+                or not isinstance(document.get("reason"), str) or not document["reason"]):
             raise ValueError("governance refinement is malformed")
         return None, _refinement(request.snapshot, document["reason"])
-    if document.get("kind") != "proposals" or set(document) != {"kind", "proposals"}:
+    if (document.get("kind") != "proposals" or set(document) != {"kind", "proposals", "reason"}
+            or document.get("reason") is not None):
         raise ValueError("structured response kind is invalid")
     items = document.get("proposals")
     if not isinstance(items, list) or not items:
