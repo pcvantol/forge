@@ -56,7 +56,7 @@ class ProviderSecurityTests(unittest.TestCase):
    self.assertTrue(restart.inspect('planning')['ready']); store.state=SecretState.REVOKED; self.assertFalse(restart.inspect('planning')['ready']); reopened.close()
  def test_keychain_reference_matrix_fails_closed(self):
   adapter=MacOSKeychainSecureStoreAdapter(runner=lambda *args,**kwargs: (_ for _ in ()).throw(OSError()))
-  self.assertEqual(adapter.status(SecretReference('keychain','//service/account')),SecretState.STORE_UNAVAILABLE)
+  self.assertEqual(adapter.status(SecretReference('keychain','//service/account')),SecretState.PROCESS_START_FAILED)
   for scheme,identifier in (('keychain','//service/account?namespace=x&namespace=y'),('keychain','//service'),('other','//service/account')):
    with self.assertRaises(ValueError): SecretReference(scheme,identifier)
  def test_secret_bearing_or_unknown_references_are_rejected_before_persistence(self):

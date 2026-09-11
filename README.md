@@ -17,7 +17,7 @@ CLI version; a package build never allocates or changes a version.
 
 ## Engineering Platform peer configuration
 
-Forge 2.5 adds one explicit, durable configuration route for its selected
+Forge provides one explicit, durable configuration route for its selected
 Engineering Platform Execution Host peer. Initialize the chosen Forge data
 root first, then configure only already-issued identities and an opaque macOS
 Keychain reference:
@@ -53,6 +53,44 @@ operator's normal Keychain administration, never on the Forge command line.
 Forge persists and prints the reference, never its value. Unknown schemes,
 missing items, unavailable or access-denied Keychain state fail closed without
 credential discovery or fallback.
+
+### Explicit first Keychain access
+
+Before a full EP peer binding exists, a local administrator can explicitly ask
+macOS to perform exactly one read of one already-known credential reference:
+
+```text
+forge execution-host credential-access \
+  --interactive \
+  --credential-reference keychain://forge.ep/consumer
+```
+
+This is a bounded access-setup action, not general onboarding: it does not
+initialize a data root, create or modify a peer binding, issue an EP
+credential, create a grant, configure a provider, or submit any work. The
+reference is validated before the one existing Keychain reader is called. The
+`--interactive` opt-in is mandatory; without it Forge never asks macOS and
+does not retry or fall back to an interactive read.
+
+The setup read waits for at most 120 seconds (adjustable downward with
+`--timeout-seconds`). Forge tells the local user that macOS may ask for
+Keychain access by `/usr/bin/security`, which is the executable that actually
+requests this read. That macOS decision is not a cryptographically
+Forge-exclusive permission; Forge neither automates the prompt nor changes
+Keychain ACLs, partition lists, search domains, entitlements, or signing.
+The command returns only a status and redacted diagnostic, never credential
+material.
+
+Normal installed runtime resolution remains a separate, short 5-second read.
+It never increases its timeout, retries, chooses another Keychain item, or
+switches itself to interactive mode. `TIMEOUT` means only that the Keychain
+subprocess did not finish within its bound; it does not by itself prove denial,
+an open prompt, a missing Keychain, or an entitlement problem. Diagnostics
+distinguish `TIMEOUT`, `PROCESS_START_FAILED`, `MISSING`, `ACCESS_DENIED`, and
+`COMMAND_FAILED`, while all non-resolvable states fail closed. A successful
+`INTERACTIVE_CREDENTIAL_READ_SUCCEEDED` result does not claim that a fresh
+normal process can read the item or that EP authentication succeeded; those
+are separate proofs.
 
 HTTPS uses normal certificate validation. Plain HTTP requires both a loopback
 origin and `--allow-loopback-http`. URL credentials, paths, queries, fragments,
