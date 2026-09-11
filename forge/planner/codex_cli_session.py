@@ -556,41 +556,45 @@ def _output_schema(scopes: tuple[str, ...], policy: DerivationPolicy,
     """Return the supported strict object-root Codex output contract.
 
     Codex forwards this to Structured Outputs, whose strict contract requires
-    an object at the root.  A root ``oneOf`` is therefore not used.  Both
-    variants carry all root properties and use null for the inapplicable
-    branch; ``_parse_response`` enforces their exact semantic pairing before
-    any proposal reaches deterministic validation.
+    an object at the root.  A root union is therefore not used.  The one
+    required root property contains the existing proposal-or-refinement union,
+    so each branch retains its own strict, non-overlapping semantics rather
+    than relying on nullable inactive fields and parser-only pairing.
     """
     proposal_schema = _schema_for_approved_contract(
         scopes, policy.allowed_write_scopes, policy.required_human_gates,
         policy.required_risk_inputs, snapshot,
     )
-    proposal_items = proposal_schema["properties"]["proposals"]["items"]
     return {
         "type": "object",
         "additionalProperties": False,
-        "required": ["kind", "proposals", "reason"],
+        "required": ["result"],
         "properties": {
-            "kind": {"type": "string", "enum": ["proposals", "governance_refinement"]},
-            "proposals": {
-                "type": ["array", "null"], "minItems": 1, "items": proposal_items,
+            "result": {
+                "anyOf": [
+                    proposal_schema,
+                    {"type": "object", "additionalProperties": False,
+                     "required": ["kind", "reason"],
+                     "properties": {
+                         "kind": {"type": "string", "enum": ["governance_refinement"]},
+                         "reason": {"type": "string", "minLength": 1},
+                     }},
+                ],
             },
-            "reason": {"type": ["string", "null"], "minLength": 1},
         },
     }
 
 
 def _parse_response(request: ProviderDerivationRequest, document: object,
                     adapter_version: str) -> tuple[tuple[DerivedActionProposal, ...] | None, GovernanceRefinementRequired | None]:
-    if not isinstance(document, dict):
+    if not isinstance(document, dict) or set(document) != {"result"} or not isinstance(document.get("result"), dict):
         raise ValueError("structured response is not an object")
+    document = document["result"]
     if document.get("kind") == "governance_refinement":
-        if (set(document) != {"kind", "proposals", "reason"} or document.get("proposals") is not None
-                or not isinstance(document.get("reason"), str) or not document["reason"]):
+        if set(document) != _GOVERNANCE_FIELDS or not isinstance(document.get("reason"), str) or not document["reason"]:
             raise ValueError("governance refinement is malformed")
         return None, _refinement(request.snapshot, document["reason"])
-    if (document.get("kind") != "proposals" or set(document) != {"kind", "proposals", "reason"}
-            or document.get("reason") is not None):
+    if document.get("kind") != "proposals" or set(document) != {"kind", "proposals"}:
         raise ValueError("structured response kind is invalid")
     items = document.get("proposals")
     if not isinstance(items, list) or not items:
