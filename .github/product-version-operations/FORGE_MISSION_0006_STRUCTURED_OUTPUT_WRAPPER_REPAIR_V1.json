@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.1",
+  "classification_rationale": "codex/forge-mission-0006-structured-wrapper-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-mission-0006-structured-wrapper-v1",
+  "expected_head": "2d6de338877f5d59b336d5f84e92d801ba79f6bd",
+  "operation_id": "FORGE_MISSION_0006_STRUCTURED_OUTPUT_WRAPPER_REPAIR_V1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.2"
+}

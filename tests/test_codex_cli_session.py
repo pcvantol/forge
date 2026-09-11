@@ -36,7 +36,7 @@ class Result:
 
 
 def document(*, scope="planner-contract", extra=False):
-    result = {
+    result = {"result": {
         "kind": "proposals",
         "proposals": [{
             "logical_action_id": "derive-contract", "scope": scope,
@@ -46,19 +46,18 @@ def document(*, scope="planner-contract", extra=False):
             "risk_inputs": ["scope-drift"], "source_evidence_refs": ["mission_state"],
             "mission_gap": None,
         }],
-        "reason": None,
-    }
+    }}
     if extra:
-        result["proposals"][0]["untrusted_extra"] = True
+        result["result"]["proposals"][0]["untrusted_extra"] = True
     return result
 
 
 def complete_document():
     result = document()
-    second = dict(result["proposals"][0])
+    second = dict(result["result"]["proposals"][0])
     second.update({"logical_action_id": "derive-docs", "scope": "planner-docs", "dependencies": ["derive-contract"],
                    "expected_evidence": ["documentation test"], "validation_strategy": ["documentation test"]})
-    result["proposals"].append(second)
+    result["result"]["proposals"].append(second)
     return result
 
 
@@ -235,8 +234,8 @@ class CodexCliSessionTests(unittest.TestCase):
         self.assertNotIn("CODEX_ACCESS_TOKEN", kwargs["env"])
         self.assertEqual(runner.schemas[0]["type"], "object")
         self.assertNotIn("oneOf", runner.schemas[0])
-        self.assertEqual(runner.schemas[0]["required"], ["kind", "proposals", "reason"])
-        self.assertEqual(runner.schemas[0]["properties"]["proposals"]["items"]["properties"]["write_scopes"]["items"]["enum"],
+        self.assertEqual(runner.schemas[0]["required"], ["result"])
+        self.assertEqual(runner.schemas[0]["properties"]["result"]["anyOf"][0]["properties"]["proposals"]["items"]["properties"]["write_scopes"]["items"]["enum"],
                          ["forge/planner"])
         evidence = self.invocation_documents()
         self.assertEqual([item["state"] for item in evidence], ["STARTED", "HAPPENED_AND_CONFIRMED"])
@@ -257,13 +256,13 @@ class CodexCliSessionTests(unittest.TestCase):
 
     def test_object_root_preserves_governance_refinement_without_permitting_mixed_variants(self):
         self.configure()
-        refinement = {"kind": "governance_refinement", "proposals": None, "reason": "needs architecture"}
+        refinement = {"result": {"kind": "governance_refinement", "reason": "needs architecture"}}
         response = self.provider(Runner(refinement)).invoke(
             self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy,
         )
         self.assertIsNone(response.proposals)
         self.assertEqual(response.governance_refinement.reason, "needs architecture")
-        mixed = document(); mixed["reason"] = "not permitted"
+        mixed = document(); mixed["result"]["reason"] = "not permitted"
         invalid = self.provider(Runner(mixed)).invoke(
             self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy,
         )
