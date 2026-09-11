@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.6.1",
+  "classification_rationale": "codex/forge-canonical-governance-installed-runtime-composition-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-canonical-governance-installed-runtime-composition-v1",
+  "expected_head": "ccfce978336978393e1ba3812eb19124376475d8",
+  "operation_id": "FORGE_CANONICAL_GOVERNANCE_INSTALLED_RUNTIME_COMPOSITION_V1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.6.2"
+}

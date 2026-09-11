@@ -21,6 +21,7 @@ from forge.intake import MissionIntake, MissionIntakeError
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
+from forge.runtime.bootstrap import RuntimeBootstrap
 from forge.runtime.database import RUNTIME_SCHEMA_VERSION, RuntimeDatabase
 
 
@@ -222,6 +223,73 @@ class GovernanceAuthorityTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 envelope.validate(CanonicalGovernanceRepository._for_test(other_db, other_ops))
             other_db.close()
+
+
+class InstalledRuntimeGovernanceCompositionTests(unittest.TestCase):
+    """Public composition must retain the resolved Server Runtime Instance."""
+
+    identity = NamedOperatorIdentity("installed-operator", 502)
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.repository_root = self.root / "managed-repository"
+        self.repository_root.mkdir()
+        self.server_data_root = self.root / "server-runtime"
+        self.database = RuntimeBootstrap(
+            self.repository_root, data_root=self.server_data_root, forge_version="2.6.2",
+        ).open()
+        self.operators = InstallationOperatorService(self.database, lambda: self.identity)
+        self.context = self.operators.first_bind()
+
+    def tearDown(self) -> None:
+        self.database.close()
+        self.temporary.cleanup()
+
+    @staticmethod
+    def planning() -> ArchitecturePlanningEvidence:
+        return ArchitecturePlanningEvidence(
+            scope=("installed governance composition",), write_scopes=("NONE",),
+            non_goals=("Mission intake",), risk_inputs=("untrusted input",),
+            human_gates=("architecture review",), dependencies=("resolved Server Runtime",),
+            context_input_bound=64, context_output_bound=16, provenance_revision="qualification-r1",
+        )
+
+    def test_public_runtime_composition_preserves_server_identity_and_decisions_across_restart(self) -> None:
+        runtime_id = self.database.runtime_identity.runtime_id
+        installation_id = self.context.installation_id
+        repository = CanonicalGovernanceRepository.for_runtime(self.database, lambda: self.identity)
+        self.assertIs(repository.database, self.database)
+        self.assertTrue(self.database.installation_scoped)
+        self.assertEqual(self.database.path.resolve(), (self.server_data_root / "forge.db").resolve())
+        self.assertFalse((self.repository_root / "forge.db").exists())
+
+        planning = self.planning()
+        business = BusinessWorkspace.for_runtime(self.database, repository, self.context)
+        architecture = ArchitectureWorkspace.for_runtime(self.database, repository, self.context)
+        business.approve(
+            decision_id="installed-business", candidate_id="installed-qualification",
+            revision="qualification-r1", scope=planning.scope, gates=("business review",),
+        )
+        architecture.approve(
+            decision_id="installed-architecture", candidate_id="installed-qualification",
+            revision="qualification-r1", planning=planning,
+        )
+        self.assertEqual(repository.decision("installed-business")["installation_id"], installation_id)
+        self.assertEqual(repository.decision("installed-architecture")["capability"], "ARCHITECTURE_APPROVAL")
+
+        self.database.close()
+        self.database = RuntimeBootstrap(
+            self.repository_root, data_root=self.server_data_root, forge_version="2.6.2",
+        ).open()
+        self.operators = InstallationOperatorService(self.database, lambda: self.identity)
+        self.context = self.operators.context()
+        reopened = CanonicalGovernanceRepository.for_runtime(self.database, lambda: self.identity)
+        self.assertEqual(self.database.runtime_identity.runtime_id, runtime_id)
+        self.assertEqual(self.context.installation_id, installation_id)
+        self.assertEqual(reopened.decision("installed-business")["decision"], "approved")
+        self.assertEqual(reopened.decision("installed-architecture")["subject_id"], "installed-qualification")
+        self.assertFalse((self.repository_root / "forge.db").exists())
 
 
 class GovernanceSchema19MigrationTests(unittest.TestCase):
