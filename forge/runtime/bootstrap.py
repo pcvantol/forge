@@ -103,6 +103,22 @@ class RuntimeLocation:
     bootstrap: bool
 
 
+@dataclass(frozen=True)
+class RuntimePlacement:
+    """Bootstrap-proven placement for one installed Runtime Instance.
+
+    The evidence exists only on a database returned by
+    :class:`RuntimeBootstrap`.  An explicitly constructed ``RuntimeDatabase``
+    intentionally has no such placement proof and therefore cannot be used as
+    installed Server authority.
+    """
+
+    data_root: Path
+    database_path: Path
+    marker_path: Path
+    runtime_id: str
+
+
 def canonical_repository_root(repository_root: Path | str) -> Path:
     """Return the common Git checkout root for a main checkout or worktree."""
     root = Path(repository_root)
@@ -171,6 +187,15 @@ class RuntimeResolver:
         self.configured_location = None if configured_location is None else Path(configured_location).expanduser().resolve()
 
     @property
+    def installation_scoped(self) -> bool:
+        """Whether resolution names the product-owned installed data root.
+
+        An arbitrary configured SQLite location is an embedder/test seam, not
+        an installed Server Runtime Instance.
+        """
+        return not self.compatibility_workspace and self.configured_location is None
+
+    @property
     def default_location(self) -> Path:
         return self.data_root / "forge.db"
 
@@ -213,14 +238,29 @@ class RuntimeBootstrap:
                 raise RuntimeResolutionError("another mutating Forge runtime owns this data root") from error
             try:
                 location = self.resolver.resolve()
-                database = RuntimeDatabase(self.resolver.repository_root, path=location.path, forge_version=self.forge_version,
-                                          installation_scoped=not self.resolver.compatibility_workspace)
+                expected_runtime_id = None
+                if self.resolver.installation_scoped and not location.bootstrap:
+                    expected_runtime_id = self._existing_marker_runtime_id()
+                database = RuntimeDatabase._open_resolved(
+                    self.resolver.repository_root, path=location.path, forge_version=self.forge_version,
+                    installation_scoped=self.resolver.installation_scoped,
+                )
                 try:
                     marker = self.resolver.instance_marker_path
-                    temporary = marker.with_suffix(".tmp")
-                    temporary.write_text(database.runtime_identity.runtime_id + "\n", encoding="utf-8")
-                    os.chmod(temporary, 0o600)
-                    os.replace(temporary, marker)
+                    runtime_id = database.runtime_identity.runtime_id
+                    if self.resolver.installation_scoped:
+                        if expected_runtime_id is not None:
+                            if expected_runtime_id != runtime_id:
+                                raise RuntimeResolutionError("Forge runtime instance marker does not match storage")
+                        else:
+                            self._write_marker(marker, runtime_id)
+                        database._set_runtime_placement(RuntimePlacement(
+                            self.resolver.data_root.resolve(), database.path.resolve(), marker.resolve(), runtime_id,
+                        ))
+                    elif self.resolver.compatibility_workspace:
+                        # The repository-local route remains a supported
+                        # compatibility mode and retains its durable marker.
+                        self._write_marker(marker, runtime_id)
                 except Exception:
                     database.close()
                     raise
@@ -236,6 +276,24 @@ class RuntimeBootstrap:
             directory = root / name
             directory.mkdir(exist_ok=True)
             os.chmod(directory, 0o700)
+
+    def _existing_marker_runtime_id(self) -> str:
+        """Read the established installed-instance marker without replacing it."""
+        marker = self.resolver.instance_marker_path
+        try:
+            runtime_id = marker.read_text(encoding="utf-8").strip()
+        except OSError as error:
+            raise RuntimeResolutionError("initialized Forge data root is missing its runtime instance marker") from error
+        if not runtime_id:
+            raise RuntimeResolutionError("Forge runtime instance marker is malformed")
+        return runtime_id
+
+    @staticmethod
+    def _write_marker(marker: Path, runtime_id: str) -> None:
+        temporary = marker.with_suffix(".tmp")
+        temporary.write_text(runtime_id + "\n", encoding="utf-8")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, marker)
 
 
 class RuntimeRecovery:

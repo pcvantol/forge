@@ -18,7 +18,7 @@ import sqlite3
 from typing import Any, Mapping
 import uuid
 
-from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, RuntimeResolver,
+from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, RuntimePlacement, RuntimeResolver,
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
@@ -129,7 +129,7 @@ class RuntimeDatabase:
     """
 
     def __init__(self, workspace_root: Path | str = ".", *, path: Path | str | None = None,
-                 forge_version: str = "0.0", installation_scoped: bool = False) -> None:
+                 forge_version: str = "0.0", _installation_scoped: bool = False) -> None:
         if path is None:
             # Canonical creation and registration are a single inter-process
             # transaction owned by RuntimeBootstrap.  Keep this compatibility
@@ -139,7 +139,11 @@ class RuntimeDatabase:
             self.__dict__.update(opened.__dict__)
             return
         self.repository_root = canonical_repository_root(workspace_root)
-        self._installation_scoped = installation_scoped
+        # Only RuntimeBootstrap's private resolved-open route may set this.
+        # Explicit caller-selected SQLite locations never acquire installed
+        # Runtime placement authority.
+        self._installation_scoped = _installation_scoped
+        self._runtime_placement: RuntimePlacement | None = None
         # Explicit paths are reserved for bootstrap and controlled tests after
         # their resolver/claim step.
         self.path = Path(path)
@@ -165,6 +169,22 @@ class RuntimeDatabase:
     def installation_scoped(self) -> bool:
         """Whether this database was resolved as an installed Runtime Instance."""
         return self._installation_scoped
+
+    @classmethod
+    def _open_resolved(cls, workspace_root: Path | str, *, path: Path | str,
+                       forge_version: str, installation_scoped: bool) -> "RuntimeDatabase":
+        """Internal RuntimeBootstrap construction route with resolution provenance."""
+        return cls(workspace_root, path=path, forge_version=forge_version,
+                   _installation_scoped=installation_scoped)
+
+    def _set_runtime_placement(self, placement: RuntimePlacement) -> None:
+        """Attach RuntimeBootstrap placement evidence after marker validation."""
+        self._runtime_placement = placement
+
+    @property
+    def runtime_placement(self) -> RuntimePlacement | None:
+        """Return bootstrap-proven installed placement, or ``None`` for direct paths."""
+        return self._runtime_placement
 
     def _configure(self) -> None:
         self._connection.execute("PRAGMA foreign_keys=ON")

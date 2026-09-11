@@ -469,7 +469,7 @@ class EngineeringPlatformPeerConfigurationService:
 
     def _open_for_configuration(self):
         from ._version import canonical_version
-        from .runtime.database import RuntimeDatabase
+        from .runtime.bootstrap import RuntimeBootstrap
 
         database_path = self.data_root / "forge.db"
         marker = self.data_root / "instance" / "runtime-instance.json"
@@ -478,9 +478,7 @@ class EngineeringPlatformPeerConfigurationService:
         # Qualify marker/database identity on the read-only path before the
         # writable RuntimeDatabase is allowed to apply a schema migration.
         read_peer_configuration(self.data_root)
-        database = RuntimeDatabase(
-            ".", path=database_path, forge_version=canonical_version(), installation_scoped=True,
-        )
+        database = RuntimeBootstrap(data_root=self.data_root, forge_version=canonical_version()).open()
         try:
             if marker.read_text(encoding="utf-8").strip() != database.runtime_identity.runtime_id:
                 raise PeerConfigurationError("Forge runtime instance marker does not match storage")

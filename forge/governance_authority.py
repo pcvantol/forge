@@ -10,8 +10,9 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from hashlib import sha256
 import json
+from pathlib import Path
 from forge.operator_identity import InstallationOperatorService, OperatorContext
-from forge.runtime.bootstrap import RuntimeBootstrap
+from forge.runtime.bootstrap import RuntimeBootstrap, RuntimeResolutionError, RuntimeResolver
 from forge.runtime.database import RuntimeDatabase, _timestamp
 
 
@@ -50,12 +51,13 @@ def _digest(value: object) -> str:
 class CanonicalGovernanceRepository:
     """The only supported Forge application write path for governance evidence."""
 
-    def __init__(self, database: RuntimeDatabase, operators: InstallationOperatorService) -> None:
+    def __init__(self, database: RuntimeDatabase, operators: InstallationOperatorService,
+                 *, data_root: Path | str | None = None) -> None:
         if not isinstance(database, RuntimeDatabase):
             raise TypeError("governance services require a RuntimeDatabase")
         if getattr(operators, "db", None) is not database:
             raise ValueError("governance operator service must use the resolved Runtime Instance")
-        self._require_resolved_runtime(database)
+        self._require_resolved_runtime(database, data_root=data_root)
         # Construction is deliberately bound to an already verified operator;
         # it must never create or substitute an identity/binding.
         context = operators.context()
@@ -64,35 +66,50 @@ class CanonicalGovernanceRepository:
         self.database, self.operators = database, operators
 
     @staticmethod
-    def _require_resolved_runtime(database: RuntimeDatabase) -> None:
-        """Require the exact Runtime Instance without falling back to checkout storage."""
+    def _require_resolved_runtime(database: RuntimeDatabase, *, data_root: Path | str | None) -> None:
+        """Require exact RuntimeBootstrap provenance without reopening storage."""
         if database.installation_scoped:
-            # A Server Runtime has already been resolved by RuntimeBootstrap.
-            # Re-open that exact database location to validate the same
-            # identity; never invoke the repository-local compatibility path.
-            resolved = RuntimeBootstrap(
-                database.repository_root,
-                configured_location=database.path,
-                forge_version=database.metadata["forge_version"],
-            ).open()
+            if data_root is None:
+                raise ValueError("installed governance composition requires its explicit Forge data root")
+            resolver = RuntimeResolver(database.repository_root, data_root=data_root)
+            location = resolver.resolve()
+            placement = database.runtime_placement
+            identity = database.runtime_identity
+            if (
+                location.bootstrap
+                or placement is None
+                or placement.data_root != resolver.data_root.resolve()
+                or placement.database_path != database.path.resolve()
+                or placement.marker_path != resolver.instance_marker_path.resolve()
+                or placement.runtime_id != identity.runtime_id
+            ):
+                raise ValueError("governance services require the resolved canonical Runtime Instance")
+            try:
+                marker_runtime_id = resolver.instance_marker_path.read_text(encoding="utf-8").strip()
+            except OSError as error:
+                raise ValueError("governance services require the resolved canonical Runtime Instance") from error
+            if marker_runtime_id != identity.runtime_id or location.path.resolve() != database.path.resolve():
+                raise ValueError("governance services require the resolved canonical Runtime Instance")
         else:
+            if data_root is not None:
+                raise ValueError("repository-local governance cannot claim an installed data root")
             # Retain the established repository-local compatibility contract:
             # only its canonical forge.db is accepted, never an arbitrary
             # caller-selected SQLite path.
             resolved = RuntimeDatabase(database.repository_root, forge_version=database.metadata["forge_version"])
-        try:
-            resolved_identity, supplied_identity = resolved.runtime_identity, database.runtime_identity
-            if (
-                resolved.path.resolve() != database.path.resolve()
-                or resolved.installation_scoped != database.installation_scoped
-                or resolved_identity.runtime_id != supplied_identity.runtime_id
-                or resolved_identity.repository_identity != supplied_identity.repository_identity
-                or resolved_identity.repository_root != supplied_identity.repository_root
-                or resolved_identity.initialization_version != supplied_identity.initialization_version
-            ):
-                raise ValueError("governance services require the resolved canonical Runtime Instance")
-        finally:
-            resolved.close()
+            try:
+                resolved_identity, supplied_identity = resolved.runtime_identity, database.runtime_identity
+                if (
+                    resolved.path.resolve() != database.path.resolve()
+                    or resolved.installation_scoped != database.installation_scoped
+                    or resolved_identity.runtime_id != supplied_identity.runtime_id
+                    or resolved_identity.repository_identity != supplied_identity.repository_identity
+                    or resolved_identity.repository_root != supplied_identity.repository_root
+                    or resolved_identity.initialization_version != supplied_identity.initialization_version
+                ):
+                    raise ValueError("governance services require the resolved canonical Runtime Instance")
+            finally:
+                resolved.close()
 
     @classmethod
     def _for_test(cls, database: RuntimeDatabase, operators: InstallationOperatorService) -> "CanonicalGovernanceRepository":
@@ -102,19 +119,34 @@ class CanonicalGovernanceRepository:
         return instance
 
     @classmethod
-    def for_runtime(cls, database: RuntimeDatabase, identity_resolver: object) -> "CanonicalGovernanceRepository":
+    def for_runtime(cls, database: RuntimeDatabase, identity_resolver: object, *,
+                    data_root: Path | str | None = None) -> "CanonicalGovernanceRepository":
         """Construct governance services for an already resolved Runtime Instance.
 
         The caller owns RuntimeBootstrap resolution (including an explicit
         Server data root where applicable).  This factory preserves that exact
         placement and checks the existing installation/operator binding.
         """
-        return cls(database, InstallationOperatorService(database, identity_resolver))
+        return cls(database, InstallationOperatorService(database, identity_resolver), data_root=data_root)
 
     @classmethod
-    def open_canonical(cls, repository_root: str, identity_resolver: object) -> "CanonicalGovernanceRepository":
-        database = RuntimeDatabase(repository_root)
-        return cls.for_runtime(database, identity_resolver)
+    def open_canonical(cls, repository_root: str, identity_resolver: object, *,
+                       data_root: Path | str | None = None) -> "CanonicalGovernanceRepository":
+        """Open either the legacy repository-local or an initialized Server Runtime."""
+        if data_root is None:
+            database = RuntimeDatabase(repository_root)
+            return cls.for_runtime(database, identity_resolver)
+        resolver = RuntimeResolver(repository_root, data_root=data_root)
+        try:
+            if resolver.resolve().bootstrap:
+                raise RuntimeResolutionError("installed Forge data root must be initialized before governance composition")
+            from forge._version import canonical_version
+            database = RuntimeBootstrap(repository_root, data_root=data_root, forge_version=canonical_version()).open()
+            return cls.for_runtime(database, identity_resolver, data_root=data_root)
+        except Exception:
+            if "database" in locals():
+                database.close()
+            raise
 
     @staticmethod
     def _operator_id(context: OperatorContext) -> str:

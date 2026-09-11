@@ -70,6 +70,15 @@ class CanonicalDataRootTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeResolutionError, "missing forge.db"):
             RuntimeResolver(data_root=root).resolve()
 
+    def test_marker_database_identity_mismatch_fails_closed(self) -> None:
+        root = self.root / "marker-mismatch"
+        database = RuntimeBootstrap(data_root=root, forge_version="test").open()
+        database.close()
+        marker = root / "instance" / "runtime-instance.json"
+        marker.write_text("different-runtime\n", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeResolutionError, "marker does not match storage"):
+            RuntimeBootstrap(data_root=root, forge_version="test").open()
+
 
 if __name__ == "__main__":
     unittest.main()
