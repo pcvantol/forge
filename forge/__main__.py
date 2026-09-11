@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 
 from ._version import canonical_version
 from .execution_host_configuration import (
@@ -12,7 +13,7 @@ from .execution_host_configuration import (
     read_peer_configuration,
 )
 from .runtime.data_root import DataRootResolver
-from .secure_store import SecretReference
+from .secure_store import CredentialAccessSetupService, SecretReference
 
 
 def _status(data_root: str | None) -> dict[str, object]:
@@ -94,6 +95,22 @@ def main(argv: list[str] | None = None) -> int:
     configure.add_argument("--expected-digest")
     execution_host_commands.add_parser("show", help="print the persisted secret-free EP peer binding")
     execution_host_commands.add_parser("preflight", help="perform read-only EP identity and v1.2 compatibility checks")
+    credential_access = execution_host_commands.add_parser(
+        "credential-access",
+        help="perform one explicit local Keychain credential-access setup read",
+    )
+    credential_access.add_argument("--credential-reference", required=True, action="append")
+    credential_access.add_argument(
+        "--interactive",
+        action="store_true",
+        help="explicitly request the one bounded local Keychain access read",
+    )
+    credential_access.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=120.0,
+        help="bounded interactive setup timeout in seconds (maximum: 120)",
+    )
     args = parser.parse_args(argv)
     if args.command == "server" and args.server_command == "init":
         from .runtime import RuntimeBootstrap
@@ -105,8 +122,22 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "status" or (args.command == "server" and args.server_command == "status"):
         print(json.dumps(_status(args.data_root), sort_keys=True))
     elif args.command == "execution-host":
-        service = EngineeringPlatformPeerConfigurationService(args.data_root)
         try:
+            if args.execution_host_command == "credential-access":
+                if len(args.credential_reference) != 1:
+                    raise ValueError("credential-access requires exactly one credential reference")
+                if args.interactive:
+                    print(
+                        "macOS may ask you to allow Keychain access by /usr/bin/security. "
+                        "This is a macOS Keychain decision, not a Forge-exclusive cryptographic permission.",
+                        file=sys.stderr,
+                    )
+                result = CredentialAccessSetupService(timeout_seconds=args.timeout_seconds).read(
+                    SecretReference.parse(args.credential_reference[0]), interactive=args.interactive,
+                )
+                print(json.dumps(result.to_safe_dict(), sort_keys=True))
+                return 0 if result.succeeded else 1
+            service = EngineeringPlatformPeerConfigurationService(args.data_root)
             if args.execution_host_command == "configure":
                 if args.replace != (args.expected_revision is not None and args.expected_digest is not None):
                     raise PeerConfigurationError(

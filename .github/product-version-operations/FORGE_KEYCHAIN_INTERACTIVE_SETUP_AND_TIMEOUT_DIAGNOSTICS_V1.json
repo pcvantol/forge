@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.6.0",
+  "classification_rationale": "codex/forge-keychain-interactive-setup-timeout-diagnostics-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-keychain-interactive-setup-timeout-diagnostics-v1",
+  "expected_head": "4560bd4cb6f43cb33f8293137d23c216416ff1d9",
+  "operation_id": "FORGE_KEYCHAIN_INTERACTIVE_SETUP_AND_TIMEOUT_DIAGNOSTICS_V1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.6.1"
+}
