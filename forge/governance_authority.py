@@ -11,6 +11,7 @@ from enum import Enum
 from hashlib import sha256
 import json
 from forge.operator_identity import InstallationOperatorService, OperatorContext
+from forge.runtime.bootstrap import RuntimeBootstrap
 from forge.runtime.database import RuntimeDatabase, _timestamp
 
 
@@ -50,13 +51,48 @@ class CanonicalGovernanceRepository:
     """The only supported Forge application write path for governance evidence."""
 
     def __init__(self, database: RuntimeDatabase, operators: InstallationOperatorService) -> None:
-        resolved = RuntimeDatabase(database.repository_root)
+        if not isinstance(database, RuntimeDatabase):
+            raise TypeError("governance services require a RuntimeDatabase")
+        if getattr(operators, "db", None) is not database:
+            raise ValueError("governance operator service must use the resolved Runtime Instance")
+        self._require_resolved_runtime(database)
+        # Construction is deliberately bound to an already verified operator;
+        # it must never create or substitute an identity/binding.
+        context = operators.context()
+        if not operators.authorize(context):
+            raise PermissionError("trusted operator context is required")
+        self.database, self.operators = database, operators
+
+    @staticmethod
+    def _require_resolved_runtime(database: RuntimeDatabase) -> None:
+        """Require the exact Runtime Instance without falling back to checkout storage."""
+        if database.installation_scoped:
+            # A Server Runtime has already been resolved by RuntimeBootstrap.
+            # Re-open that exact database location to validate the same
+            # identity; never invoke the repository-local compatibility path.
+            resolved = RuntimeBootstrap(
+                database.repository_root,
+                configured_location=database.path,
+                forge_version=database.metadata["forge_version"],
+            ).open()
+        else:
+            # Retain the established repository-local compatibility contract:
+            # only its canonical forge.db is accepted, never an arbitrary
+            # caller-selected SQLite path.
+            resolved = RuntimeDatabase(database.repository_root, forge_version=database.metadata["forge_version"])
         try:
-            if resolved.path.resolve() != database.path.resolve():
+            resolved_identity, supplied_identity = resolved.runtime_identity, database.runtime_identity
+            if (
+                resolved.path.resolve() != database.path.resolve()
+                or resolved.installation_scoped != database.installation_scoped
+                or resolved_identity.runtime_id != supplied_identity.runtime_id
+                or resolved_identity.repository_identity != supplied_identity.repository_identity
+                or resolved_identity.repository_root != supplied_identity.repository_root
+                or resolved_identity.initialization_version != supplied_identity.initialization_version
+            ):
                 raise ValueError("governance services require the resolved canonical Runtime Instance")
         finally:
             resolved.close()
-        self.database, self.operators = database, operators
 
     @classmethod
     def _for_test(cls, database: RuntimeDatabase, operators: InstallationOperatorService) -> "CanonicalGovernanceRepository":
@@ -66,9 +102,19 @@ class CanonicalGovernanceRepository:
         return instance
 
     @classmethod
+    def for_runtime(cls, database: RuntimeDatabase, identity_resolver: object) -> "CanonicalGovernanceRepository":
+        """Construct governance services for an already resolved Runtime Instance.
+
+        The caller owns RuntimeBootstrap resolution (including an explicit
+        Server data root where applicable).  This factory preserves that exact
+        placement and checks the existing installation/operator binding.
+        """
+        return cls(database, InstallationOperatorService(database, identity_resolver))
+
+    @classmethod
     def open_canonical(cls, repository_root: str, identity_resolver: object) -> "CanonicalGovernanceRepository":
         database = RuntimeDatabase(repository_root)
-        return cls(database, InstallationOperatorService(database, identity_resolver))
+        return cls.for_runtime(database, identity_resolver)
 
     @staticmethod
     def _operator_id(context: OperatorContext) -> str:

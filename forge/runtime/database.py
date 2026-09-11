@@ -161,6 +161,11 @@ class RuntimeDatabase:
             self._connection.close()
             raise
 
+    @property
+    def installation_scoped(self) -> bool:
+        """Whether this database was resolved as an installed Runtime Instance."""
+        return self._installation_scoped
+
     def _configure(self) -> None:
         self._connection.execute("PRAGMA foreign_keys=ON")
         self._connection.execute("PRAGMA journal_mode=WAL")
