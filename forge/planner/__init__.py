@@ -23,6 +23,9 @@ from .codex_cli_session import (
     CODEX_CLI_CHATGPT_SESSION_ADAPTER_VERSION,
     CodexCliChatGPTSessionPlanningProvider,
     CodexCliChatGPTSessionPlanningProviderConfiguration,
+    CodexCliInvocationClassification,
+    CodexCliInvocationDiagnostic,
+    CodexCliInvocationRejected,
     CodexCliSessionReadiness,
     CodexCliSessionReadinessChecker,
     CodexCliSessionReadinessState,
@@ -35,4 +38,5 @@ __all__ = ["MissionPlanner", "AIMissionPlanner", "ActionDerivationProvider", "Ac
            "ProviderTokenPreflightBindingChanged", "ProviderTokenPreflightFailed", "TokenPreflightBoundary",
            "CanonicalTokenPreflightAuthority", "CODEX_CLI_CHATGPT_SESSION_ADAPTER_VERSION",
            "CodexCliChatGPTSessionPlanningProvider", "CodexCliChatGPTSessionPlanningProviderConfiguration",
+           "CodexCliInvocationClassification", "CodexCliInvocationDiagnostic", "CodexCliInvocationRejected",
            "CodexCliSessionReadiness", "CodexCliSessionReadinessChecker", "CodexCliSessionReadinessState"]
