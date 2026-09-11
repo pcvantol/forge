@@ -202,6 +202,16 @@ class OpenAIActionDerivationTests(unittest.TestCase):
   self.assertEqual(properties['human_gates']['minItems'],1)
   self.assertEqual(properties['risk_inputs']['minItems'],1)
 
+ def test_strict_schema_permits_only_architecture_approved_repository_write_scopes(self):
+  adapter,_,configuration,request=self.adapter(lambda *args,**kwargs: None)
+  configuration.preflight_authority._policy_reader=lambda _: (('forge/__main__.py','tests/test_cli.py'),
+                                                               ('architecture-review',), ('scope-drift',))
+  properties=adapter._body(request)['text']['format']['schema']['properties']['proposals']['items']['properties']
+  self.assertEqual(properties['write_scopes'],{
+   'type':'array','items':{'type':'string','enum':['forge/__main__.py','tests/test_cli.py']},
+   'minItems':1,'maxItems':2,
+  })
+
  def test_invalid_json_schema_is_a_safe_persisted_error_classification(self):
   def rejected(request, timeout):
    raise HTTPError(request.full_url, 400, 'bad request', {'x-request-id':'req_schema'},

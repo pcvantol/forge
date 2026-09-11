@@ -79,6 +79,7 @@ class MissionExecutionState:
 
     mission_id: str
     mission: Mapping[str, Any]
+    admission_contract: Mapping[str, Any] | None
     intents: tuple[Mapping[str, Any], ...]
     actions: tuple[Mapping[str, Any], ...]
     status: MissionExecutionStatus
@@ -104,6 +105,10 @@ class MissionExecutionState:
 
 
 _ALLOWED_TRANSITIONS: dict[MissionExecutionStatus, frozenset[MissionExecutionStatus]] = {
+    # Canonical Mission Intake intentionally creates no Intent or Action.  A
+    # public Runtime composition is the only route that may activate that
+    # approved/plannable record for provider-derived planning.
+    MissionExecutionStatus.APPROVED_PLANNABLE: frozenset((MissionExecutionStatus.CREATED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.CREATED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.READY: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.ACTIVE: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.AWAITING_APPROVAL, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.WAITING_INTEGRATION, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
@@ -175,19 +180,38 @@ def _current_work(actions: Sequence[Mapping[str, Any]], intents: Sequence[Mappin
 class MissionStateStore:
     """Runtime-bound domain service; RuntimeDatabase is the sole persistence authority."""
 
-    def __init__(self, runtime: Any) -> None:
+    def __init__(self, runtime: Any, *, data_root: str | None = None) -> None:
         # Keep the import local: RuntimeDatabase imports adjacent runtime modules
         # during package initialization, while this domain abstraction is imported
         # by those callers.
         from forge.runtime.database import RuntimeDatabase
         if not isinstance(runtime, RuntimeDatabase):
             raise TypeError("MissionStateStore requires the canonical RuntimeDatabase")
-        resolved = RuntimeDatabase(runtime.repository_root)
-        try:
-            if resolved.path.resolve() != runtime.path.resolve():
+        if runtime.installation_scoped:
+            if data_root is None:
+                raise ValueError("installed Mission state requires its explicit Forge data root")
+            from forge.runtime.bootstrap import RuntimeResolver
+            resolver = RuntimeResolver(runtime.repository_root, data_root=data_root)
+            location = resolver.resolve()
+            placement = runtime.runtime_placement
+            if (
+                location.bootstrap
+                or placement is None
+                or placement.data_root != resolver.data_root.resolve()
+                or placement.database_path != runtime.path.resolve()
+                or placement.marker_path != resolver.instance_marker_path.resolve()
+                or placement.runtime_id != runtime.runtime_identity.runtime_id
+            ):
                 raise ValueError("MissionStateStore requires the resolved canonical RuntimeDatabase")
-        finally:
-            resolved.close()
+        else:
+            if data_root is not None:
+                raise ValueError("repository-local Mission state cannot claim an installed data root")
+            resolved = RuntimeDatabase(runtime.repository_root, forge_version=runtime.metadata["forge_version"])
+            try:
+                if resolved.path.resolve() != runtime.path.resolve():
+                    raise ValueError("MissionStateStore requires the resolved canonical RuntimeDatabase")
+            finally:
+                resolved.close()
         self._runtime = runtime
 
     @staticmethod
@@ -467,6 +491,7 @@ class MissionStateStore:
     def _as_document(state: MissionExecutionState) -> dict[str, Any]:
         return {
             "schema_version": state.schema_version, "mission_id": state.mission_id, "mission": dict(state.mission),
+            "admission_contract": None if state.admission_contract is None else dict(state.admission_contract),
             "intents": [dict(item) for item in state.intents], "actions": [dict(item) for item in state.actions],
             "status": state.status.value, "progress": dict(state.progress), "resume": dict(state.resume),
             "execution_correlation": None if state.execution_correlation is None else dict(state.execution_correlation),
@@ -492,7 +517,8 @@ class MissionStateStore:
         if document.get("schema_version") not in {"1.0", "1.1", "1.2", "1.3", "1.4", MISSION_STATE_SCHEMA_VERSION}:
             raise MissionStateStoreError("mission state schema version is unsupported")
         return MissionExecutionState(
-            mission_id=document["mission_id"], mission=document["mission"], intents=tuple(document["intents"]),
+            mission_id=document["mission_id"], mission=document["mission"],
+            admission_contract=document.get("admission_contract"), intents=tuple(document["intents"]),
             actions=tuple(document["actions"]), status=MissionExecutionStatus(document["status"]),
             progress=document["progress"], resume=document["resume"],
             execution_correlation=document["execution_correlation"], execution_evidence=document["execution_evidence"],
