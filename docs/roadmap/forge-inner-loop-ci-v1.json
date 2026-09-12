@@ -1,0 +1,269 @@
+{
+  "schema_version": "1.0",
+  "capability": "FORGE::INNER_LOOP_CI_INTEGRATION_V1",
+  "owner": "forge",
+  "authority": "DOCUMENTARY",
+  "status": "PLANNED",
+  "priority_lane": "RUNTIME_QUALIFICATION",
+  "executable": false,
+  "authorizes_live_execution": false,
+  "requires_console": false,
+  "requires_live_canary_completion": false,
+  "changes_current_live_canary_authority": false,
+  "architecture": "docs/architecture/FORGE_INNER_LOOP_CI_INTEGRATION_V1.md",
+  "scoped_roadmap": "docs/roadmap/FORGE_INNER_LOOP_CI_V1.md",
+  "runtime_roadmap": "docs/architecture/runtime-evolution-roadmap.md",
+  "source_pin": "1bb8635c82a8dd0385fac8022ff0d9dd90f4c028",
+  "entry": "MISSION_CANDIDATE",
+  "exit": "EVIDENCE_DERIVED_MISSION_COMPLETION",
+  "mocked_boundaries": [
+    "EP_HTTP_SERVER",
+    "EXTERNAL_LLM_PROCESS_OR_TRANSPORT",
+    "OS_IDENTITY_AND_SECURE_STORE"
+  ],
+  "real_forge_boundaries": [
+    "CANDIDATE_LIFECYCLE",
+    "GOVERNANCE_AND_AUTHORITY",
+    "MISSION_INTAKE_AND_ALLOCATOR",
+    "PLANNING_AND_PROPOSAL_VALIDATION",
+    "PUBLIC_RUNTIME_COMPOSITION",
+    "EP_HTTP_ADAPTER_AND_EVIDENCE_VERIFIER",
+    "DURABLE_STORAGE_AND_RECONCILIATION",
+    "RECOVERY_AND_COMPLETION"
+  ],
+  "wire_contracts": {
+    "producer_readback": "1.2",
+    "terminal_evidence": "1.2",
+    "producer_fixture_provenance_required": true
+  },
+  "invariants": {
+    "actions_at_admission": 0,
+    "candidate_id_string_only_is_full_entry": false,
+    "new_os_process_required_for_restart": true,
+    "simulator_reads_forge_db": false,
+    "unmet_criterion_required_for_successor": true,
+    "ci_calls_live_provider": false,
+    "ci_submits_to_live_ep": false,
+    "ci_mutates_github": false,
+    "skip_is_pass": false,
+    "mock_pass_is_live_e2e_pass": false,
+    "governance_bypass_allowed": false,
+    "internal_forge_success_path_mocks_allowed": false
+  },
+  "planned_ci": {
+    "check_name": "Forge inner-loop integration (mock EP)",
+    "python": "3.14",
+    "events": [
+      "pull_request",
+      "push_main",
+      "workflow_dispatch"
+    ],
+    "permissions": {
+      "contents": "read"
+    },
+    "installed_wheel_required": true,
+    "execute_outside_checkout": true,
+    "default_suite_retries": 0,
+    "target_job_timeout_minutes": 10,
+    "merge_blocking_evidence_required": true,
+    "same_suite_in_release_qualification": true,
+    "required_artifacts": [
+      "scenario_results",
+      "source_and_wheel_identity",
+      "fixture_contract_identity",
+      "redacted_stage_trace",
+      "request_counts"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "FIE-01",
+      "name": "candidate_to_completion",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-02",
+      "name": "evidence_dependent_successor_after_restart",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-03",
+      "name": "one_action_no_artificial_successor",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-04",
+      "name": "candidate_governance_gates",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-05",
+      "name": "authority_and_budget_gates",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-06",
+      "name": "provider_failure_and_ambiguity",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-07",
+      "name": "scope_containment",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-08",
+      "name": "ep_compatibility_auth_and_scope",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-09",
+      "name": "pending_ep_bounded_wait",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-10",
+      "name": "accepted_post_lost_ack",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-11",
+      "name": "artifact_and_assurance_rejection",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-12",
+      "name": "terminal_without_artifact",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-13",
+      "name": "authorized_correlated_recovery",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-14",
+      "name": "duplicate_out_of_order_and_concurrent_start",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-15",
+      "name": "new_process_recovery_boundaries",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-16",
+      "name": "storage_and_installed_identity_fail_closed",
+      "required": true,
+      "status": "PLANNED"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "FCI-CONTRACT",
+      "title": "Mock contract, provenance and scenario registry",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "completion_evidence": [
+        "Producer-pinned wire fixtures and independent validation",
+        "All required scenarios bound to concrete assertions"
+      ]
+    },
+    {
+      "id": "FCI-HARNESS",
+      "title": "Isolated installed-wheel process harness",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCI-CONTRACT"
+      ],
+      "completion_evidence": [
+        "Site-packages identity and explicit temporary data root",
+        "Boundary-only LLM/OS fixtures and bounded cleanup"
+      ]
+    },
+    {
+      "id": "FCI-EP",
+      "title": "Stateful EP HTTP simulator",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCI-CONTRACT"
+      ],
+      "completion_evidence": [
+        "Actual adapter HTTP serialization and authenticated scopes",
+        "Independent accepted-request/receipt/artifact ledger with failure injection"
+      ]
+    },
+    {
+      "id": "FCI-FLOW",
+      "title": "Candidate through completion success chain",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCI-HARNESS",
+        "FCI-EP"
+      ],
+      "completion_evidence": [
+        "Real Candidate revision through dual approval, allocator and zero-Action intake",
+        "Public runtime and verifier complete from serialized fixture evidence"
+      ]
+    },
+    {
+      "id": "FCI-RESTART",
+      "title": "Successor and new-process recovery",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCI-FLOW"
+      ],
+      "completion_evidence": [
+        "B only from current reconciled evidence after actual process restart",
+        "Same instance and immutable history with no duplicate dispatch"
+      ]
+    },
+    {
+      "id": "FCI-NEGATIVE",
+      "title": "Fault, authority and containment scenarios",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCI-FLOW"
+      ],
+      "completion_evidence": [
+        "Ambiguous transport and terminal-without-evidence fail closed",
+        "Permission, scope, stale identity and budgets are not mocked away"
+      ]
+    },
+    {
+      "id": "FCI-CI",
+      "title": "CI merge gate and release qualification",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCI-RESTART",
+        "FCI-NEGATIVE"
+      ],
+      "completion_evidence": [
+        "PR/main required qualification fails on absent/skipped/failed mandatory tests",
+        "Same installed suite reused for local/release with exact artifact and scenario reports"
+      ]
+    }
+  ]
+}
