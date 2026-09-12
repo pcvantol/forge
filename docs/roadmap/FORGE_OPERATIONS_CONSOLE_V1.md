@@ -118,6 +118,57 @@ FOC-Q must qualify all packages, including restart and interrupted data operatio
 stale snapshots, non-portable credentials, unchanged cumulative budgets,
 EP-absent/upgraded two-host layouts, refresh load and truthful timeout enforcement.
 
+## EP parity, logging, five languages and discovery/pairing
+
+The [admin-parity contract](../architecture/FORGE_CONSOLE_EP_PARITY_AND_PAIRING_V1.md)
+and [linked sub-DAG](forge-console-admin-parity-v1.json) add mandatory future
+admin requirements under the same eight FOC nodes. The parent JSON explicitly
+references both and requires FCP-Q at FOC-Q completion. All packages are PLANNED;
+none becomes an E2E prerequisite or an executable Action.
+
+This is an explicit refinement of the initial parent design: EP's design system
+and Python/HTML/CSS/plain-JS frontend/backend pattern are now required, and the
+previous V1 no-log-deletion restriction is narrowed to protected journal/evidence.
+Eligible diagnostic deletion requires a qualified owning retention contract;
+immutable triggers must not be bypassed. The console remains complementary to
+Workspace, not a Mission-authoring, approval, portfolio or chat replacement.
+
+| Package | Internal dependencies | Delivery / qualification |
+| --- | --- | --- |
+| FCP-GITHUB | none | FOC-0, FOC-1, FOC-3, FOC-5; Integration inventory and conditional GitHub administration |
+| FCP-DESIGN | none | FOC-0, FOC-2; EP design-system and frontend/backend parity |
+| FCP-I18N | FCP-DESIGN | FOC-1, FOC-2; Complete five-language contract |
+| FCP-LOG-CONTRACT | none | FOC-0, FOC-1, FOC-5; Logging query, recording level and retention contract |
+| FCP-LOG-UX | FCP-LOG-CONTRACT, FCP-DESIGN, FCP-I18N | FOC-3, FOC-5; Log search/filter/sort/select/copy/download/delete UX |
+| FCP-PAIR-CONTRACT | none | FOC-0, FOC-1, FOC-5; Shared installer/product discovery and pairing services |
+| FCP-PAIR-UX | FCP-PAIR-CONTRACT, FCP-DESIGN, FCP-I18N | FOC-2, FOC-5; EP bound/unbound/discovery/automatic-pairing UX |
+| FCP-CI | FCP-DESIGN, FCP-I18N | FOC-Q; EP-pattern qualification and strict coverage gates |
+| FCP-Q | FCP-GITHUB, FCP-LOG-UX, FCP-PAIR-UX, FCP-CI | FOC-Q; Integrated admin parity qualification |
+
+FCP-DESIGN -> FCP-I18N precedes the localized log/pairing UI. FCP-LOG-CONTRACT
+precedes destructive log controls; FCP-PAIR-CONTRACT precedes the shared automatic
+pairing UX. FCP-CI supplies the full browser/localization/coverage evidence before
+FCP-Q. These are product-service dependencies, not dependencies on shipping the
+entire universal installer or Workspace. The original FC data/runtime packages
+and FOC-STATUS/SHELL/FOOTER requirements remain intact.
+
+The read-only milestone includes the common design, five languages, log query/
+selection/copy/download and true EP binding status. Enabled login, diagnostic
+purge/retention and pairing operations additionally require their owning service
+qualification. Configuration controls cannot be called delivered merely because
+their buttons render. Full V1 requires FCP-Q as well as existing FC/FOC evidence.
+
+GitHub assessment is source-scoped: the inspected installed Mission chain has
+no standalone GitHub provider; release CI does use gh. Do not require local
+GitHub auth without a declared Forge consumer. If such a consumer is added,
+applicable provider admin functions become part of its delivery contract.
+
+The five locales are en/nl/de/fr/es. Adopt the same four-shard Playwright/CI-parity
+setup and strict >80% coverage: minimum 80.20 for aggregate and each production
+backend module, and separately frontend statements/lines/functions/branches.
+EP's observed Python aggregate minimum is 80.00; the stronger Forge aggregate
+and frontend gate are explicit requirements, not claims about existing EP CI.
+
 ## Milestones and capability prerequisites
 
 **Read-only console:** FOC-0 through FOC-4 provide all five navigation entries;
