@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 from urllib.parse import urlparse
 
 from .runtime.data_root import DataRootResolver
@@ -271,6 +271,7 @@ class EngineeringPlatformPeerConfigurationStore:
         expected_revision: int | None = None,
         expected_digest: str | None = None,
         occurred_at: str | None = None,
+        operational_event_writer: Callable[[EngineeringPlatformPeerConfiguration, str], None] | None = None,
     ) -> EngineeringPlatformPeerConfiguration:
         if not self._writable:
             raise PeerConfigurationError("read-only peer configuration storage cannot be changed")
@@ -334,6 +335,8 @@ class EngineeringPlatformPeerConfigurationStore:
                 "document=excluded.document",
                 (configured.binding_id, configured.configuration_revision, configured.configuration_digest, document),
             )
+            if operational_event_writer is not None:
+                operational_event_writer(configured, "created" if current is None else "replaced")
             self._connection.commit()
             return configured
         except Exception:
@@ -493,7 +496,42 @@ class EngineeringPlatformPeerConfigurationService:
             store = EngineeringPlatformPeerConfigurationStore(
                 database._connection, database.runtime_identity.runtime_id, writable=True,
             )
-            return store.configure(**values)
+            previous = store.load()
+            operator_id = str(values.get("operator_id", ""))
+            operator_reference = sha256(operator_id.encode("utf-8")).hexdigest()[:16]
+
+            def record_change(configuration: EngineeringPlatformPeerConfiguration, operation: str) -> None:
+                database._append_operational_event(
+                    component="forge_execution_host", level="INFO",
+                    event="execution_host_configuration_" + operation,
+                    operator_reference=operator_reference,
+                    details={
+                        "operation": operation, "outcome": "accepted",
+                        "binding_id": configuration.binding_id,
+                        "configuration_revision": configuration.configuration_revision,
+                        "configuration_digest": configuration.configuration_digest,
+                        "peer_product": configuration.peer_product,
+                        "ep_instance_id": configuration.expected_ep_instance_id,
+                    },
+                    occurred_at=configuration.updated_at,
+                )
+
+            configured = store.configure(**values, operational_event_writer=record_change)
+            if previous == configured:
+                database.record_operational_event(
+                    component="forge_execution_host", level="INFO",
+                    event="execution_host_configuration_unchanged",
+                    operator_reference=operator_reference,
+                    details={
+                        "operation": "unchanged", "outcome": "accepted",
+                        "binding_id": configured.binding_id,
+                        "configuration_revision": configured.configuration_revision,
+                        "configuration_digest": configured.configuration_digest,
+                        "peer_product": configured.peer_product,
+                        "ep_instance_id": configured.expected_ep_instance_id,
+                    },
+                )
+            return configured
         finally:
             database.close()
 

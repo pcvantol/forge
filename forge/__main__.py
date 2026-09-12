@@ -31,6 +31,12 @@ def _status(data_root: str | None) -> dict[str, object]:
         connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
         try:
             metadata = dict(connection.execute("SELECT key, value FROM runtime_metadata"))
+            dispatcher = connection.execute(
+                "SELECT status FROM dispatcher_state WHERE singleton = 1"
+            ).fetchone()
+            dispatcher_status = "IDLE" if dispatcher is None else dispatcher[0]
+            if dispatcher_status not in {"IDLE", "ACTIVE"}:
+                raise sqlite3.DatabaseError("invalid durable dispatcher state")
         finally:
             connection.close()
     except sqlite3.Error:
@@ -41,6 +47,7 @@ def _status(data_root: str | None) -> dict[str, object]:
         return result
     result.update({"instance_id": metadata.get("runtime_id"), "storage_schema": metadata.get("schema_version"),
                    "runtime_status": metadata.get("status", "unavailable")})
+    result["dispatcher"] = {"status": dispatcher_status}
     try:
         peer = read_peer_configuration(root).configuration
         if peer is not None:

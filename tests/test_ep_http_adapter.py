@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -39,7 +40,7 @@ def _prompt() -> RuntimePrompt:
 
 def _request() -> ExecutionRequest:
     prompt = _prompt()
-    contract = ProducerContract(Producer(ProducerIdentity("forge", "FORGE", "1.0")), "forge-correlation-fixture",
+    contract = ProducerContract(Producer(ProducerIdentity("forge", "FORGE", "2.7.2")), "forge-correlation-fixture",
         "action-fixture", RuntimePromptEnvelope(prompt.id, "1.0", "text/markdown", "exact persisted prompt", "sha256:" + "a" * 64),
         ("Execute only the supplied Runtime Prompt.",),
         (("intent_id", "intent-fixture"), ("intent_revision", "7"), ("mission_revision", "3"),
@@ -63,16 +64,45 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.2"]}}
         self.readback = json.loads((FIXTURES / "forge-producer-readback-v1.1.json").read_text())
         self.readback["contract_version"] = "1.2"
+        self.readback["producer"]["version"] = "2.7.2"
+        self.readback["provenance"]["forge_execution"].update({
+            "contract_version": "1.1", "producer_contract_version": "1.0",
+            "forge_application_version": "2.7.2",
+        })
         self.readback["disposition"] = {"state": "QUEUED", "terminal": False, "execution_eligible": True,
             "revision": 0, "operation_id": None, "event_reference": None, "reason": "NOT_RECORDED",
             "actor_reference": "NOT_RECORDED", "recorded_at": None}
         artifact = json.loads((FIXTURES / "forge-terminal-evidence-v1.1.json").read_text())
         artifact["contract_version"] = "1.2"
+        artifact["producer"]["version"] = "2.7.2"
+        artifact["provenance"].update({
+            "contract_version": "1.1", "producer_contract_version": "1.0",
+            "forge_application_version": "2.7.2",
+        })
         artifact["assurance"] = {"status": "PASS", "profile": {"version": "validation-profile@1",
             "digest": "sha256:" + "b" * 64, "candidate_sha": "c" * 40}, "quality_review": "PASS",
             "security_review": "PASS", "repair_rounds": {"used": 0, "maximum": 3},
             "findings": {"open_blocking": 0, "open_non_blocking": 0, "artifact": None}}
         self.artifact = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+
+    def _accepted_submission(self) -> dict[str, object]:
+        return {
+            "submission_id": "submission-fixture",
+            "receipt": {
+                "contract_version": "1.0",
+                "id": "ep-submission-receipt:submission-fixture",
+                "event": "FORGE_SUBMISSION_ACCEPTED",
+                "issued_at": "2026-09-12T00:00:00Z",
+                "submission_id": "submission-fixture",
+                "ep_instance_id": "instance-fixture",
+                "ep_application_version": "2.3.8",
+                "producer_contract_version": "1.0",
+                "forge_provenance_contract_version": "1.1",
+                "forge_application_version": "2.7.2",
+                "producer_readback_contract_version": "1.2",
+                "accepted_request_digest": "sha256:" + "c" * 64,
+            },
+        }
 
     def tearDown(self) -> None:
         self.database.close(); self.temporary.cleanup()
@@ -94,10 +124,38 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         waiting = {**self.readback, "run": None}
         observed: list[object] = []
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
-            json.dumps(self.compatible).encode(), json.dumps({"submission_id": "submission-fixture"}).encode(), json.dumps(waiting).encode()], observed)):
+            json.dumps(self.compatible).encode(), json.dumps(self._accepted_submission()).encode(), json.dumps(waiting).encode()], observed)):
             host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
             self.assertIsNone(host.dispatch(self.request))
         self.assertEqual(self.database.execution_host_binding(self.request.correlation_id)["submission_id"], "submission-fixture")
+        sent, received = self.database.execution_host_exchange_audit(self.request.correlation_id)
+        self.assertEqual((sent["direction"], sent["event_kind"]), ("FORGE_TO_EP", "FORGE_SUBMISSION_SENT"))
+        self.assertEqual((received["direction"], received["event_kind"]), ("EP_TO_FORGE", "EP_SUBMISSION_RECEIPT_RECEIVED"))
+        self.assertEqual(received["document"]["ep_application_version"], "2.3.8")
+        self.assertEqual(received["document"]["receipt_id"], "ep-submission-receipt:submission-fixture")
+        journal = self.database.operational_log_page(correlation_id=self.request.correlation_id)
+        self.assertEqual(
+            {item["event"] for item in journal["items"]},
+            {"execution_host_binding_persisted", "forge_submission_sent", "ep_submission_receipt_received"},
+        )
+        receipt_event = next(item for item in journal["items"] if item["event"] == "ep_submission_receipt_received")
+        self.assertEqual(receipt_event["details"]["ep_application_version"], "2.3.8")
+        self.assertEqual(receipt_event["details"]["exchange_direction"], "EP_TO_FORGE")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute(
+                "UPDATE execution_host_exchange_audit SET event_kind='FORGE_SUBMISSION_SENT' "
+                "WHERE audit_id=?", (received["audit_id"],),
+            )
+        submitted = json.loads(observed[1].data.decode())
+        self.assertEqual(submitted["producer"]["version"], "2.7.2")
+        self.assertEqual(submitted["constraints"]["forge_execution"], {
+            "contract_version": "1.1", "host_id": "engineering-platform", "repository_id": "forge",
+            "correlation_id": "forge-correlation-fixture", "mission_id": "mission-fixture",
+            "mission_revision": "3", "intent_id": "intent-fixture", "intent_revision": "7",
+            "action_id": "action-fixture", "runtime_prompt": {"id": "runtime-prompt-fixture", "content_digest": "sha256:" + "a" * 64},
+            "retry_of_correlation_id": None, "producer_contract_version": "1.0",
+            "forge_application_version": "2.7.2",
+        })
         self.database.close()
         self.database = RuntimeDatabase(".", path=Path(self.temporary.name) / "runtime.db", forge_version="test")
         observed = []
@@ -106,6 +164,25 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             dispatch = EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
         self.assertEqual(dispatch.host_run_id, "run-fixture")
         self.assertEqual(observed[0].get_header("Authorization"), "Bearer credential")
+
+    def test_submission_without_the_versioned_ep_receipt_fails_closed_and_is_audited(self) -> None:
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), b'{"submission_id":"submission-fixture"}'], observed)):
+            with self.assertRaisesRegex(ValueError, "omits a versioned receipt"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).dispatch(self.request)
+        (sent,) = self.database.execution_host_exchange_audit(self.request.correlation_id)
+        self.assertEqual((sent["direction"], sent["event_kind"]), ("FORGE_TO_EP", "FORGE_SUBMISSION_SENT"))
+        self.assertEqual([request.get_method() for request in observed], ["GET", "POST"])
+
+    def test_submission_receipt_requires_a_canonical_accepted_request_digest(self) -> None:
+        accepted = self._accepted_submission()
+        accepted["receipt"]["accepted_request_digest"] = "sha256:not-a-digest"  # type: ignore[index]
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(accepted).encode()], observed)):
+            with self.assertRaisesRegex(ValueError, "accepted-request digest is invalid"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).dispatch(self.request)
 
     def test_capability_preflight_rejects_legacy_and_never_posts(self) -> None:
         legacy = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},

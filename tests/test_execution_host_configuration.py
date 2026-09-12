@@ -104,6 +104,34 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         self.assertNotIn(SYNTHETIC_SECRET.encode(), persisted)
         self.assertIn(b"keychain://forge.ep/consumer", persisted)
 
+    def test_configuration_change_is_recorded_in_the_redacted_operational_journal(self) -> None:
+        first = self.service.configure(**self.values())
+        self.service.configure(**self.values(operator_id="other-admin", occurred_at="2026-09-10T18:01:00Z"))
+        self.service.configure(**self.values(
+            endpoint="https://replacement.test", replace=True,
+            expected_revision=first.configuration_revision, expected_digest=first.configuration_digest,
+            occurred_at="2026-09-10T18:02:00Z",
+        ))
+        database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        try:
+            page = database.operational_log_page(
+                events=("execution_host_configuration_created", "execution_host_configuration_unchanged",
+                        "execution_host_configuration_replaced"), page_size=10,
+            )
+            self.assertEqual(page["total"], 3)
+            events = {item["event"] for item in page["items"]}
+            self.assertEqual(events, {
+                "execution_host_configuration_created", "execution_host_configuration_unchanged",
+                "execution_host_configuration_replaced",
+            })
+            event = next(item for item in page["items"] if item["event"] == "execution_host_configuration_created")
+            self.assertEqual((event["component"], event["level"]), ("forge_execution_host", "INFO"))
+            self.assertEqual(event["details"]["ep_instance_id"], "ep-instance-1")
+            self.assertNotIn("credential_reference", event["details"])
+            self.assertNotIn(SYNTHETIC_SECRET, json.dumps(event, sort_keys=True))
+        finally:
+            database.close()
+
     def test_factory_reopens_configuration_and_real_keychain_resolver_path_without_constructor_inputs(self) -> None:
         configured = self.service.configure(**self.values())
         resolver = _Resolver()

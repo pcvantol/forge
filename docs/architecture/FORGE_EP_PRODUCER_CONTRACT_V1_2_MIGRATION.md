@@ -33,3 +33,43 @@ Pinned EP producer source: `f7c08872a2d334cff097ea5f28822836e59f78c3`.
 The migration is source compatibility only; it does not assert that every
 installed EP instance has the declaration or runs this contract. A real Mission
 canary remains separately approved work.
+
+## Bidirectional submission audit
+
+Producer readback remains `v1.2`.  It is deliberately not widened for
+submission acknowledgement: installed Forge consumers validate its root shape
+exactly.  A Forge producer envelope that declares
+`constraints.forge_execution.contract_version: "1.1"` instead carries two
+separate facts:
+
+- `producer.version` and `forge_application_version` are the actual Forge
+  application release which materialised the envelope;
+- `producer_contract_version` is the Forge Producer Contract schema version.
+
+On a successful HTTP admission EP returns a separate `receipt` object at
+receipt contract version `1.0`.  It binds the immutable EP submission ID, EP
+installation and application versions, both Forge version facts, the EP
+producer-readback version, and the canonical accepted-request digest.  It is
+an admission acknowledgement only, never an execution receipt or execution
+evidence.
+
+Forge appends two secret-free, immutable database audit facts for every new
+v1.1 exchange: `FORGE_SUBMISSION_SENT` before the request and
+`EP_SUBMISSION_RECEIPT_RECEIVED` only after the receipt passes exact binding
+validation.  EP appends the corresponding immutable
+`FORGE_SUBMISSION_ACCEPTED` record and emits a redacted, structured central
+component log.  Prompts, bearer credentials, checkout paths and receipt bodies
+are not copied to either audit document or central log.
+
+Forge also projects those two boundary facts to its append-only Operational
+Logging Contract 1.0 journal as `forge_submission_sent` and
+`ep_submission_receipt_received`.  The projection retains only the safe
+version, product-identity, correlation and digest bindings, so the Forge and
+EP operational timelines can be compared without treating Forge as the
+authority for EP execution telemetry.
+
+EP accepts historical v1.0 Forge provenance for existing work, but only v1.1
+has the information required to create this bidirectional audit trail.  Roll
+out EP first: older Forge clients ignore the additional POST response field;
+the new Forge client fails closed if an EP response omits or mismatches the
+versioned receipt.

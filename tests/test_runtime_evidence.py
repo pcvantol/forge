@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import tempfile
 import unittest
 
@@ -44,6 +45,18 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(reference.locator, f"runtime://{reference.runtime_id}/decision-evidence/decision-1")
         self.assertEqual(report["decision_evidence_reference"], reference.to_dict())
         self.assertEqual(report["runtime_instance"]["runtime_id"], reference.runtime_id)
+
+    def test_all_runtime_evidence_writes_have_redacted_dashboard_events(self) -> None:
+        page = self.database.operational_log_page(page_size=100)
+        events = {item["event"] for item in page["items"]}
+        self.assertTrue({
+            "mission_state_transitioned", "mission_lifecycle_recorded",
+            "architecture_review_recorded", "mission_recommendation_recorded",
+            "execution_receipt_recorded", "decision_evidence_recorded",
+            "dispatcher_state_changed",
+        } <= events)
+        self.assertTrue(all(item["details"]["event_contract_version"] == "1.0" for item in page["items"]))
+        self.assertNotIn("bounded", json.dumps(page, sort_keys=True))
 
     def test_workspace_projections_do_not_reconstruct_repository_or_host_evidence(self) -> None:
         projection = self.database.runtime_evidence().business_workspace("mission-1")

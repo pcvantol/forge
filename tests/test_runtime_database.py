@@ -43,6 +43,50 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         self.database.validate_integrity()
 
+    def test_operational_log_is_redacted_immutable_and_dashboard_pageable(self) -> None:
+        event = self.database.record_operational_event(
+            component="forge_administration", level="INFO", event="operator_configuration_exported",
+            mission_id="mission-1", correlation_id="correlation-1", run_id="run-1",
+            operator_reference="operator-fingerprint", occurred_at="2026-09-12T10:00:00Z",
+            details={"operation": "exported", "outcome": "accepted", "schema_version": "1"},
+        )
+        page = self.database.operational_log_page(
+            events=("operator_configuration_exported",), mission_id="mission-1", sort_key="timestamp",
+        )
+        self.assertEqual(page["total"], 1)
+        self.assertEqual(page["items"][0], event)
+        self.assertEqual(event["details"]["event_contract_version"], "1.0")
+        with self.assertRaisesRegex(RuntimeError, "redacted"):
+            self.database.record_operational_event(
+                component="forge_administration", level="INFO", event="operator_configuration_exported",
+                details={"operation": "sk-forbidden"},
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute(
+                "UPDATE forge_operational_logs SET event='forged' WHERE log_id=?", (event["id"],)
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute("DELETE FROM forge_operational_logs WHERE log_id=?", (event["id"],))
+
+    def test_schema35_migrates_the_immutable_operational_log(self) -> None:
+        path = self.database.path
+        self.database.close()
+        connection = sqlite3.connect(path)
+        connection.executescript("""
+            DROP TRIGGER forge_operational_logs_immutable_update;
+            DROP TRIGGER forge_operational_logs_immutable_delete;
+            DROP TABLE forge_operational_logs;
+        """)
+        connection.execute("UPDATE runtime_metadata SET value='35' WHERE key IN ('schema_version','migration_version','last_migration')")
+        connection.execute("PRAGMA user_version=35")
+        connection.commit(); connection.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
+        self.database.validate_integrity()
+        self.assertTrue(self.database._connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='forge_operational_logs'"
+        ).fetchone())
+
     def test_insert_only_mission_state_creation_never_overwrites(self) -> None:
         self.database.create_mission_state(self._mission())
         conflicting = self._mission(); conflicting["status"] = "ACTIVE"

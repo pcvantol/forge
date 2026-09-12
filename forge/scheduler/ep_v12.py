@@ -96,10 +96,15 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     if artifact_correlation != correlation or artifact_producer != producer:
         raise ValueError("EP terminal artifact identity differs from readback")
 
-    expected_provenance = {key: provenance.get(key) for key in (
+    provenance_keys = (
         "action_id", "contract_version", "correlation_id", "host_id", "intent_id", "intent_revision",
         "mission_id", "mission_revision", "repository_id", "retry_of_correlation_id", "runtime_prompt",
-    )}
+    )
+    # Forge provenance v1.1 adds submitted-envelope attribution.  Historic
+    # v1.0 evidence remains byte-for-byte verifiable without invented fields.
+    if provenance.get("contract_version") == "1.1":
+        provenance_keys += ("producer_contract_version", "forge_application_version")
+    expected_provenance = {key: provenance.get(key) for key in provenance_keys}
     if artifact_provenance != expected_provenance:
         raise ValueError("EP terminal artifact provenance differs from readback")
     if artifact_run.get("id") != run.get("id"):

@@ -120,6 +120,7 @@ class InstallationOperatorService:
   fingerprint=hashlib.sha256(identity.generated_uid.encode()).hexdigest()[:16]
   audit_id=f'{installation_id}:{operation}:{uuid.uuid4()}'
   self.db._connection.execute('INSERT INTO installation_operator_audit VALUES (?,?,?,?,?,?)',(audit_id,installation_id,fingerprint,operation,occurred_at,result))
+  self.db._append_operational_event(component='forge_operator',level='INFO',event='operator_'+operation.lower(),operator_reference=fingerprint,details={'operation':operation.lower(),'outcome':result.lower()},occurred_at=occurred_at)
 
 class MacOSGeneratedUIDIdentityAdapter:
  executable='/usr/bin/dscl'

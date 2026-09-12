@@ -471,6 +471,22 @@ class CodexCliChatGPTSessionPlanningProvider:
                 (str(uuid.uuid4()), inspection["configuration_id"], inspection["operator_id"], "invocation",
                  occurred_at, json.dumps(document, sort_keys=True, separators=(",", ":"))),
             )
+            self.configuration.policy_service.db._append_operational_event(
+                component="forge_planning_provider",
+                level=("INFO" if state in {"STARTED", "HAPPENED_AND_CONFIRMED"} else "WARNING"),
+                event=("planning_provider_invocation_started" if state == "STARTED"
+                       else "planning_provider_invocation_finished"),
+                operator_reference=str(inspection["operator_id"]),
+                details={
+                    "operation": state, "outcome": status or state,
+                    "configuration_id": str(inspection["configuration_id"]),
+                    "provider_id": policy.provider_id, "provider_type": policy.provider_type,
+                    "request_digest": request_digest,
+                    "failure_code": None if diagnostic is None else diagnostic.classification.value,
+                    "result_state": state,
+                },
+                occurred_at=occurred_at,
+            )
 
 
 def _diagnostic(classification: CodexCliInvocationClassification, *, process_started: bool,
