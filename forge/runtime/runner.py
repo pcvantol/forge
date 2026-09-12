@@ -311,9 +311,11 @@ class BootstrapMissionRunner:
         if intent is None:
             raise MissionRunnerError("active Action has no persisted Intent")
         prompt = self._prompt_factory(intent, action)
+        retry_of, original = self._recovery_lineage(state, action)
         request = ExecutionRequest(
             self._host_id, state.mission_id, action.intent_id, action.intent_revision, action.id, prompt,
             self._workspace_id, self._repository_id, self._correlation_id_factory(), self._now(),
+            retry_of_correlation_id=retry_of, original_correlation_id=original,
             repository_identity=self._repository_identity,
         )
         envelope = {"request": _request_document(request), "host_run_id": None}
@@ -321,6 +323,22 @@ class BootstrapMissionRunner:
             state.mission_id, MissionExecutionStatus.WAITING_FOR_EXECUTION, occurred_at=self._now(),
             reason="execution_request_persisted", actions=active, execution_correlation=envelope,
         )
+
+    @staticmethod
+    def _recovery_lineage(state: MissionExecutionState, action: EngineeringAction) -> tuple[str | None, str | None]:
+        """Carry an authorized retry back to its exact persisted predecessor."""
+        authorization = state.resume.get("authorized_recovery") if state.resume else None
+        if not isinstance(authorization, Mapping) or authorization.get("action_id") != action.id:
+            return None, None
+        correlation = state.execution_correlation
+        prior = correlation.get("request") if isinstance(correlation, Mapping) else None
+        if not isinstance(prior, Mapping) or prior.get("action_id") != action.id:
+            raise MissionRunnerError("authorized recovery lacks the prior persisted execution request")
+        predecessor = prior.get("correlation_id")
+        original = prior.get("original_correlation_id") or predecessor
+        if not isinstance(predecessor, str) or not predecessor or not isinstance(original, str) or not original:
+            raise MissionRunnerError("authorized recovery has invalid execution correlation lineage")
+        return predecessor, original
 
     def _dispatch_or_recover(self, state: MissionExecutionState) -> MissionExecutionState:
         request = self._persisted_request(state)

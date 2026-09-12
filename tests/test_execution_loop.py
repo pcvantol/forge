@@ -97,6 +97,8 @@ class Host:
             request.repository_id, "revision", f"report-{request.action_id}", digest("c"))
         return ExecutionHostEvidence(request.host_id, request.correlation_id, dispatch.host_run_id,
                                      f"report-{request.action_id}", outcome, repository,
+                                     retry_of_correlation_id=request.retry_of_correlation_id,
+                                     original_correlation_id=request.original_correlation_id,
                                      execution_started_at="2026-08-04T10:00:00Z", execution_completed_at="2026-08-04T10:01:00Z",
                                      receipt_id=f"receipt-{request.action_id}", execution_duration_ms=60_000)
 

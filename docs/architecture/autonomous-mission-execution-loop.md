@@ -116,7 +116,10 @@ released. A normal resume only continues non-terminal persisted work.
 Resuming a blocked or failed Mission requires a `RecoveryAuthorization` naming
 the exact unresolved Action. It records the authority in durable state and
 returns only that unresolved Action to `READY`; completed Actions are never
-rerun. The Dispatcher is reactivated only after durable recovery.
+rerun. The Dispatcher is reactivated only after durable recovery. The
+replacement Host request receives a fresh correlation and retains both the
+immediate retry predecessor and original correlation, so recovery cannot be
+mistaken for a continuation of the terminal run.
 
 Execution Policy adds a separate `AWAITING_APPROVAL` state after exact
 successful evidence. It is neither a failure nor recovery. The resolved policy,

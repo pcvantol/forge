@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.3",
+  "classification_rationale": "codex/forge-e2e-terminal-recovery-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-e2e-terminal-recovery-v1",
+  "expected_head": "ca53b88908253ffce8f471bfc6e4347c91ed5dda",
+  "operation_id": "forge-e2e-terminal-recovery-274-20260912",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.4"
+}
