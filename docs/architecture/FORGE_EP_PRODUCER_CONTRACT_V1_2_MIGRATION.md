@@ -24,6 +24,13 @@ repository revision. A byte mismatch is
 artifact digest and repair rounds are bound from EP terminal evidence; Forge
 does not recompute EP policy.
 
+The persisted request's `retry_of_correlation_id` is a terminal-evidence
+identity field, not display metadata. Forge accepts it only when the readback
+and immutable artifact agree exactly, validates it as either null or a
+non-empty correlation, and carries it into Host Evidence before Scheduler
+reconciliation. A missing, substituted or malformed retry predecessor cannot
+complete an Action.
+
 The sole profile-free assurance shape is a host-verified Managed no-op:
 `status`, `quality_review` and `security_review` must all be `NOT_RECORDED`,
 `profile` and the findings artifact must be `null`, and the repair and open
@@ -87,6 +94,18 @@ Logging Contract 1.0 journal as `forge_submission_sent` and
 version, product-identity, correlation and digest bindings, so the Forge and
 EP operational timelines can be compared without treating Forge as the
 authority for EP execution telemetry.
+
+Forge persists the complete, already validated admission receipt in its
+per-correlation binding. At terminal readback it attaches only that exact
+receipt identity to the separately byte-checked terminal evidence; the receipt
+is never mistaken for an execution report. Existing bindings created before
+this persistence rule are recoverable only from one exact immutable
+`EP_SUBMISSION_RECEIPT_RECEIVED` audit fact with matching Forge envelope,
+submission, EP instance, contract versions and accepted-request digest.
+Missing, duplicate or mismatched audit facts fail closed. This preserves the
+causal pair of admission receipt plus terminal run/report/artifact without
+copying a receipt body, prompt, credential or checkout path into Operational
+Logs.
 
 EP accepts historical v1.0 Forge provenance for existing work, but only v1.1
 has the information required to create this bidirectional audit trail.  Roll

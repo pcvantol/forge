@@ -296,6 +296,23 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             )
         self.assertEqual(evidence.receipt_id, "ep-submission-receipt:submission-fixture")
 
+    def test_terminal_evidence_carries_the_exact_persisted_retry_lineage(self) -> None:
+        self._seed_binding()
+        request = replace(self.request, retry_of_correlation_id="prior-correlation")
+        readback = json.loads(json.dumps(self.readback))
+        artifact = json.loads(self.artifact)
+        readback["provenance"]["forge_execution"]["retry_of_correlation_id"] = "prior-correlation"
+        artifact["provenance"]["retry_of_correlation_id"] = "prior-correlation"
+        raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
+            evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                ExecutionDispatch(request, "run-fixture")
+            )
+        self.assertEqual(evidence.retry_of_correlation_id, "prior-correlation")
+        self.assertEqual(evidence.original_correlation_id, "prior-correlation")
+
     def test_historical_terminal_evidence_uses_only_the_exact_immutable_receipt_audit(self) -> None:
         host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
         host._binding(self.request)
