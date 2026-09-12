@@ -300,11 +300,11 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.FAILED)
         self.assertIsNone(evidence.repository_evidence.repository_revision)
 
-    def test_terminal_run_without_an_immutable_artifact_fails_closed(self) -> None:
+    def test_blocked_retried_run_without_an_immutable_artifact_fails_closed(self) -> None:
         self._seed_binding()
         terminal = json.loads(json.dumps(self.readback))
-        terminal["run"].update({"state": "BLOCKED", "terminal": True})
-        terminal["result"].update({"outcome": "BLOCKED", "delivery_qualified": False})
+        terminal["run"].update({"state": "BLOCKED", "terminal": False, "operator_resolution": "RETRIED"})
+        terminal["result"].update({"outcome": "BLOCKED", "terminal": False, "delivery_qualified": False})
         terminal["evidence"]["terminal_artifact"] = None
         observed: list[object] = []
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([

@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.4",
+  "classification_rationale": "codex/forge-ep-blocked-readback-recovery-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-ep-blocked-readback-recovery-v1",
+  "expected_head": "5004cdb028dbbcff6e7ae180628c4711aaa48edf",
+  "operation_id": "forge-ep-blocked-readback-recovery-275-20260912",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.5"
+}
