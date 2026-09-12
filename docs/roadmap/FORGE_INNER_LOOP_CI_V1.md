@@ -103,3 +103,22 @@ They exercise M1 completion -> Context -> Candidate -> governed M2 and reuse
 this same installed harness/EP simulator. Candidate-to-completion within ONE
 Mission remains this suite's full boundary; next-Mission inference is the later
 suite. Both keep live-provider/EP qualification separate from deterministic CI.
+
+## Adaptive sizing variant — AS-T01..20
+
+The [sizing design](../architecture/ADAPTIVE_ACTION_SIZING_V1.md) and
+[scenario/delivery DAG](adaptive-action-sizing-v1.json) add twenty mandatory
+families for a CLAIM OF ADAPTIVE SIZING SUPPORT. They reuse these seven FCI nodes
+and retain FIE-01..28 unchanged. This is not a new dependency of the already
+selected live canary or a reason to defer baseline inner-loop CI implementation.
+Once sizing is implemented/claimed, missing/skipped required AS cases fail its
+qualification; do not hide a missing public gate behind a successful mock.
+
+FCI-CONTRACT pins actual envelope/fit semantics and all AS IDs; FCI-EP simulates
+only the versioned external EP boundary; FCI-FLOW runs real derive/size/validate/
+materialize and early completion; FCI-RESTART preserves decisions and failed
+lineage; FCI-NEGATIVE covers oversize, reviewer bottlenecks, stale profiles,
+context overflow, authority and corrective-budget laundering. FCI-CI retains
+scenario collection, source/wheel/fixture digests, predicted/observed provenance,
+call counts and unchanged target-effect assertions as required artifacts.
+No paid calls, new standalone simulator or workflow mutation in this design.
