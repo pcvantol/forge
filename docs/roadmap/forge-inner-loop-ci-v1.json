@@ -72,7 +72,10 @@
       "source_and_wheel_identity",
       "fixture_contract_identity",
       "redacted_stage_trace",
-      "request_counts"
+      "request_counts",
+      "mission_effect_and_output_matrix",
+      "target_effect_observations",
+      "criterion_artifact_and_control_bindings"
     ]
   },
   "scenarios": [
@@ -171,6 +174,78 @@
       "name": "storage_and_installed_identity_fail_closed",
       "required": true,
       "status": "PLANNED"
+    },
+    {
+      "id": "FIE-17",
+      "name": "read_only_report_completion",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-18",
+      "name": "documentation_only_completion",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-19",
+      "name": "architecture_design_only_completion",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-20",
+      "name": "explicit_effect_scope_admission",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-21",
+      "name": "forbidden_effects_and_artifact_escape",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-22",
+      "name": "report_evidence_missing_stale_or_tampered",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-23",
+      "name": "no_change_result_is_not_missing_work",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-24",
+      "name": "effect_specific_validation_and_assurance",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-25",
+      "name": "effect_mode_restart_and_ambiguous_recovery",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-26",
+      "name": "contained_successor_after_read_only_or_design",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-27",
+      "name": "governed_effect_expansion",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FIE-28",
+      "name": "producer_capability_and_public_route_parity",
+      "required": true,
+      "status": "PLANNED"
     }
   ],
   "nodes": [
@@ -182,7 +257,8 @@
       "depends_on": [],
       "completion_evidence": [
         "Producer-pinned wire fixtures and independent validation",
-        "All required scenarios bound to concrete assertions"
+        "All required scenarios bound to concrete assertions",
+        "Effect/output modes and FIE-17..28 requirements derived from qualified producer schemas, not invented fields"
       ]
     },
     {
@@ -195,7 +271,8 @@
       ],
       "completion_evidence": [
         "Site-packages identity and explicit temporary data root",
-        "Boundary-only LLM/OS fixtures and bounded cleanup"
+        "Boundary-only LLM/OS fixtures and bounded cleanup",
+        "Independent target effect observations, protected fixture and isolated owned evidence/scratch storage"
       ]
     },
     {
@@ -208,7 +285,8 @@
       ],
       "completion_evidence": [
         "Actual adapter HTTP serialization and authenticated scopes",
-        "Independent accepted-request/receipt/artifact ledger with failure injection"
+        "Independent accepted-request/receipt/artifact ledger with failure injection",
+        "Producer-qualified read-only/report and docs/design delivery fixtures with counted mutation attempts"
       ]
     },
     {
@@ -222,7 +300,8 @@
       ],
       "completion_evidence": [
         "Real Candidate revision through dual approval, allocator and zero-Action intake",
-        "Public runtime and verifier complete from serialized fixture evidence"
+        "Public runtime and verifier complete from serialized fixture evidence",
+        "All four Mission effect/output modes complete through public services with required FME evidence"
       ]
     },
     {
@@ -235,7 +314,8 @@
       ],
       "completion_evidence": [
         "B only from current reconciled evidence after actual process restart",
-        "Same instance and immutable history with no duplicate dispatch"
+        "Same instance and immutable history with no duplicate dispatch",
+        "Per-mode constraints, source/artifact references and counters survive fresh-process recovery"
       ]
     },
     {
@@ -248,7 +328,8 @@
       ],
       "completion_evidence": [
         "Ambiguous transport and terminal-without-evidence fail closed",
-        "Permission, scope, stale identity and budgets are not mocked away"
+        "Permission, scope, stale identity and budgets are not mocked away",
+        "Unauthorized effect expansion, missing reports and wrong mode-specific controls block completion"
       ]
     },
     {
@@ -262,8 +343,100 @@
       ],
       "completion_evidence": [
         "PR/main required qualification fails on absent/skipped/failed mandatory tests",
-        "Same installed suite reused for local/release with exact artifact and scenario reports"
+        "Same installed suite reused for local/release with exact artifact and scenario reports",
+        "FIE-01..28 and all required mode variants are merge-blocking; unsupported/skipped positives never claim full support"
       ]
     }
-  ]
+  ],
+  "mission_effects_extension": {
+    "source_pin": "2ff27234ca95b1f94c7235cc7ce12244b9cd8f69",
+    "status": "PLANNED_NOT_RUNTIME_QUALIFIED",
+    "modes": [
+      "READ_ONLY_ASSESSMENT",
+      "DOCUMENTATION_ONLY",
+      "ARCHITECTURE_DESIGN_ONLY",
+      "BOUNDED_REPOSITORY_CHANGE"
+    ],
+    "scenario_ids": [
+      "FIE-17",
+      "FIE-18",
+      "FIE-19",
+      "FIE-20",
+      "FIE-21",
+      "FIE-22",
+      "FIE-23",
+      "FIE-24",
+      "FIE-25",
+      "FIE-26",
+      "FIE-27",
+      "FIE-28"
+    ],
+    "explicit_empty_writes_supported_target": true,
+    "missing_effect_policy_is_empty_scope": false,
+    "read_only_forbids_owned_evidence_persistence": false,
+    "advisory_chat_is_formal_read_only_mission": false,
+    "read_only_requires_new_commit_or_pr": false,
+    "unchanged_source_revision_can_be_valid_provenance": true,
+    "no_change_without_required_result_is_success": false,
+    "clean_diff_alone_proves_read_only": false,
+    "design_completion_authorizes_implementation": false,
+    "mode_change_resets_budget": false,
+    "mock_can_invent_terminal_v12_fields": false,
+    "effective_validation_and_reviews_required": true,
+    "per_criterion_artifact_evidence_required": true,
+    "new_modes_use_same_public_lifecycle": true,
+    "requirements": [
+      {
+        "id": "FME-ADMISSION",
+        "owner": "forge",
+        "status": "SOURCE_GAP_OBSERVED",
+        "evidence": [],
+        "required_for": [
+          "FIE-17",
+          "FIE-19",
+          "FIE-20",
+          "FIE-27"
+        ],
+        "requirement": "Qualify public effect-aware admission/planning with explicit empty writes and no dummy permissions."
+      },
+      {
+        "id": "FME-PRODUCER",
+        "owner": "engineering-platform",
+        "status": "REQUIRED_EVIDENCE_UNVERIFIED",
+        "evidence": [],
+        "required_for": [
+          "FIE-17",
+          "FIE-18",
+          "FIE-19",
+          "FIE-20",
+          "FIE-21",
+          "FIE-22",
+          "FIE-23",
+          "FIE-24",
+          "FIE-25",
+          "FIE-26",
+          "FIE-27",
+          "FIE-28"
+        ],
+        "requirement": "Use actual producer-qualified effect/result schema and report evidence; no protocol invention, peer implementation allocation or full programme prerequisite."
+      },
+      {
+        "id": "FME-COMPLETION",
+        "owner": "forge",
+        "status": "REQUIRED_EVIDENCE_UNVERIFIED",
+        "evidence": [],
+        "required_for": [
+          "FIE-17",
+          "FIE-18",
+          "FIE-19",
+          "FIE-22",
+          "FIE-23",
+          "FIE-24",
+          "FIE-25",
+          "FIE-26"
+        ],
+        "requirement": "Verify source-bound report/artifact criteria and applicable controls; no forced repository change or declaration-only success."
+      }
+    ]
+  }
 }

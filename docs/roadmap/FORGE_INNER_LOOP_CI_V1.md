@@ -40,6 +40,37 @@ implemented fixture/contract validation, not this design alone. The JSON is not
 a Mission/Action plan or permission to mutate a live runtime. No console graph
 is extended and no peer repository work is allocated.
 
+## Read-only, documentation and design support closure
+
+The existing seven-node DAG now includes FIE-17..FIE-28, not a second Mission
+engine or separate test lane. The [effects/output contract](../architecture/FORGE_INNER_LOOP_CI_INTEGRATION_V1.md#mission-effects-and-deliverable-modes--2026-09-12-extension)
+is an explicit part of FCI-FLOW/RESTART/NEGATIVE/CI acceptance.
+
+| Requirement | Owner | Current evidence / required closure |
+| --- | --- | --- |
+| FME-ADMISSION | Forge | SOURCE_GAP_OBSERVED at 2ff27234ca95b1f94c7235cc7ce12244b9cd8f69: public _admission_contract rejects empty write_scopes. Qualify effect-aware public approval/intake/planning with explicit empty writes, valid read scope and no authority weakening. |
+| FME-PRODUCER | EP producer; Forge consumes | REQUIRED_EVIDENCE_UNVERIFIED: prove the actual supported effect/result schema and read-only execution/report contract. No unqualified mock fields or simulated producer claims; any necessary EP change stays EP-owned. |
+| FME-COMPLETION | Forge | REQUIRED_EVIDENCE_UNVERIFIED: qualify durable useful non-Git reports, unchanged-source provenance, per-criterion evidence and mode-appropriate review/delivery without a forced PR/commit. |
+
+These are scoped evidence requirements, not newly allocated peer work or executed
+repairs. Reuse current implementation where exact qualification exists. The
+known admission issue must be fixed through the normal owning product route,
+not patched inside a fixture. The producer requirement gates only affected new
+positive cases; it is not an added prerequisite for unrelated existing write
+scenarios or the current live canary. The expanded complete-suite claim still
+requires every mandatory family: fail/unsupported/skip cannot count as support.
+
+FCI-CONTRACT defines effects, output and control applicability with real schemas;
+FCI-HARNESS independently observes target effects and segregates owned scratch;
+FCI-EP supplies only qualified serialized report/delivery outcomes;
+FCI-FLOW qualifies all four modes through real Candidate-to-completion services;
+FCI-RESTART preserves them and artifacts through fresh processes;
+FCI-NEGATIVE exercises escalation, unauthorized writes and insufficient evidence;
+FCI-CI makes the complete mode/scenario matrix a blocking result with artifacts.
+No code/test changes are silently permitted by a documentation/design label.
+An assessed no-change result differs from missing work and from write-mode no-op.
+Report-only advice in a chat does not substitute for the formal read-only Mission.
+
 ## Acceptance and resumption
 
 FCI-FLOW must start with an actual Candidate from its owning public lifecycle,
@@ -48,7 +79,7 @@ revision/criteria lineage through canonical approvals, allocator and intake.
 If the inspected product lacks a public connection between these stages,
 record that bounded product gap and qualify its fix; do not silently bypass it.
 
-Full delivery requires all FIE-01..FIE-16 families, real installed imports,
+Full delivery requires all FIE-01..FIE-28 families, real installed imports,
 process restart and serialized EP HTTP evidence. A controlled LLM fixture is
 expected for deterministic CI; production planning/validation/reconciliation
 remain real. No real provider login/cost, EP server or GitHub mutation is needed.

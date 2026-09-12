@@ -111,6 +111,101 @@ need not be downloaded while the scenario is running. An attempted escape is a
 FAILED test, not a skip. Clean up only owned processes/ports/temp roots on every
 exit. Nothing from the suite may be imported as live runtime qualification.
 
+## Mission effects and deliverable modes — 2026-09-12 extension
+
+The suite must also qualify read-only/no-repository-change, documentation-only
+and architecture/design-only Missions end to end. These are outcomes and effect
+constraints on the SAME Mission lifecycle, not separate engines. Task names or
+file extensions do not grant authority or establish runtime support.
+
+Additional inspected source: `2ff27234ca95b1f94c7235cc7ce12244b9cd8f69`.
+In [dynamic_mission.py](../../forge/runtime/dynamic_mission.py),
+`_admission_contract` currently rejects an empty `planning.write_scopes` value;
+`_repository_truth` and `_completion_evidence` use repository-provenance evidence.
+These are concrete integration seams to qualify, not justification for dummy
+write rights or fake commits. A repository revision may legitimately be unchanged
+and still identify the analyzed source. This observation is not an EP producer
+or installed read-only capability audit. Recheck both owners before implementing.
+
+### Effects, outputs and acceptance
+
+An approved Mission must distinguish read scope, permitted effects, delivery
+location and required evidence. Carry them through Candidate refinement,
+separate approvals, intake, each derived Action, the admitted EP request and
+completion. The names below are test-contract terms, not newly shipped enums.
+
+| Mode | Target effects | Required result / acceptance |
+| --- | --- | --- |
+| READ_ONLY_ASSESSMENT | Explicit empty repository write scope; no target writes, commits, refs, PRs or remote mutations | Durable report/artifact and terminal evidence bound to analyzed source, questions/criteria, Action and execution identity; source revision may stay unchanged. |
+| DOCUMENTATION_ONLY | Only approved document/artifact paths and effects | Required document content, provenance, link/schema consistency and applicable review/delivery; no product/test/config mutation unless explicitly included in approved scope. |
+| ARCHITECTURE_DESIGN_ONLY | Only approved ADR, design, diagram or roadmap artifacts; or evidence-only delivery when explicitly read-only | Alternatives, boundaries, decisions/open questions and design criteria evidenced; design approval applies to the exact revision where required, not to future code. |
+| BOUNDED_REPOSITORY_CHANGE | Explicit approved code/tests/config/other Git-asset scope | Existing implementation scenarios plus artifact-appropriate validation and delivery; no assumption that every useful result is executable code. |
+
+Read-only is relative to the authorized target, not a prohibition on recording
+Forge/EP state, audit or result artifacts in their OWN stores. Authorized scratch
+work is isolated outside the protected target, bounded and cleaned by its owner;
+it cannot become a target-write exemption. A report committed into the target
+repository is a write and needs approved paths, even when the work is called an
+audit. Own-store output locations require access checks, redaction, digests and
+retention; they must not escape through a path or symlink into the target.
+
+Empty write scope must mean explicit no-target-write authority, not missing
+configuration, wildcard access or failed initialization. Missing/malformed effect
+policy is rejected. Empty writes do not remove required read scope, source identity,
+provider/execution authority, controls or budgets. Never seed a Mission directly,
+add a harmless README write, or reinterpret an IMPLEMENTATION/no-op response to
+get a read-only positive case past the real public admission boundary.
+
+Validation/review requirements are resolved before execution from the actual
+approved outcome/risk/profile. Documentation and designs need meaningful content,
+consistency and security checks where applicable, not an arbitrary application
+build solely to obtain a green result. Conversely a documentation label cannot
+suppress required checks, disguise executable assets or turn skipped/unknown
+controls into PASS. Retain actual per-control applicability and review evidence.
+Existing required Quality/Security criteria cannot be disabled by the test.
+
+### Evidence-only completion and containment
+
+A real read-only Mission still runs Candidate -> approvals -> zero-Action intake
+-> dynamically derived assessment Action -> real Forge HTTP adapter -> simulated
+EP execution/report -> verified immutable evidence -> reconciliation -> completion.
+An advisory chat without a Mission is valid elsewhere but cannot substitute for
+this test. No PR, new commit, repository diff or merge-SHA is required unless the
+approved delivery contract requires one. Do not forge those fields for schema
+convenience. Preserve source revision as provenance, including detached snapshots.
+
+A process exit, clean repository or generic COMPLETE receipt alone proves neither
+an assessment nor its conclusions. Require retrievable artifact bytes/digest,
+source and request/run/Action binding, fulfilled research/design/content criteria
+and applicable assurance. Missing, empty-useless, corrupt, stale or unrelated
+results cannot complete a Mission. An evidenced finding that no change is needed
+can satisfy explicitly defined criteria; absence of work/output cannot. A qualified
+write-mode no-op remains its own outcome, not a retroactive read-only authority.
+
+All valid and invalid results use producer-owned versioned schemas. If current EP
+contracts cannot express the chosen effects and evidence-only terminal result,
+record the exact EP capability/version requirement and deny that scenario until
+the real producer contract is qualified. Do not teach the simulator a made-up
+v1.2 field, silently weaken its schema, or import EP internals. Only a separately
+qualified version/extension may evolve the producer contract; existing v1.2 cases
+retain compatibility. Forge's consumer verifier and completion logic stay real.
+
+Assert effects independently of the provider's self-report: preserve before/after
+source revision, refs, index, tracked bytes and relevant ordinary untracked/ignored
+target content; monitor attempted target writes and remote mutation requests.
+Separate permitted owned runtime/scratch paths explicitly. A clean diff alone
+misses an untracked write or a write reverted before the end. In CI, combine the
+protected fixture/sandbox, command/network interception and independent EP-mock
+ledger with these snapshots. This qualifies Forge containment/consumption, not a
+universal proof of an actual EP sandbox: real EP enforcement remains EP-owned.
+
+An unmet approved criterion may produce a further read-only or scoped document/
+design Action after reconciliation and restart. It must keep the same allowed
+effects. A finding or finished design does NOT authorize fixing code or building
+an installer. Applying a report to Git or widening into implementation requires
+an explicit owning governance amendment/new approved scope, current provenance
+and authority, never a mode-label change or reset of consumed budgets.
+
 ## Mandatory scenario inventory
 
 Each ID is a test family; identity/error combinations are parameterized. The
@@ -135,6 +230,18 @@ collection of separately green unit tests.
 | FIE-14 | Duplicate/stale/out-of-order readback and repeated resume are idempotent; two concurrent starters cannot both dispatch the same immutable Action. |
 | FIE-15 | New-process recovery at post-intake, post-materialization/pre-send, accepted/pre-local-ack, post-reconciliation/pre-successor and completed boundaries. Same instance, records and budgets; no shadow DB. |
 | FIE-16 | Schema/marker/runtime or installed module mismatch and storage unavailable fail closed. Errors retain useful secret-free diagnostics; no replacement instance is initialized. |
+| FIE-17 | Full Candidate-to-completion READ_ONLY_ASSESSMENT with explicit empty writes, real dynamic Action/HTTP path, durable useful report and unchanged target. No fake commit/PR/merge; actual assessment execution/report trace. |
+| FIE-18 | Full DOCUMENTATION_ONLY delivery changes only approved docs/artifacts and satisfies content/link/schema and applicable review criteria; implementation, tests and unrelated config remain untouched. |
+| FIE-19 | Full ARCHITECTURE_DESIGN_ONLY delivery with alternatives/boundaries and exact design-revision review; diagram/ADR/roadmap artifacts meet criteria, no implementation successor after completion. Include evidence-only and approved Git-output variants. |
+| FIE-20 | Explicit empty writes plus valid read scope/policy is admissible for read-only; missing/malformed effects, hidden writes or a provider proposing broader effects are rejected before dispatch. No dummy write scope. |
+| FIE-21 | Attempted target/remote write, untracked or ignored-file mutation, reverted write, scratch/report path or symlink escape cannot be accepted as read-only. Distinguish prevention, observed violation and unverified enforcement. |
+| FIE-22 | Missing/useless report, wrong digest/source/revision/request/run/Action or irrelevant criterion evidence blocks completion. Valid same-source-revision evidence may pass; no mandatory new commit. |
+| FIE-23 | Evidence-backed no-change conclusion satisfies defined assessment criteria; empty execution, unsupported action, decline or generic no-op without required report does not. Write-mode no-op never changes the admitted effect mode. |
+| FIE-24 | Correct per-mode controls/reviews applied and recorded. Wrong/stale profile, missing mandatory review or skipped required control fails; unnecessary code-build demands do not replace document/design acceptance. |
+| FIE-25 | New-process reopen for each mode after acceptance/result persistence/completion retains effects, report/delivery refs, same instance and counters; lost acknowledgements never duplicate execution, uploads or publication. |
+| FIE-26 | A leaves an actual criterion unmet; B is derived only from current verified evidence, keeps empty/narrow writes and history after restart. Optional codefix/design implementation is rejected; all criteria met means no B. |
+| FIE-27 | Read-only-to-Git report or design-to-implementation request without current scope approval fails. Explicit owning amendment may authorize only its exact new effects; preserve old records, rebind required evidence and retain consumed allowances. |
+| FIE-28 | Unsupported effect/result contract blocks honestly before unsafe dispatch; only producer-pinned fixtures pass. Real public service path is tested, and qualified HTTP/CLI slices later preserve semantics with HTTP-only EP interaction; no peer import/CLI/inbox shortcut. |
 
 Named budgets in tests must come from the applicable production policy and
 fixture authorization. Do not invent an end-to-end budget guard that production
@@ -167,6 +274,13 @@ collection error or setup failure is NOT PASS. Report RUNNING/WAITING as such;
 reaching the provider or EP POST is not completion. Preserve failures across
 attempts and let CI's exit code reflect them; no continue-on-error success gate.
 
+The scenario manifest must report all 28 families and their required mode variants.
+Publish the effect mode, approved write scope, output kind/location, applicable
+profile, verified artifact references, target-effect observations and completion
+reason per case. Unsupported positive modes remain NOT_QUALIFIED, never optional
+skips. Existing narrower tests can retain their historical PASS, but cannot claim
+the expanded FORGE_INNER_LOOP_CI_PASS. No product implementation is activated here.
+
 Before marking CI integration delivered, wire the job into the protected merge
 route (direct required check or a required aggregate depending on it) and prove
 a deliberately failed required scenario blocks qualification. Do not weaken or
@@ -177,7 +291,7 @@ release, real GitHub mutation or wheel reinstall on the user's machine.
 
 Coverage measures real Forge production code, not the simulator. Reuse governing
 coverage contracts and report the included/unmeasured modules; high coverage
-cannot replace FIE-01..16 scenario completion. Browser/Playwright Console tests,
+cannot replace FIE-01..28 scenario completion. Browser/Playwright Console tests,
 real EP producer qualification, OS installation/auth tests and live canaries are
 separate complementary layers, not substitutes for this suite.
 
