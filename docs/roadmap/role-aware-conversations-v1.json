@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "increment": "ROLE_AWARE_CONVERSATIONS_V1",
+  "contract_target_version": 1,
+  "authority": "DOCUMENTARY_ONLY",
+  "executable": false,
+  "first_canary_prerequisite": false,
+  "advisor_kinds": [
+    "BUSINESS",
+    "ARCHITECTURE",
+    "UX"
+  ],
+  "invariants": {
+    "CHAT_TRANSCRIPT_IS_AUTHORITY": false,
+    "ADVISOR_KIND_IS_AUTHORIZATION_ROLE": false,
+    "UX_REVIEW_REQUIRED_FOR_EVERY_MISSION": false,
+    "CHAT_DIRECT_REPOSITORY_MUTATION": false,
+    "CHAT_CREATES_EXECUTION_AUTHORITY": false,
+    "ROLE_CHAT_REQUIRED_FOR_FIRST_CANARY": false
+  },
+  "scenario_ids": [
+    "RC-T01",
+    "RC-T02",
+    "RC-T03",
+    "RC-T04",
+    "RC-T05",
+    "RC-T06",
+    "RC-T07",
+    "RC-T08",
+    "RC-T09",
+    "RC-T10",
+    "RC-T11",
+    "RC-T12",
+    "RC-T13",
+    "RC-T14",
+    "RC-T15",
+    "RC-T16",
+    "RC-T17",
+    "RC-T18",
+    "RC-T19",
+    "RC-T20"
+  ],
+  "deferred_scenario_ids": [
+    "RC-T18"
+  ],
+  "owner": "Forge",
+  "parent_reference": "F6",
+  "parent_relationship": "PRODUCTIZATION_REFINEMENT_NOT_EXECUTION_EDGE",
+  "architecture": "docs/architecture/ROLE_AWARE_CONVERSATIONS_V1.md",
+  "roadmap": "docs/roadmap/ROLE_AWARE_CONVERSATIONS_V1.md",
+  "peer_graph": "pcvantol/workspace:docs/ROLE_AWARE_CONVERSATIONS_V1_DAG.json",
+  "external_predecessors": {
+    "F2_API_SUBSET": {
+      "owner": "Forge",
+      "reference": "F2",
+      "required_contract": "Authenticated project-scoped versioned query/intent/event service with idempotency and expected revisions; not full F2 closure."
+    }
+  },
+  "nodes": [
+    {
+      "id": "RC-FC",
+      "title": "Conversation/session/proposal contracts",
+      "status": "PLANNED",
+      "predecessors": [],
+      "external_predecessors": [],
+      "qualification": [
+        "Typed envelopes",
+        "Advisor versus principal authority",
+        "Shared fixtures"
+      ]
+    },
+    {
+      "id": "RC-FS",
+      "title": "Durable sessions and permission-filtered context",
+      "status": "PLANNED",
+      "predecessors": [
+        "RC-FC"
+      ],
+      "external_predecessors": [
+        "F2_API_SUBSET"
+      ],
+      "qualification": [
+        "Restart/cursor readback",
+        "Idempotency",
+        "Retention/access isolation"
+      ]
+    },
+    {
+      "id": "RC-FA",
+      "title": "Three bounded advisor profiles",
+      "status": "PLANNED",
+      "predecessors": [
+        "RC-FS"
+      ],
+      "external_predecessors": [],
+      "qualification": [
+        "Business/Architecture/UX request-result qualification",
+        "No blind retry or fan-out",
+        "Forge-local provider policy"
+      ]
+    },
+    {
+      "id": "RC-FP",
+      "title": "Governed proposals and handoff",
+      "status": "PLANNED",
+      "predecessors": [
+        "RC-FA"
+      ],
+      "external_predecessors": [],
+      "qualification": [
+        "Version-bound apply and decision receipts",
+        "No direct Git writer",
+        "Existing Candidate/intake route"
+      ]
+    },
+    {
+      "id": "RC-FQ",
+      "title": "Integrated service qualification",
+      "status": "PLANNED",
+      "predecessors": [
+        "RC-FP"
+      ],
+      "external_predecessors": [],
+      "qualification": [
+        "RC-T01..RC-T17 and RC-T20",
+        "Real Forge services with external provider/EP fixtures",
+        "New executable components >80% coverage plus critical negatives"
+      ]
+    }
+  ]
+}
