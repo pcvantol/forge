@@ -1,0 +1,235 @@
+{
+  "schema_version": "1.0",
+  "capability": "FORGE::OPERATIONS_CONSOLE_V1",
+  "owner": "forge",
+  "authority": "DOCUMENTARY",
+  "status": "PLANNED",
+  "priority_lane": "POST_AUTONOMY",
+  "executable": false,
+  "authorizes_execution": false,
+  "first_e2e_prerequisite": false,
+  "parent_graph": "docs/roadmap/forge-console-admin-parity-v1.json",
+  "architecture": "docs/architecture/FORGE_CONSOLE_HOSTING_AND_CENTRAL_V1.md",
+  "scoped_roadmap": "docs/roadmap/FORGE_CONSOLE_HOSTING_V1.md",
+  "source_pins": {
+    "forge": "5004cdb028dbbcff6e7ae180628c4711aaa48edf",
+    "engineering-platform": "2cf0415c31699875eb894547b5319fc2102edc7a",
+    "forge-platform": "cb6a10a4ffca90e2b689af62349da2075fe47a77"
+  },
+  "service_components": [
+    "forge_server",
+    "operations_console",
+    "dashboard_relay"
+  ],
+  "supervision": {
+    "owner": "launchd",
+    "console_relationship": "PRODUCT_SUBORDINATE_SEPARATE_JOB",
+    "double_supervision_allowed": false,
+    "system_mode": "EXPLICIT_NON_ROOT_LAUNCHDAEMONS",
+    "user_mode": "EXPLICIT_SEPARATE_DEVELOPMENT_PROFILE"
+  },
+  "required_component_roles": [
+    "forge_server",
+    "operations_console",
+    "dashboard_relay",
+    "platform_database",
+    "mission_dispatcher",
+    "planning_provider",
+    "codex_runtime",
+    "python_runtime",
+    "ep_peer",
+    "http_ingress",
+    "cli_ingress",
+    "operational_logging",
+    "tailscale_access"
+  ],
+  "relay": {
+    "required_v1_deliverable": true,
+    "activation": "EXPLICIT_OPT_IN",
+    "port": "FORGE_OWNED_CONSOLE_PORT",
+    "listener": "QUALIFIED_TAILNET_ADDRESS_ONLY",
+    "upstream": "EXACT_LOCAL_FORGE_CONSOLE",
+    "wildcard_fallback_allowed": false,
+    "ep_relay_reused": false,
+    "public_funnel_allowed": false,
+    "tailnet_membership_is_admin_authority": false,
+    "remote_end_to_end_probe_required": true,
+    "unused_relay_blocks_local_operation": false
+  },
+  "central": {
+    "existing_database": "forge.db",
+    "existing_resolver": "DataRootResolver",
+    "independent_of_ep": true,
+    "rename_or_migration_required": false,
+    "console_direct_sql_allowed": false,
+    "relay_owns_durable_state": false,
+    "service_root_is_explicit": true,
+    "service_home_fallback_allowed": false,
+    "relocation_repoints_all_owned_root_references": true
+  },
+  "restart": {
+    "backend_allowlist_required": true,
+    "expected_identity_and_revision_required": true,
+    "durable_operation_id_required": true,
+    "safe_boundary_required": true,
+    "same_runtime_readback_required": true,
+    "restarts_repeat_provider_generation": false,
+    "restart_is_upgrade": false,
+    "restart_resets_budget": false,
+    "controls_ep_or_tailscale_service": false
+  },
+  "inherited_contracts": [
+    "FCP-DESIGN",
+    "FCP-I18N",
+    "FCP-CI",
+    "FCP-PAIR-CONTRACT",
+    "FC-STATE",
+    "FC-CODEX",
+    "FC-PYTHON",
+    "FC-RELOCATE"
+  ],
+  "external_prerequisites": {
+    "FSH-SERVICES": [
+      "FC-STATE",
+      "FC-CODEX",
+      "FC-PYTHON"
+    ],
+    "FSH-DETAILS": [
+      "FCP-DESIGN",
+      "FCP-I18N"
+    ],
+    "FSH-Q": [
+      "FCP-CI",
+      "FC-RELOCATE"
+    ]
+  },
+  "workspace_replaced": false,
+  "work_packages": [
+    {
+      "id": "FSH-CENTRAL",
+      "title": "Reuse canonical Forge CENTRAL",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-5"
+      ],
+      "completion_evidence": [
+        "Reuse forge.db/resolver and explicit installed root, no reset or second authority",
+        "Service-account root binding and same-instance data-operation readback"
+      ]
+    },
+    {
+      "id": "FSH-COMPONENTS",
+      "title": "Canonical component and service registry",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-3"
+      ],
+      "completion_evidence": [
+        "All declared roles including disabled/missing components mapped to one registry",
+        "Typed process/logical/peer identities and backend-owned allowed actions"
+      ]
+    },
+    {
+      "id": "FSH-SERVICES",
+      "title": "Installed Server and Console service lifecycle",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FSH-CENTRAL",
+        "FSH-COMPONENTS"
+      ],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-5"
+      ],
+      "completion_evidence": [
+        "Distinct Forge-owned launchd jobs with one supervisor and fixed installed entrypoints",
+        "Actual account/secret/session readiness, boot/logout and conflict readback"
+      ]
+    },
+    {
+      "id": "FSH-RELAY",
+      "title": "Forge-owned Tailnet Console relay",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FSH-SERVICES"
+      ],
+      "delivered_by": [
+        "FOC-1",
+        "FOC-3",
+        "FOC-5"
+      ],
+      "completion_evidence": [
+        "Own service/port, restricted Tailnet binding and authenticated remote path",
+        "Second-client probe, opt-in, outage/port-conflict and reconnect qualification"
+      ]
+    },
+    {
+      "id": "FSH-DETAILS",
+      "title": "All-component status and detail modals",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FSH-COMPONENTS"
+      ],
+      "delivered_by": [
+        "FOC-1",
+        "FOC-2",
+        "FOC-3"
+      ],
+      "completion_evidence": [
+        "Registry-to-view/detail completeness, unavailable/stale states and safe diagnostics",
+        "Five-language/two-theme keyboard/touch modals and disabled-action reasons"
+      ]
+    },
+    {
+      "id": "FSH-RESTART",
+      "title": "Guarded durable component restart",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FSH-SERVICES",
+        "FSH-RELAY",
+        "FSH-DETAILS"
+      ],
+      "delivered_by": [
+        "FOC-3",
+        "FOC-5",
+        "FOC-6"
+      ],
+      "completion_evidence": [
+        "Quiesce/handoff/reconnect/readback with idempotent operation and exact identity",
+        "No new generation, EP submission, authority extension, budget reset or peer control"
+      ]
+    },
+    {
+      "id": "FSH-Q",
+      "title": "Installed hosting and remote administration qualification",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FSH-CENTRAL",
+        "FSH-RELAY",
+        "FSH-DETAILS",
+        "FSH-RESTART"
+      ],
+      "delivered_by": [
+        "FOC-Q"
+      ],
+      "completion_evidence": [
+        "Real macOS services and second-host Tailnet acceptance, separate backend/frontend coverage",
+        "Reboot/relocation/negative recovery proof with same runtime and preserved Mission/evidence"
+      ]
+    }
+  ]
+}
