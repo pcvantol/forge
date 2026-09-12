@@ -4,6 +4,32 @@
 
 This is Forge's canonical strategic roadmap. Roadmap presence does not authorize execution; bounded Engineering Intents/Missions and governance remain required. Forge evolves capability-first while preserving repository-first knowledge, human governance and execution-host independence.
 
+## Forge Operations Console — planned instance administration
+
+`FORGE::OPERATIONS_CONSOLE_V1` is a future minimal operational dashboard for
+one Forge Server instance, organized comparably to the EP Operations Console:
+**Local host components, Logs, Configuration, Active Missions and Historical
+Missions**. Its [architecture](../../docs/architecture/FORGE_OPERATIONS_CONSOLE_V1.md),
+[scoped roadmap](../../docs/roadmap/FORGE_OPERATIONS_CONSOLE_V1.md) and
+[documentary DAG](../../docs/roadmap/forge-operations-console-v1.json) define
+read-only projections, controlled configuration and safe pause/resume requests
+through Forge-owned application services. Forge remains headless without it.
+
+Priority is `POST_AUTONOMY`; all eight FOC nodes remain **PLANNED**. Contracts
+FOC-0 precede read APIs FOC-1 and the authenticated shell FOC-2; their joint
+consumers are host/logs FOC-3, Missions FOC-4 and configuration FOC-5. FOC-6 adds
+guarded controls after Mission views; FOC-Q qualifies the integrated installed
+console. The JSON records the exact dependencies. This feature is not a new
+first-E2E prerequisite and changes no executable bootstrap graph or live Mission.
+
+This is instance administration, not a revival of Forge Studio or a replacement
+for Workspace's project, Mission-authoring, approval, chat and policy UX.
+EP retains execution/assurance/Git mutation; Forge Platform retains installation
+and host-process lifecycle. The browser owns neither planning nor execution,
+has no direct database access, and cannot turn logs, cached status or a save
+acknowledgement into canonical evidence or authority. Implementation, qualification
+and deployment require later bounded work; this record authorizes none of them.
+
 ## Project Hygiene and Repository Reconciliation — documented target
 
 `FORGE::PROJECT_HYGIENE_AND_REPOSITORY_RECONCILIATION_V1` extends Project
