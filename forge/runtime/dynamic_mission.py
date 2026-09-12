@@ -23,6 +23,7 @@ from forge.intake import MissionIntake
 from forge.models.action import EngineeringAction
 from forge.models.action_derivation import DerivationPolicy, GovernanceRefinementRequired
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.execution_host import ExecutionDispatch, ExecutionEvidenceOutcome, ExecutionHostEvidence
 from forge.models.mission_completion import (
     CanonicalExecutionEvidenceReference,
     MissionCompletionEvidence,
@@ -293,6 +294,142 @@ class InstalledDynamicMissionRuntime:
             reason="terminal_evidence_reconciliation_requested",
         )
         return self._tick(mission_id)
+
+    def reconcile_completed_terminal_evidence(self, mission_id: str) -> DynamicMissionRunResult:
+        """Close one historical, partially-persisted terminal reconciliation.
+
+        This is deliberately narrower than normal ``resume`` and never
+        dispatches an Action.  It exists for the rollout ordering where an
+        already complete, host-proven Action and Forge completion evaluation
+        were persisted before durable EP timing became a completion invariant.
+        The method accepts only that exact ACTIVE, all-Actions-complete shape,
+        rereads the original authenticated EP dispatch once, and replaces the
+        timing-less evidence with the exact verified evidence before making the
+        sole allowed ACTIVE -> COMPLETED transition.
+        """
+        self._assert_single_resumable(mission_id)
+        loop = self._loop(mission_id)
+        service = ForgeRuntimeService(loop, self.states, runtime_database=self.database)
+        with service.mutation_lock.acquire():
+            state = self.states.get(mission_id)
+            dispatch, action_id, correlation_id = self._completed_evidence_recovery_context(state)
+            self.database.record_operational_event(
+                component="forge_mission_runtime", level="INFO",
+                event="completed_terminal_evidence_reconciliation_requested",
+                mission_id=mission_id, action_id=action_id, correlation_id=correlation_id,
+                run_id=dispatch.host_run_id,
+                details={
+                    "operation": "completed_terminal_evidence_reconciliation",
+                    "outcome": "requested", "previous_state": state.status.value,
+                    "lifecycle": "mission", "result_state": "COMPLETE",
+                },
+            )
+            try:
+                self.preflight()
+                evidence = self.host.retrieve_evidence(dispatch)
+                if evidence is None:
+                    raise InstalledDynamicMissionError("EP terminal evidence is not available for the persisted dispatch")
+                evidence_document = self._execution_evidence_document(evidence)
+                self._assert_completed_evidence_recovery_match(state.execution_evidence, evidence_document)
+                if evidence.outcome is not ExecutionEvidenceOutcome.COMPLETE:
+                    raise InstalledDynamicMissionError("EP terminal evidence is not a complete result")
+                completed = self.states.transition(
+                    mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self.clock(),
+                    reason="completed_terminal_evidence_reconciled", execution_evidence=evidence_document,
+                )
+            except Exception as error:
+                self.database.record_operational_event(
+                    component="forge_mission_runtime", level="ERROR",
+                    event="completed_terminal_evidence_reconciliation_rejected",
+                    mission_id=mission_id, action_id=action_id, correlation_id=correlation_id,
+                    run_id=dispatch.host_run_id,
+                    details={
+                        "operation": "completed_terminal_evidence_reconciliation",
+                        "outcome": "rejected", "previous_state": state.status.value,
+                        "reason_code": "terminal_evidence_recovery_rejected",
+                        "failure_code": type(error).__name__.upper(),
+                    },
+                )
+                if isinstance(error, InstalledDynamicMissionError):
+                    raise
+                raise InstalledDynamicMissionError(
+                    "completed terminal evidence reconciliation was rejected"
+                ) from error
+            self.database.record_operational_event(
+                component="forge_mission_runtime", level="INFO",
+                event="completed_terminal_evidence_reconciled",
+                mission_id=mission_id, action_id=action_id, correlation_id=correlation_id,
+                run_id=dispatch.host_run_id,
+                details={
+                    "operation": "completed_terminal_evidence_reconciliation",
+                    "outcome": "accepted", "previous_state": state.status.value,
+                    "new_state": completed.status.value, "lifecycle": "mission",
+                    "result_state": "COMPLETE",
+                },
+            )
+            return self._result(completed)
+
+    @staticmethod
+    def _execution_evidence_document(evidence: ExecutionHostEvidence) -> dict[str, Any]:
+        document = asdict(evidence)
+        document["outcome"] = evidence.outcome.value
+        return document
+
+    @staticmethod
+    def _assert_completed_evidence_recovery_match(
+        persisted: Mapping[str, Any] | None, observed: Mapping[str, Any],
+    ) -> None:
+        if not isinstance(persisted, Mapping):
+            raise InstalledDynamicMissionError("Mission lacks persisted terminal evidence")
+        timing = ("execution_started_at", "execution_completed_at", "execution_duration_ms")
+        if any(persisted.get(field) is not None for field in timing):
+            raise InstalledDynamicMissionError("Mission does not require terminal timing recovery")
+        persisted_identity = {key: value for key, value in persisted.items() if key not in timing}
+        observed_identity = {key: value for key, value in observed.items() if key not in timing}
+        # State persistence normalizes tuples to JSON arrays.  Compare the
+        # canonical document representation so a presentation container never
+        # masks or manufactures an evidence-identity difference.
+        if _digest(persisted_identity) != _digest(observed_identity):
+            raise InstalledDynamicMissionError("EP terminal evidence does not match the persisted terminal evidence")
+        if (not all(isinstance(observed.get(field), str) and observed[field] for field in (
+                "host_id", "correlation_id", "host_run_id", "report_id", "receipt_id",
+                "execution_started_at", "execution_completed_at",
+        )) or not isinstance(observed.get("execution_duration_ms"), int)
+                or isinstance(observed.get("execution_duration_ms"), bool)
+                or observed["execution_duration_ms"] < 1):
+            raise InstalledDynamicMissionError("EP terminal evidence lacks durable execution timing")
+
+    @staticmethod
+    def _completed_evidence_recovery_context(
+        state: MissionExecutionState,
+    ) -> tuple[ExecutionDispatch, str, str]:
+        evidence = state.execution_evidence
+        correlation = state.execution_correlation
+        if (state.status is not MissionExecutionStatus.ACTIVE
+                or state.current_engineering_action is not None
+                or not state.actions
+                or any(action.get("status") != "COMPLETE" for action in state.actions)
+                or not isinstance(evidence, Mapping)
+                or evidence.get("outcome") != "complete"
+                or not isinstance(correlation, Mapping)
+                or not isinstance(correlation.get("request"), Mapping)
+                or not isinstance(correlation.get("host_run_id"), str)
+                or not correlation["host_run_id"]
+                or not isinstance(state.completion, Mapping)
+                or state.completion.get("all_required_criteria_proven") is not True):
+            raise InstalledDynamicMissionError("completed terminal evidence reconciliation is not available for this Mission")
+        repository = evidence.get("repository_evidence")
+        if (not isinstance(repository, Mapping)
+                or not isinstance(repository.get("action_id"), str)
+                or not repository["action_id"]
+                or not isinstance(evidence.get("correlation_id"), str)
+                or not evidence["correlation_id"]):
+            raise InstalledDynamicMissionError("completed terminal evidence reconciliation lacks immutable lineage")
+        from forge.runtime.runner import _request
+        request = _request(correlation["request"])
+        if request.correlation_id != evidence["correlation_id"]:
+            raise InstalledDynamicMissionError("persisted terminal evidence correlation is inconsistent")
+        return ExecutionDispatch(request, correlation["host_run_id"]), repository["action_id"], request.correlation_id
 
     def _tick(self, mission_id: str) -> DynamicMissionRunResult:
         loop = self._loop(mission_id)
