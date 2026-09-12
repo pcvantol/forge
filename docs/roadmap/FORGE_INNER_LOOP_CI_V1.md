@@ -63,3 +63,12 @@ Refresh current sources, open PRs and producer contracts before implementation.
 Keep the live canary's Mission, attempts, expiry, credentials and evidence intact.
 New source/runtime repairs found by tests are separate bounded owning changes,
 not authority to complete unrelated architecture or install another runtime.
+
+## Later outer-loop qualification
+
+The [outer-loop roadmap](FORGE_OUTER_LOOP_CI_V1.md) and
+[documentary DAG](forge-outer-loop-ci-v1.json) consume FCI-CI, never the reverse.
+They exercise M1 completion -> Context -> Candidate -> governed M2 and reuse
+this same installed harness/EP simulator. Candidate-to-completion within ONE
+Mission remains this suite's full boundary; next-Mission inference is the later
+suite. Both keep live-provider/EP qualification separate from deterministic CI.

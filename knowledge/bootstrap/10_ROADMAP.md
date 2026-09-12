@@ -4,6 +4,32 @@
 
 This is Forge's canonical strategic roadmap. Roadmap presence does not authorize execution; bounded Engineering Intents/Missions and governance remain required. Forge evolves capability-first while preserving repository-first knowledge, human governance and execution-host independence.
 
+## CI integration and the post-E2E Server — explicit delivery sequence
+
+The [inner-loop CI plan](../../docs/roadmap/FORGE_INNER_LOOP_CI_V1.md) covers the
+FULL Mission Candidate -> canonical Business/Architecture approvals -> intake
+with zero Actions -> dynamic execution -> evidence-derived completion flow.
+EP is a stateful HTTP mock; Forge's application services, adapter, validation,
+persistence and reconciliation remain real. External LLM/OS fixtures keep CI
+reproducible and free of live credentials/provider spend. FCI-CI is a planned
+required PR/main/release gate, independent of the current live canary or Console.
+
+LATER, the [deterministic outer-loop CI plan](../../docs/roadmap/FORGE_OUTER_LOOP_CI_V1.md)
+and [DAG](../../docs/roadmap/forge-outer-loop-ci-v1.json) reuse that qualified
+suite: completed M1 -> refreshed Project Context -> Expected Missions/Candidate
+-> applicable explicit approvals -> M2 inner loop -> completion or no-work.
+The five FCO nodes remain PLANNED. Neither a suggestion nor M1 completion grants
+M2 execution authority. Mock-CI results are not live EP/provider proof.
+
+After the current live E2E run and review of its actual outcome, deliver the
+standalone Forge Server as the backend milestone of existing FSH-SERVICES:
+see [runtime sequencing](../../docs/architecture/runtime-evolution-roadmap.md)
+and [hosting roadmap](../../docs/roadmap/FORGE_CONSOLE_HOSTING_V1.md).
+It reuses the existing runtime core, its own API/service lifecycle and CENTRAL;
+no Console, relay or outer-loop completion is needed to ship the server first.
+A RuntimeService class or storage CLI is not already an installed daemon.
+These plans do not change current execution authority or activate new CI jobs.
+
 ## Forge Operations Console — planned instance administration
 
 `FORGE::OPERATIONS_CONSOLE_V1` is a future minimal operational dashboard for
