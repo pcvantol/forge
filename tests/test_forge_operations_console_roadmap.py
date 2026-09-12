@@ -75,5 +75,55 @@ class ForgeOperationsConsoleRoadmapTests(unittest.TestCase):
                     self.assertTrue((path.parent / target.split("#", 1)[0]).resolve().is_file(), target)
 
 
+    def test_shared_status_shell_footer_requirements_have_existing_node_owners(self):
+        requirements = self.graph["shared_requirements"]
+        expected = {"FOC-STATUS", "FOC-SHELL", "FOC-FOOTER"}
+        self.assertEqual(len(requirements), len(expected))
+        self.assertEqual({r["id"] for r in requirements}, expected)
+        nodes = {n["id"]: n for n in self.graph["nodes"]}
+        read_only = self.graph["milestones"][0]
+        self.assertEqual(set(read_only["shared_requirements"]), expected)
+        architecture = (ROOT / self.graph["architecture"]).read_text(encoding="utf-8")
+        roadmap = (ROOT / self.graph["scoped_roadmap"]).read_text(encoding="utf-8")
+        for requirement in requirements:
+            self.assertEqual(requirement["status"], "PLANNED")
+            owners = set(requirement["delivered_by"])
+            self.assertTrue(owners)
+            self.assertTrue(owners <= set(read_only["requires"]))
+            self.assertIn(requirement["id"], architecture)
+            self.assertIn(requirement["id"], roadmap)
+            for owner in owners | {"FOC-Q"}:
+                self.assertIn(requirement["id"], nodes[owner]["shared_requirements"])
+        for node in nodes.values():
+            self.assertTrue(set(node["shared_requirements"]) <= expected)
+
+    def test_platform_status_contract_does_not_invent_global_blockers(self):
+        status = next(r for r in self.graph["shared_requirements"] if r["id"] == "FOC-STATUS")
+        self.assertEqual(status["subject"], "FORGE_SERVER_INSTANCE")
+        self.assertEqual(status["groups"], ["platform", "access", "ingress", "execution"])
+        self.assertEqual(set(status["aggregate_states"]), {"HEALTHY", "DEGRADED", "BLOCKED", "UNKNOWN"})
+        self.assertEqual(status["aggregation"], "BACKEND_OWNED_SCOPED_REQUIRED_DEPENDENCIES")
+        for flag in ("optional_unused_relay_blocks_local_operation", "empty_queue_is_failure",
+                     "platform_health_is_execution_authority"):
+            self.assertIs(status[flag], False)
+
+    def test_basic_controls_and_live_footer_remain_presentation_only(self):
+        requirements = {r["id"]: r for r in self.graph["shared_requirements"]}
+        shell, footer = requirements["FOC-SHELL"], requirements["FOC-FOOTER"]
+        self.assertEqual(shell["controls"], [
+            "platform_status_indicator", "manual_refresh", "project_selector", "language_selector",
+            "theme_toggle", "expand_collapse", "automatic_refresh_toggle",
+        ])
+        self.assertIs(shell["presentation_only"], True)
+        self.assertIs(shell["refresh_pause_is_mission_pause"], False)
+        self.assertIs(shell["project_selection_changes_runtime_binding"], False)
+        self.assertEqual(footer["fields"], [
+            "product_name", "installed_product_version", "last_live_status_signal",
+            "connection_mode_state", "freshness",
+        ])
+        self.assertIs(footer["serverpush_required"], False)
+        self.assertIs(footer["render_time_is_live_signal"], False)
+
+
 if __name__ == "__main__":
     unittest.main()

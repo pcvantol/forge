@@ -33,7 +33,13 @@
       "depends_on": [],
       "completion_evidence": [
         "Five-section read/write and product-ownership mapping",
-        "Typed authentication, authority and mutation/readback contracts"
+        "Typed authentication, authority and mutation/readback contracts",
+        "FOC-STATUS/SHELL/FOOTER typed snapshot, scope/aggregation and presentation-only interaction contracts"
+      ],
+      "shared_requirements": [
+        "FOC-STATUS",
+        "FOC-SHELL",
+        "FOC-FOOTER"
       ]
     },
     {
@@ -46,7 +52,13 @@
       ],
       "completion_evidence": [
         "Instance/project isolation, redaction and freshness",
-        "OpenAPI, Postman and implemented-route parity"
+        "OpenAPI, Postman and implemented-route parity",
+        "Backend-owned platform aggregation and installed-version/live-signal readback; no-project and stale-state handling"
+      ],
+      "shared_requirements": [
+        "FOC-STATUS",
+        "FOC-SHELL",
+        "FOC-FOOTER"
       ]
     },
     {
@@ -59,7 +71,13 @@
       ],
       "completion_evidence": [
         "Installed assets, local-only default and authenticated operator session",
-        "Accessible navigation and unavailable-state handling"
+        "Accessible navigation and unavailable-state handling",
+        "Status popover, all seven basic toolbar controls and truthful live footer, including polling mode"
+      ],
+      "shared_requirements": [
+        "FOC-STATUS",
+        "FOC-SHELL",
+        "FOC-FOOTER"
       ]
     },
     {
@@ -73,7 +91,11 @@
       ],
       "completion_evidence": [
         "Actual/expected component identity and state",
-        "Bounded log query/tail/export with redaction"
+        "Bounded log query/tail/export with redaction",
+        "Platform/Access/Ingress/Execution detail groups, declared required/optional dependencies and authorized links"
+      ],
+      "shared_requirements": [
+        "FOC-STATUS"
       ]
     },
     {
@@ -87,8 +109,10 @@
       ],
       "completion_evidence": [
         "Canonical lifecycle groups and criterion/Action/evidence lineage",
-        "Ambiguity visibility and durable history after reopen"
-      ]
+        "Ambiguity visibility and durable history after reopen",
+        "Shared snapshot for Mission activity/queue; healthy platform is not Mission approval or completion"
+      ],
+      "shared_requirements": []
     },
     {
       "id": "FOC-5",
@@ -101,8 +125,10 @@
       ],
       "completion_evidence": [
         "Authorized allow-list with preview/save/readback",
-        "Revision conflicts, audit, non-generating preflight and no active-binding retarget"
-      ]
+        "Revision conflicts, audit, non-generating preflight and no active-binding retarget",
+        "Refresh/project navigation retains or explicitly discards unsaved configuration drafts"
+      ],
+      "shared_requirements": []
     },
     {
       "id": "FOC-6",
@@ -115,8 +141,10 @@
       ],
       "completion_evidence": [
         "Current capability and authority gates at the safe Forge boundary",
-        "Same Mission/lineage with no duplicate submission or budget reset"
-      ]
+        "Same Mission/lineage with no duplicate submission or budget reset",
+        "Presentation refresh pause remains distinct from authorized runtime pause/resume"
+      ],
+      "shared_requirements": []
     },
     {
       "id": "FOC-Q",
@@ -131,7 +159,13 @@
       ],
       "completion_evidence": [
         "All five sections from a source/artifact-bound installed instance",
-        "Restart, empty, degraded, isolation, hostile-content and secret-safety evidence"
+        "Restart, empty, degraded, isolation, hostile-content and secret-safety evidence",
+        "Shared status, toolbar and footer cases: optional relay, no project, empty queue, stale data, reconnect, zero unintended writes"
+      ],
+      "shared_requirements": [
+        "FOC-STATUS",
+        "FOC-SHELL",
+        "FOC-FOOTER"
       ]
     }
   ],
@@ -146,7 +180,12 @@
         "FOC-3",
         "FOC-4"
       ],
-      "configuration_mode": "READ_ONLY"
+      "configuration_mode": "READ_ONLY",
+      "shared_requirements": [
+        "FOC-STATUS",
+        "FOC-SHELL",
+        "FOC-FOOTER"
+      ]
     },
     {
       "id": "FOC-V1",
@@ -157,5 +196,73 @@
       "configuration_mode": "GUARDED_ALLOW_LIST"
     }
   ],
-  "execution_selection": "Later governed bounded work; no current Mission or live grant is created by this graph."
+  "execution_selection": "Later governed bounded work; no current Mission or live grant is created by this graph.",
+  "shared_requirements": [
+    {
+      "id": "FOC-STATUS",
+      "status": "PLANNED",
+      "subject": "FORGE_SERVER_INSTANCE",
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-2",
+        "FOC-3"
+      ],
+      "groups": [
+        "platform",
+        "access",
+        "ingress",
+        "execution"
+      ],
+      "aggregate_states": [
+        "HEALTHY",
+        "DEGRADED",
+        "BLOCKED",
+        "UNKNOWN"
+      ],
+      "aggregation": "BACKEND_OWNED_SCOPED_REQUIRED_DEPENDENCIES",
+      "optional_unused_relay_blocks_local_operation": false,
+      "empty_queue_is_failure": false,
+      "platform_health_is_execution_authority": false
+    },
+    {
+      "id": "FOC-SHELL",
+      "status": "PLANNED",
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-2"
+      ],
+      "controls": [
+        "platform_status_indicator",
+        "manual_refresh",
+        "project_selector",
+        "language_selector",
+        "theme_toggle",
+        "expand_collapse",
+        "automatic_refresh_toggle"
+      ],
+      "presentation_only": true,
+      "refresh_pause_is_mission_pause": false,
+      "project_selection_changes_runtime_binding": false
+    },
+    {
+      "id": "FOC-FOOTER",
+      "status": "PLANNED",
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-2"
+      ],
+      "fields": [
+        "product_name",
+        "installed_product_version",
+        "last_live_status_signal",
+        "connection_mode_state",
+        "freshness"
+      ],
+      "serverpush_required": false,
+      "render_time_is_live_signal": false
+    }
+  ]
 }
