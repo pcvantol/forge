@@ -138,14 +138,11 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
 
     # EP owns assurance policy. Forge only verifies that the immutable
     # terminal record carries its bound assurance outcome and findings proof.
+    # A host-verified Managed no-op has no candidate review to report. EP
+    # represents that case explicitly as NOT_RECORDED rather than inventing a
+    # profile or review result. Accept only that complete, empty shape; every
+    # partial omission remains a contract failure.
     assurance = _object(document.get("assurance"), "artifact assurance")
-    profile = _object(assurance.get("profile"), "assurance profile")
-    _string(profile.get("version"), "assurance profile version")
-    _sha256(profile.get("digest"), "assurance profile digest")
-    if not isinstance(profile.get("candidate_sha"), str) or len(profile["candidate_sha"]) != 40:
-        raise ValueError("EP terminal assurance candidate identity is invalid")
-    if assurance.get("quality_review") not in {"PASS", "FAIL", "UNRESOLVED"} or assurance.get("security_review") not in {"PASS", "FAIL", "UNRESOLVED"}:
-        raise ValueError("EP terminal assurance review result is invalid")
     repair = _object(assurance.get("repair_rounds"), "assurance repair rounds")
     if any(not isinstance(repair.get(key), int) or isinstance(repair.get(key), bool) or repair[key] < 0 for key in ("used", "maximum")):
         raise ValueError("EP terminal assurance repair rounds are invalid")
@@ -165,6 +162,25 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
             int(digest, 16)
         except ValueError as error:
             raise ValueError("EP terminal assurance findings digest is invalid") from error
+    profile = assurance.get("profile")
+    no_assurance_recorded = (
+        assurance.get("status") == "NOT_RECORDED"
+        and profile is None
+        and assurance.get("quality_review") == "NOT_RECORDED"
+        and assurance.get("security_review") == "NOT_RECORDED"
+        and repair == {"used": 0, "maximum": 3}
+        and findings == {"open_blocking": 0, "open_non_blocking": 0, "artifact": None}
+    )
+    if not no_assurance_recorded:
+        if assurance.get("status") not in {"PASS", "FAIL", "UNRESOLVED"}:
+            raise ValueError("EP_TERMINAL_ASSURANCE_NOT_RECORDED_INVALID")
+        profile = _object(profile, "assurance profile")
+        _string(profile.get("version"), "assurance profile version")
+        _sha256(profile.get("digest"), "assurance profile digest")
+        if not isinstance(profile.get("candidate_sha"), str) or len(profile["candidate_sha"]) != 40:
+            raise ValueError("EP terminal assurance candidate identity is invalid")
+        if assurance.get("quality_review") not in {"PASS", "FAIL", "UNRESOLVED"} or assurance.get("security_review") not in {"PASS", "FAIL", "UNRESOLVED"}:
+            raise ValueError("EP terminal assurance review result is invalid")
 
     prompt = _object(provenance.get("runtime_prompt"), "runtime prompt")
     report_id = _string(artifact_report.get("id"), "artifact report id")

@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.6",
+  "classification_rationale": "refs/heads/codex/forge-ep-noop-assurance-readback-v1",
+  "component": "product",
+  "event_lineage": "refs/heads/codex/forge-ep-noop-assurance-readback-v1",
+  "expected_head": "e3ff33210e5a4c5b7c1b6d7808456a58014d1d28",
+  "operation_id": "forge-ep-noop-assurance-readback-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.7"
+}

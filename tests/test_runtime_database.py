@@ -68,6 +68,25 @@ class RuntimeDatabaseTests(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             self.database._connection.execute("DELETE FROM forge_operational_logs WHERE log_id=?", (event["id"],))
 
+    def test_host_evidence_rejection_is_an_error_with_a_redacted_failure_code(self) -> None:
+        rejected = {
+            **self._mission(), "status": "FAILED", "lifecycle": "FAILED",
+            "waiting_reason": "host_evidence_failed",
+            "execution_evidence": {
+                "outcome": "failed", "diagnostic_references": ["runner:host_evidence_failed"],
+                "failure_code": "EP_TERMINAL_ASSURANCE_NOT_RECORDED_INVALID",
+            },
+        }
+
+        self.database.save_mission_state(rejected)
+
+        (event,) = self.database.operational_log_page(
+            events=("mission_state_transitioned",), mission_id="mission-1",
+        )["items"]
+        self.assertEqual(event["level"], "ERROR")
+        self.assertEqual(event["details"]["reason_code"], "host_evidence_failed")
+        self.assertEqual(event["details"]["failure_code"], "EP_TERMINAL_ASSURANCE_NOT_RECORDED_INVALID")
+
     def test_schema35_migrates_the_immutable_operational_log(self) -> None:
         path = self.database.path
         self.database.close()

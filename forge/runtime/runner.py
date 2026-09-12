@@ -86,6 +86,17 @@ def _value(value: Any) -> Any:
     return value
 
 
+def _failure_code(error: Exception) -> str:
+    """Return only a bounded, redacted contract code for the event journal."""
+    candidate = str(error)
+    if (
+        3 <= len(candidate) <= 128
+        and all(character.isupper() or character.isdigit() or character == "_" for character in candidate)
+    ):
+        return candidate
+    return type(error).__name__.upper()
+
+
 def _action(document: Mapping[str, Any]) -> EngineeringAction:
     return EngineeringAction(
         order=int(document["order"]), id=str(document["id"]), intent_id=str(document["intent_id"]),
@@ -438,10 +449,13 @@ class BootstrapMissionRunner:
             )
         return reconciled
 
-    def _host_failure(self, state: MissionExecutionState, reference: str, _error: Exception) -> MissionExecutionState:
+    def _host_failure(self, state: MissionExecutionState, reference: str, error: Exception) -> MissionExecutionState:
         return self._store.transition(
             state.mission_id, MissionExecutionStatus.FAILED, occurred_at=self._now(), reason=reference,
-            execution_evidence={"outcome": "failed", "diagnostic_references": [f"runner:{reference}"]},
+            execution_evidence={
+                "outcome": "failed", "diagnostic_references": [f"runner:{reference}"],
+                "failure_code": _failure_code(error),
+            },
         )
 
     def _persisted_request(self, state: MissionExecutionState) -> ExecutionRequest:
