@@ -133,6 +133,14 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.assertEqual((received["direction"], received["event_kind"]), ("EP_TO_FORGE", "EP_SUBMISSION_RECEIPT_RECEIVED"))
         self.assertEqual(received["document"]["ep_application_version"], "2.3.8")
         self.assertEqual(received["document"]["receipt_id"], "ep-submission-receipt:submission-fixture")
+        journal = self.database.operational_log_page(correlation_id=self.request.correlation_id)
+        self.assertEqual(
+            {item["event"] for item in journal["items"]},
+            {"execution_host_binding_persisted", "forge_submission_sent", "ep_submission_receipt_received"},
+        )
+        receipt_event = next(item for item in journal["items"] if item["event"] == "ep_submission_receipt_received")
+        self.assertEqual(receipt_event["details"]["ep_application_version"], "2.3.8")
+        self.assertEqual(receipt_event["details"]["exchange_direction"], "EP_TO_FORGE")
         with self.assertRaises(sqlite3.IntegrityError):
             self.database._connection.execute(
                 "UPDATE execution_host_exchange_audit SET event_kind='FORGE_SUBMISSION_SENT' "

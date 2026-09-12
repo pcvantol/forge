@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 35
+RUNTIME_SCHEMA_VERSION = 36
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -39,7 +39,7 @@ _TABLES = frozenset((
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings", "execution_host_exchange_audit",
-    "execution_host_peer_configuration",
+    "execution_host_peer_configuration", "forge_operational_logs",
 ))
 _TOKEN_PREFLIGHT_FAILURE_FIELDS = frozenset((
     "failure_id", "mission_id", "provider_id", "occurred_at", "main_head", "policy_digest",
@@ -62,6 +62,23 @@ _TOKEN_PREFLIGHT_FAILURE_PROVIDER_ID = re.compile(r"[a-z][a-z0-9-]{0,127}\Z")
 _TOKEN_PREFLIGHT_FAILURE_REQUEST_ID = re.compile(r"req_[A-Za-z0-9]{1,128}\Z")
 _TOKEN_PREFLIGHT_FAILURE_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _SHA256_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_OPERATIONAL_LOG_EVENT = re.compile(r"[a-z][a-z0-9_]{2,127}\Z")
+_OPERATIONAL_LOG_COMPONENTS = frozenset((
+    "forge_runtime", "forge_mission_runtime", "forge_execution_host",
+    "forge_planning_provider", "forge_operator", "forge_administration",
+))
+_OPERATIONAL_LOG_LEVELS = frozenset(("DEBUG", "INFO", "WARNING", "ERROR"))
+_OPERATIONAL_LOG_DETAIL_KEYS = frozenset((
+    "event_contract_version", "operation", "outcome", "previous_state", "new_state",
+    "reason_code", "configuration_revision", "configuration_digest", "binding_id",
+    "peer_product", "ep_instance_id", "ep_application_version", "producer_contract_version",
+    "forge_application_version", "forge_provenance_contract_version", "receipt_contract_version",
+    "receipt_id", "submission_id", "accepted_request_digest", "exchange_direction",
+    "request_digest", "provider_id", "provider_type", "configuration_id", "permit_id",
+    "action_derivation_id", "policy_digest", "schema_version", "failure_code",
+    "lifecycle", "queue_disposition", "result_state",
+))
+_OPERATIONAL_LOG_CONTRACT_VERSION = "1.0"
 
 
 def _timestamp() -> str:
@@ -117,6 +134,23 @@ def _contains_secret_value(value: Any) -> bool:
         lowered = value.lower()
         return lowered.startswith(("sk-", "bearer ", "keychain://")) or "api key " in lowered
     return False
+
+
+def _mission_operational_context(document: Mapping[str, Any]) -> dict[str, str | None]:
+    """Extract only dashboard-safe identifiers from a Mission state snapshot."""
+    action = document.get("current_engineering_action")
+    correlation = document.get("execution_correlation")
+    request = correlation.get("request") if isinstance(correlation, Mapping) else None
+    return {
+        "mission_id": str(document.get("mission_id") or document.get("id") or "") or None,
+        "action_id": str(action.get("id") or "") if isinstance(action, Mapping) else None,
+        "correlation_id": str(
+            (correlation.get("correlation_id") if isinstance(correlation, Mapping) else None)
+            or (request.get("correlation_id") if isinstance(request, Mapping) else "")
+        ) or None,
+        "run_id": (str(correlation.get("host_run_id")) if isinstance(correlation, Mapping)
+                   and correlation.get("host_run_id") else None),
+    }
 
 
 class RuntimeDatabase:
@@ -345,6 +379,29 @@ class RuntimeDatabase:
             if row is None or row["tbl_name"] != "execution_host_exchange_audit" or f"before {operation}" not in sql or "immutable" not in sql:
                 raise RuntimeIntegrityError(f"execution-host exchange audit migration found incompatible {name} trigger")
 
+    _OPERATIONAL_LOG_TABLE_SHAPE = (
+        ("log_id", "TEXT", 0, 1), ("component", "TEXT", 1, 0),
+        ("level", "TEXT", 1, 0), ("event", "TEXT", 1, 0),
+        ("mission_id", "TEXT", 0, 0), ("action_id", "TEXT", 0, 0),
+        ("correlation_id", "TEXT", 0, 0), ("run_id", "TEXT", 0, 0),
+        ("operator_reference", "TEXT", 0, 0), ("occurred_at", "TEXT", 1, 0),
+        ("details", "TEXT", 1, 0),
+    )
+
+    def _require_operational_log_structure(self) -> None:
+        columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                        for row in self._connection.execute("PRAGMA table_info(forge_operational_logs)"))
+        if columns != self._OPERATIONAL_LOG_TABLE_SHAPE:
+            raise RuntimeIntegrityError("Forge operational log migration found incompatible table shape")
+        for name, operation in (("forge_operational_logs_immutable_update", "update"),
+                                ("forge_operational_logs_immutable_delete", "delete")):
+            row = self._connection.execute(
+                "SELECT tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name=?", (name,)
+            ).fetchone()
+            sql = "" if row is None or row["sql"] is None else " ".join(row["sql"].lower().split())
+            if row is None or row["tbl_name"] != "forge_operational_logs" or f"before {operation}" not in sql or "immutable" not in sql:
+                raise RuntimeIntegrityError(f"Forge operational log migration found incompatible {name} trigger")
+
     def _migrate_governance_19_to_20(self, forge_version: str) -> None:
         """Create and verify all governance objects before advancing schema metadata.
 
@@ -523,6 +580,21 @@ class RuntimeDatabase:
                     BEGIN SELECT RAISE(ABORT, 'execution-host exchange audit is immutable'); END;
                     CREATE TRIGGER execution_host_exchange_audit_immutable_delete BEFORE DELETE ON execution_host_exchange_audit
                     BEGIN SELECT RAISE(ABORT, 'execution-host exchange audit is immutable'); END;
+                    CREATE TABLE forge_operational_logs (
+                        log_id TEXT PRIMARY KEY,
+                        component TEXT NOT NULL CHECK(component IN ('forge_runtime','forge_mission_runtime','forge_execution_host','forge_planning_provider','forge_operator','forge_administration')),
+                        level TEXT NOT NULL CHECK(level IN ('DEBUG','INFO','WARNING','ERROR')),
+                        event TEXT NOT NULL,
+                        mission_id TEXT, action_id TEXT, correlation_id TEXT, run_id TEXT,
+                        operator_reference TEXT, occurred_at TEXT NOT NULL, details TEXT NOT NULL
+                    );
+                    CREATE INDEX forge_operational_logs_timeline_lookup ON forge_operational_logs(occurred_at,log_id);
+                    CREATE INDEX forge_operational_logs_correlation_lookup ON forge_operational_logs(correlation_id,occurred_at,log_id);
+                    CREATE INDEX forge_operational_logs_run_lookup ON forge_operational_logs(run_id,occurred_at,log_id);
+                    CREATE TRIGGER forge_operational_logs_immutable_update BEFORE UPDATE ON forge_operational_logs
+                    BEGIN SELECT RAISE(ABORT, 'Forge operational logs are immutable'); END;
+                    CREATE TRIGGER forge_operational_logs_immutable_delete BEFORE DELETE ON forge_operational_logs
+                    BEGIN SELECT RAISE(ABORT, 'Forge operational logs are immutable'); END;
                     CREATE TABLE execution_host_peer_configuration (
                         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                         binding_id TEXT NOT NULL UNIQUE,
@@ -1413,11 +1485,34 @@ class RuntimeDatabase:
                 self._require_execution_host_exchange_audit_structure()
                 self._set_metadata({"schema_version":"35","migration_version":"35","last_migration":"35"})
                 self._connection.execute("PRAGMA user_version=35")
+        elif version == 35:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS forge_operational_logs (
+                        log_id TEXT PRIMARY KEY,
+                        component TEXT NOT NULL CHECK(component IN ('forge_runtime','forge_mission_runtime','forge_execution_host','forge_planning_provider','forge_operator','forge_administration')),
+                        level TEXT NOT NULL CHECK(level IN ('DEBUG','INFO','WARNING','ERROR')),
+                        event TEXT NOT NULL,
+                        mission_id TEXT, action_id TEXT, correlation_id TEXT, run_id TEXT,
+                        operator_reference TEXT, occurred_at TEXT NOT NULL, details TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS forge_operational_logs_timeline_lookup ON forge_operational_logs(occurred_at,log_id);
+                    CREATE INDEX IF NOT EXISTS forge_operational_logs_correlation_lookup ON forge_operational_logs(correlation_id,occurred_at,log_id);
+                    CREATE INDEX IF NOT EXISTS forge_operational_logs_run_lookup ON forge_operational_logs(run_id,occurred_at,log_id);
+                    CREATE TRIGGER IF NOT EXISTS forge_operational_logs_immutable_update BEFORE UPDATE ON forge_operational_logs
+                    BEGIN SELECT RAISE(ABORT, 'Forge operational logs are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS forge_operational_logs_immutable_delete BEFORE DELETE ON forge_operational_logs
+                    BEGIN SELECT RAISE(ABORT, 'Forge operational logs are immutable'); END;
+                """)
+                self._require_operational_log_structure()
+                self._set_metadata({"schema_version":"36","migration_version":"36","last_migration":"36"})
+                self._connection.execute("PRAGMA user_version=36")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
     def _initialize_runtime_identity(self) -> None:
         metadata = self.metadata
+        was_uninitialized = not metadata.get("runtime_id")
         now = _timestamp()
         created_at = metadata.get("created_at")
         if not created_at or created_at == "created_by_runtime_database":
@@ -1445,6 +1540,12 @@ class RuntimeDatabase:
             values["repository_uuid"] = current_repository_uuid
         with self._connection:
             self._set_metadata(values)
+            if was_uninitialized:
+                self._append_operational_event(
+                    component="forge_runtime", level="INFO", event="runtime_initialized",
+                    details={"operation": "initialized", "outcome": "accepted",
+                             "schema_version": str(RUNTIME_SCHEMA_VERSION)}, occurred_at=now,
+                )
 
     def _set_metadata(self, values: Mapping[str, str]) -> None:
         self._connection.executemany(
@@ -1493,6 +1594,7 @@ class RuntimeDatabase:
         self._require_canary_closure_structure()
         self._require_peer_configuration_structure()
         self._require_execution_host_exchange_audit_structure()
+        self._require_operational_log_structure()
         identity = self.runtime_identity
         expected_identity = "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)
         if identity.repository_identity != expected_identity or not identity.runtime_id or identity.status != "active":
@@ -1529,7 +1631,11 @@ class RuntimeDatabase:
         required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")))
         if not isinstance(mission_id, str) or not mission_id or not isinstance(lifecycle, str) or not lifecycle or any(value is None for value in required[2:]):
             raise RuntimeDatabaseError("mission state requires identity, lifecycle, status, progress, resume point, and execution policy")
+        context = _mission_operational_context(document)
         with self._connection:
+            existing = self._connection.execute(
+                "SELECT status FROM mission_state WHERE mission_id = ?", (mission_id,)
+            ).fetchone()
             self._connection.execute("""INSERT INTO mission_state
                 (mission_id, lifecycle, status, current_intent, current_action, progress, resume_point, execution_policy, document)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1540,6 +1646,14 @@ class RuntimeDatabase:
                 self._dump(document.get("current_engineering_action")), self._dump(document.get("progress", {})),
                 self._dump(document.get("resume", document.get("resume_point", {}))), self._dump(document.get("execution_policy")), self._dump(document),
             ))
+            self._append_operational_event(
+                component="forge_mission_runtime", level=("WARNING" if str(document["status"]) in {"BLOCKED", "FAILED"} else "INFO"),
+                event="mission_state_transitioned",
+                mission_id=context["mission_id"], action_id=context["action_id"],
+                correlation_id=context["correlation_id"], run_id=context["run_id"],
+                details={"previous_state": None if existing is None else existing["status"],
+                         "new_state": str(document["status"]), "lifecycle": str(lifecycle)},
+            )
         return document
 
     def create_mission_state(self, state: Any) -> dict[str, Any]:
@@ -1559,6 +1673,13 @@ class RuntimeDatabase:
                     self._dump(document.get("current_engineering_action")), self._dump(document.get("progress", {})),
                     self._dump(document.get("resume", document.get("resume_point", {}))), self._dump(document.get("execution_policy")), self._dump(document),
                 ))
+                context = _mission_operational_context(document)
+                self._append_operational_event(
+                    component="forge_mission_runtime", level="INFO", event="mission_state_created",
+                    mission_id=context["mission_id"], action_id=context["action_id"],
+                    correlation_id=context["correlation_id"], run_id=context["run_id"],
+                    details={"new_state": str(document["status"]), "lifecycle": str(lifecycle)},
+                )
         except sqlite3.IntegrityError as error:
             raise RuntimeDatabaseError(f"mission state already exists: {mission_id}") from error
         return document
@@ -1572,10 +1693,18 @@ class RuntimeDatabase:
         if not source_digest.startswith("sha256:") or len(source_digest) != 71:
             raise RuntimeDatabaseError("mission runtime projection requires a sha256 source digest")
         with self._connection:
+            existing = self._connection.execute(
+                "SELECT source_digest FROM mission_runtime_projections WHERE mission_id = ?", (mission_id,)
+            ).fetchone()
             self._connection.execute(
                 "INSERT INTO mission_runtime_projections VALUES (?, ?, ?) "
                 "ON CONFLICT(mission_id) DO UPDATE SET source_digest=excluded.source_digest, document=excluded.document",
                 (mission_id, source_digest, self._dump(document)),
+            )
+            self._append_operational_event(
+                component="forge_mission_runtime", level="DEBUG", event="mission_runtime_projection_refreshed",
+                mission_id=mission_id, details={"operation": "refreshed", "request_digest": source_digest,
+                "previous_state": None if existing is None else existing["source_digest"]},
             )
         return document
 
@@ -1592,6 +1721,13 @@ class RuntimeDatabase:
                 "INSERT INTO execution_context_snapshots VALUES (?, ?, ?, ?, ?, ?)",
                 (document["context_id"], document["mission_id"], document["context_version"], document["source_digest"],
                  document["last_updated_timestamp"], self._dump(document)),
+            )
+            self._append_operational_event(
+                component="forge_mission_runtime", level="DEBUG", event="execution_context_refreshed",
+                mission_id=str(document["mission_id"]),
+                details={"operation": "refreshed", "schema_version": str(document["context_version"]),
+                         "request_digest": document["source_digest"]},
+                occurred_at=str(document["last_updated_timestamp"]),
             )
         return document
 
@@ -1655,6 +1791,11 @@ class RuntimeDatabase:
                 "INSERT INTO mission_intake_evidence VALUES (?, ?, ?, ?)",
                 (document["id"], document["mission_id"], document["timestamp"], self._dump(document)),
             )
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="mission_intake_evidence_recorded",
+                mission_id=document["mission_id"], details={"operation": "recorded", "outcome": "accepted"},
+                occurred_at=document["timestamp"],
+            )
         return document
 
     def record_mission_lifecycle(self, mission_id: str, lifecycle: str, occurred_at: str) -> None:
@@ -1671,6 +1812,11 @@ class RuntimeDatabase:
             self._connection.execute(
                 "INSERT INTO mission_lifecycle_events (mission_id, sequence, transition_sequence, lifecycle, occurred_at) VALUES (?, ?, ?, ?, ?)",
                 (mission_id, sequence, transition_sequence, lifecycle, occurred_at),
+            )
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="mission_lifecycle_recorded",
+                mission_id=mission_id, details={"operation": "recorded", "lifecycle": lifecycle},
+                occurred_at=occurred_at,
             )
 
     def has_mission_lifecycle(self, mission_id: str, lifecycle: str) -> bool:
@@ -1713,7 +1859,16 @@ class RuntimeDatabase:
         existing=self.execution_host_binding(correlation_id)
         if existing is not None and any(existing.get(key) not in (None,value) for key,value in document.items()): raise RuntimeIntegrityError("execution host binding is immutable")
         merged={**(existing or {}),**document}
-        with self._connection:self._connection.execute("INSERT INTO execution_host_bindings VALUES (?,?) ON CONFLICT(correlation_id) DO UPDATE SET document=excluded.document",(correlation_id,self._dump(merged)))
+        with self._connection:
+            self._connection.execute("INSERT INTO execution_host_bindings VALUES (?,?) ON CONFLICT(correlation_id) DO UPDATE SET document=excluded.document",(correlation_id,self._dump(merged)))
+            self._append_operational_event(
+                component="forge_execution_host", level="DEBUG", event="execution_host_binding_persisted",
+                mission_id=str(merged.get("mission_id") or "") or None,
+                action_id=str(merged.get("action_id") or "") or None,
+                correlation_id=correlation_id, run_id=str(merged.get("host_run_id") or "") or None,
+                details={"operation": "created" if existing is None else "updated",
+                         "submission_id": merged.get("submission_id")},
+            )
         return merged
 
     def record_execution_host_exchange_audit(
@@ -1736,6 +1891,24 @@ class RuntimeDatabase:
                 "INSERT INTO execution_host_exchange_audit VALUES (?,?,?,?,?,?)",
                 (audit_id, correlation_id, direction, event_kind, occurred_at, encoded),
             )
+            self._append_operational_event(
+                component="forge_execution_host", level="INFO",
+                event=("forge_submission_sent" if event_kind == "FORGE_SUBMISSION_SENT"
+                       else "ep_submission_receipt_received"),
+                correlation_id=correlation_id,
+                details={
+                    "exchange_direction": direction,
+                    "submission_id": value.get("submission_id"),
+                    "receipt_id": value.get("receipt_id"),
+                    "receipt_contract_version": value.get("receipt_contract_version"),
+                    "forge_application_version": value.get("forge_application_version"),
+                    "producer_contract_version": value.get("producer_contract_version"),
+                    "forge_provenance_contract_version": value.get("forge_provenance_contract_version"),
+                    "ep_application_version": value.get("ep_application_version"),
+                    "accepted_request_digest": value.get("accepted_request_digest"),
+                },
+                occurred_at=occurred_at,
+            )
         return {"audit_id": audit_id, "correlation_id": correlation_id, "direction": direction,
                 "event_kind": event_kind, "occurred_at": occurred_at, "document": value}
 
@@ -1748,6 +1921,157 @@ class RuntimeDatabase:
         return tuple({"audit_id": str(row[0]), "correlation_id": correlation_id, "direction": str(row[1]),
                       "event_kind": str(row[2]), "occurred_at": str(row[3]), "document": json.loads(row[4])}
                      for row in rows)
+
+    @staticmethod
+    def _operational_log_reference(value: str | None, label: str) -> str | None:
+        if value is None:
+            return None
+        if (not isinstance(value, str) or not value or len(value) > 256
+                or "\n" in value or "\r" in value or _contains_secret_value(value)):
+            raise RuntimeDatabaseError(f"Forge operational log {label} is invalid")
+        return value
+
+    def _append_operational_event(
+        self,
+        *,
+        component: str,
+        level: str,
+        event: str,
+        details: Mapping[str, Any] | None = None,
+        mission_id: str | None = None,
+        action_id: str | None = None,
+        correlation_id: str | None = None,
+        run_id: str | None = None,
+        operator_reference: str | None = None,
+        occurred_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Append one redacted, immutable Forge operational event.
+
+        Callers that already own a database transaction use this internal form
+        so the state change and its audit fact commit atomically.
+        """
+        if component not in _OPERATIONAL_LOG_COMPONENTS:
+            raise RuntimeDatabaseError("Forge operational log component is invalid")
+        if level not in _OPERATIONAL_LOG_LEVELS:
+            raise RuntimeDatabaseError("Forge operational log level is invalid")
+        if not isinstance(event, str) or _OPERATIONAL_LOG_EVENT.fullmatch(event) is None:
+            raise RuntimeDatabaseError("Forge operational log event is invalid")
+        supplied = _document(details or {}, "Forge operational log details")
+        if set(supplied) - _OPERATIONAL_LOG_DETAIL_KEYS:
+            raise RuntimeDatabaseError("Forge operational log details contain unsupported fields")
+        if _contains_secret_field(supplied) or _contains_secret_value(supplied):
+            raise RuntimeDatabaseError("Forge operational log details must be redacted")
+        normalized: dict[str, Any] = {"event_contract_version": _OPERATIONAL_LOG_CONTRACT_VERSION}
+        for key, value in supplied.items():
+            if value is None:
+                continue
+            if not isinstance(value, (str, int, float, bool)) or isinstance(value, str) and (len(value) > 256 or "\n" in value or "\r" in value):
+                raise RuntimeDatabaseError("Forge operational log detail value is invalid")
+            normalized[key] = value
+        encoded = self._dump(normalized)
+        if len(encoded.encode("utf-8")) > 4096:
+            raise RuntimeDatabaseError("Forge operational log details are too large")
+        timestamp = occurred_at or _timestamp()
+        # Legacy receipt and bootstrap fixtures can carry an opaque host time.
+        # The journal must never turn that historic compatibility into an
+        # unlogged operation; retain only a canonical local ingest timestamp.
+        if not isinstance(timestamp, str) or _TOKEN_PREFLIGHT_FAILURE_TIMESTAMP.fullmatch(timestamp) is None:
+            timestamp = _timestamp()
+        identifiers = {
+            "mission_id": self._operational_log_reference(mission_id, "mission identity"),
+            "action_id": self._operational_log_reference(action_id, "action identity"),
+            "correlation_id": self._operational_log_reference(correlation_id, "correlation identity"),
+            "run_id": self._operational_log_reference(run_id, "run identity"),
+            "operator_reference": self._operational_log_reference(operator_reference, "operator reference"),
+        }
+        log_id = "forge-operational-log-" + str(uuid.uuid4())
+        self._connection.execute(
+            "INSERT INTO forge_operational_logs VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (log_id, component, level, event, identifiers["mission_id"], identifiers["action_id"],
+             identifiers["correlation_id"], identifiers["run_id"], identifiers["operator_reference"],
+             timestamp, encoded),
+        )
+        return {"id": log_id, "component": component, "level": level, "event": event,
+                **identifiers, "occurred_at": timestamp, "details": normalized}
+
+    def record_operational_event(self, **values: Any) -> dict[str, Any]:
+        """Public transactional writer for the canonical Forge event journal."""
+        with self._connection:
+            return self._append_operational_event(**values)
+
+    def operational_log_page(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        start_at: str | None = None,
+        end_at: str | None = None,
+        search: str = "",
+        level: str = "",
+        component: str = "",
+        events: tuple[str, ...] = (),
+        mission_id: str = "",
+        correlation_id: str = "",
+        run_id: str = "",
+        sort_key: str = "timestamp",
+        direction: str = "desc",
+    ) -> dict[str, Any]:
+        """Return a bounded, filter-first Forge operational log page.
+
+        The response shape deliberately mirrors EP's central component-log
+        page so a future cross-product dashboard can compare timelines without
+        parsing ad-hoc domain audit tables.
+        """
+        if not isinstance(page, int) or page < 1 or not isinstance(page_size, int) or not 1 <= page_size <= 200:
+            raise RuntimeDatabaseError("Forge operational log pagination is invalid")
+        normalized_level = level.upper().strip()
+        if normalized_level and normalized_level not in _OPERATIONAL_LOG_LEVELS:
+            raise RuntimeDatabaseError("Forge operational log level filter is invalid")
+        normalized_component = component.strip()
+        if normalized_component and normalized_component not in _OPERATIONAL_LOG_COMPONENTS:
+            raise RuntimeDatabaseError("Forge operational log component filter is invalid")
+        normalized_events = tuple(sorted({str(item).strip() for item in events if str(item).strip()}))
+        if any(_OPERATIONAL_LOG_EVENT.fullmatch(item) is None for item in normalized_events):
+            raise RuntimeDatabaseError("Forge operational log event filter is invalid")
+        normalized_search = str(search).strip()
+        if len(normalized_search) > 160:
+            raise RuntimeDatabaseError("Forge operational log search is too long")
+        sort_columns = {
+            "timestamp": "occurred_at", "level": "level", "event": "event",
+            "runId": "COALESCE(run_id, '')", "details": "details",
+        }
+        if sort_key not in sort_columns or direction not in {"asc", "desc"}:
+            raise RuntimeDatabaseError("Forge operational log sort is invalid")
+        clauses: list[str] = []
+        parameters: list[Any] = []
+        for field, value, operator in (("occurred_at", start_at, ">="), ("occurred_at", end_at, "<"),
+                                       ("level", normalized_level, "="), ("component", normalized_component, "="),
+                                       ("mission_id", mission_id.strip(), "="), ("correlation_id", correlation_id.strip(), "="),
+                                       ("run_id", run_id.strip(), "=")):
+            if value:
+                clauses.append(f"{field} {operator} ?")
+                parameters.append(value)
+        if normalized_events:
+            clauses.append("event IN (" + ",".join("?" for _ in normalized_events) + ")")
+            parameters.extend(normalized_events)
+        if normalized_search:
+            clauses.append("(event LIKE ? COLLATE NOCASE OR details LIKE ? COLLATE NOCASE)")
+            parameters.extend((f"%{normalized_search}%", f"%{normalized_search}%"))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        total = int(self._connection.execute("SELECT COUNT(*) FROM forge_operational_logs" + where, parameters).fetchone()[0])
+        offset = (page - 1) * page_size
+        rows = self._connection.execute(
+            "SELECT log_id,component,level,event,mission_id,action_id,correlation_id,run_id,operator_reference,occurred_at,details "
+            "FROM forge_operational_logs" + where + f" ORDER BY {sort_columns[sort_key]} {direction.upper()}, rowid {direction.upper()} LIMIT ? OFFSET ?",
+            (*parameters, page_size, offset),
+        ).fetchall()
+        return {
+            "page": page, "page_size": page_size, "total": total,
+            "items": tuple({"id": str(row[0]), "component": str(row[1]), "level": str(row[2]),
+                            "event": str(row[3]), "mission_id": row[4], "action_id": row[5],
+                            "correlation_id": row[6], "run_id": row[7], "operator_reference": row[8],
+                            "occurred_at": str(row[9]), "details": json.loads(row[10])} for row in rows),
+        }
 
     def outstanding_scheduler_submission(self, mission_id: str) -> dict[str, Any] | None:
         rows = self._connection.execute(
@@ -1779,6 +2103,12 @@ class RuntimeDatabase:
                 (document["submission_id"], document["mission_id"], document["intent_id"], document["action_id"],
                  document["iteration"], "CREATED", None, None, self._dump(document)),
             )
+            self._append_operational_event(
+                component="forge_execution_host", level="INFO", event="scheduler_submission_created",
+                mission_id=str(document["mission_id"]), action_id=str(document["action_id"]),
+                details={"operation": "created", "submission_id": document["submission_id"],
+                         "result_state": "CREATED"},
+            )
         return document
 
     def update_scheduler_submission(self, submission_id: str, *, state: str,
@@ -1800,6 +2130,13 @@ class RuntimeDatabase:
             "UPDATE scheduler_submissions SET state=?, execution_run_id=?, receipt_id=?, document=? WHERE submission_id=?",
                 (state, document.get("execution_run_id"), document.get("receipt_id"), self._dump(document), submission_id),
             )
+            self._append_operational_event(
+                component="forge_execution_host", level=("WARNING" if state in {"BLOCKED", "FAILED"} else "INFO"),
+                event="scheduler_submission_state_changed", mission_id=str(document["mission_id"]),
+                action_id=str(document["action_id"]), run_id=document.get("execution_run_id"),
+                details={"operation": "state_changed", "submission_id": submission_id,
+                         "receipt_id": document.get("receipt_id"), "result_state": state},
+            )
         return document
 
     def save_dispatcher_state(self, *, status: str, mission_sequence: tuple[str, ...],
@@ -1811,9 +2148,16 @@ class RuntimeDatabase:
             raise RuntimeDatabaseError("idle dispatcher cannot retain an active Mission")
         document = {"status": status, "active_mission_id": active_mission_id, "mission_sequence": list(mission_sequence)}
         with self._connection:
+            existing = self._connection.execute("SELECT status FROM dispatcher_state WHERE singleton=1").fetchone()
             self._connection.execute(
                 "INSERT INTO dispatcher_state VALUES (1, ?, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET status=excluded.status, active_mission_id=excluded.active_mission_id, mission_sequence=excluded.mission_sequence, document=excluded.document",
                 (status, active_mission_id, self._dump(mission_sequence), self._dump(document)),
+            )
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="dispatcher_state_changed",
+                mission_id=active_mission_id, details={"operation": "state_changed",
+                "previous_state": None if existing is None else existing["status"], "new_state": status,
+                "queue_disposition": "active" if status == "ACTIVE" else "idle"},
             )
 
     def record_architecture_review(self, review: Any, *, timestamp: str | None = None) -> dict[str, Any]:
@@ -1831,6 +2175,11 @@ class RuntimeDatabase:
                 str(pressure.get("implementation", "unknown")), str(document.get("confidence", "unknown")),
                 timestamp or str(document.get("timestamp", document.get("reviewed_at", "unknown"))), self._dump(document),
             ))
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="architecture_review_recorded",
+                mission_id=mission_id, details={"operation": "recorded", "request_digest": document["input_digest"]},
+                occurred_at=timestamp or str(document.get("timestamp", document.get("reviewed_at"))),
+            )
         return document
 
     def record_mission_recommendation(self, recommendation: Any, *, mission_id: str | None = None,
@@ -1852,6 +2201,11 @@ class RuntimeDatabase:
                 str(document["origin"]), str(document["recommendation_source"]), self._dump(document["repository_evidence"]),
                 self._dump(document["decision_evidence_references"]),
             ))
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="mission_recommendation_recorded",
+                mission_id=mission_id, details={"operation": "recorded", "result_state": approval_state},
+                occurred_at=str(document["recommendation_timestamp"]),
+            )
         return document
 
     def record_execution_receipt(self, *, receipt_id: str, mission_id: str, execution_host: str,
@@ -1862,6 +2216,12 @@ class RuntimeDatabase:
         with self._connection:
             self._connection.execute("INSERT INTO execution_receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                      (receipt_id, mission_id, execution_host, execution_run_id, engineering_report_id, correlation_identity, executed_at, outcome))
+            self._append_operational_event(
+                component="forge_execution_host", level=("INFO" if outcome == "complete" else "WARNING"),
+                event="execution_receipt_recorded", mission_id=mission_id, correlation_id=correlation_identity,
+                run_id=execution_run_id, details={"operation": "recorded", "receipt_id": receipt_id,
+                "outcome": outcome}, occurred_at=executed_at,
+            )
 
     def save_planning_state(self, state: Any) -> dict[str, Any]:
         """Persist the mutable, Forge-owned planner snapshot independently of dispatch."""
@@ -1870,9 +2230,15 @@ class RuntimeDatabase:
         if any(item not in document or document[item] is None for item in required) or not isinstance(document["planner_version"], str) or not document["planner_version"]:
             raise RuntimeDatabaseError("planning state requires planner version, queue, pending/blocked actions, policy, and metadata")
         with self._connection:
+            existing = self._connection.execute("SELECT planner_version FROM planning_state WHERE singleton=1").fetchone()
             self._connection.execute(
                 "INSERT INTO planning_state VALUES (1, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(singleton) DO UPDATE SET planner_version=excluded.planner_version, current_queue=excluded.current_queue, pending_engineering_actions=excluded.pending_engineering_actions, blocked_engineering_actions=excluded.blocked_engineering_actions, execution_policy=excluded.execution_policy, planner_runtime_metadata=excluded.planner_runtime_metadata, document=excluded.document",
                 (document["planner_version"], self._dump(document["current_queue"]), self._dump(document["pending_engineering_actions"]), self._dump(document["blocked_engineering_actions"]), self._dump(document["execution_policy"]), self._dump(document["planner_runtime_metadata"]), self._dump(document)),
+            )
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="planning_state_updated",
+                details={"operation": "updated", "previous_state": None if existing is None else existing["planner_version"],
+                         "new_state": document["planner_version"]},
             )
         return document
 
@@ -1926,6 +2292,12 @@ class RuntimeDatabase:
                 self._connection.execute(
                     "INSERT INTO action_derivations (derivation_id, mission_id, snapshot_digest, contract_version, provider_configuration, lifecycle, generation_request_digest, document) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(derivation_id) DO UPDATE SET lifecycle=excluded.lifecycle, document=excluded.document",
                     tuple(document[item] for item in required) + (request_digest, self._dump(document)),
+                )
+                self._append_operational_event(
+                    component="forge_planning_provider", level=("WARNING" if document["lifecycle"] == "FAILED" else "INFO"),
+                    event="action_derivation_state_changed", mission_id=document["mission_id"],
+                    details={"operation": "state_changed", "action_derivation_id": document["derivation_id"],
+                             "request_digest": request_digest, "result_state": document["lifecycle"]},
                 )
         finally:
             self._action_derivation_write_state["permitted"] = False
@@ -2047,6 +2419,14 @@ class RuntimeDatabase:
                         for item in required
                     ) + (self._dump(document),),
                 )
+                self._append_operational_event(
+                    component="forge_planning_provider", level="INFO", event="action_derivation_canary_closed",
+                    mission_id=document["mission_id"], action_id=document["successor_attempt_id"],
+                    operator_reference=document["operator_id"],
+                    details={"operation": "closed", "action_derivation_id": document["successor_attempt_id"],
+                             "request_digest": document["provider_request_digest"], "outcome": "accepted"},
+                    occurred_at=document["closed_at"],
+                )
         finally:
             self._action_derivation_canary_closure_write_state["permitted"] = False
         return document
@@ -2110,6 +2490,14 @@ class RuntimeDatabase:
                 row_fields = tuple(item for item in required if item != "rationale")
                 self._connection.execute("INSERT INTO action_derivation_reattempt_authorizations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     tuple(document[item] for item in row_fields) + (self._dump(document),))
+                self._append_operational_event(
+                    component="forge_planning_provider", level="WARNING",
+                    event="action_derivation_reattempt_authorized", mission_id=document["mission_id"],
+                    action_id=document["successor_attempt_id"], operator_reference=document["authorization_identity"],
+                    details={"operation": "authorized", "action_derivation_id": document["successor_attempt_id"],
+                             "request_digest": document["provider_request_digest"], "previous_state": "FAILED",
+                             "new_state": "AUTHORIZED"}, occurred_at=document["created_at"],
+                )
         finally:
             self._action_derivation_reattempt_write_state["permitted"] = False
         return document
@@ -2136,6 +2524,13 @@ class RuntimeDatabase:
                 connection.execute("INSERT INTO action_derivation_reattempt_consumptions VALUES (?,?)", (authorization_id, _timestamp()))
             except sqlite3.IntegrityError as error:
                 raise RuntimeIntegrityError("action derivation reattempt authorization was already consumed") from error
+            self._append_operational_event(
+                component="forge_planning_provider", level="INFO", event="action_derivation_reattempt_consumed",
+                mission_id=document["mission_id"], action_id=document["successor_attempt_id"],
+                operator_reference=document["authorization_identity"],
+                details={"operation": "consumed", "action_derivation_id": document["successor_attempt_id"],
+                         "request_digest": document["provider_request_digest"], "outcome": "accepted"},
+            )
             connection.commit()
             return document
         except Exception:
@@ -2171,6 +2566,12 @@ class RuntimeDatabase:
                     return persisted
                 self._connection.execute("INSERT INTO token_preflight_receipts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     tuple(document[item] for item in required) + (self._dump(document),))
+                self._append_operational_event(
+                    component="forge_planning_provider", level="INFO", event="token_preflight_receipt_recorded",
+                    mission_id=document["mission_id"], details={"operation": "recorded", "receipt_id": document["receipt_id"],
+                    "provider_id": document["provider_id"], "policy_digest": document["policy_digest"],
+                    "request_digest": document["request_digest"], "outcome": "PASS"}, occurred_at=document["created_at"],
+                )
         finally:
             self._token_preflight_write_state["permitted"] = False
         return document
@@ -2208,6 +2609,12 @@ class RuntimeDatabase:
                 connection.execute("INSERT INTO token_preflight_receipt_consumptions VALUES (?,?)", (receipt_id, _timestamp()))
             except sqlite3.IntegrityError as error:
                 raise RuntimeIntegrityError("token preflight receipt was already consumed") from error
+            self._append_operational_event(
+                component="forge_planning_provider", level="INFO", event="token_preflight_receipt_consumed",
+                mission_id=document["mission_id"], details={"operation": "consumed", "receipt_id": receipt_id,
+                "provider_id": document["provider_id"], "policy_digest": document["policy_digest"],
+                "request_digest": document["request_digest"], "outcome": "PASS"},
+            )
             connection.commit()
             return document
         except Exception:
@@ -2263,6 +2670,12 @@ class RuntimeDatabase:
             with self._connection:
                 self._connection.execute("INSERT INTO token_preflight_failures VALUES (?,?,?,?,?)",
                     (document["failure_id"], document["mission_id"], document["provider_id"], document["occurred_at"], self._dump(document)))
+                self._append_operational_event(
+                    component="forge_planning_provider", level="WARNING", event="token_preflight_failed",
+                    mission_id=document["mission_id"], details={"operation": "failed", "provider_id": document["provider_id"],
+                    "policy_digest": document["policy_digest"], "request_digest": document["request_digest"],
+                    "failure_code": document["layer"]}, occurred_at=document["occurred_at"],
+                )
         finally:
             self._token_preflight_write_state["permitted"] = False
         return document
@@ -2284,6 +2697,11 @@ class RuntimeDatabase:
                 return persisted
             self._connection.execute("INSERT INTO action_derivation_evidence_sets VALUES (?, ?, ?, ?, ?, ?)",
                 tuple(document[item] for item in required) + (self._dump(document),))
+            self._append_operational_event(
+                component="forge_planning_provider", level="INFO", event="action_derivation_evidence_recorded",
+                mission_id=document["mission_id"], details={"operation": "recorded", "request_digest": document["envelope_digest"],
+                "outcome": "accepted"},
+            )
         return document
 
     def create_mission_amendment(self, amendment: Any) -> dict[str, Any]:
@@ -2298,6 +2716,11 @@ class RuntimeDatabase:
                 if persisted != document: raise RuntimeIntegrityError("Mission amendment conflicts with existing revision")
                 return persisted
             self._connection.execute("INSERT INTO mission_amendments VALUES (?,?,?,?,?,?)", tuple(document[item] for item in required) + (self._dump(document),))
+            self._append_operational_event(
+                component="forge_mission_runtime", level="WARNING", event="mission_amendment_recorded",
+                mission_id=document["mission_id"], details={"operation": "recorded", "new_state": document["revision"],
+                "request_digest": document["digest"]},
+            )
         return document
 
     def record_delegation_request(self, request: Any) -> dict[str, Any]:
@@ -2309,6 +2732,13 @@ class RuntimeDatabase:
         with self._connection:
             self._connection.execute("INSERT INTO delegation_requests VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                      tuple(document[item] for item in required[:8]) + (self._dump(document),))
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="delegation_request_recorded",
+                mission_id=document["mission_id"], action_id=document["action_id"],
+                details={"operation": "recorded", "provider_id": document["provider"],
+                "result_state": document["result_state"], "outcome": document["approval_state"]},
+                occurred_at=document["requested_at"],
+            )
         return document
 
     def record_decision_evidence(self, evidence: Any) -> dict[str, Any]:
@@ -2349,6 +2779,11 @@ class RuntimeDatabase:
                 self._dump(document["alternatives_considered"]), self._dump(confidence), self._dump(references),
                 str(document["timestamp"]), self._dump(document),
             ))
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="decision_evidence_recorded",
+                mission_id=mission_id, details={"operation": "recorded", "outcome": "accepted"},
+                occurred_at=str(document["timestamp"]),
+            )
         return document
 
     def record_integration_evidence(self, evidence: Any) -> dict[str, Any]:
@@ -2370,6 +2805,12 @@ class RuntimeDatabase:
                 document["id"], document["mission_id"], document["outcome"], document["merge_result"],
                 document["timestamp"], document["content_digest"], self._dump(document),
             ))
+            self._append_operational_event(
+                component="forge_mission_runtime", level="INFO", event="integration_evidence_recorded",
+                mission_id=document["mission_id"], details={"operation": "recorded", "outcome": document["outcome"],
+                "result_state": document["merge_result"], "request_digest": document["content_digest"]},
+                occurred_at=document["timestamp"],
+            )
         return document
 
     def get_document(self, table: str, identifier: str) -> dict[str, Any]:

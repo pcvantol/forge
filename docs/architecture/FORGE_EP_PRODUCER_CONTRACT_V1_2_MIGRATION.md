@@ -61,6 +61,13 @@ validation.  EP appends the corresponding immutable
 component log.  Prompts, bearer credentials, checkout paths and receipt bodies
 are not copied to either audit document or central log.
 
+Forge also projects those two boundary facts to its append-only Operational
+Logging Contract 1.0 journal as `forge_submission_sent` and
+`ep_submission_receipt_received`.  The projection retains only the safe
+version, product-identity, correlation and digest bindings, so the Forge and
+EP operational timelines can be compared without treating Forge as the
+authority for EP execution telemetry.
+
 EP accepts historical v1.0 Forge provenance for existing work, but only v1.1
 has the information required to create this bidirectional audit trail.  Roll
 out EP first: older Forge clients ignore the additional POST response field;
