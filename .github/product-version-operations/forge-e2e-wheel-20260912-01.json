@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.12",
+  "classification_rationale": "operator-authorized-final-e2e-2026-09-12",
+  "component": "product",
+  "event_lineage": "operator-authorized-final-e2e-2026-09-12",
+  "expected_head": "2ff27234ca95b1f94c7235cc7ce12244b9cd8f69",
+  "operation_id": "forge-e2e-wheel-20260912-01",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.13"
+}
