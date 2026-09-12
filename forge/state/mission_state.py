@@ -124,7 +124,7 @@ _ALLOWED_TRANSITIONS: dict[MissionExecutionStatus, frozenset[MissionExecutionSta
     MissionExecutionStatus.INTEGRATION_BLOCKED: frozenset((MissionExecutionStatus.WAITING_INTEGRATION, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
     MissionExecutionStatus.INTEGRATION_COMPLETE: frozenset((MissionExecutionStatus.COMPLETED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.BLOCKED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE, MissionExecutionStatus.ARCHIVED)),
-    MissionExecutionStatus.FAILED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE, MissionExecutionStatus.ARCHIVED)),
+    MissionExecutionStatus.FAILED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_FOR_EVIDENCE, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.COMPLETED: frozenset((MissionExecutionStatus.ARCHIVED,)),
     MissionExecutionStatus.ARCHIVED: frozenset(),
 }

@@ -63,6 +63,9 @@ The current runtime records these categories:
   changes and host receipt recording;
 - Execution Host binding persistence and both Forge→EP submission / EP→Forge
   submission-receipt events, including safe version and digest bindings;
+- accepted, host-proven EP operator-retry resolution evidence, bound to the
+  original Forge correlation, original host run, resolved EP submission and
+  terminal successor run without recording host evidence bodies;
 - creation, replacement and idempotent no-change handling of the selected EP
   peer configuration;
 - operator binding, revocation and governance-capability upgrade actions;

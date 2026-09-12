@@ -235,7 +235,7 @@ class ExecutionRepositoryEvidence:
 
 @dataclass(frozen=True)
 class ExecutionHostEvidence:
-    """Terminal host evidence; all identity must match the exact dispatched run."""
+    """Terminal evidence for an exact dispatch or its host-proven retry resolution."""
 
     host_id: str
     correlation_id: str
@@ -249,6 +249,7 @@ class ExecutionHostEvidence:
     validation_references: tuple[str, ...] = ()
     retry_of_correlation_id: str | None = None
     original_correlation_id: str | None = None
+    resolved_from_host_run_id: str | None = None
     execution_started_at: str | None = None
     execution_completed_at: str | None = None
     receipt_id: str | None = None
@@ -270,6 +271,10 @@ class ExecutionHostEvidence:
             object.__setattr__(self, f"{label}_references", tuple(sorted(references)))
         if self.retry_of_correlation_id and not self.original_correlation_id:
             object.__setattr__(self, "original_correlation_id", self.retry_of_correlation_id)
+        if self.resolved_from_host_run_id is not None:
+            if (not isinstance(self.resolved_from_host_run_id, str) or not self.resolved_from_host_run_id
+                    or self.resolved_from_host_run_id == self.host_run_id):
+                raise ValueError("execution host evidence retry resolution identity is invalid")
         if self.execution_completed_at and not self.execution_started_at:
             raise ValueError("execution completion time requires an execution start time")
         if self.receipt_id is not None and not self.receipt_id:

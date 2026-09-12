@@ -46,7 +46,8 @@ def _terminal_outcome(value: Any, name: str) -> str:
     return value
 
 
-def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: str) -> ExecutionHostEvidence:
+def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: str,
+                      resolved_from_host_run_id: str | None = None) -> ExecutionHostEvidence:
     """Map one immutable EP terminal artifact only when every identity agrees.
 
     Artifact digest integrity establishes byte origin, not semantic identity;
@@ -184,4 +185,5 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     )
     return ExecutionHostEvidence(host_id, repository_evidence.correlation_id, repository_evidence.host_run_id,
                                  report_id, ExecutionEvidenceOutcome(outcome.lower()), repository_evidence,
-                                 validation_references=validation_references)
+                                 validation_references=validation_references,
+                                 resolved_from_host_run_id=resolved_from_host_run_id)

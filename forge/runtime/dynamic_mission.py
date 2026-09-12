@@ -268,6 +268,32 @@ class InstalledDynamicMissionRuntime:
             loop.resume(mission_id, authorization=authorization)
         return self._result(self.states.get(mission_id))
 
+    def reconcile_terminal_evidence(self, mission_id: str) -> DynamicMissionRunResult:
+        """Retry only a failed terminal readback for the exact persisted dispatch."""
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        diagnostics = None if state.execution_evidence is None else state.execution_evidence.get("diagnostic_references")
+        active = state.current_engineering_action
+        correlation = state.execution_correlation
+        if (state.status is not MissionExecutionStatus.FAILED
+                or state.waiting_reason != "host_evidence_failed"
+                or state.execution_evidence is None
+                or state.execution_evidence.get("outcome") != "failed"
+                or diagnostics != ["runner:host_evidence_failed"]
+                or not isinstance(active, dict)
+                or active.get("status") != "WAITING_FOR_RESULT"
+                or not isinstance(correlation, dict)
+                or not isinstance(correlation.get("host_run_id"), str)
+                or not correlation["host_run_id"]):
+            raise InstalledDynamicMissionError("terminal evidence reconciliation is not available for this Mission")
+        self._initial_truth[mission_id] = dict(state.repository_truth or {})
+        self.preflight()
+        self.states.transition(
+            mission_id, MissionExecutionStatus.WAITING_FOR_EVIDENCE, occurred_at=self.clock(),
+            reason="terminal_evidence_reconciliation_requested",
+        )
+        return self._tick(mission_id)
+
     def _tick(self, mission_id: str) -> DynamicMissionRunResult:
         loop = self._loop(mission_id)
         ForgeRuntimeService(loop, self.states, runtime_database=self.database).tick()

@@ -31,11 +31,16 @@ evidence.
 
 If EP marks an already claimed run terminal but omits its immutable terminal
 artifact, Forge treats the readback as a bounded contract failure rather than
-pending work. The same applies to a matching `BLOCKED` or `FAILED` run/result
-when EP keeps its `terminal` flag false to record an operator retry: Forge does
-not silently follow that separate EP retry chain. It stores no synthetic Host
-Evidence, transitions the Mission to `FAILED`, and permits only an explicit,
-correlated `RecoveryAuthorization` to issue a new submission.
+pending work. A matching `BLOCKED` or `FAILED` run/result also remains a
+failure unless EP exposes its explicit, internal retry lineage in the existing
+v1.2 `disposition` metadata. Forge follows that successor only when the parent
+run is its exact persisted run, the successor binds that same parent with
+`retry_parent_run_id`, every submission preserves the persisted Forge
+correlation/provenance/producer binding, and the successor terminal artifact
+passes the ordinary byte and identity checks. The result is stored as
+host-proven retry resolution evidence, never as a second Forge submission or a
+Forge-owned retry; Forge also appends a redacted operational audit event.
+Every missing, cyclic or mismatched lineage field fails closed.
 
 Pinned EP producer source: `f7c08872a2d334cff097ea5f28822836e59f78c3`.
 The migration is source compatibility only; it does not assert that every

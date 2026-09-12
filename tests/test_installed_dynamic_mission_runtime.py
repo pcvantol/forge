@@ -27,6 +27,7 @@ from forge.operator_identity import InstallationOperatorService, NamedOperatorId
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
+from forge.state.mission_state import MissionExecutionStatus
 from forge._version import canonical_version
 
 
@@ -207,6 +208,25 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(retry.producer_contract.producer.identity.version, canonical_version())
         state = self.runtime.states.get(mission.id)
         self.assertIn("authorized_recovery", [item["reason"] for item in state.state_history])
+
+    def test_terminal_evidence_reconciliation_never_creates_a_second_dispatch(self) -> None:
+        mission, envelope = self._mission_and_envelope()
+        self.runtime.admit(mission, envelope)
+        waiting = self.runtime.start(mission.id, self._truth())
+        self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
+        self.runtime.states.transition(
+            mission.id, MissionExecutionStatus.FAILED, occurred_at="2026-09-11T16:01:00Z",
+            reason="host_evidence_failed",
+            execution_evidence={"outcome": "failed", "diagnostic_references": ["runner:host_evidence_failed"]},
+        )
+        self.host.return_evidence = True
+
+        reconciled = self.runtime.reconcile_terminal_evidence(mission.id)
+
+        self.assertEqual(reconciled.status, "COMPLETED")
+        self.assertEqual(len(self.host.requests), 1)
+        state = self.runtime.states.get(mission.id)
+        self.assertIn("terminal_evidence_reconciliation_requested", [item["reason"] for item in state.state_history])
 
 
 if __name__ == "__main__":
