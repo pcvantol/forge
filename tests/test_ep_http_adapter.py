@@ -72,6 +72,11 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.readback["disposition"] = {"state": "QUEUED", "terminal": False, "execution_eligible": True,
             "revision": 0, "operation_id": None, "event_reference": None, "reason": "NOT_RECORDED",
             "actor_reference": "NOT_RECORDED", "recorded_at": None}
+        self.readback["run"].update({
+            "execution_started_at": "2026-09-12T00:00:00+00:00",
+            "execution_completed_at": "2026-09-12T00:01:00+00:00",
+            "execution_duration_ms": 60_000,
+        })
         artifact = json.loads((FIXTURES / "forge-terminal-evidence-v1.1.json").read_text())
         artifact["contract_version"] = "1.2"
         artifact["producer"]["version"] = "2.7.2"
@@ -83,6 +88,11 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             "digest": "sha256:" + "b" * 64, "candidate_sha": "c" * 40}, "quality_review": "PASS",
             "security_review": "PASS", "repair_rounds": {"used": 0, "maximum": 3},
             "findings": {"open_blocking": 0, "open_non_blocking": 0, "artifact": None}}
+        artifact["run"].update({
+            "execution_started_at": "2026-09-12T00:00:00+00:00",
+            "execution_completed_at": "2026-09-12T00:01:00+00:00",
+            "execution_duration_ms": 60_000,
+        })
         self.artifact = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
 
     def _accepted_submission(self) -> dict[str, object]:
@@ -295,6 +305,19 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 ExecutionDispatch(self.request, "run-fixture")
             )
         self.assertEqual(evidence.receipt_id, "ep-submission-receipt:submission-fixture")
+        self.assertEqual(evidence.execution_started_at, "2026-09-12T00:00:00+00:00")
+        self.assertEqual(evidence.execution_completed_at, "2026-09-12T00:01:00+00:00")
+        self.assertEqual(evidence.execution_duration_ms, 60_000)
+
+    def test_historical_artifact_without_timing_uses_complete_authenticated_readback(self) -> None:
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        artifact["run"].pop("execution_started_at")
+        artifact["run"].pop("execution_completed_at")
+        artifact["run"].pop("execution_duration_ms")
+
+        evidence = self._terminal_retrieval(readback, artifact)
+
+        self.assertEqual(evidence.execution_duration_ms, 60_000)
 
     def test_terminal_evidence_carries_the_exact_persisted_retry_lineage(self) -> None:
         self._seed_binding()
@@ -462,6 +485,8 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             ("missing accepted digest", lambda r, a: (r["submission"].pop("accepted_request_digest"), a["submission"].pop("accepted_request_digest"))),
             ("invalid accepted digest type", lambda r, a: (r["submission"].update({"accepted_request_digest": []}), a["submission"].update({"accepted_request_digest": []}))),
             ("terminal flag", lambda r, a: r["run"].update({"terminal": False})),
+            ("missing timing", lambda r, a: r["run"].pop("execution_duration_ms")),
+            ("timing mismatch", lambda r, a: a["run"].update({"execution_duration_ms": 59_000})),
         )
         for label, mutate in cases:
             with self.subTest(label=label):
