@@ -1,0 +1,189 @@
+{
+  "schema_version": "1.0",
+  "capability": "FORGE::OUTER_LOOP_CI_INTEGRATION_V1",
+  "owner": "forge",
+  "authority": "DOCUMENTARY",
+  "status": "PLANNED",
+  "priority_lane": "LATER_RUNTIME_QUALIFICATION",
+  "executable": false,
+  "authorizes_live_execution": false,
+  "changes_current_live_canary_authority": false,
+  "requires_console": false,
+  "requires_installer": false,
+  "requires_dedicated_server_for_application_suite": false,
+  "architecture": "docs/architecture/FORGE_OUTER_LOOP_CI_INTEGRATION_V1.md",
+  "scoped_roadmap": "docs/roadmap/FORGE_OUTER_LOOP_CI_V1.md",
+  "canonical_roadmap": "knowledge/bootstrap/10_ROADMAP.md",
+  "runtime_roadmap": "docs/architecture/runtime-evolution-roadmap.md",
+  "source_pin": "206657698bb29caa6d22fda5020e4ebc8072700f",
+  "reuses_inner_graph": "docs/roadmap/forge-inner-loop-ci-v1.json",
+  "external_dependencies": {
+    "FCO-FLOW": [
+      "FCI-CI"
+    ]
+  },
+  "production_prerequisite": "Public qualified outer-loop context/candidate/governance services; no test-side replacement",
+  "entry": "INNER_LOOP_VERIFIED_MISSION_COMPLETION",
+  "exit": "GOVERNED_NEXT_MISSION_COMPLETION_OR_NO_WORK",
+  "real_boundaries": [
+    "PROJECT_CONTEXT_AND_PROVENANCE",
+    "RECOMMENDATION_CANDIDATE_LIFECYCLE",
+    "GOVERNANCE_AND_INTAKE",
+    "INNER_LOOP_AND_EP_HTTP_CONSUMER",
+    "DURABLE_RECONCILIATION_AND_RECOVERY"
+  ],
+  "invariants": {
+    "next_mission_requires_current_approvals": true,
+    "duplicate_outcome_creates_duplicate_candidate": false,
+    "test_driver_implements_outer_loop": false,
+    "new_process_restart_required": true,
+    "live_provider_calls": false,
+    "live_ep_submissions": false,
+    "live_github_mutations": false,
+    "skip_is_pass": false,
+    "mock_pass_is_live_e2e_pass": false,
+    "no_remaining_work_creates_mission": false
+  },
+  "planned_ci": {
+    "check_name": "Forge outer-loop integration (deterministic, mock EP)",
+    "python": "3.14",
+    "events": [
+      "pull_request",
+      "push_main",
+      "workflow_dispatch"
+    ],
+    "permissions": {
+      "contents": "read"
+    },
+    "installed_wheel_required": true,
+    "default_suite_retries": 0,
+    "target_job_timeout_minutes": 10,
+    "required_scenario_gate": true,
+    "same_suite_in_release_qualification": true
+  },
+  "server_follow_on": {
+    "status": "PLANNED",
+    "after": "CURRENT_LIVE_E2E_RESULT_REVIEWED",
+    "existing_hosting_graph": "docs/roadmap/forge-console-hosting-v1.json",
+    "existing_node": "FSH-SERVICES",
+    "milestone": "SERVER_ONLY_PROCESS_AND_LIFECYCLE",
+    "server_requires_console": false,
+    "server_requires_outer_loop_suite": false,
+    "already_deployed_server_claimed": false,
+    "new_executable_dag_authority": false,
+    "later_ci_variant": "SAME_SCENARIOS_THROUGH_INSTALLED_SERVER_ENTRYPOINT"
+  },
+  "scenarios": [
+    {
+      "id": "FOE-01",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-02",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-03",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-04",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-05",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-06",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-07",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-08",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-09",
+      "required": true,
+      "status": "PLANNED"
+    },
+    {
+      "id": "FOE-10",
+      "required": true,
+      "status": "PLANNED"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "FCO-CONTRACT",
+      "title": "Outer-loop fixture, provenance and scenario contract",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "completion_evidence": [
+        "FOE-01..10 mapped to production boundaries; missing seams explicit"
+      ]
+    },
+    {
+      "id": "FCO-FLOW",
+      "title": "Completed Mission through governed next Mission",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCO-CONTRACT"
+      ],
+      "completion_evidence": [
+        "Real M1 completion -> Context -> Candidate -> approvals -> M2 inner-loop completion"
+      ]
+    },
+    {
+      "id": "FCO-RESTART",
+      "title": "Idempotent new-process outer-loop recovery",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCO-FLOW"
+      ],
+      "completion_evidence": [
+        "Same instance/history, no duplicate candidates or submissions after replay/restart"
+      ]
+    },
+    {
+      "id": "FCO-NEGATIVE",
+      "title": "Authority, scope, evidence and no-work scenarios",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCO-FLOW"
+      ],
+      "completion_evidence": [
+        "Unapproved/stale/invalid/ambiguous input blocked; no-work is idle"
+      ]
+    },
+    {
+      "id": "FCO-CI",
+      "title": "Required deterministic outer-loop CI and release reuse",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCO-RESTART",
+        "FCO-NEGATIVE"
+      ],
+      "completion_evidence": [
+        "Installed PR/main/local/release parity; all required scenarios fail the gate on error"
+      ]
+    }
+  ]
+}

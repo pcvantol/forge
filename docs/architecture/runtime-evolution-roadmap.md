@@ -20,6 +20,33 @@ strategy context, not instructions to revert to their old provider version or
 predeclared-Action canary. The scoped contract identifies the current source
 and existing-test limitations without changing Mission semantics or authority.
 
+## Post-live-E2E server and later outer-loop CI — 2026-09-12
+
+The standalone **Forge Server process** is an explicit next product milestone
+AFTER the current live E2E run is concluded and its actual outcome reviewed.
+This is the server-only portion of existing [FSH-SERVICES](../roadmap/FORGE_CONSOLE_HOSTING_V1.md),
+not a new prerequisite retrofitted onto the running canary. Reuse
+InstalledDynamicMissionRuntime and ForgeRuntimeService in a shipped foreground
+serve/API composition with graceful shutdown, single-writer protection, bounded
+polling and durable restart, then qualify the owning launchd installation.
+Server delivery does not wait for Console, relay or the outer loop; the later
+Console is its admin client, not Workspace's replacement or runtime authority.
+
+At source `206657698bb29caa6d22fda5020e4ebc8072700f`, `ForgeRuntimeService.serve`
+exists as a library loop; `forge server` CLI exposes storage init/status. That
+is useful foundation, not evidence of a complete independent installed daemon.
+Existing CLI-first language below is historical sequencing, not a requirement
+to throw away the public installed application composition to create another CLI.
+
+The [outer-loop CI contract](FORGE_OUTER_LOOP_CI_INTEGRATION_V1.md) and
+[roadmap/DAG](../roadmap/FORGE_OUTER_LOOP_CI_V1.md) are a LATER deterministic
+qualification line after FCI-CI: verified Mission result -> Context -> Candidate
+-> applicable governance -> next Mission -> its inner loop. No automatic new
+Mission approval is introduced. Reuse the mock EP and installed harness; preserve
+real Forge application logic. The application-level suites need no running
+production daemon. Once Server exists, add the same scenarios through its real
+entrypoint/API as an additional variant, not a separate orchestration engine.
+
 ## Decision
 
 Forge evolves CLI-first. The deterministic Forge CLI is the first executable
