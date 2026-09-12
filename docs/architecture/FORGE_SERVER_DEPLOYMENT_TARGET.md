@@ -2,11 +2,24 @@
 
 **Status:** Canonical target architecture; implementation, migration and qualification remain separately governed.
 
-Forge Server is a headless installed service. Its central runtime-storage root is outside every Git/source checkout and contains the Forge-owned SQL database plus durable files, dispatch/correlation journals, artifacts/references, logs, backups and cache. It exposes a versioned HTTP API above interface-neutral Forge application services. The Forge CLI remains an administration, qualification and recovery client of those services; Forge has no GUI requirement. On macOS its installed service is launchd-managed.
+Forge Server is a headless installed service. Its central runtime-storage root is outside every Git/source checkout and contains the Forge-owned SQL database plus durable files, dispatch/correlation journals, artifacts/references, logs, backups and cache. It exposes a versioned HTTP API above interface-neutral Forge application services. The Forge CLI remains an administration, qualification and recovery client of those services; the runtime core requires no GUI. The optional future [Forge Operations Console](FORGE_OPERATIONS_CONSOLE_V1.md) adds instance administration without making a browser a runtime dependency. On macOS its installed service is launchd-managed.
 
 The current repository-bound `.git/forge-runtime` placement is historical/bootstrap-compatible runtime placement, not the target authority. Migration/relocation must preserve the existing Forge instance ID, grants, Missions, budgets, requests, cursors and evidence, use a product-owned quiesced cutover with backup/integrity checks, and leave no dual writer or old-location fallback writer. A source checkout must never create a replacement runtime because it cannot find the installed one.
 
 Forge binds to EP and Workspace only through their versioned authenticated APIs. It never reads their databases or controls their services. The shared discovery/pairing vocabulary and descriptor are defined by Forge Platform's [contract](https://github.com/pcvantol/forge-platform/blob/main/docs/architecture/INSTANCE_DISCOVERY_AND_PAIRING_CONTRACT.md): LAN DNS-SD/mDNS and configured/unicast/tailnet endpoints locate candidates, while authenticated pairing pins peer product, stable instance ID, identity fingerprint, endpoint/version/capability set and scope in Forge-owned storage. Discovery is not authorization; a binding never silently retargets to a discovered instance.
+
+## Optional local Operations Console
+
+`FORGE::OPERATIONS_CONSOLE_V1` is a **PLANNED**, post-autonomy local web
+administration surface for host components, logs, configuration, active Missions
+and historical Missions. It uses the same interface-neutral Forge services and
+versioned authenticated API; no browser SQL, second runtime, implicit data-root
+initialization or EP service control is introduced. The [scoped roadmap/DAG](../roadmap/FORGE_OPERATIONS_CONSOLE_V1.md)
+separates read projections, UI, bounded configuration/control and installed
+qualification. Workspace retains project/governance/approval/chat UX, while
+Forge Platform retains install/update/host-process lifecycle. The console is
+not a new prerequisite for the first Forge -> EP -> Forge E2E, and this target
+document is not an implementation, release or runtime-authorization claim.
 
 ## HTTP API implementation requirement
 
