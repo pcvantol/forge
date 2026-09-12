@@ -6,7 +6,7 @@ the EP submission/run binding which follows from a persisted Forge request.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -22,6 +22,7 @@ class ExecutionHostBindingStore(Protocol):
     def save_execution_host_binding(self, correlation_id: str, document: Mapping[str, Any]) -> dict[str, Any]: ...
     def record_execution_host_exchange_audit(self, correlation_id: str, *, direction: str,
                                              event_kind: str, document: Mapping[str, Any]) -> dict[str, Any]: ...
+    def execution_host_exchange_audit(self, correlation_id: str) -> tuple[dict[str, Any], ...]: ...
     def record_operational_event(self, **values: Any) -> dict[str, Any]: ...
 
 
@@ -234,6 +235,61 @@ class EngineeringPlatformHttpExecutionHost:
             raise ValueError("EP submission receipt accepted-request digest is invalid")
         return receipt
 
+    def _submission_receipt_id(self, request: ExecutionRequest, binding: Mapping[str, Any]) -> str:
+        """Recover the already-validated EP receipt that binds terminal evidence.
+
+        New bindings persist the complete receipt.  Bindings written before
+        that durability fix deliberately fall back only to the existing,
+        immutable EP-to-Forge audit fact; no remote receipt is invented and a
+        duplicate or mismatched audit record fails closed.
+        """
+        persisted = binding.get("submission_receipt")
+        if persisted is not None:
+            if not isinstance(persisted, Mapping):
+                raise ValueError("EP persisted submission receipt is malformed")
+            receipt = self._validate_submission_receipt(request, binding, {"receipt": persisted})
+            return str(receipt["id"])
+
+        records = self._bindings.execution_host_exchange_audit(request.correlation_id)
+        candidates = [item for item in records
+                      if item.get("direction") == "EP_TO_FORGE"
+                      and item.get("event_kind") == "EP_SUBMISSION_RECEIPT_RECEIVED"]
+        if len(candidates) != 1:
+            raise ValueError("EP persisted submission receipt audit is missing or ambiguous")
+        document = candidates[0].get("document")
+        if not isinstance(document, Mapping):
+            raise ValueError("EP persisted submission receipt audit is malformed")
+        expected_keys = {
+            "contract_version", "producer_id", "producer_type", "forge_application_version",
+            "producer_contract_version", "forge_provenance_contract_version", "correlation_id",
+            "ep_project_id", "ep_repository_id", "ep_instance_id", "submission_id", "receipt_id",
+            "receipt_contract_version", "ep_application_version", "producer_readback_contract_version",
+            "accepted_request_digest",
+        }
+        contract = request.producer_contract
+        expected = {
+            "contract_version": "1.0", "producer_id": contract.producer.identity.id,
+            "producer_type": str(contract.producer.identity.type),
+            "forge_application_version": contract.producer.identity.version,
+            "producer_contract_version": contract.contract_version,
+            "forge_provenance_contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION,
+            "correlation_id": request.correlation_id, "ep_project_id": self.config.project_id,
+            "ep_repository_id": request.repository_id, "ep_instance_id": self.config.expected_instance_id,
+            "submission_id": binding.get("submission_id"), "receipt_contract_version": "1.0",
+            "producer_readback_contract_version": self.config.producer_readback_contract,
+        }
+        if set(document) != expected_keys or any(document.get(key) != value for key, value in expected.items()):
+            raise ValueError("EP persisted submission receipt audit does not bind the submitted Forge envelope")
+        receipt_id = document.get("receipt_id")
+        ep_version = document.get("ep_application_version")
+        digest = document.get("accepted_request_digest")
+        if (not isinstance(receipt_id, str) or not receipt_id
+                or not isinstance(ep_version, str) or not ep_version
+                or not isinstance(digest, str) or not digest.startswith("sha256:") or len(digest) != 71
+                or any(character not in "0123456789abcdef" for character in digest[7:])):
+            raise ValueError("EP persisted submission receipt audit identity is invalid")
+        return receipt_id
+
     def _validate_readback(self, request: ExecutionRequest, binding: Mapping[str, Any], readback: Mapping[str, Any]) -> None:
         if readback.get("contract_version") not in self.SUPPORTED_PRODUCER_READBACK_CONTRACTS:
             raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
@@ -411,6 +467,10 @@ class EngineeringPlatformHttpExecutionHost:
             binding = self._bindings.save_execution_host_binding(request.correlation_id,
                 {"correlation_id": request.correlation_id, "submission_id": submission_id})
             receipt = self._validate_submission_receipt(request, binding, accepted)
+            binding = self._bindings.save_execution_host_binding(
+                request.correlation_id,
+                {"correlation_id": request.correlation_id, "submission_receipt": dict(receipt)},
+            )
             self._bindings.record_execution_host_exchange_audit(
                 request.correlation_id, direction="EP_TO_FORGE", event_kind="EP_SUBMISSION_RECEIPT_RECEIVED",
                 document=self._audit_document(request, binding, receipt=receipt),
@@ -478,6 +538,7 @@ class EngineeringPlatformHttpExecutionHost:
             readback, raw, host_id=self.config.host_id,
             resolved_from_host_run_id=resolved_from_host_run_id,
         )
+        evidence = replace(evidence, receipt_id=self._submission_receipt_id(request, binding))
         observed_identity = (evidence.correlation_id, evidence.host_run_id, evidence.repository_evidence.runtime_prompt_id,
             evidence.repository_evidence.mission_id, evidence.repository_evidence.intent_id,
             evidence.repository_evidence.intent_revision, evidence.repository_evidence.action_id, evidence.repository_evidence.repository_id)

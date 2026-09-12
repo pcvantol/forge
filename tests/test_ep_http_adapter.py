@@ -111,7 +111,8 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
         host._binding(self.request)
         self.database.save_execution_host_binding(self.request.correlation_id,
-            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"})
+            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture",
+             "submission_receipt": self._accepted_submission()["receipt"]})
 
     @staticmethod
     def _urlopen(responses: list[bytes], observed: list[object]):
@@ -128,6 +129,10 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
             self.assertIsNone(host.dispatch(self.request))
         self.assertEqual(self.database.execution_host_binding(self.request.correlation_id)["submission_id"], "submission-fixture")
+        self.assertEqual(
+            self.database.execution_host_binding(self.request.correlation_id)["submission_receipt"]["id"],
+            "ep-submission-receipt:submission-fixture",
+        )
         sent, received = self.database.execution_host_exchange_audit(self.request.correlation_id)
         self.assertEqual((sent["direction"], sent["event_kind"]), ("FORGE_TO_EP", "FORGE_SUBMISSION_SENT"))
         self.assertEqual((received["direction"], received["event_kind"]), ("EP_TO_FORGE", "EP_SUBMISSION_RECEIPT_RECEIVED"))
@@ -274,6 +279,64 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 json.dumps(self.compatible).encode(), json.dumps(changed).encode()], [])):
             with self.assertRaisesRegex(ValueError, "conflicts"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
+
+    def test_terminal_evidence_carries_the_exact_persisted_submission_receipt(self) -> None:
+        self._seed_binding()
+        receipt = self._accepted_submission()["receipt"]
+        self.database.save_execution_host_binding(
+            self.request.correlation_id,
+            {"correlation_id": self.request.correlation_id, "submission_receipt": receipt},
+        )
+        readback = json.loads(json.dumps(self.readback))
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(self.artifact).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), self.artifact], [])):
+            evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                ExecutionDispatch(self.request, "run-fixture")
+            )
+        self.assertEqual(evidence.receipt_id, "ep-submission-receipt:submission-fixture")
+
+    def test_historical_terminal_evidence_uses_only_the_exact_immutable_receipt_audit(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        host._binding(self.request)
+        self.database.save_execution_host_binding(
+            self.request.correlation_id,
+            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"},
+        )
+        binding = self.database.execution_host_binding(self.request.correlation_id)
+        self.assertIsNotNone(binding)
+        host._bindings.record_execution_host_exchange_audit(
+            self.request.correlation_id, direction="EP_TO_FORGE", event_kind="EP_SUBMISSION_RECEIPT_RECEIVED",
+            document=host._audit_document(self.request, binding, receipt=self._accepted_submission()["receipt"]),
+        )
+        readback = json.loads(json.dumps(self.readback))
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(self.artifact).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), self.artifact], [])):
+            evidence = host.retrieve_evidence(ExecutionDispatch(self.request, "run-fixture"))
+        self.assertEqual(evidence.receipt_id, "ep-submission-receipt:submission-fixture")
+
+    def test_historical_receipt_audit_mismatch_fails_closed(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        host._binding(self.request)
+        self.database.save_execution_host_binding(
+            self.request.correlation_id,
+            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture"},
+        )
+        binding = self.database.execution_host_binding(self.request.correlation_id)
+        self.assertIsNotNone(binding)
+        document = host._audit_document(self.request, binding, receipt=self._accepted_submission()["receipt"])
+        document["submission_id"] = "other-submission"
+        host._bindings.record_execution_host_exchange_audit(
+            self.request.correlation_id, direction="EP_TO_FORGE", event_kind="EP_SUBMISSION_RECEIPT_RECEIVED",
+            document=document,
+        )
+        readback = json.loads(json.dumps(self.readback))
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(self.artifact).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), self.artifact], [])):
+            with self.assertRaisesRegex(ValueError, "does not bind"):
+                host.retrieve_evidence(ExecutionDispatch(self.request, "run-fixture"))
 
     def test_host_proven_operator_retry_resolution_returns_the_successor_evidence(self) -> None:
         self._seed_binding()
