@@ -27,8 +27,8 @@ from forge.models.codex_runtime_prompt import (
     CodexCliRuntimePrompt, ExecutionHostCompatibility, RepositoryState,
 )
 from forge.models.producer import (
-    ExecutionReceiptReference, ForgeActionContextEnvelope, Producer, ProducerContract, ProducerIdentity,
-    RuntimePromptEnvelope,
+    ExecutionReceiptReference, ForgeActionContextEnvelope, ForgePlanningContextEnvelope,
+    Producer, ProducerContract, ProducerIdentity, RuntimePromptEnvelope,
 )
 from forge.models.intent import IntentReference
 from forge.scheduler import BootstrapMissionScheduler
@@ -171,6 +171,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
             receipts = contract_document.get("receipt_references", ())
             evidence_references = contract_document.get("execution_evidence_references", ())
             context_document = contract_document.get("action_context")
+            planning_document = contract_document.get("planning_context")
             if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping) or not isinstance(constraints, list):
                 raise TypeError
             identity = producer["identity"]
@@ -210,6 +211,35 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
                     generator_model=required(generator["model"]),
                     generator_version=required(generator["version"]),
                 )
+            planning_context = None
+            if planning_document is not None:
+                planning_keys = {
+                    "envelope_version", "mission_id", "mission_revision", "intent_id", "intent_revision",
+                    "action_id", "mission_title", "business_summary", "engineering_summary",
+                    "mission_lifecycle", "decision_evidence_reference", "decision_evidence_reference_digest",
+                    "envelope_digest",
+                }
+                if not isinstance(planning_document, Mapping) or set(planning_document) != planning_keys:
+                    raise TypeError
+                def optional(value: Any) -> str | None:
+                    if value is not None and (not isinstance(value, str) or not value):
+                        raise TypeError
+                    return value
+                planning_context = ForgePlanningContextEnvelope(
+                    mission_id=required(planning_document["mission_id"]),
+                    mission_revision=required(planning_document["mission_revision"]),
+                    intent_id=required(planning_document["intent_id"]),
+                    intent_revision=required(planning_document["intent_revision"]),
+                    action_id=required(planning_document["action_id"]),
+                    mission_title=optional(planning_document["mission_title"]),
+                    business_summary=optional(planning_document["business_summary"]),
+                    engineering_summary=optional(planning_document["engineering_summary"]),
+                    mission_lifecycle=optional(planning_document["mission_lifecycle"]),
+                    decision_evidence_reference=optional(planning_document["decision_evidence_reference"]),
+                    decision_evidence_reference_digest=optional(planning_document["decision_evidence_reference_digest"]),
+                    envelope_digest=required(planning_document["envelope_digest"]),
+                    envelope_version=required(planning_document["envelope_version"]),
+                )
             mission_id = required(contract_document["mission_id"])
             contract = ProducerContract(
                 Producer(ProducerIdentity(required(identity["id"]), required(identity["type"]), required(identity["version"])),
@@ -217,7 +247,8 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
                 required(contract_document["correlation_id"]), required(contract_document["engineering_action_id"]),
                 RuntimePromptEnvelope(required(prompt["id"]), required(prompt["version"]), required(prompt["format"]),
                                       required(prompt["content"]), required(prompt["content_digest"])),
-                tuple(constraints), tuple(metadata.items()), action_context=action_context, mission_id=mission_id,
+                tuple(constraints), tuple(metadata.items()), action_context=action_context,
+                planning_context=planning_context, mission_id=mission_id,
                 receipt_references=tuple(ExecutionReceiptReference(item["host_id"], item["receipt_id"]) for item in receipts),
                 execution_evidence_references=tuple(evidence_references), contract_version=required(contract_document["contract_version"]),
             )
@@ -343,17 +374,58 @@ class BootstrapMissionRunner:
         if intent is None:
             raise MissionRunnerError("active Action has no persisted Intent")
         prompt = self._prompt_factory(intent, action)
+        planning_context = self._planning_context(state, action, prompt)
         retry_of, original = self._recovery_lineage(state, action)
         request = ExecutionRequest(
             self._host_id, state.mission_id, action.intent_id, action.intent_revision, action.id, prompt,
             self._workspace_id, self._repository_id, self._correlation_id_factory(), self._now(),
             retry_of_correlation_id=retry_of, original_correlation_id=original,
             repository_identity=self._repository_identity,
+            planning_context=planning_context,
         )
         envelope = {"request": _request_document(request), "host_run_id": None}
         return self._store.transition(
             state.mission_id, MissionExecutionStatus.WAITING_FOR_EXECUTION, occurred_at=self._now(),
             reason="execution_request_persisted", actions=active, execution_correlation=envelope,
+        )
+
+    @staticmethod
+    def _planning_context(
+        state: MissionExecutionState, action: EngineeringAction, prompt: RuntimePrompt,
+    ) -> ForgePlanningContextEnvelope:
+        """Freeze only explicitly supplied Forge planning facts at submission.
+
+        This adapter never reads the mutable display projection and never
+        invents summaries for absent facts. Runtime and terminal evidence are
+        intentionally not part of the outbound Forge planning context.
+        """
+        mission = state.mission
+        admission = state.admission_contract if isinstance(state.admission_contract, Mapping) else {}
+
+        def supplied(*values: object) -> str | None:
+            return next((value for value in values if isinstance(value, str) and value), None)
+
+        mission_revision = supplied(
+            getattr(prompt, "mission_revision", None),
+            dict(getattr(prompt, "execution_metadata", ())).get("mission_revision"),
+            mission.get("revision"), admission.get("subject_revision"),
+        )
+        if mission_revision is None:
+            raise MissionRunnerError("persisted Mission lacks immutable revision provenance")
+        return ForgePlanningContextEnvelope.create(
+            mission_id=state.mission_id,
+            mission_revision=mission_revision,
+            intent_id=action.intent_id,
+            intent_revision=action.intent_revision,
+            action_id=action.id,
+            mission_title=supplied(mission.get("mission_title"), mission.get("title")),
+            business_summary=supplied(mission.get("business_summary"), mission.get("business_objective")),
+            engineering_summary=supplied(mission.get("engineering_summary"), mission.get("summary")),
+            mission_lifecycle=state.status.value,
+            decision_evidence_reference=supplied(
+                admission.get("architecture_decision_id"), mission.get("decision_evidence_reference"),
+                mission.get("architecture_review_reference"),
+            ),
         )
 
     @staticmethod

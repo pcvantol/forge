@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
-from forge.models import ForgeActionContextEnvelope, Producer, ProducerContract, ProducerIdentity, RuntimePrompt, RuntimePromptEnvelope, RuntimePromptSection, RuntimePromptSectionKind, ProviderPromptDefinition
+from forge.models import ForgeActionContextEnvelope, ForgePlanningContextEnvelope, Producer, ProducerContract, ProducerIdentity, RuntimePrompt, RuntimePromptEnvelope, RuntimePromptSection, RuntimePromptSectionKind, ProviderPromptDefinition
 from forge.models.execution_host import ExecutionRequest
 from forge.models import ExecutionDispatch, ExecutionEvidenceOutcome
 from forge.runtime.database import RuntimeDatabase
@@ -44,11 +44,18 @@ def _request() -> ExecutionRequest:
         action_id="action-fixture", summary="Execute the safe fixture action.",
         source_digest=prompt.generation_request_digest,
     )
+    planning = ForgePlanningContextEnvelope.create(
+        mission_id="mission-fixture", mission_revision="3", intent_id="intent-fixture", intent_revision="7",
+        action_id="action-fixture", mission_title="Fixture Mission",
+        business_summary="Deliver the fixture outcome.", engineering_summary="Exercise the Forge to EP contract.",
+        mission_lifecycle="ACTIVE", decision_evidence_reference="architecture-review:fixture",
+    )
     contract = ProducerContract(Producer(ProducerIdentity("forge", "FORGE", "2.7.2")), "forge-correlation-fixture",
         "action-fixture", RuntimePromptEnvelope(prompt.id, "1.0", "text/markdown", "exact persisted prompt", "sha256:" + "a" * 64),
         ("Execute only the supplied Runtime Prompt.",),
         (("intent_id", "intent-fixture"), ("intent_revision", "7"), ("mission_revision", "3"),
-         ("repository_id", "forge"), ("workspace_id", "workspace-1")), action_context=context, mission_id="mission-fixture")
+         ("repository_id", "forge"), ("workspace_id", "workspace-1")), action_context=context,
+        planning_context=planning, mission_id="mission-fixture")
     return ExecutionRequest("engineering-platform", "mission-fixture", "intent-fixture", "7", "action-fixture", prompt,
         "workspace-1", "forge", "forge-correlation-fixture", "2026-09-07T00:00:00Z", producer_contract=contract)
 
@@ -70,9 +77,10 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.readback["contract_version"] = "1.2"
         self.readback["producer"]["version"] = "2.7.2"
         self.readback["provenance"]["forge_execution"].update({
-            "contract_version": "1.2", "producer_contract_version": "1.0",
+            "contract_version": "1.3", "producer_contract_version": "1.0",
             "forge_application_version": "2.7.2",
             "action_context_envelope": self.request.producer_contract.action_context.to_dict(),
+            "planning_context_envelope": self.request.producer_contract.planning_context.to_dict(),
         })
         self.readback["disposition"] = {"state": "QUEUED", "terminal": False, "execution_eligible": True,
             "revision": 0, "operation_id": None, "event_reference": None, "reason": "NOT_RECORDED",
@@ -86,9 +94,10 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         artifact["contract_version"] = "1.2"
         artifact["producer"]["version"] = "2.7.2"
         artifact["provenance"].update({
-            "contract_version": "1.2", "producer_contract_version": "1.0",
+            "contract_version": "1.3", "producer_contract_version": "1.0",
             "forge_application_version": "2.7.2",
             "action_context_envelope": self.request.producer_contract.action_context.to_dict(),
+            "planning_context_envelope": self.request.producer_contract.planning_context.to_dict(),
         })
         artifact["assurance"] = {"status": "PASS", "profile": {"version": "validation-profile@1",
             "digest": "sha256:" + "b" * 64, "candidate_sha": "c" * 40}, "quality_review": "PASS",
@@ -113,7 +122,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 "ep_instance_id": "instance-fixture",
                 "ep_application_version": "2.3.8",
                 "producer_contract_version": "1.0",
-                "forge_provenance_contract_version": "1.2",
+                "forge_provenance_contract_version": "1.3",
                 "forge_application_version": "2.7.2",
                 "producer_readback_contract_version": "1.2",
                 "accepted_request_digest": "sha256:" + "c" * 64,
@@ -170,13 +179,14 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         submitted = json.loads(observed[1].data.decode())
         self.assertEqual(submitted["producer"]["version"], "2.7.2")
         self.assertEqual(submitted["constraints"]["forge_execution"], {
-            "contract_version": "1.2", "host_id": "engineering-platform", "repository_id": "forge",
+            "contract_version": "1.3", "host_id": "engineering-platform", "repository_id": "forge",
             "correlation_id": "forge-correlation-fixture", "mission_id": "mission-fixture",
             "mission_revision": "3", "intent_id": "intent-fixture", "intent_revision": "7",
             "action_id": "action-fixture", "runtime_prompt": {"id": "runtime-prompt-fixture", "content_digest": "sha256:" + "a" * 64},
             "retry_of_correlation_id": None, "producer_contract_version": "1.0",
             "forge_application_version": "2.7.2",
             "action_context_envelope": self.request.producer_contract.action_context.to_dict(),
+            "planning_context_envelope": self.request.producer_contract.planning_context.to_dict(),
         })
         self.database.close()
         self.database = RuntimeDatabase(".", path=Path(self.temporary.name) / "runtime.db", forge_version="test")

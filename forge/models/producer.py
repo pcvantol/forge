@@ -24,8 +24,10 @@ FORGE_ACTION_CONTEXT_ENVELOPE_VERSION = "1.0"
 FORGE_ACTION_CONTEXT_GENERATOR_ID = "forge-redacted-action-summary"
 FORGE_ACTION_CONTEXT_GENERATOR_MODEL = "deterministic-template"
 FORGE_ACTION_CONTEXT_GENERATOR_VERSION = "1.0"
+FORGE_PLANNING_CONTEXT_ENVELOPE_VERSION = "1.0"
 _TYPE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_OPAQUE_REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}\Z")
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b(api[ _-]?key|authorization|bearer|password|secret|token)\b\s*([:=])\s*[^\s,;]+"
 )
@@ -154,6 +156,148 @@ class ForgeActionContextEnvelope:
         return {**self._document_without_envelope_digest(), "envelope_digest": self.envelope_digest}
 
 
+@dataclass(frozen=True)
+class ForgePlanningContextEnvelope:
+    """Immutable, redacted Forge planning facts for an EP submission.
+
+    This envelope deliberately does *not* carry a Runtime Prompt, decision
+    rationale, or host evidence. It lets a consumer distinguish the bounded
+    Forge planning snapshot from its own runtime observations and from the
+    receipts it returns after execution.
+    """
+
+    mission_id: str
+    mission_revision: str
+    intent_id: str
+    intent_revision: str
+    action_id: str
+    mission_title: str | None
+    business_summary: str | None
+    engineering_summary: str | None
+    mission_lifecycle: str | None
+    decision_evidence_reference: str | None
+    decision_evidence_reference_digest: str | None
+    envelope_digest: str
+    envelope_version: str = FORGE_PLANNING_CONTEXT_ENVELOPE_VERSION
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        mission_id: str,
+        mission_revision: str,
+        intent_id: str,
+        intent_revision: str,
+        action_id: str,
+        mission_title: str | None = None,
+        business_summary: str | None = None,
+        engineering_summary: str | None = None,
+        mission_lifecycle: str | None = None,
+        decision_evidence_reference: str | None = None,
+    ) -> "ForgePlanningContextEnvelope":
+        """Create a bounded planning snapshot from already persisted facts.
+
+        Optional values are omitted rather than synthesized. In particular,
+        callers must not turn a missing summary into a plausible-looking
+        default or turn a host receipt into submission provenance.
+        """
+        safe_title = _optional_safe_text(mission_title, "mission title")
+        safe_business = _optional_safe_text(business_summary, "business summary")
+        safe_engineering = _optional_safe_text(engineering_summary, "engineering summary")
+        safe_lifecycle = _optional_lifecycle(mission_lifecycle)
+        safe_reference = _optional_opaque_reference(decision_evidence_reference)
+        reference_digest = None if safe_reference is None else _canonical_digest(safe_reference)
+        document = {
+            "envelope_version": FORGE_PLANNING_CONTEXT_ENVELOPE_VERSION,
+            "mission_id": mission_id,
+            "mission_revision": mission_revision,
+            "intent_id": intent_id,
+            "intent_revision": intent_revision,
+            "action_id": action_id,
+            "mission_title": safe_title,
+            "business_summary": safe_business,
+            "engineering_summary": safe_engineering,
+            "mission_lifecycle": safe_lifecycle,
+            "decision_evidence_reference": safe_reference,
+            "decision_evidence_reference_digest": reference_digest,
+        }
+        return cls(
+            mission_id=mission_id, mission_revision=mission_revision,
+            intent_id=intent_id, intent_revision=intent_revision, action_id=action_id,
+            mission_title=safe_title, business_summary=safe_business,
+            engineering_summary=safe_engineering, mission_lifecycle=safe_lifecycle,
+            decision_evidence_reference=safe_reference,
+            decision_evidence_reference_digest=reference_digest,
+            envelope_digest=_canonical_digest(document),
+        )
+
+    def __post_init__(self) -> None:
+        identifiers = (
+            self.mission_id, self.mission_revision, self.intent_id,
+            self.intent_revision, self.action_id,
+        )
+        optional_text = (
+            (self.mission_title, "mission title"),
+            (self.business_summary, "business summary"),
+            (self.engineering_summary, "engineering summary"),
+        )
+        if (self.envelope_version != FORGE_PLANNING_CONTEXT_ENVELOPE_VERSION
+                or any(not isinstance(value, str) or not value or len(value) > 128 for value in identifiers)
+                or any(value != _optional_safe_text(value, label) for value, label in optional_text)
+                or self.mission_lifecycle != _optional_lifecycle(self.mission_lifecycle)
+                or self.decision_evidence_reference != _optional_opaque_reference(self.decision_evidence_reference)
+                or (self.decision_evidence_reference is None and self.decision_evidence_reference_digest is not None)
+                or (self.decision_evidence_reference is not None
+                    and self.decision_evidence_reference_digest != _canonical_digest(self.decision_evidence_reference))
+                or not _SHA256.fullmatch(self.envelope_digest)):
+            raise ValueError("planning context envelope is invalid")
+        if self.envelope_digest != _canonical_digest(self._document_without_envelope_digest()):
+            raise ValueError("planning context envelope digest is invalid")
+
+    def _document_without_envelope_digest(self) -> dict[str, object]:
+        return {
+            "envelope_version": self.envelope_version,
+            "mission_id": self.mission_id,
+            "mission_revision": self.mission_revision,
+            "intent_id": self.intent_id,
+            "intent_revision": self.intent_revision,
+            "action_id": self.action_id,
+            "mission_title": self.mission_title,
+            "business_summary": self.business_summary,
+            "engineering_summary": self.engineering_summary,
+            "mission_lifecycle": self.mission_lifecycle,
+            "decision_evidence_reference": self.decision_evidence_reference,
+            "decision_evidence_reference_digest": self.decision_evidence_reference_digest,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._document_without_envelope_digest(), "envelope_digest": self.envelope_digest}
+
+
+def _optional_safe_text(value: str | None, label: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be text when supplied")
+    return redact_action_summary(value)
+
+
+def _optional_lifecycle(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _TYPE.fullmatch(value):
+        raise ValueError("mission lifecycle must be an uppercase lifecycle token when supplied")
+    return value
+
+
+def _optional_opaque_reference(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _OPAQUE_REFERENCE.fullmatch(value):
+        raise ValueError("decision evidence reference must be a bounded opaque identifier when supplied")
+    return value
+
+
 class ProducerType(str, Enum):
     """Built-in Producer type vocabulary; strings retain future extensibility."""
 
@@ -256,6 +400,7 @@ class ProducerContract:
     execution_constraints: tuple[str, ...]
     execution_metadata: tuple[tuple[str, str], ...]
     action_context: ForgeActionContextEnvelope | None = None
+    planning_context: ForgePlanningContextEnvelope | None = None
     mission_id: str | None = None
     receipt_references: tuple[ExecutionReceiptReference, ...] = ()
     execution_evidence_references: tuple[str, ...] = ()
@@ -268,6 +413,10 @@ class ProducerContract:
             raise ValueError("producer contract correlation and engineering action are required")
         if self.action_context is not None and self.action_context.action_id != self.engineering_action_id:
             raise ValueError("producer contract Action context must match its engineering action")
+        if self.planning_context is not None:
+            if (self.planning_context.action_id != self.engineering_action_id
+                    or self.planning_context.mission_id != self.mission_id):
+                raise ValueError("producer contract planning context must match its mission and engineering action")
         if not self.execution_constraints or any(not value for value in self.execution_constraints):
             raise ValueError("producer contract execution constraints are required")
         if len(self.execution_constraints) != len(set(self.execution_constraints)):
@@ -281,6 +430,15 @@ class ProducerContract:
             raise ValueError("producer contract execution evidence references must be unique and non-empty")
         object.__setattr__(self, "execution_constraints", tuple(sorted(self.execution_constraints)))
         object.__setattr__(self, "execution_metadata", metadata)
+        if self.planning_context is not None:
+            planning = self.planning_context
+            expected = {
+                "mission_revision": planning.mission_revision,
+                "intent_id": planning.intent_id,
+                "intent_revision": planning.intent_revision,
+            }
+            if any(dict(metadata).get(key) != value for key, value in expected.items()):
+                raise ValueError("producer contract planning context must match its immutable execution metadata")
         object.__setattr__(self, "receipt_references", tuple(sorted(self.receipt_references)))
         object.__setattr__(self, "execution_evidence_references", tuple(sorted(self.execution_evidence_references)))
 
@@ -295,6 +453,7 @@ class ProducerContract:
             "execution_constraints": list(self.execution_constraints),
             "execution_metadata": {key: value for key, value in self.execution_metadata},
             "action_context": None if self.action_context is None else self.action_context.to_dict(),
+            "planning_context": None if self.planning_context is None else self.planning_context.to_dict(),
             "receipt_references": [item.to_dict() for item in self.receipt_references],
             "execution_evidence_references": list(self.execution_evidence_references),
         }

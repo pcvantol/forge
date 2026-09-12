@@ -9,6 +9,7 @@ from forge.models import (
     DEFAULT_FORGE_PRODUCER,
     ExecutionReceiptReference,
     ForgeActionContextEnvelope,
+    ForgePlanningContextEnvelope,
     Producer,
     ProducerContract,
     ProducerIdentity,
@@ -33,6 +34,27 @@ def contract(**overrides: object) -> ProducerContract:
 
 
 class ProducerContractTests(unittest.TestCase):
+    def test_planning_context_is_versioned_redacted_and_keeps_only_an_opaque_decision_reference(self) -> None:
+        context = ForgePlanningContextEnvelope.create(
+            mission_id="mission-1", mission_revision="7", intent_id="intent-1", intent_revision="3",
+            action_id="action-1", mission_title="Mission api_key=should-not-leave-forge",
+            business_summary="Deliver the bounded business result.",
+            engineering_summary="Implement token=should-not-leave-forge safely.",
+            mission_lifecycle="ACTIVE", decision_evidence_reference="architecture-review:mission-1",
+        )
+        document = context.to_dict()
+        self.assertEqual(document["mission_title"], "Mission api_key=[REDACTED]")
+        self.assertEqual(document["engineering_summary"], "Implement token=[REDACTED] safely.")
+        self.assertEqual(document["mission_lifecycle"], "ACTIVE")
+        self.assertEqual(document["decision_evidence_reference"], "architecture-review:mission-1")
+        self.assertTrue(str(document["decision_evidence_reference_digest"]).startswith("sha256:"))
+        self.assertTrue(str(document["envelope_digest"]).startswith("sha256:"))
+        with self.assertRaisesRegex(ValueError, "opaque"):
+            ForgePlanningContextEnvelope.create(
+                mission_id="mission-1", mission_revision="7", intent_id="intent-1", intent_revision="3",
+                action_id="action-1", decision_evidence_reference="not an opaque evidence reference",
+            )
+
     def test_action_context_is_immutable_redacted_and_digest_bound(self) -> None:
         context = ForgeActionContextEnvelope.create(
             action_id="action-1",
@@ -119,6 +141,17 @@ class ProducerContractTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "Action context"):
             contract(action_context=context)
+
+    def test_contract_rejects_planning_context_that_conflicts_with_immutable_metadata(self) -> None:
+        context = ForgePlanningContextEnvelope.create(
+            mission_id="mission-1", mission_revision="7", intent_id="intent-1", intent_revision="3",
+            action_id="action-1",
+        )
+        with self.assertRaisesRegex(ValueError, "planning context"):
+            contract(
+                planning_context=context,
+                execution_metadata=(("mission_revision", "6"), ("intent_id", "intent-1"), ("intent_revision", "3")),
+            )
 
     def test_contract_version_and_required_identity_are_enforced(self) -> None:
         with self.assertRaisesRegex(ValueError, "version"):

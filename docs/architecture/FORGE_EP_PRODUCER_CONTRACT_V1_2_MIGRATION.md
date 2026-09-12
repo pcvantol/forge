@@ -152,3 +152,8 @@ Envelope; v1.0/v1.1 historical runs remain explicitly unavailable in the EP
 Console and are never backfilled. Roll out EP first: older Forge clients ignore
 the additional POST response field; the new Forge client fails closed if an EP
 response omits or mismatches the versioned receipt.
+
+The later v1.3 Planning Context extension is specified separately in
+[Forge EP producer contract v1.3 planning context](FORGE_EP_PRODUCER_CONTRACT_V1_3_PLANNING_CONTEXT.md).
+It keeps the v1.2 Action Context Envelope intact and adds no retrospective
+fields to historical v1.0-v1.2 records.

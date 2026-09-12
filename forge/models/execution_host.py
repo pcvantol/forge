@@ -11,7 +11,14 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from .producer import DEFAULT_FORGE_PRODUCER, ForgeActionContextEnvelope, Producer, ProducerContract, RuntimePromptEnvelope
+from .producer import (
+    DEFAULT_FORGE_PRODUCER,
+    ForgeActionContextEnvelope,
+    ForgePlanningContextEnvelope,
+    Producer,
+    ProducerContract,
+    RuntimePromptEnvelope,
+)
 
 
 EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "3.0"
@@ -116,6 +123,7 @@ class ExecutionRequest:
     original_correlation_id: str | None = None
     producer_contract: ProducerContract | None = None
     repository_identity: str | None = None
+    planning_context: ForgePlanningContextEnvelope | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.mission_id, self.intent_id, self.intent_revision,
@@ -148,7 +156,10 @@ class ExecutionRequest:
             raise ValueError("execution request Producer Contract must match its mission, action, and correlation")
         if contract.runtime_prompt.id != getattr(self.runtime_prompt, "id", None):
             raise ValueError("execution request Producer Contract must match its Runtime Prompt")
+        if self.planning_context is not None and contract.planning_context != self.planning_context:
+            raise ValueError("execution request planning context must match its Producer Contract")
         object.__setattr__(self, "producer_contract", contract)
+        object.__setattr__(self, "planning_context", contract.planning_context)
 
     def _default_producer_contract(self) -> ProducerContract:
         """Bridge legacy in-process prompt objects into the canonical envelope."""
@@ -173,7 +184,9 @@ class ExecutionRequest:
         # Carry its actual immutable revision through the Producer Contract;
         # adapters must never supply a transport default such as "1".
         mission_revision = getattr(self.runtime_prompt, "mission_revision", None)
-        if isinstance(mission_revision, str) and mission_revision:
+        if not isinstance(mission_revision, str) or not mission_revision:
+            mission_revision = None if self.planning_context is None else self.planning_context.mission_revision
+        if isinstance(mission_revision, str) and mission_revision and "mission_revision" not in {key for key, _ in metadata}:
             metadata += (("mission_revision", mission_revision),)
         return ProducerContract(
             producer=Producer(prompt_producer),
@@ -190,6 +203,7 @@ class ExecutionRequest:
             execution_constraints=constraints,
             execution_metadata=metadata,
             action_context=ForgeActionContextEnvelope.from_runtime_prompt(self.runtime_prompt),
+            planning_context=self.planning_context,
         )
 
 

@@ -175,6 +175,14 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
         self.assertEqual(waiting.planning_invocations, 1)
         self.assertEqual(len(waiting.action_ids), 1)
+        planning_context = self.host.requests[-1].producer_contract.planning_context
+        self.assertIsNotNone(planning_context)
+        self.assertEqual(planning_context.mission_title, "Durable status projection")
+        self.assertEqual(planning_context.business_summary, "Expose a safe status projection.")
+        self.assertEqual(planning_context.engineering_summary, "Expose durable dispatcher posture.")
+        self.assertEqual(planning_context.mission_lifecycle, "ACTIVE")
+        self.assertEqual(planning_context.decision_evidence_reference, "architecture-status-projection")
+        self.assertTrue(planning_context.envelope_digest.startswith("sha256:"))
         runtime_id = waiting.runtime_id
         self.runtime.close()
 
