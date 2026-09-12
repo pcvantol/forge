@@ -34,7 +34,8 @@
       "completion_evidence": [
         "Five-section read/write and product-ownership mapping",
         "Typed authentication, authority and mutation/readback contracts",
-        "FOC-STATUS/SHELL/FOOTER typed snapshot, scope/aggregation and presentation-only interaction contracts"
+        "FOC-STATUS/SHELL/FOOTER typed snapshot, scope/aggregation and presentation-only interaction contracts",
+        "Forge-local tooling, data-operation/maintenance and Forge-only timeout contracts"
       ],
       "shared_requirements": [
         "FOC-STATUS",
@@ -53,7 +54,8 @@
       "completion_evidence": [
         "Instance/project isolation, redaction and freshness",
         "OpenAPI, Postman and implemented-route parity",
-        "Backend-owned platform aggregation and installed-version/live-signal readback; no-project and stale-state handling"
+        "Backend-owned platform aggregation and installed-version/live-signal readback; no-project and stale-state handling",
+        "Configuration runtime/data/timeout cards use owning observations, not EP values"
       ],
       "shared_requirements": [
         "FOC-STATUS",
@@ -72,7 +74,8 @@
       "completion_evidence": [
         "Installed assets, local-only default and authenticated operator session",
         "Accessible navigation and unavailable-state handling",
-        "Status popover, all seven basic toolbar controls and truthful live footer, including polling mode"
+        "Status popover, all seven basic toolbar controls and truthful live footer, including polling mode",
+        "Independent component-detail and console-status refresh controls"
       ],
       "shared_requirements": [
         "FOC-STATUS",
@@ -92,7 +95,8 @@
       "completion_evidence": [
         "Actual/expected component identity and state",
         "Bounded log query/tail/export with redaction",
-        "Platform/Access/Ingress/Execution detail groups, declared required/optional dependencies and authorized links"
+        "Platform/Access/Ingress/Execution detail groups, declared required/optional dependencies and authorized links",
+        "Forge-owned Codex and Python identity independent of EP host/runtime"
       ],
       "shared_requirements": [
         "FOC-STATUS"
@@ -116,7 +120,7 @@
     },
     {
       "id": "FOC-5",
-      "title": "Controlled configuration",
+      "title": "Controlled configuration and data operations",
       "owner": "forge",
       "status": "PLANNED",
       "depends_on": [
@@ -126,7 +130,8 @@
       "completion_evidence": [
         "Authorized allow-list with preview/save/readback",
         "Revision conflicts, audit, non-generating preflight and no active-binding retarget",
-        "Refresh/project navigation retains or explicitly discards unsaved configuration drafts"
+        "Refresh/project navigation retains or explicitly discards unsaved configuration drafts",
+        "FC-STATE/EXPORT/IMPORT/RELOCATE/VACUUM qualified owning services and readbacks; not UI-only controls"
       ],
       "shared_requirements": []
     },
@@ -160,7 +165,8 @@
       "completion_evidence": [
         "All five sections from a source/artifact-bound installed instance",
         "Restart, empty, degraded, isolation, hostile-content and secret-safety evidence",
-        "Shared status, toolbar and footer cases: optional relay, no project, empty queue, stale data, reconnect, zero unintended writes"
+        "Shared status, toolbar and footer cases: optional relay, no project, empty queue, stale data, reconnect, zero unintended writes",
+        "FC configuration packages: two-host independence, archive/cutover crash recovery, maintenance/refresh and timeout semantics"
       ],
       "shared_requirements": [
         "FOC-STATUS",
@@ -264,5 +270,175 @@
       "serverpush_required": false,
       "render_time_is_live_signal": false
     }
-  ]
+  ],
+  "configuration_contract": "docs/architecture/FORGE_SERVER_CONFIGURATION_AND_DATA_OPERATIONS_V1.md",
+  "configuration_work_packages": [
+    {
+      "id": "FC-CODEX",
+      "title": "Forge-local Codex binary and session independence",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-3",
+        "FOC-5"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Resolved Forge-owned binary and isolated local session context",
+        "Two-host proof and EP update/removal/logout independence"
+      ]
+    },
+    {
+      "id": "FC-PYTHON",
+      "title": "Forge-local Python venv and installed identity",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-3"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Actual interpreter, venv, architecture and module/artifact readback",
+        "No EP/checkout venv or implicit PATH fallback"
+      ]
+    },
+    {
+      "id": "FC-STATE",
+      "title": "Typed data-operation and single-writer contract",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-5"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Identity/revision/authority-bound operation with preview and final readback",
+        "Quiescence, crash recovery and stale-snapshot/side-effect fencing"
+      ]
+    },
+    {
+      "id": "FC-EXPORT",
+      "title": "Consistent Forge data export",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FC-STATE"
+      ],
+      "delivered_by": [
+        "FOC-5"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Versioned manifest and complete consistent durable evidence snapshot",
+        "No credentials, sessions, binaries or caches in archive"
+      ]
+    },
+    {
+      "id": "FC-IMPORT",
+      "title": "Verified data import and recovery",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FC-EXPORT"
+      ],
+      "delivered_by": [
+        "FOC-5"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Staged compatible restore with target backup and explicit confirmation",
+        "Same intended identity, no dual writer, no permit/budget/expiry rollback"
+      ]
+    },
+    {
+      "id": "FC-RELOCATE",
+      "title": "Verified Forge data-root relocation",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FC-STATE"
+      ],
+      "delivered_by": [
+        "FOC-5"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Validated copy/cutover/reopen and resolver readback",
+        "Old root fenced non-writer; no venv or EP data moved"
+      ]
+    },
+    {
+      "id": "FC-VACUUM",
+      "title": "Durable safe maintenance interval",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FC-STATE"
+      ],
+      "delivered_by": [
+        "FOC-1",
+        "FOC-5"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Interval/disabled/last-result/next-due/deferral readback",
+        "Exclusive safe maintenance, bounded execution and preserved logical evidence"
+      ]
+    },
+    {
+      "id": "FC-REFRESH",
+      "title": "Independent detail and status refresh intervals",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-1",
+        "FOC-2",
+        "FOC-5"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Configured/effective intervals, declared limits and retained preferences",
+        "No per-refresh provider spawn, auth prompt, heavy scan or lifecycle mutation"
+      ]
+    },
+    {
+      "id": "FC-TIMEOUT",
+      "title": "Forge AI timeout and enforcement projection",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FC-CODEX"
+      ],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-5"
+      ],
+      "qualified_by": "FOC-Q",
+      "completion_evidence": [
+        "Source-backed distinction between generation, probes, HTTP and EP phases",
+        "Versioned policy updates with no retry, budget or authority reset"
+      ]
+    }
+  ],
+  "configuration_invariants": {
+    "forge_tooling_independent_of_ep": true,
+    "forge_local_venv_required": true,
+    "exports_include_credentials": false,
+    "relocation_creates_new_runtime": false,
+    "restore_resets_budget_or_expiry": false,
+    "vacuum_interrupts_active_writers": false,
+    "refresh_invokes_ai": false,
+    "ep_execution_timeouts_editable_in_forge": false
+  }
 }
