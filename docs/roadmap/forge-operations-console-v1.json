@@ -440,5 +440,12 @@
     "vacuum_interrupts_active_writers": false,
     "refresh_invokes_ai": false,
     "ep_execution_timeouts_editable_in_forge": false
+  },
+  "admin_parity_contract": "docs/architecture/FORGE_CONSOLE_EP_PARITY_AND_PAIRING_V1.md",
+  "admin_parity_graph": "docs/roadmap/forge-console-admin-parity-v1.json",
+  "required_qualification_extensions": {
+    "FOC-Q": [
+      "FCP-Q"
+    ]
   }
 }

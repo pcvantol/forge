@@ -1,0 +1,255 @@
+{
+  "schema_version": "1.0",
+  "capability": "FORGE::OPERATIONS_CONSOLE_V1",
+  "authority": "DOCUMENTARY",
+  "owner": "forge",
+  "status": "PLANNED",
+  "priority_lane": "POST_AUTONOMY",
+  "executable": false,
+  "authorizes_execution": false,
+  "first_e2e_prerequisite": false,
+  "parent_graph": "docs/roadmap/forge-operations-console-v1.json",
+  "architecture": "docs/architecture/FORGE_CONSOLE_EP_PARITY_AND_PAIRING_V1.md",
+  "scoped_roadmap": "docs/roadmap/FORGE_OPERATIONS_CONSOLE_V1.md",
+  "source_pins": {
+    "forge": "a64d3445e6162d2266dfd1b8acfd6ba2d88a50a5",
+    "engineering-platform": "c6bf2ea13159fb464a5c3ec3f24e1c05e9809fa3",
+    "forge-platform": "cb6a10a4ffca90e2b689af62349da2075fe47a77"
+  },
+  "locales": [
+    "en",
+    "nl",
+    "de",
+    "fr",
+    "es"
+  ],
+  "github_assessment": {
+    "scope": "INSPECTED_INSTALLED_MISSION_COMPOSITION",
+    "standalone_runtime_provider_observed": false,
+    "release_workflow_uses_gh": true,
+    "local_login_required_by_this_design": false,
+    "future_direct_consumer_requires_admin_contract": true
+  },
+  "log_contract": {
+    "functions": [
+      "search",
+      "filter",
+      "sort",
+      "select",
+      "copy",
+      "download",
+      "delete"
+    ],
+    "levels": [
+      "DEBUG",
+      "INFO",
+      "WARNING",
+      "ERROR"
+    ],
+    "retention_days_for_eligible_diagnostics": [
+      30,
+      60,
+      90,
+      120,
+      180,
+      360
+    ],
+    "filter_before_pagination": true,
+    "copy_default": "VISIBLE_FILTERED_SORTED_CURRENT_PAGE_WITH_HEADERS",
+    "deletion_requires_eligibility": true,
+    "immutable_journal_delete_allowed": false,
+    "diagnostic_level_suppresses_mandatory_audit": false
+  },
+  "pairing": {
+    "descriptor": "forge-platform.instance-descriptor/v1",
+    "same_service_contract_as_installer": true,
+    "automatic_after_authorized_intent": true,
+    "discovery_is_authorization": false,
+    "manual_token_copy_required": false,
+    "silent_retarget_allowed": false,
+    "peer_sql_allowed": false,
+    "separate_hosts_required": true,
+    "full_installer_required": false
+  },
+  "quality": {
+    "ep_observed_python_aggregate_minimum": 80.0,
+    "ep_observed_python_per_module_minimum": 80.2,
+    "forge_backend_aggregate_minimum": 80.2,
+    "forge_backend_per_module_minimum": 80.2,
+    "forge_frontend_aggregate_minimum": 80.2,
+    "forge_frontend_per_module_minimum": 80.2,
+    "frontend_metrics": [
+      "statements",
+      "lines",
+      "functions",
+      "branches"
+    ],
+    "unmeasured_production_is_failure": true,
+    "playwright_shards": 4,
+    "ci_workers_per_shard": 1,
+    "ci_retries": 1,
+    "ci_max_failures": 3,
+    "local_batch_deadline_seconds": 300,
+    "local_host_wide_lock_required": true,
+    "playwright_is_code_coverage": false,
+    "ep_frontend_coverage_claimed": false
+  },
+  "workspace_replaced": false,
+  "work_packages": [
+    {
+      "id": "FCP-GITHUB",
+      "title": "Integration inventory and conditional GitHub administration",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-3",
+        "FOC-5"
+      ],
+      "completion_evidence": [
+        "Classify installed provider use separately from Git and release CI",
+        "No unnecessary GitHub login; supported provider controls preserve EP execution ownership"
+      ]
+    },
+    {
+      "id": "FCP-DESIGN",
+      "title": "EP design-system and frontend/backend parity",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-2"
+      ],
+      "completion_evidence": [
+        "Pinned design tokens and component/interaction parity",
+        "Python server with packaged HTML/CSS/plain JS/ES modules, not a shared EP runtime"
+      ]
+    },
+    {
+      "id": "FCP-I18N",
+      "title": "Complete five-language contract",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCP-DESIGN"
+      ],
+      "delivered_by": [
+        "FOC-1",
+        "FOC-2"
+      ],
+      "completion_evidence": [
+        "en/nl/de/fr/es key and parameter parity",
+        "Localized dynamic diagnostics, aria labels, confirmations and no embedded UI literals"
+      ]
+    },
+    {
+      "id": "FCP-LOG-CONTRACT",
+      "title": "Logging query, recording level and retention contract",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-5"
+      ],
+      "completion_evidence": [
+        "Filter/sort before pagination and stable scope/selection snapshots",
+        "Qualified deletion/retention eligibility preserving immutable audit and mandatory events"
+      ]
+    },
+    {
+      "id": "FCP-LOG-UX",
+      "title": "Log search/filter/sort/select/copy/download/delete UX",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCP-LOG-CONTRACT",
+        "FCP-DESIGN",
+        "FCP-I18N"
+      ],
+      "delivered_by": [
+        "FOC-3",
+        "FOC-5"
+      ],
+      "completion_evidence": [
+        "Exact visible/selected/export/delete scopes, clipboard and cancellation cases",
+        "Recording-level/retention readback, protected records and stale-state rejection"
+      ]
+    },
+    {
+      "id": "FCP-PAIR-CONTRACT",
+      "title": "Shared installer/product discovery and pairing services",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "delivered_by": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-5"
+      ],
+      "completion_evidence": [
+        "Reuse forge-platform.instance-descriptor/v1 and one product-owned ceremony",
+        "Idempotency, scoped secret handoff, identity pinning, recovery and no peer SQL"
+      ]
+    },
+    {
+      "id": "FCP-PAIR-UX",
+      "title": "EP bound/unbound/discovery/automatic-pairing UX",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCP-PAIR-CONTRACT",
+        "FCP-DESIGN",
+        "FCP-I18N"
+      ],
+      "delivered_by": [
+        "FOC-2",
+        "FOC-5"
+      ],
+      "completion_evidence": [
+        "Actual peer/identity/scope and separate-host readback",
+        "Authorized one-flow pairing without secret copy/paste or silent retargeting"
+      ]
+    },
+    {
+      "id": "FCP-CI",
+      "title": "EP-pattern qualification and strict coverage gates",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCP-DESIGN",
+        "FCP-I18N"
+      ],
+      "delivered_by": [
+        "FOC-Q"
+      ],
+      "completion_evidence": [
+        "Installed Python/API, JS logic, localization and complete four-shard Playwright",
+        "Separate frontend/backend coverage minimum 80.20 including unmeasured production files"
+      ]
+    },
+    {
+      "id": "FCP-Q",
+      "title": "Integrated admin parity qualification",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FCP-GITHUB",
+        "FCP-LOG-UX",
+        "FCP-PAIR-UX",
+        "FCP-CI"
+      ],
+      "delivered_by": [
+        "FOC-Q"
+      ],
+      "completion_evidence": [
+        "Installed five-language/two-theme/mobile admin flows including protected logs and pairing recovery",
+        "Workspace ownership unchanged; no unexpected generation, mutation, authority or budget reset"
+      ]
+    }
+  ]
+}
