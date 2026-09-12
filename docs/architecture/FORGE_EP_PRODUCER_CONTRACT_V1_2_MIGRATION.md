@@ -24,6 +24,17 @@ repository revision. A byte mismatch is
 artifact digest and repair rounds are bound from EP terminal evidence; Forge
 does not recompute EP policy.
 
+For a terminal EP run, Forge additionally requires a complete positive
+`execution_started_at` / `execution_completed_at` / `execution_duration_ms`
+triplet from authenticated producer readback. It normalizes timestamps to UTC
+and rejects unordered or duration-inconsistent values. EP 2.3.19 and newer
+also bind the same triplet into newly written immutable terminal artifacts; a
+partial or mismatched artifact triplet fails closed. Pre-2.3.19 immutable
+artifacts legitimately lack all three fields and remain recoverable only when
+the authenticated readback supplies the complete validated triplet. Forge
+therefore neither fabricates timing from local receipt time nor mutates
+historical EP evidence.
+
 The persisted request's `retry_of_correlation_id` is a terminal-evidence
 identity field, not display metadata. Forge accepts it only when the readback
 and immutable artifact agree exactly, validates it as either null or a

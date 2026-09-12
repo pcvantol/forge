@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.9",
+  "classification_rationale": "codex/forge-ep-terminal-timing-readback-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-ep-terminal-timing-readback-v1",
+  "expected_head": "bd3bf38ad367c41e0f7751a15420ef2a7306f9d9",
+  "operation_id": "forge-ep-terminal-timing-readback-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.10"
+}

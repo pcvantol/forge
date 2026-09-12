@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from forge.models.execution_host import (
@@ -44,6 +45,54 @@ def _terminal_outcome(value: Any, name: str) -> str:
     if value not in _OUTCOMES:
         raise ValueError(f"EP terminal evidence {name} is not a terminal outcome")
     return value
+
+
+def _timestamp(value: Any, name: str) -> str:
+    value = _string(value, name)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"EP terminal evidence {name} is not an ISO-8601 timestamp") from error
+    if parsed.tzinfo is None:
+        raise ValueError(f"EP terminal evidence {name} must include a timezone")
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _duration(value: Any, name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise ValueError(f"EP terminal evidence {name} must be a positive integer")
+    return value
+
+
+def _terminal_timing(run: Mapping[str, Any], artifact_run: Mapping[str, Any]) -> tuple[str, str, int]:
+    """Validate durable EP timing and bind it to new terminal artifacts.
+
+    EP v2.3.19 binds timing into newly written artifacts. Earlier immutable
+    artifacts cannot be retroactively changed, so a wholly absent artifact
+    timing triplet remains compatible only when authenticated readback itself
+    supplies the complete, internally consistent durable triplet.
+    """
+    started = _timestamp(run.get("execution_started_at"), "readback execution start")
+    completed = _timestamp(run.get("execution_completed_at"), "readback execution completion")
+    duration = _duration(run.get("execution_duration_ms"), "readback execution duration")
+    expected_duration = round((
+        datetime.fromisoformat(completed) - datetime.fromisoformat(started)
+    ).total_seconds() * 1000)
+    if expected_duration != duration:
+        raise ValueError("EP terminal evidence readback execution duration contradicts timestamps")
+
+    artifact_values = tuple(artifact_run.get(key) for key in (
+        "execution_started_at", "execution_completed_at", "execution_duration_ms",
+    ))
+    if any(value is not None for value in artifact_values):
+        if any(value is None for value in artifact_values):
+            raise ValueError("EP terminal artifact execution timing is incomplete")
+        artifact_started = _timestamp(artifact_values[0], "artifact execution start")
+        artifact_completed = _timestamp(artifact_values[1], "artifact execution completion")
+        artifact_duration = _duration(artifact_values[2], "artifact execution duration")
+        if (artifact_started, artifact_completed, artifact_duration) != (started, completed, duration):
+            raise ValueError("EP terminal artifact execution timing differs from readback")
+    return started, completed, duration
 
 
 def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: str,
@@ -114,6 +163,7 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         raise ValueError("EP terminal evidence retry correlation is invalid")
     if artifact_run.get("id") != run.get("id"):
         raise ValueError("EP terminal artifact run differs from readback")
+    execution_started_at, execution_completed_at, execution_duration_ms = _terminal_timing(run, artifact_run)
     if (artifact_submission.get("id"), artifact_submission.get("project_id"), artifact_submission.get("repository_id")) != (
         submission.get("id"), submission.get("project_id"), submission.get("repository_id"),
     ):
@@ -207,4 +257,7 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
                                  report_id, ExecutionEvidenceOutcome(outcome.lower()), repository_evidence,
                                  validation_references=validation_references, receipt_id=receipt_id,
                                  retry_of_correlation_id=retry_of_correlation_id,
-                                 resolved_from_host_run_id=resolved_from_host_run_id)
+                                 resolved_from_host_run_id=resolved_from_host_run_id,
+                                 execution_started_at=execution_started_at,
+                                 execution_completed_at=execution_completed_at,
+                                 execution_duration_ms=execution_duration_ms)
