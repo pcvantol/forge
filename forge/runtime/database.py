@@ -1647,13 +1647,23 @@ class RuntimeDatabase:
                 self._dump(document.get("current_engineering_action")), self._dump(document.get("progress", {})),
                 self._dump(document.get("resume", document.get("resume_point", {}))), self._dump(document.get("execution_policy")), self._dump(document),
             ))
+            execution_evidence = document.get("execution_evidence")
+            failure_code = (
+                execution_evidence.get("failure_code")
+                if isinstance(execution_evidence, dict) and isinstance(execution_evidence.get("failure_code"), str)
+                else None
+            )
+            reason_code = document.get("waiting_reason")
             self._append_operational_event(
-                component="forge_mission_runtime", level=("WARNING" if str(document["status"]) in {"BLOCKED", "FAILED"} else "INFO"),
+                component="forge_mission_runtime",
+                level=("ERROR" if failure_code is not None else "WARNING" if str(document["status"]) in {"BLOCKED", "FAILED"} else "INFO"),
                 event="mission_state_transitioned",
                 mission_id=context["mission_id"], action_id=context["action_id"],
                 correlation_id=context["correlation_id"], run_id=context["run_id"],
                 details={"previous_state": None if existing is None else existing["status"],
-                         "new_state": str(document["status"]), "lifecycle": str(lifecycle)},
+                         "new_state": str(document["status"]), "lifecycle": str(lifecycle),
+                         "reason_code": reason_code if isinstance(reason_code, str) else None,
+                         "failure_code": failure_code},
             )
         return document
 

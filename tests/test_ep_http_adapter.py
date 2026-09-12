@@ -398,6 +398,40 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "qualified delivery revision"):
             self._terminal_retrieval(readback, artifact)
 
+    def test_exact_host_verified_noop_assurance_without_a_profile_is_accepted(self) -> None:
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        artifact["assurance"] = {
+            "status": "NOT_RECORDED", "profile": None,
+            "quality_review": "NOT_RECORDED", "security_review": "NOT_RECORDED",
+            "repair_rounds": {"used": 0, "maximum": 3},
+            "findings": {"open_blocking": 0, "open_non_blocking": 0, "artifact": None},
+        }
+
+        evidence = self._terminal_retrieval(readback, artifact)
+
+        self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+
+    def test_partial_not_recorded_assurance_fails_closed(self) -> None:
+        cases = (
+            ("review", lambda assurance: assurance.update({"quality_review": "PASS"})),
+            ("repair", lambda assurance: assurance["repair_rounds"].update({"used": 1})),
+            ("finding", lambda assurance: assurance["findings"].update({"open_blocking": 1})),
+            ("status", lambda assurance: assurance.update({"status": "PASS"})),
+        )
+        for label, mutate in cases:
+            with self.subTest(label=label):
+                readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+                artifact["assurance"] = {
+                    "status": "NOT_RECORDED", "profile": None,
+                    "quality_review": "NOT_RECORDED", "security_review": "NOT_RECORDED",
+                    "repair_rounds": {"used": 0, "maximum": 3},
+                    "findings": {"open_blocking": 0, "open_non_blocking": 0, "artifact": None},
+                }
+                mutate(artifact["assurance"])
+                with self.assertRaises(ValueError):
+                    self._terminal_retrieval(readback, artifact)
+                self.database._connection.execute("DELETE FROM execution_host_bindings")
+
 
 if __name__ == "__main__":
     unittest.main()

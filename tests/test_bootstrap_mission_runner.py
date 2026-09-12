@@ -140,6 +140,7 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         state = runner.run("mission-1")
         self.assertEqual(state.status, MissionExecutionStatus.FAILED)
         self.assertEqual(state.execution_evidence["diagnostic_references"], ["runner:host_dispatch_failed"])  # type: ignore[index]
+        self.assertEqual(state.execution_evidence["failure_code"], "RUNTIMEERROR")  # type: ignore[index]
 
     def test_temporary_dispatch_unavailability_keeps_the_persisted_request_recoverable(self) -> None:
         runner = self.runner(TemporarilyUnavailableHost())

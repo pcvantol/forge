@@ -24,6 +24,13 @@ repository revision. A byte mismatch is
 artifact digest and repair rounds are bound from EP terminal evidence; Forge
 does not recompute EP policy.
 
+The sole profile-free assurance shape is a host-verified Managed no-op:
+`status`, `quality_review` and `security_review` must all be `NOT_RECORDED`,
+`profile` and the findings artifact must be `null`, and the repair and open
+finding counts must all be zero. Forge rejects every partial or contradictory
+variant. A rejected terminal envelope is recorded as a redacted Forge
+operational `ERROR` with its bounded contract `failure_code`.
+
 `COMPLETE` requires qualified delivery and a revision. `BLOCKED` and `FAILED`
 may carry null revisions. A declined unclaimed submission (`run: null`,
 `NOT_STARTED`) is a non-executed terminal disposition, not fabricated host
