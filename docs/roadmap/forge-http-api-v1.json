@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "increment": "HTTP_ONLY_PEERS_AND_THIN_CLI_V1",
+  "owner": "forge",
+  "status": "PLANNED",
+  "documentary_only": true,
+  "executable": false,
+  "execution_authority": false,
+  "version_change": "NO_BUMP",
+  "first_live_canary_prerequisite": false,
+  "parent_reference": "F2",
+  "parent_relationship": "SCOPED_REFINEMENT_NOT_REVERSE_DEPENDENCY",
+  "architecture": "docs/architecture/FORGE_HTTP_API_AND_TRANSPORT_PARITY_V1.md",
+  "roadmap": "docs/architecture/FORGE_HTTP_API_AND_TRANSPORT_PARITY_V1.md",
+  "source_pins": {
+    "forge": "f2f1d8d8535d23323397df4ff7af8586f2c6364f",
+    "workspace": "a12d5b925da1e04b86c1142e709f6f0fb4c7f617",
+    "engineering-platform": "bd4c09ff85bc82783da6efb9f1f781dfb8100e17"
+  },
+  "shared_contract": {
+    "contract": "HTTP_ONLY_PEERS_AND_THIN_CLI_V1",
+    "peer_business_transport": "HTTP(S)",
+    "workspace_to_forge": "HTTP_ONLY",
+    "workspace_to_ep": "HTTP_ONLY",
+    "forge_to_ep": "HTTP_ONLY",
+    "console_to_forge": "HTTP_ONLY",
+    "workspace_client_to_server": "HTTP_ONLY",
+    "colocation_changes_boundary": false,
+    "peer_cli_fallback": false,
+    "peer_file_inbox_fallback": false,
+    "peer_direct_database_access": false,
+    "peer_python_import_execution": false,
+    "cli_is_business_authority": false,
+    "cli_is_peer_transport": false,
+    "local_cli_must_always_use_http": false,
+    "offline_cli_may_bypass_authority_or_single_writer": false,
+    "ep_file_inbox_retained": true,
+    "inbox_required_for_forge_or_workspace": false,
+    "workspace_replaced_by_console": false
+  },
+  "scenarios": [
+    "HT-01",
+    "HT-02",
+    "HT-03",
+    "HT-04",
+    "HT-05",
+    "HT-06",
+    "HT-07"
+  ],
+  "nodes": [
+    {
+      "id": "FH-CONTRACT",
+      "depends_on": [],
+      "status": "PLANNED",
+      "completion_evidence": [
+        "Operation inventory and versioned transport contracts"
+      ]
+    },
+    {
+      "id": "FH-SERVICES",
+      "depends_on": [
+        "FH-CONTRACT"
+      ],
+      "status": "PLANNED",
+      "completion_evidence": [
+        "Shared own application-service composition"
+      ]
+    },
+    {
+      "id": "FH-HTTP",
+      "depends_on": [
+        "FH-SERVICES"
+      ],
+      "status": "PLANNED",
+      "completion_evidence": [
+        "Real installed foreground HTTP and OpenAPI/Postman"
+      ]
+    },
+    {
+      "id": "FH-CLI",
+      "depends_on": [
+        "FH-SERVICES"
+      ],
+      "status": "PLANNED",
+      "completion_evidence": [
+        "Own CLI transport and local-only management parity"
+      ]
+    },
+    {
+      "id": "FH-Q",
+      "depends_on": [
+        "FH-HTTP",
+        "FH-CLI"
+      ],
+      "status": "PLANNED",
+      "completion_evidence": [
+        "Installed HTTP/CLI and no-shortcut qualification"
+      ]
+    }
+  ],
+  "external_requirements": {
+    "FH-SERVICES": [
+      "F1_IDENTITY_STORAGE_AUTH_SUBSET"
+    ]
+  },
+  "consumer_joins": {
+    "FSH-SERVICES_SERVER_ONLY": "FH-Q delivered HTTP slice plus own launchd/lifecycle qualification; no Console dependency",
+    "FOC-1": "qualified read slice",
+    "FOC-5_FOC-6": "qualified configuration/control slice",
+    "RC-FS": "qualified authenticated session slice"
+  }
+}

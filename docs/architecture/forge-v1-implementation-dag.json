@@ -27,6 +27,8 @@
     {
       "id": "F2",
       "owner": "Forge",
+      "documentary_refinement": "docs/roadmap/forge-http-api-v1.json",
+      "refinement_scope": "HTTP-only peer integration and thin own CLI; qualified per-capability slices for Server, Console and Workspace; no new prerequisite for the existing canary",
       "state": "CONTRACT_ONLY",
       "predecessors": ["F1"],
       "external_gates": [],
