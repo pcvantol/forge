@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.2",
+  "classification_rationale": "codex/forge-wheel-2-7-3",
+  "component": "product",
+  "event_lineage": "codex/forge-wheel-2-7-3",
+  "expected_head": "c4fed4c4321297746524c4c461b9a81dc42a0277",
+  "operation_id": "forge-wheel-2.7.3-20260912",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.3"
+}
