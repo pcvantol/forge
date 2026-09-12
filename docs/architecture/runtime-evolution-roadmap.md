@@ -2,6 +2,24 @@
 
 **Status:** Canonical implementation strategy
 
+## Current CI qualification extension — 2026-09-12
+
+The planned [Forge inner-loop CI integration contract](FORGE_INNER_LOOP_CI_INTEGRATION_V1.md)
+and [roadmap/DAG](../roadmap/FORGE_INNER_LOOP_CI_V1.md) add a complete installed
+Mission Candidate -> canonical approvals/intake -> dynamic Action execution ->
+evidence-derived completion test line, with a stateful mock EP at the HTTP
+boundary. Real Forge storage, governance, planning/validation, adapter and
+reconciliation remain in the test; external LLM/OS boundaries use deterministic
+fixtures. New-process reopen and an evidence-dependent successor are mandatory.
+
+This is RUNTIME_QUALIFICATION work, independent of Console/Workspace/installer
+and live-canary completion. A dedicated failing CI gate and release reuse are
+planned, not activated by this document. Mock-backed PASS never substitutes for
+real EP/provider qualification. Existing bootstrap stages below are historical
+strategy context, not instructions to revert to their old provider version or
+predeclared-Action canary. The scoped contract identifies the current source
+and existing-test limitations without changing Mission semantics or authority.
+
 ## Decision
 
 Forge evolves CLI-first. The deterministic Forge CLI is the first executable
