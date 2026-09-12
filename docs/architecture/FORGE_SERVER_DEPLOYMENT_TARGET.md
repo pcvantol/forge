@@ -6,7 +6,7 @@ Forge Server is a headless installed service. Its central runtime-storage root i
 
 The current repository-bound `.git/forge-runtime` placement is historical/bootstrap-compatible runtime placement, not the target authority. Migration/relocation must preserve the existing Forge instance ID, grants, Missions, budgets, requests, cursors and evidence, use a product-owned quiesced cutover with backup/integrity checks, and leave no dual writer or old-location fallback writer. A source checkout must never create a replacement runtime because it cannot find the installed one.
 
-Forge binds to EP and Workspace only through their versioned authenticated APIs. It never reads their databases or controls their services. The shared discovery/pairing vocabulary and descriptor are defined by Forge Platform's [contract](https://github.com/pcvantol/forge-platform/blob/main/docs/architecture/INSTANCE_DISCOVERY_AND_PAIRING_CONTRACT.md): LAN DNS-SD/mDNS and configured/unicast/tailnet endpoints locate candidates, while authenticated pairing pins peer product, stable instance ID, identity fingerprint, endpoint/version/capability set and scope in Forge-owned storage. Discovery is not authorization; a binding never silently retargets to a discovered instance.
+Forge binds to EP and Workspace only through their versioned authenticated HTTP APIs. It never reads their databases or controls their services. The shared discovery/pairing vocabulary and descriptor are defined by Forge Platform's [contract](https://github.com/pcvantol/forge-platform/blob/main/docs/architecture/INSTANCE_DISCOVERY_AND_PAIRING_CONTRACT.md): LAN DNS-SD/mDNS and configured/unicast/tailnet endpoints locate candidates, while authenticated pairing pins peer product, stable instance ID, identity fingerprint, endpoint/version/capability set and scope in Forge-owned storage. Discovery is not authorization; a binding never silently retargets to a discovered instance.
 
 ## Optional local Operations Console
 
@@ -38,6 +38,25 @@ Console on a Forge-owned port through qualified Tailnet access, not EP's relay
 or a wildcard listener. The Python/HTML/CSS/plain-JS pattern, five-language and
 quality contracts remain; no Workspace replacement or first-E2E prerequisite is
 introduced. These are target service requirements, not installed availability.
+
+## F2 HTTP-only transport and CLI parity refinement
+
+The [owning API/transport design and roadmap](FORGE_HTTP_API_AND_TRANSPORT_PARITY_V1.md)
+and [FH documentary DAG](../roadmap/forge-http-api-v1.json) refine F2. Shared
+application services precede HTTP and CLI adapters; FH-Q qualifies each delivered
+slice for the Server-only FSH-SERVICES milestone and its Console/Workspace
+consumers. The API is a Server foundation, not a separate dashboard business API.
+No complete Console, relay, chat, outer-loop or installer dependency is added.
+
+Workspace -> Forge, Workspace -> EP and Forge -> EP are HTTP-only regardless of
+host locality. The separate Console -> Forge Server link is also HTTP-only;
+this supersedes earlier local API/IPC optionality. CLI stays an own-product
+management/AI-automation ingress, not peer transport or business logic. Explicit
+local-only init/start/recovery uses the same owning rules without requiring a
+running HTTP endpoint, and cannot silently start a second writer. Locality never
+makes peer CLI/import/SQL/File Inbox fallbacks acceptable. EP retains its own
+supported File Inbox; Forge and Workspace need not add one. Existing canary
+state and API implementation statuses are not changed by documenting this rule.
 
 ## HTTP API implementation requirement
 
