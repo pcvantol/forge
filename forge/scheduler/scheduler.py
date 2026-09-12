@@ -121,13 +121,16 @@ class BootstrapMissionScheduler:
         if (action.intent_id, action.intent_revision) != (request.intent_id, request.intent_revision):
             raise ValueError("dispatch Intent provenance does not match its waiting Action")
         repository = evidence.repository_evidence
-        expected = (request.host_id, request.correlation_id, dispatch.host_run_id, request.retry_of_correlation_id,
+        expected = (request.host_id, request.correlation_id, request.retry_of_correlation_id,
                     request.mission_id, request.intent_id, request.intent_revision, request.action_id,
                     request.runtime_prompt.id, request.repository_id)
-        actual = (evidence.host_id, evidence.correlation_id, evidence.host_run_id, evidence.retry_of_correlation_id,
+        actual = (evidence.host_id, evidence.correlation_id, evidence.retry_of_correlation_id,
                   repository.mission_id, repository.intent_id, repository.intent_revision, repository.action_id,
                   repository.runtime_prompt_id, repository.repository_id)
-        if actual != expected:
+        exact_dispatch = evidence.host_run_id == dispatch.host_run_id and evidence.resolved_from_host_run_id is None
+        resolved_retry = (evidence.host_run_id != dispatch.host_run_id
+                          and evidence.resolved_from_host_run_id == dispatch.host_run_id)
+        if actual != expected or not (exact_dispatch or resolved_retry):
             raise ValueError("terminal evidence does not exactly match the dispatched execution run")
         if evidence.outcome is ExecutionEvidenceOutcome.COMPLETE:
             return self._replace(actions, action.id, EngineeringActionStatus.COMPLETE)

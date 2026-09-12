@@ -22,6 +22,7 @@ class ExecutionHostBindingStore(Protocol):
     def save_execution_host_binding(self, correlation_id: str, document: Mapping[str, Any]) -> dict[str, Any]: ...
     def record_execution_host_exchange_audit(self, correlation_id: str, *, direction: str,
                                              event_kind: str, document: Mapping[str, Any]) -> dict[str, Any]: ...
+    def record_operational_event(self, **values: Any) -> dict[str, Any]: ...
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -291,6 +292,10 @@ class EngineeringPlatformHttpExecutionHost:
         submission_id = binding.get("submission_id")
         if not isinstance(submission_id, str) or not submission_id:
             return None
+        return self._readback_for_submission(request, binding, submission_id)
+
+    def _readback_for_submission(self, request: ExecutionRequest, binding: Mapping[str, Any],
+                                 submission_id: str) -> dict[str, Any]:
         readback = self._json(
             f"/v1/projects/{self._segment(self.config.project_id)}/submissions/{self._segment(submission_id)}"
         )
@@ -298,6 +303,92 @@ class EngineeringPlatformHttpExecutionHost:
         if readback.get("submission", {}).get("id") != submission_id:
             raise ValueError("EP readback submission identity changed")
         return readback
+
+    def _operator_retry_resolution(self, request: ExecutionRequest, binding: Mapping[str, Any],
+                                   readback: Mapping[str, Any], dispatch: ExecutionDispatch,
+                                   ) -> tuple[Mapping[str, Any], str | None]:
+        """Follow only EP's explicit, parent-bound internal operator retry chain."""
+        current: Mapping[str, Any] = readback
+        expected_parent_run = dispatch.host_run_id
+        seen_submissions = {str(binding.get("submission_id"))}
+        resolved = False
+        while True:
+            run, disposition = current.get("run"), current.get("disposition")
+            if not isinstance(run, Mapping):
+                return current, dispatch.host_run_id if resolved else None
+            run_id = run.get("id")
+            if not isinstance(run_id, str) or not run_id:
+                raise ValueError("EP retry resolution run identity is invalid")
+            if run_id != expected_parent_run:
+                raise ValueError("EP retry resolution parent run differs from persisted dispatch")
+            if run.get("operator_resolution") != "RETRIED":
+                return current, dispatch.host_run_id if resolved else None
+            if not isinstance(disposition, Mapping):
+                raise ValueError("EP retry resolution disposition is invalid")
+            successor_id = disposition.get("resolution_submission_id")
+            if not isinstance(successor_id, str) or not successor_id or successor_id in seen_submissions:
+                raise ValueError("EP retry resolution successor identity is invalid")
+            seen_submissions.add(successor_id)
+            successor = self._readback_for_submission(request, binding, successor_id)
+            successor_disposition = successor.get("disposition")
+            if (not isinstance(successor_disposition, Mapping)
+                    or successor_disposition.get("retry_parent_run_id") != expected_parent_run):
+                raise ValueError("EP retry resolution lineage does not bind its parent run")
+            successor_run = successor.get("run")
+            if successor_run is None:
+                return successor, dispatch.host_run_id
+            if not isinstance(successor_run, Mapping) or not isinstance(successor_run.get("id"), str):
+                raise ValueError("EP retry resolution successor run is invalid")
+            current, expected_parent_run, resolved = successor, successor_run["id"], True
+
+    def _record_operator_retry_resolution(
+        self,
+        request: ExecutionRequest,
+        binding: Mapping[str, Any],
+        readback: Mapping[str, Any],
+        evidence: ExecutionHostEvidence,
+        resolved_from_host_run_id: str | None,
+    ) -> None:
+        """Persist one redacted Forge fact after successor evidence is verified.
+
+        The EP retry is an EP-only operator action.  Forge therefore records
+        the accepted, host-proven result rather than representing it as a new
+        Forge submission or a Forge-owned retry.
+        """
+        if resolved_from_host_run_id is None:
+            return
+        submission = readback.get("submission")
+        submission_id = submission.get("id") if isinstance(submission, Mapping) else None
+        if not isinstance(submission_id, str) or not submission_id:
+            raise ValueError("EP retry resolution submission identity is invalid")
+        resolution = {
+            "submission_id": submission_id,
+            "retry_parent_run_id": resolved_from_host_run_id,
+            "run_id": evidence.host_run_id,
+        }
+        persisted = binding.get("operator_retry_resolution")
+        if persisted is not None:
+            if persisted != resolution:
+                raise ValueError("EP retry resolution conflicts with the persisted Forge audit binding")
+            return
+        self._bindings.save_execution_host_binding(
+            request.correlation_id,
+            {"correlation_id": request.correlation_id, "operator_retry_resolution": resolution},
+        )
+        self._bindings.record_operational_event(
+            component="forge_execution_host", level="INFO",
+            event="ep_operator_retry_resolution_evidence_accepted",
+            mission_id=request.mission_id, action_id=request.action_id,
+            correlation_id=request.correlation_id, run_id=evidence.host_run_id,
+            details={
+                "operation": "operator_retry_resolution",
+                "outcome": "accepted",
+                "resolution_submission_id": submission_id,
+                "retry_parent_run_id": resolved_from_host_run_id,
+                "resolved_from_host_run_id": resolved_from_host_run_id,
+                "result_state": evidence.outcome.value,
+            },
+        )
 
     def dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None:
         # A compatibility failure has no EP submission/action/repair side effect.
@@ -360,6 +451,7 @@ class EngineeringPlatformHttpExecutionHost:
             return None
         if observed.host_run_id != dispatch.host_run_id:
             raise ValueError("EP readback run differs from persisted dispatch")
+        readback, resolved_from_host_run_id = self._operator_retry_resolution(request, binding, readback, dispatch)
         evidence = readback.get("evidence")
         terminal = evidence.get("terminal_artifact") if isinstance(evidence, Mapping) else None
         if not isinstance(terminal, Mapping) or not isinstance(terminal.get("id"), str):
@@ -382,12 +474,17 @@ class EngineeringPlatformHttpExecutionHost:
         raw = self._bytes(
             f"/v1/projects/{self._segment(self.config.project_id)}/artifacts/{self._segment(terminal['id'])}"
         )
-        evidence = terminal_evidence(readback, raw, host_id=self.config.host_id)
+        evidence = terminal_evidence(
+            readback, raw, host_id=self.config.host_id,
+            resolved_from_host_run_id=resolved_from_host_run_id,
+        )
         observed_identity = (evidence.correlation_id, evidence.host_run_id, evidence.repository_evidence.runtime_prompt_id,
             evidence.repository_evidence.mission_id, evidence.repository_evidence.intent_id,
             evidence.repository_evidence.intent_revision, evidence.repository_evidence.action_id, evidence.repository_evidence.repository_id)
-        request_identity = (request.correlation_id, dispatch.host_run_id, request.producer_contract.runtime_prompt.id,
+        expected_run = evidence.host_run_id if resolved_from_host_run_id is not None else dispatch.host_run_id
+        request_identity = (request.correlation_id, expected_run, request.producer_contract.runtime_prompt.id,
             request.mission_id, request.intent_id, request.intent_revision, request.action_id, request.repository_id)
         if observed_identity != request_identity:
             raise ValueError("EP terminal artifact does not bind persisted request and dispatch")
+        self._record_operator_retry_resolution(request, binding, readback, evidence, resolved_from_host_run_id)
         return evidence

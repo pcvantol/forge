@@ -275,6 +275,57 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "conflicts"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
 
+    def test_host_proven_operator_retry_resolution_returns_the_successor_evidence(self) -> None:
+        self._seed_binding()
+        parent = json.loads(json.dumps(self.readback))
+        parent["run"].update({"state": "BLOCKED", "terminal": False, "operator_resolution": "RETRIED"})
+        parent["result"].update({"outcome": "BLOCKED", "terminal": False, "delivery_qualified": False})
+        parent["evidence"]["terminal_artifact"] = None
+        parent["disposition"].update({"resolution_submission_id": "retry-submission", "retry_parent_run_id": None})
+        successor = json.loads(json.dumps(self.readback))
+        successor["submission"]["id"] = "retry-submission"
+        successor["run"].update({"id": "retry-run", "state": "COMPLETE", "terminal": True, "operator_resolution": "NONE"})
+        successor["disposition"].update({"resolution_submission_id": None, "retry_parent_run_id": "run-fixture"})
+        artifact = json.loads(self.artifact)
+        artifact["submission"]["id"] = "retry-submission"
+        artifact["run"]["id"] = "retry-run"
+        raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        successor["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(parent).encode(), json.dumps(successor).encode(), raw], [])):
+            evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                ExecutionDispatch(self.request, "run-fixture")
+            )
+        self.assertEqual(evidence.host_run_id, "retry-run")
+        self.assertEqual(evidence.resolved_from_host_run_id, "run-fixture")
+        self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+        binding = self.database.execution_host_binding(self.request.correlation_id)
+        self.assertEqual(binding["operator_retry_resolution"], {
+            "submission_id": "retry-submission", "retry_parent_run_id": "run-fixture", "run_id": "retry-run",
+        })
+        page = self.database.operational_log_page(correlation_id=self.request.correlation_id)
+        event = next(item for item in page["items"] if item["event"] == "ep_operator_retry_resolution_evidence_accepted")
+        self.assertEqual(event["run_id"], "retry-run")
+        self.assertEqual(event["details"]["resolution_submission_id"], "retry-submission")
+
+    def test_operator_retry_resolution_requires_its_exact_parent_run(self) -> None:
+        self._seed_binding()
+        parent = json.loads(json.dumps(self.readback))
+        parent["run"].update({"state": "BLOCKED", "terminal": False, "operator_resolution": "RETRIED"})
+        parent["result"].update({"outcome": "BLOCKED", "terminal": False, "delivery_qualified": False})
+        parent["evidence"]["terminal_artifact"] = None
+        parent["disposition"].update({"resolution_submission_id": "retry-submission", "retry_parent_run_id": None})
+        successor = json.loads(json.dumps(self.readback))
+        successor["submission"]["id"] = "retry-submission"
+        successor["run"].update({"id": "retry-run", "state": "COMPLETE", "terminal": True, "operator_resolution": "NONE"})
+        successor["disposition"].update({"resolution_submission_id": None, "retry_parent_run_id": "other-run"})
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(parent).encode(), json.dumps(successor).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "lineage"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                    ExecutionDispatch(self.request, "run-fixture")
+                )
+
     def test_configuration_and_transport_fail_closed_without_persisted_authority(self) -> None:
         with self.assertRaisesRegex(ValueError, "configuration"):
             EngineeringPlatformHttpExecutionHost(EngineeringPlatformHttpConfiguration("", "forge", "credential"), self.database)
@@ -309,7 +360,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         observed: list[object] = []
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
                 json.dumps(self.compatible).encode(), json.dumps(terminal).encode()], observed)):
-            with self.assertRaisesRegex(ValueError, "EP_TERMINAL_WITHOUT_IMMUTABLE_EVIDENCE"):
+            with self.assertRaisesRegex(ValueError, "EP retry resolution successor identity is invalid"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
                     ExecutionDispatch(self.request, "run-fixture")
                 )

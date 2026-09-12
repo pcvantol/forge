@@ -84,6 +84,29 @@ class BootstrapMissionSchedulerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly match"):
             self.scheduler.reconcile(waiting, dispatch, unrelated)
 
+    def test_host_proven_operator_retry_resolution_advances_the_original_dispatch(self) -> None:
+        waiting, dispatch, _ = self.dispatched((action(1, "one"),))
+        item = evidence(dispatch)
+        resolved = replace(
+            item,
+            host_run_id="retry-run-2",
+            resolved_from_host_run_id=dispatch.host_run_id,
+            repository_evidence=replace(item.repository_evidence, host_run_id="retry-run-2"),
+        )
+        completed = self.scheduler.reconcile(waiting, dispatch, resolved)
+        self.assertEqual(completed[0].status, EngineeringActionStatus.COMPLETE)
+
+    def test_unbound_operator_retry_resolution_remains_rejected(self) -> None:
+        waiting, dispatch, _ = self.dispatched((action(1, "one"),))
+        item = evidence(dispatch)
+        unbound = replace(
+            item,
+            host_run_id="retry-run-2",
+            repository_evidence=replace(item.repository_evidence, host_run_id="retry-run-2"),
+        )
+        with self.assertRaisesRegex(ValueError, "exactly match"):
+            self.scheduler.reconcile(waiting, dispatch, unbound)
+
     def test_blocked_and_failed_evidence_halt_mission_without_successor(self) -> None:
         for outcome, status in ((ExecutionEvidenceOutcome.BLOCKED, EngineeringActionStatus.BLOCKED), (ExecutionEvidenceOutcome.FAILED, EngineeringActionStatus.FAILED)):
             with self.subTest(outcome=outcome):
