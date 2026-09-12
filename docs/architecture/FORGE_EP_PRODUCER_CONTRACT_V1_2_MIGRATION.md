@@ -49,6 +49,13 @@ transition. Requested, rejected and accepted outcomes are separate redacted,
 immutable Forge operational events. Any different lifecycle shape, partial
 timing, readback absence or identity mismatch remains fail-closed.
 
+The transition releases the same persisted Forge dispatcher as an ordinary
+terminal completion. If a process stops after the durable `COMPLETED`
+transition but before that release, a repeated recovery call can only change an
+otherwise-idle dispatcher that still points to that exact completed Mission to
+`IDLE`; it does not contact EP or reopen the Mission. That reconciliation is
+separately append-only and auditable.
+
 The persisted request's `retry_of_correlation_id` is a terminal-evidence
 identity field, not display metadata. Forge accepts it only when the readback
 and immutable artifact agree exactly, validates it as either null or a

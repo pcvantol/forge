@@ -307,6 +307,9 @@ class InstalledDynamicMissionRuntime:
         timing-less evidence with the exact verified evidence before making the
         sole allowed ACTIVE -> COMPLETED transition.
         """
+        state = self.states.get(mission_id)
+        if state.status is MissionExecutionStatus.COMPLETED:
+            return self._reconcile_completed_terminal_dispatcher(mission_id)
         self._assert_single_resumable(mission_id)
         loop = self._loop(mission_id)
         service = ForgeRuntimeService(loop, self.states, runtime_database=self.database)
@@ -337,6 +340,7 @@ class InstalledDynamicMissionRuntime:
                     mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self.clock(),
                     reason="completed_terminal_evidence_reconciled", execution_evidence=evidence_document,
                 )
+                loop._dispatcher.complete(mission_id)
             except Exception as error:
                 self.database.record_operational_event(
                     component="forge_mission_runtime", level="ERROR",
@@ -368,6 +372,51 @@ class InstalledDynamicMissionRuntime:
                 },
             )
             return self._result(completed)
+
+    def _reconcile_completed_terminal_dispatcher(self, mission_id: str) -> DynamicMissionRunResult:
+        """Finish only an interrupted post-completion dispatcher hand-off.
+
+        A process can stop after the durable Mission transition commits but
+        before the dispatcher is released.  The resulting ``COMPLETED`` state
+        remains authoritative; this branch cannot reread EP or reopen work. It
+        accepts only an otherwise-idle dispatcher still pointing at that exact
+        completed Mission and changes it to ``IDLE``.
+        """
+        loop = self._loop(mission_id)
+        service = ForgeRuntimeService(loop, self.states, runtime_database=self.database)
+        with service.mutation_lock.acquire():
+            state = self.states.get(mission_id)
+            if state.status is not MissionExecutionStatus.COMPLETED:
+                raise InstalledDynamicMissionError("completed terminal dispatcher reconciliation is not available")
+            if self.states.resumable():
+                raise InstalledDynamicMissionError("another Forge Mission is still resumable")
+            row = self.database._connection.execute(
+                "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton = 1"
+            ).fetchone()
+            if row is None or row["status"] == "IDLE":
+                return self._result(state)
+            if row["status"] != "ACTIVE" or row["active_mission_id"] != mission_id:
+                raise InstalledDynamicMissionError("dispatcher does not point to the completed Mission")
+            evidence = state.execution_evidence or {}
+            repository = evidence.get("repository_evidence") if isinstance(evidence, Mapping) else None
+            if (not isinstance(repository, Mapping)
+                    or not isinstance(repository.get("action_id"), str)
+                    or not isinstance(evidence.get("correlation_id"), str)
+                    or not isinstance(evidence.get("host_run_id"), str)):
+                raise InstalledDynamicMissionError("completed Mission lacks dispatcher reconciliation lineage")
+            loop._dispatcher.complete(mission_id)
+            self.database.record_operational_event(
+                component="forge_mission_runtime", level="INFO",
+                event="completed_terminal_evidence_dispatcher_reconciled",
+                mission_id=mission_id, action_id=repository["action_id"],
+                correlation_id=evidence["correlation_id"], run_id=evidence["host_run_id"],
+                details={
+                    "operation": "completed_terminal_evidence_dispatcher_reconciliation",
+                    "outcome": "accepted", "previous_state": "ACTIVE", "new_state": "IDLE",
+                    "lifecycle": "dispatcher", "result_state": "COMPLETED",
+                },
+            )
+            return self._result(state)
 
     @staticmethod
     def _execution_evidence_document(evidence: ExecutionHostEvidence) -> dict[str, Any]:

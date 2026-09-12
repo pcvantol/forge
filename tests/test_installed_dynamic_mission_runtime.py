@@ -273,6 +273,10 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(state.execution_evidence["execution_started_at"], "2026-09-11T16:00:00Z")
         self.assertTrue(state.completion["all_required_criteria_proven"])
         self.assertIn("completed_terminal_evidence_reconciled", [item["reason"] for item in state.state_history])
+        dispatcher = self.runtime.database._connection.execute(
+            "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton=1"
+        ).fetchone()
+        self.assertEqual((dispatcher["status"], dispatcher["active_mission_id"]), ("IDLE", None))
         events = self.runtime.database.operational_log_page(mission_id=mission.id, page_size=20)["items"]
         self.assertCountEqual(
             [event["event"] for event in events if event["event"].startswith("completed_terminal_evidence_")],
@@ -281,8 +285,15 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
                 "completed_terminal_evidence_reconciled",
             ],
         )
-        with self.assertRaises(ValueError):
-            self.runtime.reconcile_completed_terminal_evidence(mission.id)
+        self.runtime.database.save_dispatcher_state(
+            status="ACTIVE", mission_sequence=(mission.id,), active_mission_id=mission.id,
+        )
+        recovered_dispatcher = self.runtime.reconcile_completed_terminal_evidence(mission.id)
+        self.assertEqual(recovered_dispatcher.status, "COMPLETED")
+        dispatcher = self.runtime.database._connection.execute(
+            "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton=1"
+        ).fetchone()
+        self.assertEqual((dispatcher["status"], dispatcher["active_mission_id"]), ("IDLE", None))
         self.assertEqual(self.host.evidence_reads, 3)
 
 
