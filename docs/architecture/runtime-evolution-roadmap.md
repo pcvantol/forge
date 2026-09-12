@@ -20,6 +20,24 @@ strategy context, not instructions to revert to their old provider version or
 predeclared-Action canary. The scoped contract identifies the current source
 and existing-test limitations without changing Mission semantics or authority.
 
+## Explicit Mission effect/output coverage — 2026-09-12
+
+The same [inner-loop contract](FORGE_INNER_LOOP_CI_INTEGRATION_V1.md) and
+[owning roadmap/DAG](../roadmap/FORGE_INNER_LOOP_CI_V1.md) now require formal
+read-only/no-repository-change assessments plus documentation-only and
+architecture/design-only Missions, through the full public Candidate-to-completion
+flow. FIE-17..FIE-28 extend the original sixteen families; all 28 are required
+for the expanded suite. Useful durable reports and unchanged-source evidence
+may complete an approved assessment without a new commit/PR; empty output or
+an unverified no-op cannot. Design completion never authorizes implementation.
+
+FME-ADMISSION, FME-PRODUCER and FME-COMPLETION track the public empty-write-scope,
+producer effects/report evidence and consumer-completion qualification gaps.
+Existing enums/fields, permissive mocks or dummy write permissions do not prove
+support. Reuse the seven FCI nodes; qualify only missing owning seams. No new
+runtime, peer transport, Workspace/Console dependency or live-canary authority
+is created. Actual implementation/installed qualification remains PLANNED.
+
 ## Post-live-E2E server and later outer-loop CI — 2026-09-12
 
 The standalone **Forge Server process** is an explicit next product milestone

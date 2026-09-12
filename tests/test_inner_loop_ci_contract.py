@@ -55,7 +55,7 @@ class InnerLoopCIContractTests(unittest.TestCase):
 
     def test_scenario_inventory_is_complete_without_claiming_execution(self):
         scenarios = self.graph["scenarios"]
-        expected = {f"FIE-{i:02d}" for i in range(1, 17)}
+        expected = {f"FIE-{i:02d}" for i in range(1, 29)}
         self.assertEqual(len(scenarios), len(expected))
         self.assertEqual({s["id"] for s in scenarios}, expected)
         table_ids = set(re.findall(r"^\| (FIE-\d{2}) \|", self.contract, re.MULTILINE))
@@ -97,6 +97,59 @@ class InnerLoopCIContractTests(unittest.TestCase):
         self.assertIn(ci["check_name"], self.contract)
         self.assertIn("Required scenario absence, skip, timeout", self.contract)
         self.assertIn("This documentation update does not add a new", self.contract)
+
+    def test_effect_modes_and_scope_are_explicit_without_claiming_support(self):
+        ext = self.graph["mission_effects_extension"]
+        self.assertEqual(ext["status"], "PLANNED_NOT_RUNTIME_QUALIFIED")
+        self.assertEqual(ext["modes"], ["READ_ONLY_ASSESSMENT", "DOCUMENTATION_ONLY",
+                                      "ARCHITECTURE_DESIGN_ONLY", "BOUNDED_REPOSITORY_CHANGE"])
+        for mode in ext["modes"]:
+            self.assertIn("| " + mode + " |", self.contract)
+        self.assertEqual(ext["scenario_ids"], [f"FIE-{i:02d}" for i in range(17, 29)])
+        self.assertIs(ext["explicit_empty_writes_supported_target"], True)
+        self.assertIs(ext["missing_effect_policy_is_empty_scope"], False)
+        self.assertIs(ext["new_modes_use_same_public_lifecycle"], True)
+
+    def test_report_evidence_and_no_change_are_not_fabricated_delivery(self):
+        ext = self.graph["mission_effects_extension"]
+        for flag in ("read_only_forbids_owned_evidence_persistence", "advisory_chat_is_formal_read_only_mission",
+                     "read_only_requires_new_commit_or_pr", "no_change_without_required_result_is_success",
+                     "clean_diff_alone_proves_read_only", "mock_can_invent_terminal_v12_fields"):
+            self.assertIs(ext[flag], False)
+        for flag in ("unchanged_source_revision_can_be_valid_provenance",
+                     "per_criterion_artifact_evidence_required", "effective_validation_and_reviews_required"):
+            self.assertIs(ext[flag], True)
+        for phrase in ("reverted before the end", "real public admission boundary", "immutable evidence",
+                       "not a retroactive read-only authority"):
+            self.assertIn(phrase, self.contract)
+
+    def test_effect_expansion_never_implies_authority_or_budget_reset(self):
+        ext = self.graph["mission_effects_extension"]
+        self.assertIs(ext["design_completion_authorizes_implementation"], False)
+        self.assertIs(ext["mode_change_resets_budget"], False)
+        for phrase in ("explicit owning governance amendment", "same allowed", "retention",
+                       "without a Mission", "no authority weakening"):
+            self.assertIn(phrase, self.contract + self.roadmap)
+
+    def test_effect_requirements_link_to_scenarios_and_remain_unqualified(self):
+        ext = self.graph["mission_effects_extension"]
+        self.assertRegex(ext["source_pin"], r"^[0-9a-f]{40}$")
+        self.assertIn(ext["source_pin"], self.contract)
+        requirements = ext["requirements"]
+        self.assertEqual([x["id"] for x in requirements],
+                         ["FME-ADMISSION", "FME-PRODUCER", "FME-COMPLETION"])
+        for req in requirements:
+            self.assertIn("| " + req["id"] + " |", self.roadmap)
+            self.assertIn(req["owner"], ("forge", "engineering-platform"))
+            self.assertIn(req["status"], ("SOURCE_GAP_OBSERVED", "REQUIRED_EVIDENCE_UNVERIFIED"))
+            self.assertEqual(req["evidence"], [])
+            self.assertTrue(req["required_for"])
+            self.assertTrue(set(req["required_for"]) <= set(ext["scenario_ids"]))
+        artifacts = self.graph["planned_ci"]["required_artifacts"]
+        self.assertTrue({"mission_effect_and_output_matrix", "target_effect_observations",
+                         "criterion_artifact_and_control_bindings"} <= set(artifacts))
+        self.assertIn("all FIE-01..FIE-28", self.roadmap)
+        self.assertIn("NOT_QUALIFIED", self.contract)
 
     def test_plan_is_linked_from_existing_runtime_roadmap(self):
         for key in ("architecture", "scoped_roadmap", "runtime_roadmap"):
