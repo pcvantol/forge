@@ -75,6 +75,8 @@
     {
       "id": "F6",
       "owner": "Forge",
+      "documentary_refinement": "docs/roadmap/role-aware-conversations-v1.json",
+      "refinement_scope": "Three-mode session productization; not a new predecessor of existing F6 foundation or F10 canary",
       "state": "PARTIALLY_IMPLEMENTED",
       "predecessors": ["F2"],
       "external_gates": [],

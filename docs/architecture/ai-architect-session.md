@@ -1,5 +1,17 @@
 # AI Architect Session 1.8
 
+## Multi-turn productization
+
+The [role-aware conversation design](ROLE_AWARE_CONVERSATIONS_V1.md) composes
+these bounded sessions into shared Business/Architect/UX conversations in the
+separate Workspace product. It preserves the session lifecycle and advisory
+boundary, adds no approval authority, and treats provider integration as later
+qualification. See the [F6 refinement roadmap](../roadmap/ROLE_AWARE_CONVERSATIONS_V1.md)
+and [documentary DAG](../roadmap/role-aware-conversations-v1.json).
+This is target design, not evidence that a live chat exists. Earlier repository
+folder declarations below describe this contract's original local boundary;
+installed session persistence follows the owning productization/data-root contract.
+
 ## Purpose
 
 An AI Architect Session is one bounded architectural reasoning interaction
