@@ -59,6 +59,7 @@ This is the first real Forge -> EP -> Forge autonomy proof. It is deliberately s
 | Evidence-gated cross-repository artifact unlock | CROSS-PRODUCT TARGET | Second canary; Forge Platform manifest is reference scenario. |
 | Project Intelligence / outer Mission loop | FOLLOW-ON CORE PRODUCT | Consumes completed Mission evidence. |
 | Workspace Roadmap/DAG Governance | FOLLOW-ON CORE PRODUCT | Not required for first machine loop. |
+| Forge Operations Console V1 | PLANNED / POST_AUTONOMY | Instance administration; separate documentary FOC DAG, not a first-E2E gate. |
 
 ## First autonomy DAG — dynamic inner Mission loop
 
@@ -241,7 +242,32 @@ The Execution Agent + Forge Platform installer-role Mission is a preferred real 
 | Repository/resource locks and execution capacity | EP |
 | Execution artifact publication | Producing product/repository through EP delivery |
 | Forge Platform component composition/manifest | Forge Platform |
-| Human projection and decisions | Workspace |
+| Human project/governance projection and decisions | Workspace |
+| Local Forge instance operations presentation | Forge Operations Console via Forge application services (PLANNED) |
+
+## Forge Operations Console — deferred documentary lane
+
+The [canonical roadmap](../../knowledge/bootstrap/10_ROADMAP.md) now includes
+`FORGE::OPERATIONS_CONSOLE_V1` as **PLANNED / POST_AUTONOMY**. See its
+[architecture](FORGE_OPERATIONS_CONSOLE_V1.md),
+[scoped roadmap](../roadmap/FORGE_OPERATIONS_CONSOLE_V1.md) and
+[non-executable JSON DAG](../roadmap/forge-operations-console-v1.json).
+
+```text
+FOC-0 contracts
+  -> FOC-1 read projections/API + FOC-2 authenticated shell
+  -> FOC-3 host/logs + FOC-4 active/history + FOC-5 configuration
+FOC-0 + FOC-4 -> FOC-6 guarded pause/resume
+FOC-3 + FOC-4 + FOC-5 + FOC-6 -> FOC-Q installed qualification
+```
+
+The parallel page nodes FOC-3/4/5 each require both FOC-1 and FOC-2. All nodes
+belong to Forge and remain PLANNED. There is no edge making this console a
+predecessor of the first inner-Mission canary. This extension neither changes
+an executable programme graph nor allocates peer implementation work.
+Workspace keeps project/governance UX; EP owns execution; Forge Platform owns
+installation and host-process lifecycle. Local operations UI is only a consumer
+of the corresponding Forge application services and verified evidence.
 
 ## Readiness chain
 

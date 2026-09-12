@@ -1,0 +1,161 @@
+{
+  "schema_version": "1.0",
+  "capability": "FORGE::OPERATIONS_CONSOLE_V1",
+  "owner": "forge",
+  "authority": "DOCUMENTARY",
+  "status": "PLANNED",
+  "priority_lane": "POST_AUTONOMY",
+  "executable": false,
+  "authorizes_execution": false,
+  "first_e2e_prerequisite": false,
+  "canonical_roadmap": "knowledge/bootstrap/10_ROADMAP.md",
+  "architecture": "docs/architecture/FORGE_OPERATIONS_CONSOLE_V1.md",
+  "scoped_roadmap": "docs/roadmap/FORGE_OPERATIONS_CONSOLE_V1.md",
+  "sections": [
+    "local_host_components",
+    "logs",
+    "configuration",
+    "active_missions",
+    "historical_missions"
+  ],
+  "unchanged_boundaries": [
+    "Forge planning and runtime authority",
+    "EP execution and evidence authority",
+    "Workspace project/governance UX",
+    "Forge Platform installation and host-process lifecycle"
+  ],
+  "nodes": [
+    {
+      "id": "FOC-0",
+      "title": "Operations view/command contracts",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [],
+      "completion_evidence": [
+        "Five-section read/write and product-ownership mapping",
+        "Typed authentication, authority and mutation/readback contracts"
+      ]
+    },
+    {
+      "id": "FOC-1",
+      "title": "Bounded operational projections and API",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FOC-0"
+      ],
+      "completion_evidence": [
+        "Instance/project isolation, redaction and freshness",
+        "OpenAPI, Postman and implemented-route parity"
+      ]
+    },
+    {
+      "id": "FOC-2",
+      "title": "Authenticated local console shell",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FOC-0"
+      ],
+      "completion_evidence": [
+        "Installed assets, local-only default and authenticated operator session",
+        "Accessible navigation and unavailable-state handling"
+      ]
+    },
+    {
+      "id": "FOC-3",
+      "title": "Local host components and logs",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FOC-1",
+        "FOC-2"
+      ],
+      "completion_evidence": [
+        "Actual/expected component identity and state",
+        "Bounded log query/tail/export with redaction"
+      ]
+    },
+    {
+      "id": "FOC-4",
+      "title": "Active and historical Missions",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FOC-1",
+        "FOC-2"
+      ],
+      "completion_evidence": [
+        "Canonical lifecycle groups and criterion/Action/evidence lineage",
+        "Ambiguity visibility and durable history after reopen"
+      ]
+    },
+    {
+      "id": "FOC-5",
+      "title": "Controlled configuration",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FOC-1",
+        "FOC-2"
+      ],
+      "completion_evidence": [
+        "Authorized allow-list with preview/save/readback",
+        "Revision conflicts, audit, non-generating preflight and no active-binding retarget"
+      ]
+    },
+    {
+      "id": "FOC-6",
+      "title": "Guarded operational pause and resume",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FOC-0",
+        "FOC-4"
+      ],
+      "completion_evidence": [
+        "Current capability and authority gates at the safe Forge boundary",
+        "Same Mission/lineage with no duplicate submission or budget reset"
+      ]
+    },
+    {
+      "id": "FOC-Q",
+      "title": "Integrated installed qualification",
+      "owner": "forge",
+      "status": "PLANNED",
+      "depends_on": [
+        "FOC-3",
+        "FOC-4",
+        "FOC-5",
+        "FOC-6"
+      ],
+      "completion_evidence": [
+        "All five sections from a source/artifact-bound installed instance",
+        "Restart, empty, degraded, isolation, hostile-content and secret-safety evidence"
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "id": "FOC-READ-ONLY",
+      "status": "PLANNED",
+      "requires": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-2",
+        "FOC-3",
+        "FOC-4"
+      ],
+      "configuration_mode": "READ_ONLY"
+    },
+    {
+      "id": "FOC-V1",
+      "status": "PLANNED",
+      "requires": [
+        "FOC-Q"
+      ],
+      "configuration_mode": "GUARDED_ALLOW_LIST"
+    }
+  ],
+  "execution_selection": "Later governed bounded work; no current Mission or live grant is created by this graph."
+}
