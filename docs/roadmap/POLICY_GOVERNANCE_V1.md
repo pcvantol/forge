@@ -87,3 +87,19 @@ not replacements for POL/VR nodes or new executable bootstrap authority.
 Native release planning consumes the declared delivery authority rather than
 assuming publication/deployment ownership. All new implementation remains
 PLANNED; full external CD and Workspace UI do not gate a no-deployment canary.
+
+## Adaptive Action sizing and decomposition
+
+[ADAPTIVE_ACTION_SIZING_V1](../architecture/ADAPTIVE_ACTION_SIZING_V1.md) and its
+[documentary delivery DAG](adaptive-action-sizing-v1.json) refine POL-F/POL-B and
+the existing AI Mission Planner, not F5 projections or a new scheduler. The first
+Action and later unmaterialized work are sized against coherent outcomes, risk,
+context and ALL required EP execution/review profiles. Six Forge nodes consume
+three EP envelope/fit nodes; two Workspace nodes expose the independent size
+preference. Smaller / Balanced-adaptive / Larger-coherent never alter authority,
+required reviews, provider billing or budgets. All implementation remains PLANNED.
+
+The joined DAG has no UI or full-model-programme predecessor for a headless pilot.
+The [inner-loop roadmap](FORGE_INNER_LOOP_CI_V1.md) references AS-T01..20 as an
+additional qualified sizing variant, retaining all FIE-01..28. Source/installed/
+comparative evidence remains distinct; no active default or canary change follows.
