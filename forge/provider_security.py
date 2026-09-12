@@ -112,6 +112,13 @@ class PlanningProviderSecurityService:
             else: self.db._connection.execute('UPDATE planning_provider_security_config SET secret_reference=?,enabled=?,operator_id=?,version=?,updated_at=?,model=?,timeout_seconds=?,input_token_bound=?,context_token_bound=?,output_token_bound=? WHERE provider_id=?',(reference.serialized,int(enabled),operator_id,new,occurred_at,*fields,provider_id))
             audit={'configuration_id':configuration_id,'operator_id':operator_id,'operation':'configured','version':new,'secret_reference_changed':True,'invocation_parameters_configured':parameters is not None,'result':'accepted'}
             self.db._connection.execute('INSERT INTO planning_provider_security_audit VALUES (?,?,?,?,?,?)',(f'{configuration_id}:{new}',configuration_id,operator_id,'configured',occurred_at,json.dumps(audit,sort_keys=True)))
+            self.db._append_operational_event(
+                component='forge_planning_provider', level='INFO',
+                event='planning_provider_configuration_updated', operator_reference=operator_id,
+                details={'operation':'configured','outcome':'accepted','configuration_id':configuration_id,
+                         'configuration_revision':new,'provider_id':provider_id,
+                         'provider_type':'OPENAI_RESPONSES'}, occurred_at=occurred_at,
+            )
         return self.inspect(provider_id)
 
     def _configure_external_session(self, *, configuration_id, provider_id, reference, operator_context, expected_version,
@@ -168,6 +175,13 @@ class PlanningProviderSecurityService:
                    'adapter_version':adapter_version,'profile':profile,'result':'accepted'}
             self.db._connection.execute('INSERT INTO planning_provider_external_session_audit VALUES (?,?,?,?,?,?)',
                                         (f'{configuration_id}:{new}',configuration_id,operator_id,'configured',occurred_at,json.dumps(audit,sort_keys=True)))
+            self.db._append_operational_event(
+                component='forge_planning_provider', level='INFO',
+                event='planning_provider_configuration_updated', operator_reference=operator_id,
+                details={'operation':'configured','outcome':'accepted','configuration_id':configuration_id,
+                         'configuration_revision':new,'provider_id':provider_id,
+                         'provider_type':provider_type}, occurred_at=occurred_at,
+            )
         return self.inspect(provider_id)
 
     def inspect(self, provider_id):
@@ -228,6 +242,13 @@ class PlanningProviderSecurityService:
             actual=self.invocation_policy(expected_policy.provider_id)
             if not self._same_policy(actual,expected_policy): raise PermissionError('canonical G011 policy changed before generation permit')
             connection.execute("INSERT INTO planning_provider_generation_permits VALUES (?,?,?,?,?,?,?,?)",(permit_id,actual.provider_id,actual.version,policy_digest,request_digest,'PENDING',now,now))
+            self.db._append_operational_event(
+                component='forge_planning_provider', level='INFO',
+                event='planning_provider_generation_permit_acquired',
+                details={'operation':'acquired','outcome':'accepted','permit_id':permit_id,
+                         'provider_id':actual.provider_id,'policy_digest':policy_digest,
+                         'request_digest':request_digest}, occurred_at=now,
+            )
             connection.commit()
         except Exception:
             connection.rollback(); raise
@@ -245,6 +266,13 @@ class PlanningProviderSecurityService:
                     or not self._same_policy(actual,expected_policy)):
                 raise PermissionError('canonical G011 generation permit is invalid')
             connection.execute("UPDATE planning_provider_generation_permits SET state='TRANSPORT_COMMITTED',updated_at=? WHERE permit_id=?",(now,permit_id))
+            self.db._append_operational_event(
+                component='forge_planning_provider', level='INFO',
+                event='planning_provider_generation_transport_committed',
+                details={'operation':'transport_committed','outcome':'accepted','permit_id':permit_id,
+                         'provider_id':actual.provider_id,'policy_digest':policy_digest,
+                         'request_digest':request_digest}, occurred_at=now,
+            )
             connection.commit()
         except Exception:
             connection.rollback(); raise
@@ -252,3 +280,8 @@ class PlanningProviderSecurityService:
     def _release_generation_permit(self, permit_id):
         with self.db._connection:
             self.db._connection.execute('DELETE FROM planning_provider_generation_permits WHERE permit_id=?',(permit_id,))
+            self.db._append_operational_event(
+                component='forge_planning_provider', level='DEBUG',
+                event='planning_provider_generation_permit_released',
+                details={'operation':'released','permit_id':permit_id},
+            )
