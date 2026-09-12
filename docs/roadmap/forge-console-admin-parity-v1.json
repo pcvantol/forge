@@ -251,5 +251,13 @@
         "Workspace ownership unchanged; no unexpected generation, mutation, authority or budget reset"
       ]
     }
-  ]
+  ],
+  "hosting_contract": "docs/architecture/FORGE_CONSOLE_HOSTING_AND_CENTRAL_V1.md",
+  "hosting_graph": "docs/roadmap/forge-console-hosting-v1.json",
+  "hosting_roadmap": "docs/roadmap/FORGE_CONSOLE_HOSTING_V1.md",
+  "required_qualification_extensions": {
+    "FCP-Q": [
+      "FSH-Q"
+    ]
+  }
 }

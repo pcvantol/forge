@@ -17,9 +17,27 @@ versioned authenticated API; no browser SQL, second runtime, implicit data-root
 initialization or EP service control is introduced. The [scoped roadmap/DAG](../roadmap/FORGE_OPERATIONS_CONSOLE_V1.md)
 separates read projections, UI, bounded configuration/control and installed
 qualification. Workspace retains project/governance/approval/chat UX, while
-Forge Platform retains install/update/host-process lifecycle. The console is
+Forge Platform orchestrates product-owned installation/lifecycle requests; Forge
+owns its service definitions, safe restart semantics and readbacks. The console is
 not a new prerequisite for the first Forge -> EP -> Forge E2E, and this target
 document is not an implementation, release or runtime-authorization claim.
+
+## Managed Console, relay and CENTRAL extension
+
+The [hosting/component/CENTRAL contract](FORGE_CONSOLE_HOSTING_AND_CENTRAL_V1.md)
+and [linked roadmap/DAG](../roadmap/FORGE_CONSOLE_HOSTING_V1.md) now require
+separate Forge-owned launchd services for Server, subordinate Console and relay,
+all declared components with status/detail modals, and safe authorized restart.
+This explicitly refines the initial Console's no-OS-restart/unspecified-relay
+wording. Console is functionally subordinate but a separately launchd-supervised
+job: the Server must not also spawn the same child. There remains one runtime
+and one Forge CENTRAL authority, using the existing `forge.db` data root.
+
+Relay capability is required for V1 but activation is opt-in. It exposes the
+Console on a Forge-owned port through qualified Tailnet access, not EP's relay
+or a wildcard listener. The Python/HTML/CSS/plain-JS pattern, five-language and
+quality contracts remain; no Workspace replacement or first-E2E prerequisite is
+introduced. These are target service requirements, not installed availability.
 
 ## HTTP API implementation requirement
 

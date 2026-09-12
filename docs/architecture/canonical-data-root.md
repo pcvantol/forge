@@ -45,3 +45,20 @@ Operational backup and recovery are root-scoped: take a SQLite-consistent copy
 into `backups/`, retain the corresponding `instance/` marker, then restore to
 an explicitly selected data root and validate before use. Do not copy a root
 over a running instance.
+
+## Forge CENTRAL and managed Console services
+
+The future Console calls this existing authority **Forge CENTRAL**. It remains
+Forge-owned `forge.db` plus its existing durable directories, not EP's CENTRAL
+or a new shared database. The [hosting contract](FORGE_CONSOLE_HOSTING_AND_CENTRAL_V1.md)
+and [roadmap](../roadmap/FORGE_CONSOLE_HOSTING_V1.md) require an explicit same-root
+binding for the installed Server and its Console/relay services. Console and
+relay are API/access adapters, not direct SQL writers or separate state stores.
+System-service startup must use the installation's pinned data root, never a
+new default inferred from a different service account's HOME. Relocation must
+repoint every owned root reference and prove same-instance reopen after reboot.
+
+This clarification changes no filename, resolver precedence, schema, default
+path, installed identity or existing state. Export/import/relocate/VACUUM remain
+the separately qualified product operations defined in the
+[configuration contract](FORGE_SERVER_CONFIGURATION_AND_DATA_OPERATIONS_V1.md).
