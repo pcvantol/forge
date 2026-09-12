@@ -27,7 +27,7 @@ from forge.models.codex_runtime_prompt import (
     CodexCliRuntimePrompt, ExecutionHostCompatibility, RepositoryState,
 )
 from forge.models.producer import (
-    ExecutionReceiptReference, Producer, ProducerContract, ProducerIdentity,
+    ExecutionReceiptReference, ForgeActionContextEnvelope, Producer, ProducerContract, ProducerIdentity,
     RuntimePromptEnvelope,
 )
 from forge.models.intent import IntentReference
@@ -170,6 +170,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
             constraints = contract_document["execution_constraints"]
             receipts = contract_document.get("receipt_references", ())
             evidence_references = contract_document.get("execution_evidence_references", ())
+            context_document = contract_document.get("action_context")
             if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping) or not isinstance(constraints, list):
                 raise TypeError
             identity = producer["identity"]
@@ -189,6 +190,26 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
                    or not isinstance(item["host_id"], str) or not item["host_id"]
                    or not isinstance(item["receipt_id"], str) or not item["receipt_id"] for item in receipts):
                 raise TypeError
+            action_context = None
+            if context_document is not None:
+                if not isinstance(context_document, Mapping) or set(context_document) != {
+                    "envelope_version", "action_id", "summary", "summary_digest", "envelope_digest", "generator",
+                }:
+                    raise TypeError
+                generator = context_document["generator"]
+                if not isinstance(generator, Mapping) or set(generator) != {"id", "model", "version", "source_digest"}:
+                    raise TypeError
+                action_context = ForgeActionContextEnvelope(
+                    action_id=required(context_document["action_id"]),
+                    summary=required(context_document["summary"]),
+                    source_digest=required(generator["source_digest"]),
+                    summary_digest=required(context_document["summary_digest"]),
+                    envelope_digest=required(context_document["envelope_digest"]),
+                    envelope_version=required(context_document["envelope_version"]),
+                    generator_id=required(generator["id"]),
+                    generator_model=required(generator["model"]),
+                    generator_version=required(generator["version"]),
+                )
             mission_id = required(contract_document["mission_id"])
             contract = ProducerContract(
                 Producer(ProducerIdentity(required(identity["id"]), required(identity["type"]), required(identity["version"])),
@@ -196,7 +217,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
                 required(contract_document["correlation_id"]), required(contract_document["engineering_action_id"]),
                 RuntimePromptEnvelope(required(prompt["id"]), required(prompt["version"]), required(prompt["format"]),
                                       required(prompt["content"]), required(prompt["content_digest"])),
-                tuple(constraints), tuple(metadata.items()), mission_id=mission_id,
+                tuple(constraints), tuple(metadata.items()), action_context=action_context, mission_id=mission_id,
                 receipt_references=tuple(ExecutionReceiptReference(item["host_id"], item["receipt_id"]) for item in receipts),
                 execution_evidence_references=tuple(evidence_references), contract_version=required(contract_document["contract_version"]),
             )

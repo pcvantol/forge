@@ -98,12 +98,17 @@ canary remains separately approved work.
 Producer readback remains `v1.2`.  It is deliberately not widened for
 submission acknowledgement: installed Forge consumers validate its root shape
 exactly.  A Forge producer envelope that declares
-`constraints.forge_execution.contract_version: "1.1"` instead carries two
-separate facts:
+`constraints.forge_execution.contract_version: "1.2"` carries the existing
+two separate version facts:
 
 - `producer.version` and `forge_application_version` are the actual Forge
   application release which materialised the envelope;
 - `producer_contract_version` is the Forge Producer Contract schema version.
+
+It additionally carries a separate, versioned Forge Action Context Envelope:
+a bounded credential-redacted Action summary, the deterministic generator
+identity/model/version, and source/summary/envelope digests. This is not a
+Runtime Prompt and does not make EP an authority for Forge planning.
 
 On a successful HTTP admission EP returns a separate `receipt` object at
 receipt contract version `1.0`.  It binds the immutable EP submission ID, EP
@@ -113,9 +118,11 @@ an admission acknowledgement only, never an execution receipt or execution
 evidence.
 
 Forge appends two secret-free, immutable database audit facts for every new
-v1.1 exchange: `FORGE_SUBMISSION_SENT` before the request and
+v1.2 exchange: `FORGE_SUBMISSION_SENT` before the request and
 `EP_SUBMISSION_RECEIPT_RECEIVED` only after the receipt passes exact binding
-validation.  EP appends the corresponding immutable
+validation. Those Forge audit facts retain only the Action Context Envelope
+version, generator identity/model/version, and summary/envelope digests; they
+never retain the summary source or unredacted Action text. EP appends the corresponding immutable
 `FORGE_SUBMISSION_ACCEPTED` record and emits a redacted, structured central
 component log.  Prompts, bearer credentials, checkout paths and receipt bodies
 are not copied to either audit document or central log.
@@ -139,8 +146,9 @@ causal pair of admission receipt plus terminal run/report/artifact without
 copying a receipt body, prompt, credential or checkout path into Operational
 Logs.
 
-EP accepts historical v1.0 Forge provenance for existing work, but only v1.1
-has the information required to create this bidirectional audit trail.  Roll
-out EP first: older Forge clients ignore the additional POST response field;
-the new Forge client fails closed if an EP response omits or mismatches the
-versioned receipt.
+EP accepts historical v1.0 Forge provenance for existing work and retains
+v1.1 receipt compatibility. Only v1.2 carries the prospective Action Context
+Envelope; v1.0/v1.1 historical runs remain explicitly unavailable in the EP
+Console and are never backfilled. Roll out EP first: older Forge clients ignore
+the additional POST response field; the new Forge client fails closed if an EP
+response omits or mismatches the versioned receipt.

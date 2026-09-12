@@ -288,9 +288,11 @@ from .execution_host import (
     ExecutionHost,
 )
 from .producer import (
+    FORGE_ACTION_CONTEXT_ENVELOPE_VERSION,
     PRODUCER_CONTRACT_VERSION,
     DEFAULT_FORGE_PRODUCER,
     ExecutionReceiptReference,
+    ForgeActionContextEnvelope,
     Producer,
     ProducerContract,
     ProducerIdentity,
@@ -557,9 +559,11 @@ __all__ = [
     "ExecutionHostResponsibility",
     "ExecutionRepositoryEvidence",
     "ExecutionRequest",
+    "FORGE_ACTION_CONTEXT_ENVELOPE_VERSION",
     "PRODUCER_CONTRACT_VERSION",
     "DEFAULT_FORGE_PRODUCER",
     "ExecutionReceiptReference",
+    "ForgeActionContextEnvelope",
     "Producer",
     "ProducerContract",
     "ProducerIdentity",

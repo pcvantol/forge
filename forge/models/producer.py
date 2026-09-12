@@ -20,7 +20,138 @@ from forge._version import canonical_version
 
 
 PRODUCER_CONTRACT_VERSION = "1.0"
+FORGE_ACTION_CONTEXT_ENVELOPE_VERSION = "1.0"
+FORGE_ACTION_CONTEXT_GENERATOR_ID = "forge-redacted-action-summary"
+FORGE_ACTION_CONTEXT_GENERATOR_MODEL = "deterministic-template"
+FORGE_ACTION_CONTEXT_GENERATOR_VERSION = "1.0"
 _TYPE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+_SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(api[ _-]?key|authorization|bearer|password|secret|token)\b\s*([:=])\s*[^\s,;]+"
+)
+_BEARER_CREDENTIAL = re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]{8,}\b")
+_URL_CREDENTIAL = re.compile(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@")
+_KNOWN_TOKEN = re.compile(r"\b(?:sk-[a-zA-Z0-9_-]{12,}|ghp_[a-zA-Z0-9]{12,}|github_pat_[a-zA-Z0-9_]{12,})\b")
+
+
+def _canonical_digest(value: object) -> str:
+    """Return the stable digest used by an immutable interchange document."""
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def redact_action_summary(value: str) -> str:
+    """Create the bounded public-safe text allowed to leave Forge.
+
+    The complete Runtime Prompt remains an Execution Host input. This helper
+    deliberately projects only the Action objective and replaces common
+    credential forms before the text can enter the producer envelope.
+    """
+    if not isinstance(value, str):
+        raise ValueError("action summary must be text")
+    text = " ".join(value.replace("\\x00", " ").split())
+    text = _URL_CREDENTIAL.sub(r"\1[REDACTED]@", text)
+    text = _KNOWN_TOKEN.sub("[REDACTED]", text)
+    text = _BEARER_CREDENTIAL.sub("Bearer [REDACTED]", text)
+    text = _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", text)
+    if not text:
+        raise ValueError("action summary must not be empty")
+    return text[:500]
+
+
+@dataclass(frozen=True)
+class ForgeActionContextEnvelope:
+    """Redacted, immutable Action summary safe for CENTRAL projection.
+
+    This is intentionally a separate, versioned document: it is neither a
+    Runtime Prompt nor the mutable Forge execution-context snapshot. The
+    deterministic generator metadata makes the summary's provenance explicit
+    without pretending that a model generated it.
+    """
+
+    action_id: str
+    summary: str
+    source_digest: str
+    summary_digest: str
+    envelope_digest: str
+    envelope_version: str = FORGE_ACTION_CONTEXT_ENVELOPE_VERSION
+    generator_id: str = FORGE_ACTION_CONTEXT_GENERATOR_ID
+    generator_model: str = FORGE_ACTION_CONTEXT_GENERATOR_MODEL
+    generator_version: str = FORGE_ACTION_CONTEXT_GENERATOR_VERSION
+
+    @classmethod
+    def from_runtime_prompt(cls, runtime_prompt: Any) -> "ForgeActionContextEnvelope":
+        """Derive one safe envelope from the immutable Action objective."""
+        action_id = getattr(runtime_prompt, "source_action_id", getattr(runtime_prompt, "action_id", None))
+        source_digest = getattr(runtime_prompt, "generation_request_digest", getattr(runtime_prompt, "source_digest", None))
+        sections = getattr(runtime_prompt, "sections", ())
+        objective = next(
+            (item for section in sections if getattr(getattr(section, "kind", None), "value", None) == "Objective"
+             for item in getattr(section, "content", ()) if isinstance(item, str)),
+            None,
+        )
+        objective = objective if objective is not None else getattr(runtime_prompt, "objective", None)
+        if not isinstance(action_id, str) or not action_id or not isinstance(source_digest, str):
+            raise ValueError("runtime prompt does not provide immutable Action provenance")
+        return cls.create(action_id=action_id, summary=objective, source_digest=source_digest)
+
+    @classmethod
+    def create(cls, *, action_id: str, summary: str | None, source_digest: str) -> "ForgeActionContextEnvelope":
+        if not isinstance(summary, str):
+            raise ValueError("runtime prompt does not provide an Action objective")
+        safe_summary = redact_action_summary(summary)
+        summary_digest = _canonical_digest(safe_summary)
+        document = {
+            "envelope_version": FORGE_ACTION_CONTEXT_ENVELOPE_VERSION,
+            "action_id": action_id,
+            "summary": safe_summary,
+            "summary_digest": summary_digest,
+            "generator": {
+                "id": FORGE_ACTION_CONTEXT_GENERATOR_ID,
+                "model": FORGE_ACTION_CONTEXT_GENERATOR_MODEL,
+                "version": FORGE_ACTION_CONTEXT_GENERATOR_VERSION,
+                "source_digest": source_digest,
+            },
+        }
+        return cls(
+            action_id=action_id, summary=safe_summary, source_digest=source_digest,
+            summary_digest=summary_digest, envelope_digest=_canonical_digest(document),
+        )
+
+    def __post_init__(self) -> None:
+        if (self.envelope_version != FORGE_ACTION_CONTEXT_ENVELOPE_VERSION
+                or (self.generator_id, self.generator_model, self.generator_version) != (
+                    FORGE_ACTION_CONTEXT_GENERATOR_ID,
+                    FORGE_ACTION_CONTEXT_GENERATOR_MODEL,
+                    FORGE_ACTION_CONTEXT_GENERATOR_VERSION,
+                )):
+            raise ValueError("action context envelope version or generator is unsupported")
+        if (not isinstance(self.action_id, str) or not self.action_id or len(self.action_id) > 128
+                or not _SHA256.fullmatch(self.source_digest)
+                or not _SHA256.fullmatch(self.summary_digest)
+                or not _SHA256.fullmatch(self.envelope_digest)
+                or self.summary != redact_action_summary(self.summary)
+                or self.summary_digest != _canonical_digest(self.summary)):
+            raise ValueError("action context envelope is invalid")
+        if self.envelope_digest != _canonical_digest(self._document_without_envelope_digest()):
+            raise ValueError("action context envelope digest is invalid")
+
+    def _document_without_envelope_digest(self) -> dict[str, object]:
+        return {
+            "envelope_version": self.envelope_version,
+            "action_id": self.action_id,
+            "summary": self.summary,
+            "summary_digest": self.summary_digest,
+            "generator": {
+                "id": self.generator_id,
+                "model": self.generator_model,
+                "version": self.generator_version,
+                "source_digest": self.source_digest,
+            },
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._document_without_envelope_digest(), "envelope_digest": self.envelope_digest}
 
 
 class ProducerType(str, Enum):
@@ -124,6 +255,7 @@ class ProducerContract:
     runtime_prompt: RuntimePromptEnvelope
     execution_constraints: tuple[str, ...]
     execution_metadata: tuple[tuple[str, str], ...]
+    action_context: ForgeActionContextEnvelope | None = None
     mission_id: str | None = None
     receipt_references: tuple[ExecutionReceiptReference, ...] = ()
     execution_evidence_references: tuple[str, ...] = ()
@@ -134,6 +266,8 @@ class ProducerContract:
             raise ValueError("producer contract version is unsupported")
         if not all((self.correlation_id, self.engineering_action_id)):
             raise ValueError("producer contract correlation and engineering action are required")
+        if self.action_context is not None and self.action_context.action_id != self.engineering_action_id:
+            raise ValueError("producer contract Action context must match its engineering action")
         if not self.execution_constraints or any(not value for value in self.execution_constraints):
             raise ValueError("producer contract execution constraints are required")
         if len(self.execution_constraints) != len(set(self.execution_constraints)):
@@ -160,6 +294,7 @@ class ProducerContract:
             "runtime_prompt": self.runtime_prompt.to_dict(),
             "execution_constraints": list(self.execution_constraints),
             "execution_metadata": {key: value for key, value in self.execution_metadata},
+            "action_context": None if self.action_context is None else self.action_context.to_dict(),
             "receipt_references": [item.to_dict() for item in self.receipt_references],
             "execution_evidence_references": list(self.execution_evidence_references),
         }

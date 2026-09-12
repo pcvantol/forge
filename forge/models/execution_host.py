@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from .producer import DEFAULT_FORGE_PRODUCER, Producer, ProducerContract, RuntimePromptEnvelope
+from .producer import DEFAULT_FORGE_PRODUCER, ForgeActionContextEnvelope, Producer, ProducerContract, RuntimePromptEnvelope
 
 
 EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "3.0"
@@ -189,6 +189,7 @@ class ExecutionRequest:
             ),
             execution_constraints=constraints,
             execution_metadata=metadata,
+            action_context=ForgeActionContextEnvelope.from_runtime_prompt(self.runtime_prompt),
         )
 
 
