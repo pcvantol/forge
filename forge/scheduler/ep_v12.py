@@ -47,6 +47,7 @@ def _terminal_outcome(value: Any, name: str) -> str:
 
 
 def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: str,
+                      receipt_id: str | None = None,
                       resolved_from_host_run_id: str | None = None) -> ExecutionHostEvidence:
     """Map one immutable EP terminal artifact only when every identity agrees.
 
@@ -201,5 +202,5 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     )
     return ExecutionHostEvidence(host_id, repository_evidence.correlation_id, repository_evidence.host_run_id,
                                  report_id, ExecutionEvidenceOutcome(outcome.lower()), repository_evidence,
-                                 validation_references=validation_references,
+                                 validation_references=validation_references, receipt_id=receipt_id,
                                  resolved_from_host_run_id=resolved_from_host_run_id)
