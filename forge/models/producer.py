@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from forge._version import canonical_version
+
 
 PRODUCER_CONTRACT_VERSION = "1.0"
 _TYPE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -65,7 +67,10 @@ class Producer:
         return {"contract_version": self.contract_version, "identity": self.identity.to_dict()}
 
 
-DEFAULT_FORGE_PRODUCER = Producer(ProducerIdentity("forge", ProducerType.FORGE, "1.0"))
+# The Producer identity is a factual application identity, not the Producer
+# Contract schema version.  Hosts must be able to attribute a submitted
+# envelope to the Forge build that materialised it.
+DEFAULT_FORGE_PRODUCER = Producer(ProducerIdentity("forge", ProducerType.FORGE, canonical_version()))
 
 
 @dataclass(frozen=True)
