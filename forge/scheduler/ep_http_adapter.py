@@ -360,8 +360,16 @@ class EngineeringPlatformHttpExecutionHost:
             return None
         if observed.host_run_id != dispatch.host_run_id:
             raise ValueError("EP readback run differs from persisted dispatch")
-        terminal = readback.get("evidence", {}).get("terminal_artifact")
+        evidence = readback.get("evidence")
+        terminal = evidence.get("terminal_artifact") if isinstance(evidence, Mapping) else None
         if not isinstance(terminal, Mapping) or not isinstance(terminal.get("id"), str):
+            run = readback.get("run")
+            # A terminal EP run without its immutable artifact is neither
+            # ordinary pending work nor Forge-owned evidence.  Fail closed so
+            # the persisted Mission can be explicitly recovered, rather than
+            # waiting forever or manufacturing a terminal result.
+            if isinstance(run, Mapping) and run.get("terminal") is True:
+                raise ValueError("EP_TERMINAL_WITHOUT_IMMUTABLE_EVIDENCE")
             return None
         raw = self._bytes(
             f"/v1/projects/{self._segment(self.config.project_id)}/artifacts/{self._segment(terminal['id'])}"

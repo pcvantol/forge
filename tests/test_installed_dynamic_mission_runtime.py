@@ -8,6 +8,7 @@ import unittest
 
 from forge.architecture import ArchitectureWorkspace
 from forge.business import BusinessWorkspace
+from forge.execution import RecoveryAuthorization
 from forge.governance_authority import (
     ArchitecturePlanningEvidence,
     CanonicalGovernanceRepository,
@@ -26,6 +27,7 @@ from forge.operator_identity import InstallationOperatorService, NamedOperatorId
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
+from forge._version import canonical_version
 
 
 class _Provider:
@@ -53,13 +55,16 @@ class _Host:
         self.config = SimpleNamespace(host_id="engineering-platform", project_id="forge", repository_id="forge",
                                       repository_identity="forge")
         self.dispatches = {}
+        self.requests = []
         self.return_evidence = False
+        self.outcome = ExecutionEvidenceOutcome.COMPLETE
 
     def preflight(self):
         return {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "fixture"}}
 
     def dispatch(self, request):
         dispatch = ExecutionDispatch(request, "ep-run-status-projection")
+        self.requests.append(request)
         self.dispatches[request.correlation_id] = dispatch
         return dispatch
 
@@ -77,7 +82,9 @@ class _Host:
         )
         return ExecutionHostEvidence(
             request.host_id, request.correlation_id, dispatch.host_run_id, "ep-report-status-projection",
-            ExecutionEvidenceOutcome.COMPLETE, repository, validation_references=("focused-status-validation",),
+            self.outcome, repository, validation_references=("focused-status-validation",),
+            retry_of_correlation_id=request.retry_of_correlation_id,
+            original_correlation_id=request.original_correlation_id,
             execution_started_at="2026-09-11T16:00:00Z", execution_completed_at="2026-09-11T16:01:00Z",
             receipt_id="ep-receipt-status-projection", execution_duration_ms=60_000,
         )
@@ -175,6 +182,31 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         state = self.runtime.states.get(mission.id)
         self.assertTrue(state.completion["all_required_criteria_proven"])
         self.assertEqual(state.execution_history[-1]["receipt_id"], "ep-receipt-status-projection")
+
+    def test_public_recovery_retries_only_the_terminal_action_with_durable_lineage(self) -> None:
+        mission, envelope = self._mission_and_envelope()
+        self.runtime.admit(mission, envelope)
+        self.host.return_evidence = True
+        self.host.outcome = ExecutionEvidenceOutcome.BLOCKED
+        blocked = self.runtime.start(mission.id, self._truth())
+        self.assertEqual(blocked.status, "BLOCKED")
+        first = self.host.requests[-1]
+
+        self.host.outcome = ExecutionEvidenceOutcome.COMPLETE
+        completed = self.runtime.recover(
+            mission.id,
+            RecoveryAuthorization(
+                mission.id, first.action_id, "operator-e2e-recovery-001", "The verified host precondition was corrected.",
+            ),
+        )
+        self.assertEqual(completed.status, "COMPLETED")
+        self.assertEqual(len(self.host.requests), 2)
+        retry = self.host.requests[-1]
+        self.assertEqual(retry.retry_of_correlation_id, first.correlation_id)
+        self.assertEqual(retry.original_correlation_id, first.correlation_id)
+        self.assertEqual(retry.producer_contract.producer.identity.version, canonical_version())
+        state = self.runtime.states.get(mission.id)
+        self.assertIn("authorized_recovery", [item["reason"] for item in state.state_history])
 
 
 if __name__ == "__main__":

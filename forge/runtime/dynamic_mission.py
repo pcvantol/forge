@@ -15,7 +15,7 @@ from typing import Any, Mapping
 from uuid import uuid4
 
 from forge.completion import MissionCompletionEvaluator
-from forge.execution import ExecutionLoop
+from forge.execution import ExecutionLoop, RecoveryAuthorization
 from forge.execution_host_configuration import EngineeringPlatformExecutionHostFactory
 from forge.governance import ExecutionPolicy, ExecutionPolicyKind
 from forge.governance_authority import CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope
@@ -251,6 +251,22 @@ class InstalledDynamicMissionRuntime:
         self._initial_truth[mission_id] = dict(state.repository_truth)
         self.preflight()
         return self._tick(mission_id)
+
+    def recover(self, mission_id: str, authorization: RecoveryAuthorization) -> DynamicMissionRunResult:
+        """Authorize one exact terminal Action retry through the installed composition."""
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        if state.status not in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}:
+            raise InstalledDynamicMissionError("public recovery requires a blocked or failed Mission")
+        if state.repository_truth is None:
+            raise InstalledDynamicMissionError("recovered Mission lacks canonical Repository Truth")
+        self._initial_truth[mission_id] = dict(state.repository_truth)
+        self.preflight()
+        loop = self._loop(mission_id)
+        service = ForgeRuntimeService(loop, self.states, runtime_database=self.database)
+        with service.mutation_lock.acquire():
+            loop.resume(mission_id, authorization=authorization)
+        return self._result(self.states.get(mission_id))
 
     def _tick(self, mission_id: str) -> DynamicMissionRunResult:
         loop = self._loop(mission_id)

@@ -300,6 +300,21 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.FAILED)
         self.assertIsNone(evidence.repository_evidence.repository_revision)
 
+    def test_terminal_run_without_an_immutable_artifact_fails_closed(self) -> None:
+        self._seed_binding()
+        terminal = json.loads(json.dumps(self.readback))
+        terminal["run"].update({"state": "BLOCKED", "terminal": True})
+        terminal["result"].update({"outcome": "BLOCKED", "delivery_qualified": False})
+        terminal["evidence"]["terminal_artifact"] = None
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(terminal).encode()], observed)):
+            with self.assertRaisesRegex(ValueError, "EP_TERMINAL_WITHOUT_IMMUTABLE_EVIDENCE"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                    ExecutionDispatch(self.request, "run-fixture")
+                )
+        self.assertEqual(len(observed), 2, "a missing terminal artifact must never be fetched or fabricated")
+
     def _terminal_retrieval(self, readback: dict, artifact: dict):
         self._seed_binding()
         raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
