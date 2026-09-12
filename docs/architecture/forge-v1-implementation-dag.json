@@ -65,6 +65,8 @@
     {
       "id": "F5",
       "owner": "Forge",
+      "documentary_refinement": "docs/roadmap/live-project-roadmap-management-v1.json",
+      "refinement_scope": "Live project projection and existing-runtime approved-Mission eligibility/activation joins; navigation only, not a new scheduler or first-canary predecessor",
       "state": "CONTRACT_ONLY",
       "predecessors": ["F2"],
       "external_gates": [],
