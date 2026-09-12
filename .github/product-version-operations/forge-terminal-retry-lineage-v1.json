@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.8",
+  "classification_rationale": "refs/heads/codex/forge-terminal-retry-lineage-v1",
+  "component": "product",
+  "event_lineage": "refs/heads/codex/forge-terminal-retry-lineage-v1",
+  "expected_head": "f2999fa6d77808a5d68cfa5654a41fe67d93f3a8",
+  "operation_id": "forge-terminal-retry-lineage-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.9"
+}

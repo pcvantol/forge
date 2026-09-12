@@ -109,6 +109,9 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     expected_provenance = {key: provenance.get(key) for key in provenance_keys}
     if artifact_provenance != expected_provenance:
         raise ValueError("EP terminal artifact provenance differs from readback")
+    retry_of_correlation_id = provenance.get("retry_of_correlation_id")
+    if retry_of_correlation_id is not None and (not isinstance(retry_of_correlation_id, str) or not retry_of_correlation_id):
+        raise ValueError("EP terminal evidence retry correlation is invalid")
     if artifact_run.get("id") != run.get("id"):
         raise ValueError("EP terminal artifact run differs from readback")
     if (artifact_submission.get("id"), artifact_submission.get("project_id"), artifact_submission.get("repository_id")) != (
@@ -203,4 +206,5 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     return ExecutionHostEvidence(host_id, repository_evidence.correlation_id, repository_evidence.host_run_id,
                                  report_id, ExecutionEvidenceOutcome(outcome.lower()), repository_evidence,
                                  validation_references=validation_references, receipt_id=receipt_id,
+                                 retry_of_correlation_id=retry_of_correlation_id,
                                  resolved_from_host_run_id=resolved_from_host_run_id)
