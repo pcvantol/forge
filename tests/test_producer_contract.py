@@ -14,6 +14,7 @@ from forge.models import (
     ProducerType,
     RuntimePromptEnvelope,
 )
+from forge._version import canonical_version
 
 
 def contract(**overrides: object) -> ProducerContract:
@@ -31,6 +32,10 @@ def contract(**overrides: object) -> ProducerContract:
 
 
 class ProducerContractTests(unittest.TestCase):
+    def test_default_forge_producer_reports_the_canonical_application_release(self) -> None:
+        self.assertEqual(DEFAULT_FORGE_PRODUCER.identity.version, canonical_version())
+        self.assertEqual(DEFAULT_FORGE_PRODUCER.contract_version, "1.0")
+
     def test_model_is_immutable_and_type_is_extensible(self) -> None:
         human = Producer(ProducerIdentity("architect-1", ProducerType.HUMAN, "1.0"))
         external = Producer(ProducerIdentity("partner-1", "PARTNER_SYSTEM", "2"))

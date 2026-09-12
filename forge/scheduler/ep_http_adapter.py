@@ -20,6 +20,8 @@ from .ep_v12 import terminal_evidence
 class ExecutionHostBindingStore(Protocol):
     def execution_host_binding(self, correlation_id: str) -> dict[str, Any] | None: ...
     def save_execution_host_binding(self, correlation_id: str, document: Mapping[str, Any]) -> dict[str, Any]: ...
+    def record_execution_host_exchange_audit(self, correlation_id: str, *, direction: str,
+                                             event_kind: str, document: Mapping[str, Any]) -> dict[str, Any]: ...
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -58,6 +60,8 @@ class EngineeringPlatformHttpExecutionHost:
     """EP v1.2 transport with compatibility preflight and durable idempotency."""
 
     SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)
+    FORGE_PROVENANCE_CONTRACT_VERSION = "1.1"
+    EP_SUBMISSION_RECEIPT_CONTRACT_VERSION = "1.0"
     _COMPATIBILITY_KEYS = frozenset({"contract_version", "producer", "instance", "contracts"})
 
     def __init__(self, config: EngineeringPlatformHttpConfiguration, bindings: ExecutionHostBindingStore) -> None:
@@ -175,12 +179,59 @@ class EngineeringPlatformHttpExecutionHost:
                 "prompt": contract.runtime_prompt.content, "idempotency_key": request.correlation_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
                 "engineering_action_id": request.action_id, "constraints": {"forge_execution": {
-                    "contract_version": "1.0", "host_id": request.host_id, "repository_id": request.repository_id,
-                    "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-                    "mission_revision": binding["mission_revision"], "intent_id": request.intent_id,
-                    "intent_revision": request.intent_revision, "action_id": request.action_id,
-                    "runtime_prompt": {"id": contract.runtime_prompt.id, "content_digest": contract.runtime_prompt.content_digest},
-                    "retry_of_correlation_id": request.retry_of_correlation_id}}}
+                "contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION, "host_id": request.host_id, "repository_id": request.repository_id,
+                "correlation_id": request.correlation_id, "mission_id": request.mission_id,
+                "mission_revision": binding["mission_revision"], "intent_id": request.intent_id,
+                "intent_revision": request.intent_revision, "action_id": request.action_id,
+                "runtime_prompt": {"id": contract.runtime_prompt.id, "content_digest": contract.runtime_prompt.content_digest},
+                    "retry_of_correlation_id": request.retry_of_correlation_id,
+                    "producer_contract_version": contract.contract_version,
+                    "forge_application_version": contract.producer.identity.version}}}
+
+    def _audit_document(self, request: ExecutionRequest, binding: Mapping[str, Any], *, receipt: Mapping[str, Any] | None = None) -> dict[str, object]:
+        contract = request.producer_contract
+        return {
+            "contract_version": "1.0",
+            "producer_id": contract.producer.identity.id,
+            "producer_type": str(contract.producer.identity.type),
+            "forge_application_version": contract.producer.identity.version,
+            "producer_contract_version": contract.contract_version,
+            "forge_provenance_contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION,
+            "correlation_id": request.correlation_id,
+            "ep_project_id": self.config.project_id,
+            "ep_repository_id": request.repository_id,
+            "ep_instance_id": self.config.expected_instance_id,
+            "submission_id": binding.get("submission_id"),
+            "receipt_id": None if receipt is None else receipt.get("id"),
+            "receipt_contract_version": None if receipt is None else receipt.get("contract_version"),
+            "ep_application_version": None if receipt is None else receipt.get("ep_application_version"),
+            "producer_readback_contract_version": None if receipt is None else receipt.get("producer_readback_contract_version"),
+            "accepted_request_digest": None if receipt is None else receipt.get("accepted_request_digest"),
+        }
+
+    def _validate_submission_receipt(self, request: ExecutionRequest, binding: Mapping[str, Any], accepted: Mapping[str, Any]) -> Mapping[str, Any]:
+        receipt = accepted.get("receipt")
+        expected = {"contract_version", "id", "event", "issued_at", "submission_id", "ep_instance_id",
+                    "ep_application_version", "producer_contract_version", "forge_provenance_contract_version",
+                    "forge_application_version", "producer_readback_contract_version", "accepted_request_digest"}
+        if not isinstance(receipt, Mapping) or set(receipt) != expected:
+            raise ValueError("EP submission acknowledgement omits a versioned receipt")
+        if (receipt.get("contract_version") != self.EP_SUBMISSION_RECEIPT_CONTRACT_VERSION
+                or receipt.get("event") != "FORGE_SUBMISSION_ACCEPTED"
+                or receipt.get("submission_id") != binding.get("submission_id")
+                or receipt.get("ep_instance_id") != self.config.expected_instance_id
+                or receipt.get("producer_contract_version") != request.producer_contract.contract_version
+                or receipt.get("forge_provenance_contract_version") != self.FORGE_PROVENANCE_CONTRACT_VERSION
+                or receipt.get("forge_application_version") != request.producer_contract.producer.identity.version
+                or receipt.get("producer_readback_contract_version") != self.config.producer_readback_contract):
+            raise ValueError("EP submission receipt does not bind the submitted Forge envelope")
+        if not all(isinstance(receipt.get(field), str) and receipt.get(field) for field in ("id", "issued_at", "ep_application_version", "accepted_request_digest")):
+            raise ValueError("EP submission receipt identity is invalid")
+        digest = str(receipt["accepted_request_digest"])
+        if (not digest.startswith("sha256:") or len(digest) != 71
+                or any(character not in "0123456789abcdef" for character in digest[7:])):
+            raise ValueError("EP submission receipt accepted-request digest is invalid")
+        return receipt
 
     def _validate_readback(self, request: ExecutionRequest, binding: Mapping[str, Any], readback: Mapping[str, Any]) -> None:
         if readback.get("contract_version") not in self.SUPPORTED_PRODUCER_READBACK_CONTRACTS:
@@ -255,6 +306,10 @@ class EngineeringPlatformHttpExecutionHost:
         self.preflight()
         readback = self._readback(request, binding)
         if readback is None:
+            self._bindings.record_execution_host_exchange_audit(
+                request.correlation_id, direction="FORGE_TO_EP", event_kind="FORGE_SUBMISSION_SENT",
+                document=self._audit_document(request, binding),
+            )
             accepted = self._json(
                 f"/v1/projects/{self._segment(self.config.project_id)}/submissions",
                 method="POST", body=self._payload(request),
@@ -264,6 +319,11 @@ class EngineeringPlatformHttpExecutionHost:
                 raise ValueError("EP submission acknowledgement lacks submission_id")
             binding = self._bindings.save_execution_host_binding(request.correlation_id,
                 {"correlation_id": request.correlation_id, "submission_id": submission_id})
+            receipt = self._validate_submission_receipt(request, binding, accepted)
+            self._bindings.record_execution_host_exchange_audit(
+                request.correlation_id, direction="EP_TO_FORGE", event_kind="EP_SUBMISSION_RECEIPT_RECEIVED",
+                document=self._audit_document(request, binding, receipt=receipt),
+            )
             readback = self._readback(request, binding)
         return self._dispatch_from_readback(request, binding, readback)
 

@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 34
+RUNTIME_SCHEMA_VERSION = 35
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -38,7 +38,7 @@ _TABLES = frozenset((
     "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_external_session_config", "planning_provider_external_session_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations", "action_derivation_reattempt_authorizations", "action_derivation_reattempt_consumptions",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
-    "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings",
+    "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings", "execution_host_exchange_audit",
     "execution_host_peer_configuration",
 ))
 _TOKEN_PREFLIGHT_FAILURE_FIELDS = frozenset((
@@ -325,6 +325,26 @@ class RuntimeDatabase:
                 or "check (configuration_revision > 0)" not in sql):
             raise RuntimeIntegrityError("EP peer configuration migration found incompatible constraints")
 
+    _EXECUTION_HOST_EXCHANGE_AUDIT_TABLE_SHAPE = (
+        ("audit_id", "TEXT", 0, 1), ("correlation_id", "TEXT", 1, 0),
+        ("direction", "TEXT", 1, 0), ("event_kind", "TEXT", 1, 0),
+        ("occurred_at", "TEXT", 1, 0), ("document", "TEXT", 1, 0),
+    )
+
+    def _require_execution_host_exchange_audit_structure(self) -> None:
+        columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                        for row in self._connection.execute("PRAGMA table_info(execution_host_exchange_audit)"))
+        if columns != self._EXECUTION_HOST_EXCHANGE_AUDIT_TABLE_SHAPE:
+            raise RuntimeIntegrityError("execution-host exchange audit migration found incompatible table shape")
+        for name, operation in (("execution_host_exchange_audit_immutable_update", "update"),
+                                ("execution_host_exchange_audit_immutable_delete", "delete")):
+            row = self._connection.execute(
+                "SELECT tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name=?", (name,)
+            ).fetchone()
+            sql = "" if row is None or row["sql"] is None else " ".join(row["sql"].lower().split())
+            if row is None or row["tbl_name"] != "execution_host_exchange_audit" or f"before {operation}" not in sql or "immutable" not in sql:
+                raise RuntimeIntegrityError(f"execution-host exchange audit migration found incompatible {name} trigger")
+
     def _migrate_governance_19_to_20(self, forge_version: str) -> None:
         """Create and verify all governance objects before advancing schema metadata.
 
@@ -492,6 +512,17 @@ class RuntimeDatabase:
                         FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id)
                     );
                     CREATE TABLE IF NOT EXISTS execution_host_bindings (correlation_id TEXT PRIMARY KEY, document TEXT NOT NULL);
+                    CREATE TABLE execution_host_exchange_audit (
+                        audit_id TEXT PRIMARY KEY, correlation_id TEXT NOT NULL,
+                        direction TEXT NOT NULL CHECK(direction IN ('FORGE_TO_EP','EP_TO_FORGE')),
+                        event_kind TEXT NOT NULL CHECK(event_kind IN ('FORGE_SUBMISSION_SENT','EP_SUBMISSION_RECEIPT_RECEIVED')),
+                        occurred_at TEXT NOT NULL, document TEXT NOT NULL
+                    );
+                    CREATE INDEX execution_host_exchange_audit_correlation_lookup ON execution_host_exchange_audit(correlation_id,occurred_at,audit_id);
+                    CREATE TRIGGER execution_host_exchange_audit_immutable_update BEFORE UPDATE ON execution_host_exchange_audit
+                    BEGIN SELECT RAISE(ABORT, 'execution-host exchange audit is immutable'); END;
+                    CREATE TRIGGER execution_host_exchange_audit_immutable_delete BEFORE DELETE ON execution_host_exchange_audit
+                    BEGIN SELECT RAISE(ABORT, 'execution-host exchange audit is immutable'); END;
                     CREATE TABLE execution_host_peer_configuration (
                         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                         binding_id TEXT NOT NULL UNIQUE,
@@ -1364,6 +1395,24 @@ class RuntimeDatabase:
                 """)
                 self._set_metadata({"schema_version":"34","migration_version":"34","last_migration":"34"})
                 self._connection.execute("PRAGMA user_version=34")
+        elif version == 34:
+            with self._connection:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS execution_host_exchange_audit (
+                        audit_id TEXT PRIMARY KEY, correlation_id TEXT NOT NULL,
+                        direction TEXT NOT NULL CHECK(direction IN ('FORGE_TO_EP','EP_TO_FORGE')),
+                        event_kind TEXT NOT NULL CHECK(event_kind IN ('FORGE_SUBMISSION_SENT','EP_SUBMISSION_RECEIPT_RECEIVED')),
+                        occurred_at TEXT NOT NULL, document TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS execution_host_exchange_audit_correlation_lookup ON execution_host_exchange_audit(correlation_id,occurred_at,audit_id);
+                    CREATE TRIGGER IF NOT EXISTS execution_host_exchange_audit_immutable_update BEFORE UPDATE ON execution_host_exchange_audit
+                    BEGIN SELECT RAISE(ABORT, 'execution-host exchange audit is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS execution_host_exchange_audit_immutable_delete BEFORE DELETE ON execution_host_exchange_audit
+                    BEGIN SELECT RAISE(ABORT, 'execution-host exchange audit is immutable'); END;
+                """)
+                self._require_execution_host_exchange_audit_structure()
+                self._set_metadata({"schema_version":"35","migration_version":"35","last_migration":"35"})
+                self._connection.execute("PRAGMA user_version=35")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1443,6 +1492,7 @@ class RuntimeDatabase:
             raise RuntimeIntegrityError("runtime database schema version is inconsistent")
         self._require_canary_closure_structure()
         self._require_peer_configuration_structure()
+        self._require_execution_host_exchange_audit_structure()
         identity = self.runtime_identity
         expected_identity = "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)
         if identity.repository_identity != expected_identity or not identity.runtime_id or identity.status != "active":
@@ -1665,6 +1715,39 @@ class RuntimeDatabase:
         merged={**(existing or {}),**document}
         with self._connection:self._connection.execute("INSERT INTO execution_host_bindings VALUES (?,?) ON CONFLICT(correlation_id) DO UPDATE SET document=excluded.document",(correlation_id,self._dump(merged)))
         return merged
+
+    def record_execution_host_exchange_audit(
+        self, correlation_id: str, *, direction: str, event_kind: str, document: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Append one secret-free, immutable Forge↔Execution-Host exchange fact."""
+        if (not isinstance(correlation_id, str) or not correlation_id
+                or direction not in {"FORGE_TO_EP", "EP_TO_FORGE"}
+                or event_kind not in {"FORGE_SUBMISSION_SENT", "EP_SUBMISSION_RECEIPT_RECEIVED"}):
+            raise RuntimeDatabaseError("execution host exchange audit identity is invalid")
+        value = _document(document, "execution host exchange audit")
+        if _contains_secret_field(value) or _contains_secret_value(value):
+            raise RuntimeDatabaseError("execution host exchange audit must not contain secrets")
+        encoded = self._dump(value)
+        if len(encoded.encode("utf-8")) > 4096:
+            raise RuntimeDatabaseError("execution host exchange audit is too large")
+        audit_id, occurred_at = "host-exchange-" + str(uuid.uuid4()), _timestamp()
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO execution_host_exchange_audit VALUES (?,?,?,?,?,?)",
+                (audit_id, correlation_id, direction, event_kind, occurred_at, encoded),
+            )
+        return {"audit_id": audit_id, "correlation_id": correlation_id, "direction": direction,
+                "event_kind": event_kind, "occurred_at": occurred_at, "document": value}
+
+    def execution_host_exchange_audit(self, correlation_id: str) -> tuple[dict[str, Any], ...]:
+        """Read immutable peer-exchange facts in causal order."""
+        rows = self._connection.execute(
+            "SELECT audit_id,direction,event_kind,occurred_at,document FROM execution_host_exchange_audit WHERE correlation_id=? ORDER BY rowid",
+            (correlation_id,),
+        )
+        return tuple({"audit_id": str(row[0]), "correlation_id": correlation_id, "direction": str(row[1]),
+                      "event_kind": str(row[2]), "occurred_at": str(row[3]), "document": json.loads(row[4])}
+                     for row in rows)
 
     def outstanding_scheduler_submission(self, mission_id: str) -> dict[str, Any] | None:
         rows = self._connection.execute(
