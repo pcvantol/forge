@@ -42,12 +42,15 @@ This is source-pinned design evidence, not a claim about an installed EP console
 ## Navigation and common interaction contract
 
 ```text
-Forge Operations | instance / host | installed identity | connection / freshness
+Forge Operations | instance / host
+[Platform status] [Refresh] Project [...] Language [...] Theme [...]
+[Expand/collapse] [Auto refresh]
   Local host components
   Logs
   Configuration
   Active Missions
   Historical Missions
+Footer: Forge / installed version | last live signal | connection / freshness
 ```
 
 Use a compact responsive shell with readable lists/cards, bounded detail panels,
@@ -167,6 +170,119 @@ worktree has gone. Browser storage and Git branches are not the history authorit
 Do not recreate historical bootstrap Missions as live instance state. Preserve
 failed and ambiguous attempts; no clear-history, clone/rerun or mutate-old-result
 controls in V1. Read-only evidence export must retain provenance and redaction.
+
+## Forge platform status and basic shell functions
+
+These shared V1 requirements refine the five-section console rather than add a
+sixth product or a new runtime. **Forge platform status means the health of the
+selected Forge Server instance, not the separate Forge Platform installer.**
+The owner's three EP screenshots are the presentation reference: an aggregate
+status button with a grouped detail panel, the top toolbar and the live-status
+footer. Their shown EP version, timestamp, components and health values are
+examples, not Forge defaults or proof of Forge/EP installed state. In particular,
+a red Server-Relay row alone does not prove why the illustrated aggregate is
+blocked; the requirements below make the contributing reason explicit.
+
+### Platform status projection — FOC-STATUS
+
+Provide a persistent status indicator opening a keyboard/touch-accessible panel
+with title `Platformstatus · <status>` and the following groups. Every row has
+a readable localized state and an authorized link to its component/detail/log
+view where available; no color-only meaning, fake link or unscoped file URL.
+The same canonical snapshot drives the header, panel and component pages.
+
+| Group / Dutch label | Forge projection |
+| --- | --- |
+| PLATFORM / Platform | Forge Server, Forge-owned platform database/storage, runtime and Mission dispatcher; declared planning/peer readiness may be shown as dependencies, not invented host processes. |
+| ACCESS / Toegang | Operations Console and its real connection; a relay only when that installation declares a supported relay. Distinguish browser-to-server access from the server's own health. |
+| INGRESS / Ingangen | Declared Forge HTTP/API and CLI entrypoints, with availability separate from process liveness. No automatic File Inbox, Dependabot producer or other EP-specific ingress is added to Forge. |
+| EXECUTION / Uitvoering | Current Mission/Action activity, waiting/block reason and approved Mission queue state/count, scoped to the selected view. Linked EP execution is producer evidence, not an EP process owned by Forge. |
+
+FOC-0/1 define a typed projection with stable component identity and owner,
+`scope`, `observed_state`, `expected_state`, `required_for`, `observed_at`,
+freshness, reason/evidence reference and authorized detail target. Separate
+liveness, readiness, configuration and current execution state; do not call a
+CLI unhealthy because it is not a daemon. Capability/installation declarations
+select rows. A missing required component must remain visible as missing, not
+be filtered away; an unsupported optional component is absent or explicitly
+`NOT_APPLICABLE`, never invented as a running service.
+
+The backend derives the aggregate for an explicit scope/capability:
+`HEALTHY` (Gezond), `DEGRADED` (Verminderd), `BLOCKED` (Geblokkeerd) or `UNKNOWN`
+(Onbekend), with contributing component/reason and observation time. A known
+failed mandatory dependency blocks its declared scope. If no known blocker
+exists but required observations are missing/stale, aggregate UNKNOWN rather
+than healthy; retain the last-known value separately. A configured non-required
+failure is degraded with limited impact. All applicable required observations
+must be current and healthy before showing HEALTHY. Known blockers take
+precedence over unknown state, which takes precedence over degraded/healthy.
+
+An unused optional relay MUST NOT block local operation; a required failed
+access route blocks only its declared scope. An empty approved queue and no
+active Mission are normal idle states, not failures. A paused/blocked Mission
+or expired Mission authority remains visible under execution, but does not by
+itself mean the server/storage is unhealthy. Conversely, a green platform badge
+is not permission to run that Mission or proof of its success. No hardcoded
+rule may treat every red row as a global platform blocker.
+
+Instance status remains readable to an authorized operator with no project
+selected. Project-scoped activity then shows no selection, not guessed zeroes;
+do not silently choose the first project. The panel does not grant access to
+other projects, machines or peer databases.
+
+### Basic toolbar — FOC-SHELL
+
+| Control / reference label | Required behavior |
+| --- | --- |
+| Platformstatus indicator | Open/close the grouped status panel; accessible name includes the current aggregate and expanded state. |
+| Manual refresh / Vernieuwen | Request one bounded fresh read snapshot, show busy/error state and coalesce overlapping clicks. Never restart a service, planning call or Mission. |
+| Project selector / Project | List only authorized projects with an explicit no-selection state. Change view scope, not the canonical active project, Mission, peerbinding or dispatcher. Discard late responses for the previous selection. |
+| Language / Taal | Select from shipped translations; localize labels, status/reasons and date/time. IDs, digests and machine-state codes stay unchanged. Unavailable translations use a declared fallback, not fabricated text. |
+| Theme / Thema | Light/dark with system preference as initial default; accessible contrast in both themes. This is presentation only. |
+| Expand/collapse / Uitklappen | Expand/collapse the current section cards/details, preserving individual control and keyboard focus. No query or mutation of unrelated projects. |
+| Automatic refresh / Automatisch vernieuwen | Explicit on/off state. When enabled, bounded polling with backoff is sufficient; use supported server events when available without mandating a new push/relay system. When off, freeze automatic data-view updates and show that fact; manual refresh still works. |
+
+Auto refresh OFF is NOT Mission pause or server disconnect. A server heartbeat
+may still be observed separately, but it must not silently refresh frozen rows.
+Resuming refresh obtains one current snapshot; it does not replay operations.
+Project changes/refresh must not silently discard or overwrite unsaved settings;
+keep the draft or ask before discarding it. Reconnects and refreshes preserve
+navigation, filters and focus where valid without selecting another instance.
+
+Only non-sensitive UI preferences (for example language/theme/expansion/refresh)
+may persist locally, namespaced by viewer/instance where applicable. They carry
+no approval, auth token, secret, operational policy or lifecycle authority.
+All toolbar controls are read/presentation operations, not hidden execution.
+
+### Live status footer — FOC-FOOTER
+
+Match the reference layout with `FORGE`, the actually running installed product
+version, `Laatste live-statussignaal` and connection status. Expose source/artifact
+identity in an authorized detail view when known; do not substitute current Git
+main, browser asset version or historical storage metadata for installed version.
+If UI and server versions differ, show the mismatch and disable unsupported
+mutations rather than silently trusting compatibility.
+
+Display the last genuine received server observation/heartbeat with localized
+date/time and timezone/age, not the time at which the browser merely rendered.
+Separate `server_observed_at` from client receipt/render time. Mark stale/missing
+signals and auto-refresh pause explicitly. Transport connection is not fresh
+application readiness. Show `Serverpush: verbonden` ONLY when serverpush is
+actually supported and connected; otherwise show truthful polling, reconnecting,
+disconnected or unsupported status. Never make push a prerequisite for V1.
+
+### Shared qualification requirements
+
+The read-only milestone already includes FOC-STATUS, FOC-SHELL and FOC-FOOTER.
+FOC-Q must cover optional relay absent, non-required relay failed, required
+component failed, stale/unknown snapshot, idle/empty queue, no project selected,
+blocked Mission with healthy core, disconnect/reconnect and out-of-order project
+responses. Browser tests cover all toolbar controls, translation fallback,
+light/dark contrast, keyboard/touch panel access, retained unsaved forms and
+footer version/heartbeat/polling correctness. Assert that observation/refresh
+creates zero Missions, generations, submissions or runtime/configuration writes.
+These are future acceptance requirements, not claims of tests already run for
+a shipped dashboard. Existing lifecycle controls retain their separate gates.
 
 ## Service, transport and security design
 
