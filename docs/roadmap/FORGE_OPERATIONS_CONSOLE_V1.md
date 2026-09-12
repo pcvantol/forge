@@ -25,7 +25,7 @@ installer productization before the minimal local console.
 | FOC-2 | Local authenticated console shell and shared detail/navigation UI | FOC-0 | Installed assets, operator-session checks, local-only default, accessibility and unavailable-state tests |
 | FOC-3 | Local host components and logs sections | FOC-1, FOC-2 | Actual versus expected identity/status, bounded log filters/tail/export, no filesystem or secret leakage |
 | FOC-4 | Active and historical Missions sections | FOC-1, FOC-2 | Correct lifecycle groups, criteria/Action/evidence lineage, ambiguity visibility and history after reopen |
-| FOC-5 | Configuration view/editor and explicit non-generating preflight | FOC-1, FOC-2 | Authorized allow-list, preview/save/readback, expected-revision conflicts, audit and no active-binding retarget |
+| FOC-5 | Controlled configuration, data operations and non-generating preflight | FOC-1, FOC-2 | Authorized allow-list, preview/save/readback, expected-revision conflicts, audit and no active-binding retarget |
 | FOC-6 | Guarded pause/resume requests for existing approved Forge work | FOC-0, FOC-4 | Current backend capability/authority checks; safe boundary acknowledgement; no duplicate EP submission or budget reset |
 | FOC-Q | Integrated installed-console qualification | FOC-3, FOC-4, FOC-5, FOC-6 | Five sections end-to-end from installed artifact, reopen/degraded/security cases and exact artifact/evidence linkage |
 
@@ -66,6 +66,57 @@ relay/push support is displayed truthfully when present, not required as a new
 implementation dependency. Snapshot aggregation, project isolation, actual
 installed identity and stale-state handling must be tested, not inferred from
 EP screenshots or mocked green indicators.
+
+## Forge-local runtime and data-management work packages
+
+The [configuration and data-operations contract](../architecture/FORGE_SERVER_CONFIGURATION_AND_DATA_OPERATIONS_V1.md)
+refines the parent Configuration section. It explicitly adds export, import,
+relocation and a guarded VACUUM maintenance interval; these are not disguised
+presentation-only controls. Tooling belongs to the Forge host, independently
+of EP's Codex/Python versions, paths and session context. All work is PLANNED.
+
+These subordinate packages refine the existing eight nodes; they do not replace
+the top-level DAG or allocate another product's implementation. Their exact
+internal edges and delivery mappings are in `configuration_work_packages`.
+
+| Package | Internal dependencies | Delivery / qualification |
+| --- | --- | --- |
+| FC-CODEX | none | FOC-0/1/3/5; Forge-owned local binary/session, two-host independence |
+| FC-PYTHON | none | FOC-0/1/3; Forge-local venv and actual installed identity |
+| FC-STATE | none | FOC-0/1/5; scoped operation, quiescence, identity and recovery contract |
+| FC-EXPORT | FC-STATE | FOC-5; consistent versioned archive without secrets or tooling |
+| FC-IMPORT | FC-EXPORT | FOC-5; verified staged restore, no replay or budget/expiry reset |
+| FC-RELOCATE | FC-STATE | FOC-5; verified cutover of same instance, old root non-writer |
+| FC-VACUUM | FC-STATE | FOC-1/5; interval, deferral and safe maintenance readback |
+| FC-REFRESH | none | FOC-1/2/5; separate detail/status intervals without expensive poll side effects |
+| FC-TIMEOUT | FC-CODEX | FOC-0/1/5; actual Forge AI policy, no copied EP execution-phase settings |
+
+```text
+FC-STATE -> FC-EXPORT -> FC-IMPORT
+         -> FC-RELOCATE
+         -> FC-VACUUM
+FC-CODEX -> FC-TIMEOUT
+FC-PYTHON and FC-REFRESH are independent packages
+All FC packages -> FOC-Q integrated acceptance
+```
+
+The read-only milestone may show environment/data/timeout observations while
+mutation controls remain disabled. Full FOC-5/FOC-Q cannot claim availability
+from button rendering: the owning export/import/relocate/maintenance operations
+must be qualified. Import consumes a verified export/archive contract; relocation
+and VACUUM do not depend on completing import or a universal installer.
+
+The pinned source review finds one Forge planning-generation timeout shared by
+initial and successor derivation, fixed 5-second Codex readiness probes, and a
+separate bounded EP transport timeout. Responses count/generation use their
+configured request timeout only when that optional provider is selected. The
+EP screenshot's review/implementation/validation/repair/finalization phases
+are not Forge AI settings. Detailed source references and limits are in the
+configuration contract; no runtime values or policy defaults are changed here.
+
+FOC-Q must qualify all packages, including restart and interrupted data operations,
+stale snapshots, non-portable credentials, unchanged cumulative budgets,
+EP-absent/upgraded two-host layouts, refresh load and truthful timeout enforcement.
 
 ## Milestones and capability prerequisites
 
