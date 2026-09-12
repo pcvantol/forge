@@ -8,6 +8,7 @@ import unittest
 
 from forge.architecture import ArchitectureWorkspace
 from forge.business import BusinessWorkspace
+from forge.completion import MissionCompletionEvaluator
 from forge.execution import RecoveryAuthorization
 from forge.governance_authority import (
     ArchitecturePlanningEvidence,
@@ -27,6 +28,7 @@ from forge.operator_identity import InstallationOperatorService, NamedOperatorId
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
+from forge.scheduler import BootstrapMissionScheduler
 from forge.state.mission_state import MissionExecutionStatus
 from forge._version import canonical_version
 
@@ -57,6 +59,7 @@ class _Host:
                                       repository_identity="forge")
         self.dispatches = {}
         self.requests = []
+        self.evidence_reads = 0
         self.return_evidence = False
         self.outcome = ExecutionEvidenceOutcome.COMPLETE
 
@@ -73,6 +76,7 @@ class _Host:
         return self.dispatches.get(request.correlation_id)
 
     def retrieve_evidence(self, dispatch):
+        self.evidence_reads += 1
         if not self.return_evidence:
             return None
         request = dispatch.request
@@ -227,6 +231,70 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(len(self.host.requests), 1)
         state = self.runtime.states.get(mission.id)
         self.assertIn("terminal_evidence_reconciliation_requested", [item["reason"] for item in state.state_history])
+
+    def test_completed_terminal_evidence_reconciliation_closes_only_legacy_timing_gap(self) -> None:
+        mission, envelope = self._mission_and_envelope()
+        self.runtime.admit(mission, envelope)
+        waiting = self.runtime.start(mission.id, self._truth())
+        self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
+        before = self.runtime.states.get(mission.id)
+        self.host.return_evidence = True
+        loop = self.runtime._loop(mission.id)
+        dispatch = ExecutionDispatch(self.host.requests[-1], "ep-run-status-projection")
+        evidence = self.host.retrieve_evidence(dispatch)
+        self.assertIsNotNone(evidence)
+        actions = BootstrapMissionScheduler().reconcile(loop._runner()._actions(before), dispatch, evidence)
+        truth = self.runtime._repository_truth(before, evidence)
+        completion_evidence = self.runtime._completion_evidence(before, evidence, truth)
+        evaluation = MissionCompletionEvaluator().evaluate(
+            ArchitectureMission.from_dict(dict(before.mission)), truth,
+            (*before.execution_history, self.runtime._execution_evidence_document(evidence)), completion_evidence,
+        )
+        legacy_evidence = self.runtime._execution_evidence_document(evidence)
+        legacy_evidence.update({
+            "execution_started_at": None,
+            "execution_completed_at": None,
+            "execution_duration_ms": None,
+        })
+        self.runtime.states.transition(
+            mission.id, MissionExecutionStatus.ACTIVE, occurred_at="2026-09-11T16:01:00Z",
+            reason="historical_terminal_timing_gap", actions=actions,
+            execution_evidence=legacy_evidence, repository_truth=truth,
+            completion=evaluation.to_dict(),
+        )
+
+        completed = self.runtime.reconcile_completed_terminal_evidence(mission.id)
+
+        self.assertEqual(completed.status, "COMPLETED")
+        self.assertEqual(len(self.host.requests), 1)
+        self.assertEqual(self.host.evidence_reads, 3)
+        state = self.runtime.states.get(mission.id)
+        self.assertEqual(state.execution_evidence["execution_duration_ms"], 60_000)
+        self.assertEqual(state.execution_evidence["execution_started_at"], "2026-09-11T16:00:00Z")
+        self.assertTrue(state.completion["all_required_criteria_proven"])
+        self.assertIn("completed_terminal_evidence_reconciled", [item["reason"] for item in state.state_history])
+        dispatcher = self.runtime.database._connection.execute(
+            "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton=1"
+        ).fetchone()
+        self.assertEqual((dispatcher["status"], dispatcher["active_mission_id"]), ("IDLE", None))
+        events = self.runtime.database.operational_log_page(mission_id=mission.id, page_size=20)["items"]
+        self.assertCountEqual(
+            [event["event"] for event in events if event["event"].startswith("completed_terminal_evidence_")],
+            [
+                "completed_terminal_evidence_reconciliation_requested",
+                "completed_terminal_evidence_reconciled",
+            ],
+        )
+        self.runtime.database.save_dispatcher_state(
+            status="ACTIVE", mission_sequence=(mission.id,), active_mission_id=mission.id,
+        )
+        recovered_dispatcher = self.runtime.reconcile_completed_terminal_evidence(mission.id)
+        self.assertEqual(recovered_dispatcher.status, "COMPLETED")
+        dispatcher = self.runtime.database._connection.execute(
+            "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton=1"
+        ).fetchone()
+        self.assertEqual((dispatcher["status"], dispatcher["active_mission_id"]), ("IDLE", None))
+        self.assertEqual(self.host.evidence_reads, 3)
 
 
 if __name__ == "__main__":

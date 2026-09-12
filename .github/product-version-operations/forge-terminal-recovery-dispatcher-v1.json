@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.11",
+  "classification_rationale": "codex/forge-terminal-recovery-dispatcher-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-terminal-recovery-dispatcher-v1",
+  "expected_head": "63ed7ad9ef2959e2ef6896af4943cd3beea69d48",
+  "operation_id": "forge-terminal-recovery-dispatcher-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.12"
+}

@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.10",
+  "classification_rationale": "codex/forge-completed-terminal-evidence-recovery-v1",
+  "component": "product",
+  "event_lineage": "codex/forge-completed-terminal-evidence-recovery-v1",
+  "expected_head": "e7633814d4c1bc8ad1e4b25435ab9f064f0438c9",
+  "operation_id": "forge-completed-terminal-evidence-recovery-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.11"
+}

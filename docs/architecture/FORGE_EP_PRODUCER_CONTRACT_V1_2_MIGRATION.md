@@ -35,6 +35,27 @@ the authenticated readback supplies the complete validated triplet. Forge
 therefore neither fabricates timing from local receipt time nor mutates
 historical EP evidence.
 
+If a Forge release predating that completion invariant has already persisted an
+`ACTIVE` Mission with every Action `COMPLETE`, proven immutable completion
+bindings and a timing-less complete Host Evidence document, the installed
+runtime exposes one bounded recovery: `reconcile_completed_terminal_evidence`.
+It does not resume planning, derive an Action, dispatch, or alter the EP
+artifact. It first performs the normal read-only preflight and then rereads the
+one persisted EP dispatch. Forge accepts the result only if every non-timing
+evidence field is byte-for-value identical to the persisted Host Evidence and
+the EP readback supplies the complete validated timing triplet. It appends the
+full evidence and performs the sole permitted `ACTIVE` → `COMPLETED`
+transition. Requested, rejected and accepted outcomes are separate redacted,
+immutable Forge operational events. Any different lifecycle shape, partial
+timing, readback absence or identity mismatch remains fail-closed.
+
+The transition releases the same persisted Forge dispatcher as an ordinary
+terminal completion. If a process stops after the durable `COMPLETED`
+transition but before that release, a repeated recovery call can only change an
+otherwise-idle dispatcher that still points to that exact completed Mission to
+`IDLE`; it does not contact EP or reopen the Mission. That reconciliation is
+separately append-only and auditable.
+
 The persisted request's `retry_of_correlation_id` is a terminal-evidence
 identity field, not display metadata. Forge accepts it only when the readback
 and immutable artifact agree exactly, validates it as either null or a
