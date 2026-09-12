@@ -31,9 +31,11 @@ evidence.
 
 If EP marks an already claimed run terminal but omits its immutable terminal
 artifact, Forge treats the readback as a bounded contract failure rather than
-pending work. It stores no synthetic Host Evidence, transitions the Mission to
-`FAILED`, and permits only an explicit, correlated `RecoveryAuthorization` to
-issue a new submission.
+pending work. The same applies to a matching `BLOCKED` or `FAILED` run/result
+when EP keeps its `terminal` flag false to record an operator retry: Forge does
+not silently follow that separate EP retry chain. It stores no synthetic Host
+Evidence, transitions the Mission to `FAILED`, and permits only an explicit,
+correlated `RecoveryAuthorization` to issue a new submission.
 
 Pinned EP producer source: `f7c08872a2d334cff097ea5f28822836e59f78c3`.
 The migration is source compatibility only; it does not assert that every

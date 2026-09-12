@@ -368,7 +368,15 @@ class EngineeringPlatformHttpExecutionHost:
             # ordinary pending work nor Forge-owned evidence.  Fail closed so
             # the persisted Mission can be explicitly recovered, rather than
             # waiting forever or manufacturing a terminal result.
-            if isinstance(run, Mapping) and run.get("terminal") is True:
+            result = readback.get("result")
+            state = run.get("state") if isinstance(run, Mapping) else None
+            outcome = result.get("outcome") if isinstance(result, Mapping) else None
+            # EP may retain ``terminal: false`` while recording a separately
+            # retried operator resolution.  Forge must not follow that new EP
+            # chain under the original correlation: a matching BLOCKED/FAILED
+            # run and result is terminal for this persisted request.
+            if (isinstance(run, Mapping) and run.get("terminal") is True
+                    or state in {"BLOCKED", "FAILED"} and outcome == state):
                 raise ValueError("EP_TERMINAL_WITHOUT_IMMUTABLE_EVIDENCE")
             return None
         raw = self._bytes(
