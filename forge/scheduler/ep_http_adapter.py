@@ -1,4 +1,4 @@
-"""Concrete, strict HTTP v1.2 Engineering Platform Execution Host adapter.
+"""Concrete, strict HTTP v1.2 readback / v1.3 evidence host adapter.
 
 The runtime database remains the recovery authority. This adapter keeps only
 the EP submission/run binding which follows from a persisted Forge request.
@@ -55,7 +55,7 @@ class EngineeringPlatformHttpConfiguration:
     peer_configuration_revision: int = 0
     peer_configuration_digest: str = ""
     producer_readback_contract: str = "1.2"
-    terminal_evidence_contract: str = "1.2"
+    terminal_evidence_contract: str = "1.3"
 
 
 class EngineeringPlatformHttpExecutionHost:
@@ -74,8 +74,8 @@ class EngineeringPlatformHttpExecutionHost:
         )
         if (not all(required) or config.peer_configuration_revision < 1
                 or any(character in "\r\n" for character in config.bearer_token)
-                or config.producer_readback_contract != "1.2" or config.terminal_evidence_contract != "1.2"):
-            raise ValueError("EP HTTP configuration requires a complete persisted v1.2 peer binding")
+                or config.producer_readback_contract != "1.2" or config.terminal_evidence_contract != "1.3"):
+            raise ValueError("EP HTTP configuration requires a complete persisted v1.2/v1.3 peer binding")
         # The product factory already canonicalizes this.  Revalidate direct
         # construction without ever permitting HTTP except for loopback.
         if canonical_endpoint(config.base_url, allow_loopback_http=config.allow_loopback_http) != config.base_url:

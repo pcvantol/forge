@@ -41,7 +41,7 @@
     "ep_repository_id": {"$ref": "#/$defs/identity"},
     "repository_identity": {"$ref": "#/$defs/identity"},
     "producer_readback_contract": {"const": "1.2"},
-    "terminal_evidence_contract": {"const": "1.2"},
+    "terminal_evidence_contract": {"const": "1.3"},
     "credential_reference": {
       "type": "string",
       "pattern": "^keychain://[A-Za-z0-9._-]{1,128}/[A-Za-z0-9._-]{1,128}(\\?(namespace|version)=[A-Za-z0-9._-]{1,128}(&(namespace|version)=[A-Za-z0-9._-]{1,128})?)?$"

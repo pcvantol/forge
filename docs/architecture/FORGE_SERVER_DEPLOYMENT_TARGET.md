@@ -86,7 +86,7 @@ from per-correlation `execution_host_bindings`. The versioned record binds its
 own identity, revision and canonical digest to the owning Forge runtime ID,
 `engineering-platform`, one fixed endpoint, expected EP instance ID, Execution
 Host ID, EP project and repository IDs, Forge repository identity, the exact
-producer-readback and terminal-evidence contract `1.2`, one opaque credential
+producer-readback contract `1.2` and terminal-evidence contract `1.3`, one opaque credential
 reference, bounded timeout, loopback-HTTP decision and creation/update
 provenance.
 
@@ -103,7 +103,7 @@ persisted binding, verifies the Forge runtime identity and contract, resolves
 the Keychain reference, and constructs the existing
 `EngineeringPlatformHttpExecutionHost`. That adapter now rejects request
 host/repository scope mismatches before submission and repeats exact product,
-instance and v1.2 compatibility checks for dispatch, recovery and evidence
+instance and exact v1.2/v1.3 compatibility checks for dispatch, recovery and evidence
 readback.
 
 The supported reference is

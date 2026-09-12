@@ -15,6 +15,14 @@ from forge.models.execution_host import (
 
 _OUTCOMES = frozenset(item.value.upper() for item in ExecutionEvidenceOutcome)
 _READBACK_KEYS = frozenset({"contract_version", "submission", "producer", "correlation", "provenance", "disposition", "run", "result", "evidence"})
+_HOST_START_KEYS = frozenset({
+    "status", "target_branch", "target_commit", "checkout_identity_digest",
+    "tracked_file_count", "inventory_digest",
+})
+_HOST_TERMINAL_KEYS = frozenset({
+    "status", "tracked_file_count", "inventory_digest", "worktree_state",
+    "diff", "activity",
+})
 
 
 def _object(value: Any, name: str) -> Mapping[str, Any]:
@@ -62,6 +70,77 @@ def _duration(value: Any, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         raise ValueError(f"EP terminal evidence {name} must be a positive integer")
     return value
+
+
+def _counter(value: Any, name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"EP terminal evidence {name} must be a non-negative integer")
+    return value
+
+
+def _host_execution(document: Mapping[str, Any]) -> None:
+    """Validate EP-owned aggregate host evidence without consuming its path.
+
+    This evidence is intentionally verified for provenance but not interpreted
+    as Forge planning data.  In particular, a local checkout path is forbidden
+    from crossing the EP→Forge boundary; only the opaque checkout identity is
+    shared.
+    """
+    host = _object(document.get("host_execution"), "host execution evidence")
+    if set(host) != {"contract_version", "start", "terminal"} or host.get("contract_version") != "1.0":
+        raise ValueError("EP terminal host execution evidence contract is unsupported")
+    start = _object(host.get("start"), "host execution start")
+    terminal = _object(host.get("terminal"), "host execution terminal")
+    start_status = start.get("status")
+    if start_status == "NOT_RECORDED":
+        if set(start) != {"status"}:
+            raise ValueError("EP terminal host start evidence is malformed")
+    elif start_status == "UNAVAILABLE":
+        if set(start) != {"status"}:
+            raise ValueError("EP terminal host start unavailable evidence is malformed")
+    elif start_status == "AVAILABLE":
+        if set(start) != _HOST_START_KEYS:
+            raise ValueError("EP terminal host start evidence is incomplete")
+        branch = start.get("target_branch")
+        if branch is not None and (not isinstance(branch, str) or not branch):
+            raise ValueError("EP terminal host target branch is invalid")
+        commit = _string(start.get("target_commit"), "host target commit")
+        if len(commit) != 40 or any(character not in "0123456789abcdef" for character in commit):
+            raise ValueError("EP terminal host target commit is invalid")
+        _sha256(start.get("checkout_identity_digest"), "host checkout identity")
+        _counter(start.get("tracked_file_count"), "host baseline tracked files")
+        _sha256(start.get("inventory_digest"), "host baseline inventory")
+    else:
+        raise ValueError("EP terminal host start evidence status is invalid")
+
+    terminal_status = terminal.get("status")
+    if terminal_status == "NOT_RECORDED":
+        if set(terminal) != {"status"}:
+            raise ValueError("EP terminal host terminal evidence is malformed")
+        return
+    if set(terminal) != _HOST_TERMINAL_KEYS:
+        raise ValueError("EP terminal host terminal evidence is incomplete")
+    diff = _object(terminal.get("diff"), "host terminal diff")
+    activity = _object(terminal.get("activity"), "host terminal activity")
+    if set(diff) != {"modified", "created", "deleted", "renamed"}:
+        raise ValueError("EP terminal host diff evidence is malformed")
+    if set(activity) != {"provider_invocations", "host_validation_actions"}:
+        raise ValueError("EP terminal host activity evidence is malformed")
+    _counter(activity.get("provider_invocations"), "host provider invocations")
+    _counter(activity.get("host_validation_actions"), "host validation actions")
+    if terminal_status == "UNAVAILABLE":
+        if any(terminal.get(key) is not None for key in ("tracked_file_count", "inventory_digest", "worktree_state")):
+            raise ValueError("EP terminal unavailable host evidence contradicts its status")
+        if any(diff.get(key) is not None for key in diff):
+            raise ValueError("EP terminal unavailable host diff contradicts its status")
+    elif terminal_status == "AVAILABLE":
+        _counter(terminal.get("tracked_file_count"), "host terminal tracked files")
+        _sha256(terminal.get("inventory_digest"), "host terminal inventory")
+        _string(terminal.get("worktree_state"), "host worktree state")
+        for key, value in diff.items():
+            _counter(value, f"host diff {key}")
+    else:
+        raise ValueError("EP terminal host terminal evidence status is invalid")
 
 
 def _terminal_timing(run: Mapping[str, Any], artifact_run: Mapping[str, Any]) -> tuple[str, str, int]:
@@ -127,8 +206,10 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("EP terminal artifact is invalid JSON") from error
     document = _object(document, "artifact document")
-    if document.get("artifact_type") != "EP_TERMINAL_EVIDENCE" or document.get("contract_version") != "1.2":
+    if document.get("artifact_type") != "EP_TERMINAL_EVIDENCE" or document.get("contract_version") not in {"1.2", "1.3"}:
         raise ValueError("unsupported EP terminal artifact contract")
+    if document.get("contract_version") == "1.3":
+        _host_execution(document)
 
     artifact_correlation = _object(document.get("correlation"), "artifact correlation")
     artifact_provenance = _object(document.get("provenance"), "artifact provenance")
