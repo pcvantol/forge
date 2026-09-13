@@ -108,5 +108,34 @@
     "FOC-1": "qualified read slice",
     "FOC-5_FOC-6": "qualified configuration/control slice",
     "RC-FS": "qualified authenticated session slice"
-  }
+  },
+  "requirement_refinements": [
+    {
+      "id": "FORGE_AGGREGATE_HEALTH_V1",
+      "status": "PLANNED",
+      "source_revision": "1cea418a5fa8f59d303f2a0d6ff27573c4a11752",
+      "document": "docs/architecture/FORGE_AGGREGATE_HEALTH_V1.md",
+      "owning_nodes": [
+        "FH-CONTRACT",
+        "FH-SERVICES",
+        "FH-HTTP",
+        "FH-CLI",
+        "FH-Q"
+      ],
+      "qualification_scenarios": [
+        "FH-H01",
+        "FH-H02",
+        "FH-H03",
+        "FH-H04",
+        "FH-H05",
+        "FH-H06"
+      ],
+      "qualification_evidence": [],
+      "api_route_openapi_postman_drift_required": true,
+      "public_probe_discloses_secrets": false,
+      "health_generates_or_mutates": false,
+      "disabled_optional_relay_blocks_local_readiness": false,
+      "new_canary_predecessor": false
+    }
+  ]
 }
