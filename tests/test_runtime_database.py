@@ -106,6 +106,27 @@ class RuntimeDatabaseTests(unittest.TestCase):
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='forge_operational_logs'"
         ).fetchone())
 
+    def test_schema36_migrates_the_guarded_durable_result_store_before_reopen(self) -> None:
+        path = self.database.path
+        self.database.close()
+        connection = sqlite3.connect(path)
+        connection.executescript("""
+            DROP TRIGGER action_derivation_results_authorized_insert;
+            DROP TRIGGER action_derivation_results_immutable_update;
+            DROP TRIGGER action_derivation_results_immutable_delete;
+            DROP TABLE action_derivation_results;
+        """)
+        connection.execute("UPDATE runtime_metadata SET value='36' WHERE key IN ('schema_version','migration_version','last_migration')")
+        connection.execute("PRAGMA user_version=36")
+        connection.commit(); connection.close()
+        self.database = RuntimeDatabase(self.root, forge_version="test")
+        self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
+        self.database.validate_integrity()
+        triggers = {row["name"] for row in self.database._connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+        self.assertTrue({"action_derivation_results_authorized_insert",
+                         "action_derivation_results_immutable_update",
+                         "action_derivation_results_immutable_delete"} <= triggers)
+
     def test_insert_only_mission_state_creation_never_overwrites(self) -> None:
         self.database.create_mission_state(self._mission())
         conflicting = self._mission(); conflicting["status"] = "ACTIVE"

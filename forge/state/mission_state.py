@@ -109,7 +109,7 @@ _ALLOWED_TRANSITIONS: dict[MissionExecutionStatus, frozenset[MissionExecutionSta
     # public Runtime composition is the only route that may activate that
     # approved/plannable record for provider-derived planning.
     MissionExecutionStatus.APPROVED_PLANNABLE: frozenset((MissionExecutionStatus.CREATED, MissionExecutionStatus.ARCHIVED)),
-    MissionExecutionStatus.CREATED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.ARCHIVED)),
+    MissionExecutionStatus.CREATED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.READY: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.ACTIVE: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.AWAITING_APPROVAL, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.WAITING_INTEGRATION, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
     MissionExecutionStatus.WAITING_FOR_EXECUTION: frozenset((MissionExecutionStatus.WAITING_FOR_EVIDENCE, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
@@ -337,6 +337,7 @@ class MissionStateStore:
         delegations: Sequence[Mapping[str, Any]] | None = None,
         integration: Mapping[str, Any] | None = None,
         planning_history: Sequence[Mapping[str, Any]] | None = None,
+        durable_materialization_derivation_id: str | None = None,
     ) -> MissionExecutionState:
         if not occurred_at or not reason:
             raise MissionStateStoreError("transition time and reason are required")
@@ -454,7 +455,12 @@ class MissionStateStore:
                     raise MissionStateStoreError("completed approved Mission requires every criterion to be proven")
         document["lifecycle"] = status.value
         document.setdefault("state_history", []).append({"sequence": document["revision"], "from_status": current.status.value, "to_status": status.value, "occurred_at": occurred_at, "reason": reason})
-        self._runtime.save_mission_state(document)
+        if durable_materialization_derivation_id is None:
+            self._runtime.save_mission_state(document)
+        else:
+            self._runtime.commit_durable_action_derivation_materialization(
+                document, durable_materialization_derivation_id,
+            )
         return self.get(mission_id)
 
     def set_execution_policy(self, mission_id: str, policy: Mapping[str, Any], *, occurred_at: str) -> MissionExecutionState:

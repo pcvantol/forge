@@ -26,7 +26,8 @@ from forge.models.action_derivation import DerivationPolicy
 from forge.models.mission_planner import (MissionCriterionPlanningState, MissionPlan,
                                           MissionPlannerInput, MissionPlanningState,
                                           PlanningInputKind)
-from forge.planner import AIMissionPlanner, DerivationResult, MissionPlanner
+from forge.planner import AIMissionPlanner, DerivationResult, MissionPlanner, ProposalValidationError
+from forge.planner.durable_derivation import DurableDerivationBlocked
 from forge.runtime import BootstrapMissionRunner, RuntimePromptFactory
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
@@ -34,6 +35,10 @@ from forge.state import MissionExecutionState, MissionExecutionStatus, MissionSt
 
 class ExecutionLoopError(ValueError):
     """Raised when a bounded Mission cannot advance deterministically."""
+
+
+class GovernanceRefinementBlocked(ExecutionLoopError):
+    """A durable provider result explicitly needs new governance."""
 
 
 class PlanningInputFactory(Protocol):
@@ -133,7 +138,29 @@ class ExecutionLoop:
         state = self._states.get(record.mission_id)
         state = self._states.set_execution_policy(state.mission_id, self._execution_policy.to_dict(), occurred_at=self._clock())
         if state.status is MissionExecutionStatus.CREATED:
-            state = self._plan(state)
+            try:
+                state = self._plan(state)
+            except DurableDerivationBlocked as error:
+                state = self._states.transition(
+                    state.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._clock(),
+                    reason="action_derivation_" + error.code.lower(),
+                )
+                self._dispatcher.hold(state.mission_id, state.status)
+                return state
+            except GovernanceRefinementBlocked:
+                state = self._states.transition(
+                    state.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._clock(),
+                    reason="action_derivation_governance_refinement_required",
+                )
+                self._dispatcher.hold(state.mission_id, state.status)
+                return state
+            except ProposalValidationError:
+                state = self._states.transition(
+                    state.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._clock(),
+                    reason="action_derivation_deterministic_rejection",
+                )
+                self._dispatcher.hold(state.mission_id, state.status)
+                return state
         if state.status is MissionExecutionStatus.READY_TO_CONTINUE:
             self._replan_after_delegation(state)
             state = self._states.transition(state.mission_id, MissionExecutionStatus.READY, occurred_at=self._clock(),
@@ -233,16 +260,64 @@ class ExecutionLoop:
         if input_value.mission.id != state.mission_id:
             raise ExecutionLoopError("planner input must belong to the active Mission")
         plan, derivation = self._select_plan(input_value, state)
+        return self._persist_planned_result(state, plan, derivation)
+
+    def resume_authorized_next_derivation(
+        self, mission_id: str, *, successor_attempt_id: str, governance_repository: object,
+        operator_context: object,
+    ) -> MissionExecutionState:
+        """Consume one explicitly authorized successor without dispatching it.
+
+        This is deliberately narrower than action recovery: it accepts only
+        the zero-Action block created by a lost provider result and leaves the
+        resulting ``READY`` Action set for the ordinary Forge→EP route.
+        """
+        state = self._states.get(mission_id)
+        if (state.status is not MissionExecutionStatus.BLOCKED or state.actions or state.intents
+                or state.execution_correlation is not None):
+            raise ExecutionLoopError("authorized planning continuation requires a blocked zero-Action Mission")
+        source = self._current_planning_input(state)
+        if not self._dynamic_mode(source) or self._ai_planner is None or self._derivation_policy is None:
+            raise ExecutionLoopError("authorized planning continuation requires a provider-derived Mission")
+        plan_authorized = getattr(self._ai_planner, "plan_authorized_next_attempt", None)
+        if not callable(plan_authorized):
+            raise ExecutionLoopError("installed provider does not support authorized durable continuation")
+        result = plan_authorized(
+            source, self._derivation_policy, successor_attempt_id=successor_attempt_id,
+            governance_repository=governance_repository, operator_context=operator_context,
+        )
+        if result.governance_refinement is not None:
+            # The Mission is already blocked and no Action was materialized;
+            # retain that state rather than manufacturing a recovery state.
+            return state
+        if result.plan is None or result.validated is None:
+            raise ExecutionLoopError("authorized planning continuation produced no validated materialization")
+        return self._persist_planned_result(self._states.get(mission_id), result.plan,
+                                            self._derivation_record(result, source, state))
+
+    def _persist_planned_result(self, state: MissionExecutionState, plan: MissionPlan,
+                                derivation: Mapping[str, Any] | None) -> MissionExecutionState:
         actions = tuple(action for intent in plan.intents for action in intent.actions)
         if not actions:
             raise ExecutionLoopError("approved Mission planning produced no executable Engineering Actions")
         truth = self._repository_truth(state, None)
-        return self._states.transition(
-            state.mission_id, MissionExecutionStatus.READY, occurred_at=self._clock(),
-            reason="dynamic_derivation_materialized" if derivation is not None else "deterministic_plan_persisted",
-            intents=plan.intents, actions=actions, repository_truth=truth,
-            planning_history=state.planning_history if derivation is None else (*state.planning_history, derivation),
-        )
+        durable_id = None
+        if derivation is not None:
+            candidate = getattr(self._ai_planner, "current_derivation_id", None)
+            durable_id = candidate if isinstance(candidate, str) and candidate else None
+        try:
+            return self._states.transition(
+                state.mission_id, MissionExecutionStatus.READY, occurred_at=self._clock(),
+                reason="dynamic_derivation_materialized" if derivation is not None else "deterministic_plan_persisted",
+                intents=plan.intents, actions=actions, repository_truth=truth,
+                planning_history=state.planning_history if derivation is None else (*state.planning_history, derivation),
+                durable_materialization_derivation_id=durable_id,
+            )
+        except Exception as error:
+            recorder = getattr(self._ai_planner, "record_materialization_failure", None)
+            if durable_id is not None and callable(recorder):
+                recorder(durable_id, error)
+            raise
 
     def _current_planning_input(self, state: MissionExecutionState) -> MissionPlannerInput:
         source = self._planning_input(state)
@@ -277,7 +352,7 @@ class ExecutionLoop:
             raise ExecutionLoopError("provider-derived Mission has no authorized derivation composition")
         result = self._ai_planner.plan(planning_input, self._derivation_policy)
         if result.governance_refinement is not None:
-            raise ExecutionLoopError("provider-derived Mission requires governance refinement")
+            raise GovernanceRefinementBlocked("provider-derived Mission requires governance refinement")
         if result.plan is None or result.validated is None:
             raise ExecutionLoopError("provider-derived Mission produced no validated materialization")
         return result.plan, self._derivation_record(result, planning_input, state)

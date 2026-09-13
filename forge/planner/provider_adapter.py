@@ -27,11 +27,13 @@ class ProviderDerivationRequest:
     snapshot: PlanningSnapshot
     provider_id: str
     model: str | None
+    attempt_authority_id: str | None = None
 
     @property
     def digest(self) -> str:
         return _digest({"derivation_id": self.derivation_id, "snapshot": self.snapshot.to_dict(),
-                        "provider_id": self.provider_id, "model": self.model})
+                        "provider_id": self.provider_id, "model": self.model,
+                        "attempt_authority_id": self.attempt_authority_id})
 
 
 @dataclass(frozen=True)
@@ -60,12 +62,21 @@ class BoundedActionDerivationProvider:
         self.adapter_version = adapter_version
 
     def invoke(self, request: ProviderDerivationRequest, **authority: Any) -> ProviderDerivationResponse:
+        # A durable receipt is a post-adapter operation.  Passing its callback
+        # into an executor would let unverified provider-shaped data cross the
+        # persistence boundary before the adapter has checked its binding to
+        # this exact request.
+        durable_result_sink = authority.pop("durable_result_sink", None)
         response = self._executor.invoke(request, **authority)
         evidence = response.evidence
         if evidence.adapter_version != self.adapter_version or evidence.request_digest != request.digest:
             raise ValueError("provider response does not bind the requested adapter/version/digest")
         if evidence.snapshot_digest != request.snapshot.digest or evidence.provider_id != request.provider_id or evidence.model != request.model:
             raise ValueError("provider response provenance does not bind the requested provider/snapshot")
+        if durable_result_sink is not None:
+            if not callable(durable_result_sink):
+                raise ValueError("durable provider result sink is invalid")
+            durable_result_sink(response)
         return response
 
     def reconcile(self, request: ProviderDerivationRequest) -> ProviderDerivationResponse | ProviderSideEffectState:

@@ -51,6 +51,8 @@ from forge.planner import (
     AIMissionPlanner,
     CodexCliChatGPTSessionPlanningProvider,
     CodexCliChatGPTSessionPlanningProviderConfiguration,
+    DurableAIMissionPlanner,
+    DurableActionDerivationCoordinator,
     MissionPlanner,
 )
 from forge.provider_security import PlanningProviderSecurityService
@@ -142,8 +144,19 @@ class _OneActionProvider:
     def __init__(self, provider: object) -> None:
         self._provider = provider
 
-    def derive_with_planning_input(self, snapshot, planning_input, derivation_policy):
-        result = self._provider.derive_with_planning_input(snapshot, planning_input, derivation_policy)
+    def prepare_durable_attempt(self, snapshot, planning_input, derivation_policy, derivation_id,
+                                attempt_authority_id=None):
+        prepare = getattr(self._provider, "prepare_durable_attempt", None)
+        if not callable(prepare):
+            raise InstalledDynamicMissionError("installed provider does not support durable Action-Derivation")
+        return prepare(snapshot, planning_input, derivation_policy, derivation_id, attempt_authority_id)
+
+    @property
+    def provider_id(self):
+        return getattr(self._provider, "provider_id", None)
+
+    def derive_with_planning_input(self, snapshot, planning_input, derivation_policy, **kwargs):
+        result = self._provider.derive_with_planning_input(snapshot, planning_input, derivation_policy, **kwargs)
         if isinstance(result, GovernanceRefinementRequired):
             return result
         if not isinstance(result, tuple) or len(result) != 1:
@@ -224,6 +237,78 @@ class InstalledDynamicMissionRuntime:
             "execution_host": "PASS",
             "declaration": declaration,
         }
+
+    def action_derivation_readback(self, mission_id: str) -> tuple[dict[str, object], ...]:
+        """Read safe durable planning metadata without starting or resuming work.
+
+        Provider payloads, prompts, tool output and credentials intentionally
+        stay inside the canonical replay path and are never part of this public
+        installed-runtime projection.
+        """
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        attempts = self.database.durable_action_derivation_readback(mission_id)
+        if attempts:
+            return attempts
+        planning_input = self._planning_input(state)
+        from forge.models.action_derivation import PlanningSnapshot
+        provider_id = getattr(self.provider, "provider_id", None)
+        if isinstance(provider_id, str) and provider_id:
+            legacy = self.database.legacy_confirmed_result_unavailable(
+                mission_id, PlanningSnapshot.from_planner_input(planning_input).digest, provider_id,
+            )
+            if legacy is not None:
+                return (legacy,)
+        return ()
+
+    def authorize_next_planning_attempt(self, mission_id: str, *, predecessor_attempt_id: str,
+                                        rationale: str) -> dict[str, object]:
+        """Record one operator-authorized successor without invoking a provider.
+
+        This operation is intentionally unavailable for ordinary failed plans,
+        active Actions, or a replayable result.  It reserves an explicit new
+        generation only for a confirmed result that is durably unavailable.
+        """
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        contract = self._admission_contract(state)
+        planning = contract["planning"]
+        policy = DerivationPolicy(
+            tuple(planning["write_scopes"]), tuple(planning["human_gates"]), tuple(planning["risk_inputs"]),
+        )
+        planning_input = self._planning_input(state)
+        from forge.models.action_derivation import PlanningSnapshot
+        return DurableActionDerivationCoordinator(self.database, _OneActionProvider(self.provider)).authorize_next_attempt(
+            PlanningSnapshot.from_planner_input(planning_input), planning_input, policy,
+            predecessor_attempt_id=predecessor_attempt_id,
+            governance_repository=self.repository, operator_context=self.repository.operators.context(),
+            rationale=rationale,
+        )
+
+    def resume_authorized_next_planning_attempt(
+        self, mission_id: str, *, successor_attempt_id: str,
+    ) -> DynamicMissionRunResult:
+        """Consume one reserved next attempt and materialize only a valid Action set.
+
+        This is a separate, operator-context-bound invocation.  It does not
+        reuse ordinary ``resume`` and does not dispatch to EP; after a valid
+        materialization the usual public resume path remains responsible for
+        the existing Forge→EP transport.
+        """
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        if state.repository_truth is None:
+            raise InstalledDynamicMissionError("authorized planning continuation lacks canonical Repository Truth")
+        self._initial_truth[mission_id] = dict(state.repository_truth)
+        self.preflight()
+        loop = self._loop(mission_id)
+        service = ForgeRuntimeService(loop, self.states, runtime_database=self.database)
+        with service.mutation_lock.acquire():
+            updated = loop.resume_authorized_next_derivation(
+                mission_id, successor_attempt_id=successor_attempt_id,
+                governance_repository=self.repository, operator_context=self.repository.operators.context(),
+            )
+        return self._result(updated)
 
     def start(self, mission_id: str, initial_repository_truth: RepositoryTruthSnapshot) -> DynamicMissionRunResult:
         """Start exactly one admitted zero-Action Mission after read-only preflight."""
@@ -501,7 +586,9 @@ class InstalledDynamicMissionRuntime:
             repository_identity=config.repository_identity, clock=self.clock,
             correlation_id_factory=lambda: "forge-runtime-" + str(uuid4()),
             execution_policy=ExecutionPolicy(ExecutionPolicyKind.CONTINUOUS),
-            ai_planner=AIMissionPlanner(_OneActionProvider(self.provider)), derivation_policy=policy,
+            ai_planner=(DurableAIMissionPlanner(self.database, _OneActionProvider(self.provider))
+                        if callable(getattr(self.provider, "prepare_durable_attempt", None))
+                        else AIMissionPlanner(_OneActionProvider(self.provider))), derivation_policy=policy,
             completion_evidence=self._completion_evidence,
             completion_evaluator=MissionCompletionEvaluator(),
         )
