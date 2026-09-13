@@ -3,8 +3,10 @@
 Decision: `FORGE_EP_PRODUCER_CONTRACT_V1_3_PLANNING_CONTEXT`.
 
 This document extends the prospective Forge-to-EP provenance envelope. It
-does not change the EP producer-readback contract (`v1.2`), terminal-evidence
-contract (`v1.2`), or the respective product authorities.
+does not change the EP producer-readback contract (`v1.2`) or the respective
+product authorities.  Terminal evidence advances independently to `v1.3` so
+that EP can bind its own path-free Execution Host evidence; the Forge planning
+extension neither owns nor changes those host observations.
 
 ## Boundary and versioning
 
