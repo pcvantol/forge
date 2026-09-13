@@ -97,6 +97,14 @@ binding; recovery and evidence readback reject historic records without it and
 reject any later endpoint, instance, project, repository or binding retarget.
 This does not grant Mission, submission or mutation authority.
 
+A binding with a retired contract is deliberately unusable for status,
+preflight and execution. The explicit configuration command can nevertheless
+perform one guarded upgrade: it first verifies the old record's complete
+structure, ownership, canonical digest and revision, then requires
+`--replace` with those exact observed values before it writes the current
+contract record. This permits the v1.2-to-v1.3 terminal-evidence cutover
+without accepting a stale or malformed peer for runtime use.
+
 The shared `EngineeringPlatformExecutionHostFactory` is the sole product
 composition route for both CLI preflight and runtime use. It rereads the
 persisted binding, verifies the Forge runtime identity and contract, resolves

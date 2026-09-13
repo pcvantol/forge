@@ -20,6 +20,7 @@ PEER_CONFIGURATION_SCHEMA_VERSION = "1.0"
 PEER_PRODUCT = "engineering-platform"
 PRODUCER_READBACK_CONTRACT = "1.2"
 TERMINAL_EVIDENCE_CONTRACT = "1.3"
+_REPLACEABLE_LEGACY_CONTRACT_PAIRS = frozenset({("1.2", "1.2")})
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
@@ -43,6 +44,38 @@ class PeerConfigurationError(RuntimeError):
 
 class PeerConfigurationConflict(PeerConfigurationError):
     """A configuration write did not match the currently persisted revision."""
+
+
+@dataclass(frozen=True)
+class _StoredPeerConfiguration:
+    """A structurally verified selected record, including a legacy contract.
+
+    Runtime consumers never receive this type: they must construct the strict
+    current-contract configuration below.  The explicit configuration command
+    uses it only to perform an optimistic-locking replacement of a previously
+    valid binding whose contract version has been retired.
+    """
+
+    document: dict[str, Any]
+
+    @property
+    def binding_id(self) -> str:
+        return str(self.document["binding_id"])
+
+    @property
+    def revision(self) -> int:
+        return int(self.document["configuration_revision"])
+
+    @property
+    def digest(self) -> str:
+        return str(self.document["configuration_digest"])
+
+    @property
+    def current_contracts(self) -> bool:
+        return (
+            self.document["producer_readback_contract"] == PRODUCER_READBACK_CONTRACT
+            and self.document["terminal_evidence_contract"] == TERMINAL_EVIDENCE_CONTRACT
+        )
 
 
 def _timestamp() -> str:
@@ -210,7 +243,15 @@ class EngineeringPlatformPeerConfigurationStore:
         self.runtime_id = _identifier(runtime_id, "owning Forge runtime identity")
         self._writable = writable
 
-    def load(self) -> EngineeringPlatformPeerConfiguration | None:
+    def _stored(self) -> _StoredPeerConfiguration | None:
+        """Read one structurally sound selected record without promoting it.
+
+        A retired peer-contract version must remain unusable for runtime reads.
+        It can nevertheless be replaced by an explicit operator action that
+        matches its immutable revision and digest.  This avoids trapping an
+        installation on a stale v1.2 terminal-evidence contract after Forge is
+        upgraded to the v1.3 peer contract.
+        """
         try:
             columns = tuple(
                 (row["name"], row["type"].upper(), row["notnull"], row["pk"])
@@ -244,14 +285,70 @@ class EngineeringPlatformPeerConfigurationStore:
             document = json.loads(row["document"])
         except (TypeError, json.JSONDecodeError) as error:
             raise PeerConfigurationError("EP peer configuration record is unreadable") from error
-        configuration = EngineeringPlatformPeerConfiguration.from_dict(document)
-        if (configuration.binding_id != row["binding_id"]
-                or configuration.configuration_revision != row["configuration_revision"]
-                or configuration.configuration_digest != row["configuration_digest"]):
+        if not isinstance(document, Mapping) or set(document) != _FIELDS:
+            raise PeerConfigurationError("EP peer configuration record is incomplete or contains unknown fields")
+        normalized = dict(document)
+        if normalized.get("schema_version") != PEER_CONFIGURATION_SCHEMA_VERSION:
+            raise PeerConfigurationError("EP peer configuration schema is unsupported")
+        if normalized.get("peer_product") != PEER_PRODUCT:
+            raise PeerConfigurationError("EP peer product is incompatible")
+        for value, label in (
+            (normalized.get("binding_id"), "binding identity"),
+            (normalized.get("owning_forge_runtime_id"), "owning Forge runtime identity"),
+            (normalized.get("expected_ep_instance_id"), "expected EP instance identity"),
+            (normalized.get("execution_host_id"), "Execution Host identity"),
+            (normalized.get("ep_project_id"), "EP project identity"),
+            (normalized.get("ep_repository_id"), "EP repository identity"),
+            (normalized.get("repository_identity"), "Forge repository identity binding"),
+            (normalized.get("created_by"), "creation operator identity"),
+            (normalized.get("updated_by"), "modification operator identity"),
+        ):
+            _identifier(value, label)
+        revision = normalized.get("configuration_revision")
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+            raise PeerConfigurationError("EP peer configuration revision is invalid")
+        loopback = normalized.get("allow_loopback_http")
+        if not isinstance(loopback, bool):
+            raise PeerConfigurationError("EP peer loopback transport setting is invalid")
+        timeout = normalized.get("timeout_seconds")
+        if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < float(timeout) <= 60:
+            raise PeerConfigurationError("EP peer timeout must be greater than zero and at most 60 seconds")
+        endpoint = canonical_endpoint(normalized.get("endpoint"), allow_loopback_http=loopback)
+        if endpoint != normalized.get("endpoint"):
+            raise PeerConfigurationError("EP peer endpoint is not canonical")
+        SecretReference.parse(normalized.get("credential_reference"))
+        if _provenance_timestamp(normalized.get("updated_at")) < _provenance_timestamp(normalized.get("created_at")):
+            raise PeerConfigurationError("EP peer configuration modification precedes its creation")
+        contracts = (normalized.get("producer_readback_contract"), normalized.get("terminal_evidence_contract"))
+        if not all(isinstance(value, str) and re.fullmatch(r"[0-9]+\.[0-9]+", value) for value in contracts):
+            raise PeerConfigurationError("EP peer contract version is invalid")
+        if contracts not in _REPLACEABLE_LEGACY_CONTRACT_PAIRS | {
+            (PRODUCER_READBACK_CONTRACT, TERMINAL_EVIDENCE_CONTRACT),
+        }:
+            raise PeerConfigurationError("EP peer contract version is unsupported")
+        basis = {key: normalized[key] for key in (
+            "schema_version", "binding_id", "owning_forge_runtime_id", "peer_product", "endpoint",
+            "expected_ep_instance_id", "execution_host_id", "ep_project_id", "ep_repository_id",
+            "repository_identity", "producer_readback_contract", "terminal_evidence_contract",
+            "credential_reference", "allow_loopback_http", "timeout_seconds",
+        )}
+        digest = normalized.get("configuration_digest")
+        if (not isinstance(digest, str) or _DIGEST.fullmatch(digest) is None
+                or digest != EngineeringPlatformPeerConfiguration.digest_for(basis)):
+            raise PeerConfigurationError("EP peer configuration digest is invalid")
+        if (normalized["binding_id"] != row["binding_id"]
+                or normalized["configuration_revision"] != row["configuration_revision"]
+                or normalized["configuration_digest"] != row["configuration_digest"]):
             raise PeerConfigurationError("EP peer configuration storage columns do not match its record")
-        if configuration.owning_forge_runtime_id != self.runtime_id:
+        if normalized["owning_forge_runtime_id"] != self.runtime_id:
             raise PeerConfigurationError("EP peer configuration belongs to a different Forge runtime")
-        return configuration
+        return _StoredPeerConfiguration(normalized)
+
+    def load(self) -> EngineeringPlatformPeerConfiguration | None:
+        stored = self._stored()
+        if stored is None:
+            return None
+        return EngineeringPlatformPeerConfiguration.from_dict(stored.document)
 
     def configure(
         self,
@@ -304,18 +401,22 @@ class EngineeringPlatformPeerConfigurationStore:
         )
         try:
             self._connection.execute("BEGIN IMMEDIATE")
-            current = self.load()
+            stored = self._stored()
+            current = (
+                EngineeringPlatformPeerConfiguration.from_dict(stored.document)
+                if stored is not None and stored.current_contracts else None
+            )
             if current is not None and current.configuration_basis() == provisional.configuration_basis():
                 self._connection.rollback()
                 return current
-            if current is not None:
-                if (not replace or expected_revision != current.configuration_revision
-                        or expected_digest != current.configuration_digest):
+            if stored is not None:
+                if (not replace or expected_revision != stored.revision
+                        or expected_digest != stored.digest):
                     raise PeerConfigurationConflict(
                         "conflicting EP peer configuration requires explicit replacement with the current revision and digest"
                     )
-                revision = current.configuration_revision + 1
-                created_at, created_by = current.created_at, current.created_by
+                revision = stored.revision + 1
+                created_at, created_by = str(stored.document["created_at"]), str(stored.document["created_by"])
             else:
                 if replace or expected_revision is not None or expected_digest is not None:
                     raise PeerConfigurationConflict("initial EP peer configuration cannot claim a replacement")
@@ -336,7 +437,7 @@ class EngineeringPlatformPeerConfigurationStore:
                 (configured.binding_id, configured.configuration_revision, configured.configuration_digest, document),
             )
             if operational_event_writer is not None:
-                operational_event_writer(configured, "created" if current is None else "replaced")
+                operational_event_writer(configured, "created" if stored is None else "replaced")
             self._connection.commit()
             return configured
         except Exception:
@@ -351,8 +452,15 @@ class ReadOnlyPeerConfiguration:
     storage_schema: int
 
 
-def read_peer_configuration(data_root: Path | str | None) -> ReadOnlyPeerConfiguration:
-    """Read without creating, migrating, timestamping, or otherwise changing product state."""
+def read_peer_configuration(
+    data_root: Path | str | None, *, allow_legacy_contract_replacement: bool = False,
+) -> ReadOnlyPeerConfiguration:
+    """Read without creating, migrating, timestamping, or otherwise changing product state.
+
+    Normal readback remains strict: a retired peer contract is not an eligible
+    runtime binding.  The configuration route may opt into structural legacy
+    validation solely to replace that exact record under optimistic locking.
+    """
     from .runtime.database import RUNTIME_SCHEMA_VERSION
 
     root = DataRootResolver(cli_data_root=data_root).resolve()
@@ -388,7 +496,15 @@ def read_peer_configuration(data_root: Path | str | None) -> ReadOnlyPeerConfigu
                 raise PeerConfigurationError("EP peer configuration storage is missing")
             configuration = None
         else:
-            configuration = EngineeringPlatformPeerConfigurationStore(connection, runtime_id, writable=False).load()
+            store = EngineeringPlatformPeerConfigurationStore(connection, runtime_id, writable=False)
+            if allow_legacy_contract_replacement:
+                stored = store._stored()
+                configuration = (
+                    EngineeringPlatformPeerConfiguration.from_dict(stored.document)
+                    if stored is not None and stored.current_contracts else None
+                )
+            else:
+                configuration = store.load()
             if configuration is not None and schema < RUNTIME_SCHEMA_VERSION:
                 raise PeerConfigurationError("EP peer configuration exists under an unqualified storage schema")
         return ReadOnlyPeerConfiguration(configuration, runtime_id, schema)
@@ -480,7 +596,7 @@ class EngineeringPlatformPeerConfigurationService:
             raise PeerConfigurationError("Forge data root must be initialized before peer configuration")
         # Qualify marker/database identity on the read-only path before the
         # writable RuntimeDatabase is allowed to apply a schema migration.
-        read_peer_configuration(self.data_root)
+        read_peer_configuration(self.data_root, allow_legacy_contract_replacement=True)
         database = RuntimeBootstrap(data_root=self.data_root, forge_version=canonical_version()).open()
         try:
             if marker.read_text(encoding="utf-8").strip() != database.runtime_identity.runtime_id:
@@ -496,7 +612,11 @@ class EngineeringPlatformPeerConfigurationService:
             store = EngineeringPlatformPeerConfigurationStore(
                 database._connection, database.runtime_identity.runtime_id, writable=True,
             )
-            previous = store.load()
+            stored = store._stored()
+            previous = (
+                EngineeringPlatformPeerConfiguration.from_dict(stored.document)
+                if stored is not None and stored.current_contracts else None
+            )
             operator_id = str(values.get("operator_id", ""))
             operator_reference = sha256(operator_id.encode("utf-8")).hexdigest()[:16]
 

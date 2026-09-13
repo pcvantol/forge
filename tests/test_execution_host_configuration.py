@@ -15,6 +15,7 @@ from unittest.mock import patch
 from forge.__main__ import main
 from forge.execution_host_configuration import (
     EngineeringPlatformExecutionHostFactory,
+    EngineeringPlatformPeerConfiguration,
     EngineeringPlatformPeerConfigurationService,
     PeerConfigurationConflict,
     PeerConfigurationError,
@@ -103,6 +104,55 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         persisted = (self.root / "forge.db").read_bytes()
         self.assertNotIn(SYNTHETIC_SECRET.encode(), persisted)
         self.assertIn(b"keychain://forge.ep/consumer", persisted)
+
+    def test_retired_terminal_evidence_contract_requires_a_guarded_replacement(self) -> None:
+        """A v1.2 binding can be upgraded, but can never run while stale."""
+        current = self.service.configure(**self.values())
+        database_path = self.root / "forge.db"
+        with sqlite3.connect(database_path) as connection:
+            document = json.loads(connection.execute(
+                "SELECT document FROM execution_host_peer_configuration"
+            ).fetchone()[0])
+            document["terminal_evidence_contract"] = "1.2"
+            basis = {key: document[key] for key in current.configuration_basis()}
+            legacy_digest = EngineeringPlatformPeerConfiguration.digest_for(basis)
+            document["configuration_digest"] = legacy_digest
+            connection.execute(
+                "UPDATE execution_host_peer_configuration SET configuration_digest=?,document=?",
+                (legacy_digest, json.dumps(document, sort_keys=True, separators=(",", ":"))),
+            )
+        with self.assertRaisesRegex(PeerConfigurationError, "current versions"):
+            self.service.show()
+        with self.assertRaises(PeerConfigurationConflict):
+            self.service.configure(**self.values())
+        upgraded = self.service.configure(**self.values(
+            replace=True, expected_revision=current.configuration_revision,
+            expected_digest=legacy_digest, occurred_at="2026-09-10T18:01:00Z",
+        ))
+        self.assertEqual((upgraded.configuration_revision, upgraded.terminal_evidence_contract), (2, "1.3"))
+        self.assertEqual(read_peer_configuration(self.root).configuration, upgraded)
+
+    def test_unknown_retired_contract_is_never_accepted_as_a_replacement_candidate(self) -> None:
+        """Only the explicitly supported v1.2-to-v1.3 cutover is recoverable."""
+        current = self.service.configure(**self.values())
+        database_path = self.root / "forge.db"
+        with sqlite3.connect(database_path) as connection:
+            document = json.loads(connection.execute(
+                "SELECT document FROM execution_host_peer_configuration"
+            ).fetchone()[0])
+            document["terminal_evidence_contract"] = "9.9"
+            basis = {key: document[key] for key in current.configuration_basis()}
+            invalid_digest = EngineeringPlatformPeerConfiguration.digest_for(basis)
+            document["configuration_digest"] = invalid_digest
+            connection.execute(
+                "UPDATE execution_host_peer_configuration SET configuration_digest=?,document=?",
+                (invalid_digest, json.dumps(document, sort_keys=True, separators=(",", ":"))),
+            )
+        with self.assertRaisesRegex(PeerConfigurationError, "unsupported"):
+            self.service.configure(**self.values(
+                replace=True, expected_revision=current.configuration_revision,
+                expected_digest=invalid_digest, occurred_at="2026-09-10T18:01:00Z",
+            ))
 
     def test_configuration_change_is_recorded_in_the_redacted_operational_journal(self) -> None:
         first = self.service.configure(**self.values())
