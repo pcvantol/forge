@@ -33,7 +33,7 @@
   ],
   "wire_contracts": {
     "producer_readback": "1.2",
-    "terminal_evidence": "1.2",
+    "terminal_evidence": "1.3",
     "producer_fixture_provenance_required": true
   },
   "invariants": {

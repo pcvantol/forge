@@ -86,7 +86,7 @@ the runtime must not invent B merely to satisfy a test's preferred story.
 ## Mock EP contract and isolation
 
 The simulator implements the **supported versioned producer contract**, currently
-readback/terminal-evidence v1.2, including explicit selection, compatibility,
+readback v1.2 and terminal-evidence v1.3, including explicit selection, compatibility,
 consumer authentication, scoped submission, pending/claimed/terminal readback
 and artifact download. Derive responses from captured request identities and
 retain exact accepted-request digests, receipts, runs and immutable bytes. Use
@@ -221,7 +221,7 @@ collection of separately green unit tests.
 | FIE-05 | Missing/expired/out-of-scope execution or provider authority and exhausted applicable budget: no unauthorized new call; restart does not reset counters or expiry. |
 | FIE-06 | Provider unavailable, pre-start rejection, invalid structured output and MAY_HAVE_HAPPENED: classified durable attempt, no materialization/submission and no blind regeneration. |
 | FIE-07 | Invalid write scope/dependency, stale snapshot, optional improvement, already proven criterion or wider Mission objective rejected before submission. |
-| FIE-08 | EP incompatible v1.2, wrong instance, wrong consumer/project/repository or auth rejected; preflight creates zero submissions, no v1.1 fallback. |
+| FIE-08 | EP incompatible with readback v1.2 or terminal evidence v1.3, wrong instance, wrong consumer/project/repository or auth rejected; preflight creates zero submissions, no fallback. |
 | FIE-09 | Delayed EP acceptance/claim/evidence: bounded waiting, no busy-loop or duplicate POST. Waiting is not success. |
 | FIE-10 | EP accepts POST then connection is lost; fresh Forge process reconciles by supported durable identity. Otherwise remain explicitly ambiguous, never blind resubmit. |
 | FIE-11 | Wrong artifact byte hash, schema, request digest, Mission/Action/correlation/run/repo/producer/profile provenance, or required assurance missing: reject before canonical evidence/completion. |

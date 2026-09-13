@@ -210,7 +210,7 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
             "contract_version": "1.0",
             "producer": {"id": "engineering-platform", "version": "2.3.0"},
             "instance": {"id": "ep-instance-1"},
-            "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.2"]},
+            "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.3"]},
         }
         keychain_result = subprocess.CompletedProcess([], 0, stdout=SYNTHETIC_SECRET + "\n", stderr="")
         observed: list[tuple[str, str, str | None]] = []

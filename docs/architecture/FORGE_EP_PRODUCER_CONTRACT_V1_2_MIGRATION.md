@@ -101,6 +101,14 @@ exactly.  A Forge producer envelope that declares
 `constraints.forge_execution.contract_version: "1.2"` carries the existing
 two separate version facts:
 
+Terminal evidence advances independently to `v1.3`.  It adds an EP-owned,
+immutable Execution Host snapshot: the recorded start ref and checkout identity,
+baseline/final inventory digests, aggregate terminal diff metrics, and semantic
+provider-invocation and host-validation-action counters.  It deliberately does
+not contain a raw local checkout path or a shell-command counter.  Forge
+verifies this bounded evidence but does not reinterpret it as Forge planning
+provenance.
+
 - `producer.version` and `forge_application_version` are the actual Forge
   application release which materialised the envelope;
 - `producer_contract_version` is the Forge Producer Contract schema version.

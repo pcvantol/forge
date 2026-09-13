@@ -72,7 +72,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         )
         self.request = _request()
         self.compatible = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
-            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.2"]}}
+            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.3"]}}
         self.readback = json.loads((FIXTURES / "forge-producer-readback-v1.1.json").read_text())
         self.readback["contract_version"] = "1.2"
         self.readback["producer"]["version"] = "2.7.2"
@@ -91,7 +91,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             "execution_duration_ms": 60_000,
         })
         artifact = json.loads((FIXTURES / "forge-terminal-evidence-v1.1.json").read_text())
-        artifact["contract_version"] = "1.2"
+        artifact["contract_version"] = "1.3"
         artifact["producer"]["version"] = "2.7.2"
         artifact["provenance"].update({
             "contract_version": "1.3", "producer_contract_version": "1.0",
@@ -108,6 +108,20 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             "execution_completed_at": "2026-09-12T00:01:00+00:00",
             "execution_duration_ms": 60_000,
         })
+        artifact["host_execution"] = {
+            "contract_version": "1.0",
+            "start": {
+                "status": "AVAILABLE", "target_branch": "main", "target_commit": "a" * 40,
+                "checkout_identity_digest": "sha256:" + "d" * 64,
+                "tracked_file_count": 2, "inventory_digest": "sha256:" + "e" * 64,
+            },
+            "terminal": {
+                "status": "AVAILABLE", "tracked_file_count": 2,
+                "inventory_digest": "sha256:" + "f" * 64, "worktree_state": "clean",
+                "diff": {"modified": 0, "created": 0, "deleted": 0, "renamed": 0},
+                "activity": {"provider_invocations": 1, "host_validation_actions": 2},
+            },
+        }
         self.artifact = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
 
     def _accepted_submission(self) -> dict[str, object]:
@@ -325,6 +339,13 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.assertEqual(evidence.execution_started_at, "2026-09-12T00:00:00+00:00")
         self.assertEqual(evidence.execution_completed_at, "2026-09-12T00:01:00+00:00")
         self.assertEqual(evidence.execution_duration_ms, 60_000)
+
+    def test_v13_host_evidence_rejects_a_raw_checkout_path(self) -> None:
+        """A local EP path is operator evidence, never Forge receipt data."""
+        artifact = json.loads(self.artifact)
+        artifact["host_execution"]["start"]["checkout_path"] = "/private/ep-checkout"
+        with self.assertRaisesRegex(ValueError, "host start evidence"):
+            self._terminal_retrieval(json.loads(json.dumps(self.readback)), artifact)
 
     def test_historical_artifact_without_timing_uses_complete_authenticated_readback(self) -> None:
         readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)

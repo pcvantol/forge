@@ -100,7 +100,7 @@ replace a binding, repeat `configure` with `--replace` plus both the current
 idempotent. `show`, `status`, and `preflight` do not initialize or migrate
 storage. Preflight performs only authenticated
 `GET /v1/producer-compatibility`, verifies product, exact instance ID, and the
-explicit `1.2` readback/evidence contracts, and reports project/repository and
+explicit `1.2` readback and `1.3` terminal-evidence contracts, and reports project/repository and
 mutation authority as `NOT_VERIFIED` because that route does not prove them.
 The exact instance-ID comparison is consistency evidence, not a newly invented
 cryptographic peer identity; preflight reports the latter as `NOT_ASSERTED`.

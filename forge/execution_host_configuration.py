@@ -19,7 +19,7 @@ from .secure_store import MacOSKeychainSecureStoreAdapter, SecretReference, Secr
 PEER_CONFIGURATION_SCHEMA_VERSION = "1.0"
 PEER_PRODUCT = "engineering-platform"
 PRODUCER_READBACK_CONTRACT = "1.2"
-TERMINAL_EVIDENCE_CONTRACT = "1.2"
+TERMINAL_EVIDENCE_CONTRACT = "1.3"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
@@ -124,7 +124,7 @@ class EngineeringPlatformPeerConfiguration:
             raise PeerConfigurationError("EP peer product is incompatible")
         if (self.producer_readback_contract != PRODUCER_READBACK_CONTRACT
                 or self.terminal_evidence_contract != TERMINAL_EVIDENCE_CONTRACT):
-            raise PeerConfigurationError("EP peer contracts must select version 1.2")
+            raise PeerConfigurationError("EP peer contracts must select the configured current versions")
         for value, label in (
             (self.binding_id, "binding identity"),
             (self.owning_forge_runtime_id, "owning Forge runtime identity"),
