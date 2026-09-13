@@ -392,7 +392,7 @@ class BootstrapMissionRunner:
     @staticmethod
     def _planning_context(
         state: MissionExecutionState, action: EngineeringAction, prompt: RuntimePrompt,
-    ) -> ForgePlanningContextEnvelope:
+    ) -> ForgePlanningContextEnvelope | None:
         """Freeze only explicitly supplied Forge planning facts at submission.
 
         This adapter never reads the mutable display projection and never
@@ -410,8 +410,15 @@ class BootstrapMissionRunner:
             dict(getattr(prompt, "execution_metadata", ())).get("mission_revision"),
             mission.get("revision"), admission.get("subject_revision"),
         )
+        # The independently versioned context envelope is mandatory for the
+        # installed Forge-to-EP route, whose Runtime Prompt includes an
+        # immutable Mission revision.  Older in-process execution hosts do
+        # not have that field and must retain their existing behaviour rather
+        # than receive a fabricated revision.  They therefore get no planning
+        # envelope; the HTTP adapter still fails closed if such a request is
+        # sent to EP.
         if mission_revision is None:
-            raise MissionRunnerError("persisted Mission lacks immutable revision provenance")
+            return None
         return ForgePlanningContextEnvelope.create(
             mission_id=state.mission_id,
             mission_revision=mission_revision,
