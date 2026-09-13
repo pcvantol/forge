@@ -63,6 +63,9 @@ The current runtime records these categories:
   changes and host receipt recording;
 - Execution Host binding persistence and both Forge→EP submission / EP→Forge
   submission-receipt events, including safe version and digest bindings;
+- the Forge v1 Action Context Envelope metadata (envelope version, generator
+  identity/model/version, summary digest and envelope digest), never the
+  summary's source prompt or any unredacted Action text;
 - accepted, host-proven EP operator-retry resolution evidence, bound to the
   original Forge correlation, original host run, resolved EP submission and
   terminal successor run without recording host evidence bodies;

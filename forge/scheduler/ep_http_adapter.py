@@ -62,7 +62,7 @@ class EngineeringPlatformHttpExecutionHost:
     """EP v1.2 transport with compatibility preflight and durable idempotency."""
 
     SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)
-    FORGE_PROVENANCE_CONTRACT_VERSION = "1.1"
+    FORGE_PROVENANCE_CONTRACT_VERSION = "1.3"
     EP_SUBMISSION_RECEIPT_CONTRACT_VERSION = "1.0"
     _COMPATIBILITY_KEYS = frozenset({"contract_version", "producer", "instance", "contracts"})
 
@@ -146,6 +146,10 @@ class EngineeringPlatformHttpExecutionHost:
     def _request_binding(self, request: ExecutionRequest) -> dict[str, Any]:
         self._validate_request_scope(request)
         contract = request.producer_contract
+        action_context = contract.action_context
+        planning_context = contract.planning_context
+        if action_context is None or planning_context is None:
+            raise ValueError("Forge Producer Contract lacks immutable Action or planning context")
         return {"correlation_id": request.correlation_id, "host_id": request.host_id, "project_id": self.config.project_id,
                 "repository_id": request.repository_id, "mission_id": request.mission_id,
                 "repository_identity": request.repository_identity,
@@ -157,6 +161,8 @@ class EngineeringPlatformHttpExecutionHost:
                 "intent_revision": request.intent_revision, "action_id": request.action_id,
                 "runtime_prompt_id": contract.runtime_prompt.id, "runtime_prompt_digest": contract.runtime_prompt.content_digest,
                 "producer": contract.producer.identity.to_dict(), "producer_contract_digest": contract.digest(),
+                "action_context_envelope_digest": action_context.envelope_digest,
+                "planning_context_envelope_digest": planning_context.envelope_digest,
                 "retry_of_correlation_id": request.retry_of_correlation_id}
 
     def _binding(self, request: ExecutionRequest) -> dict[str, Any]:
@@ -177,6 +183,10 @@ class EngineeringPlatformHttpExecutionHost:
 
     def _payload(self, request: ExecutionRequest) -> dict[str, Any]:
         binding, contract = self._request_binding(request), request.producer_contract
+        action_context = contract.action_context
+        planning_context = contract.planning_context
+        if action_context is None or planning_context is None:  # Guarded by _request_binding; keeps this payload total.
+            raise ValueError("Forge Producer Contract lacks immutable Action or planning context")
         return {"repository_id": request.repository_id, "producer": contract.producer.identity.to_dict(),
                 "prompt": contract.runtime_prompt.content, "idempotency_key": request.correlation_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
@@ -188,7 +198,9 @@ class EngineeringPlatformHttpExecutionHost:
                 "runtime_prompt": {"id": contract.runtime_prompt.id, "content_digest": contract.runtime_prompt.content_digest},
                     "retry_of_correlation_id": request.retry_of_correlation_id,
                     "producer_contract_version": contract.contract_version,
-                    "forge_application_version": contract.producer.identity.version}}}
+                    "forge_application_version": contract.producer.identity.version,
+                    "action_context_envelope": action_context.to_dict(),
+                    "planning_context_envelope": planning_context.to_dict()}}}
 
     def _audit_document(self, request: ExecutionRequest, binding: Mapping[str, Any], *, receipt: Mapping[str, Any] | None = None) -> dict[str, object]:
         contract = request.producer_contract
@@ -199,6 +211,17 @@ class EngineeringPlatformHttpExecutionHost:
             "forge_application_version": contract.producer.identity.version,
             "producer_contract_version": contract.contract_version,
             "forge_provenance_contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION,
+            "action_context_envelope_version": None if contract.action_context is None else contract.action_context.envelope_version,
+            "action_context_generator_id": None if contract.action_context is None else contract.action_context.generator_id,
+            "action_context_generator_model": None if contract.action_context is None else contract.action_context.generator_model,
+            "action_context_generator_version": None if contract.action_context is None else contract.action_context.generator_version,
+            "action_context_summary_digest": None if contract.action_context is None else contract.action_context.summary_digest,
+            "action_context_envelope_digest": None if contract.action_context is None else contract.action_context.envelope_digest,
+            "planning_context_envelope_version": None if contract.planning_context is None else contract.planning_context.envelope_version,
+            "planning_context_envelope_digest": None if contract.planning_context is None else contract.planning_context.envelope_digest,
+            "planning_context_decision_evidence_reference_digest": (
+                None if contract.planning_context is None else contract.planning_context.decision_evidence_reference_digest
+            ),
             "correlation_id": request.correlation_id,
             "ep_project_id": self.config.project_id,
             "ep_repository_id": request.repository_id,
@@ -262,6 +285,10 @@ class EngineeringPlatformHttpExecutionHost:
         expected_keys = {
             "contract_version", "producer_id", "producer_type", "forge_application_version",
             "producer_contract_version", "forge_provenance_contract_version", "correlation_id",
+            "action_context_envelope_version", "action_context_generator_id", "action_context_generator_model",
+            "action_context_generator_version", "action_context_summary_digest", "action_context_envelope_digest",
+            "planning_context_envelope_version", "planning_context_envelope_digest",
+            "planning_context_decision_evidence_reference_digest",
             "ep_project_id", "ep_repository_id", "ep_instance_id", "submission_id", "receipt_id",
             "receipt_contract_version", "ep_application_version", "producer_readback_contract_version",
             "accepted_request_digest",
@@ -273,6 +300,17 @@ class EngineeringPlatformHttpExecutionHost:
             "forge_application_version": contract.producer.identity.version,
             "producer_contract_version": contract.contract_version,
             "forge_provenance_contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION,
+            "action_context_envelope_version": contract.action_context.envelope_version if contract.action_context else None,
+            "action_context_generator_id": contract.action_context.generator_id if contract.action_context else None,
+            "action_context_generator_model": contract.action_context.generator_model if contract.action_context else None,
+            "action_context_generator_version": contract.action_context.generator_version if contract.action_context else None,
+            "action_context_summary_digest": contract.action_context.summary_digest if contract.action_context else None,
+            "action_context_envelope_digest": contract.action_context.envelope_digest if contract.action_context else None,
+            "planning_context_envelope_version": contract.planning_context.envelope_version if contract.planning_context else None,
+            "planning_context_envelope_digest": contract.planning_context.envelope_digest if contract.planning_context else None,
+            "planning_context_decision_evidence_reference_digest": (
+                contract.planning_context.decision_evidence_reference_digest if contract.planning_context else None
+            ),
             "correlation_id": request.correlation_id, "ep_project_id": self.config.project_id,
             "ep_repository_id": request.repository_id, "ep_instance_id": self.config.expected_instance_id,
             "submission_id": binding.get("submission_id"), "receipt_contract_version": "1.0",
@@ -319,6 +357,12 @@ class EngineeringPlatformHttpExecutionHost:
         prompt = provenance.get("runtime_prompt")
         if not isinstance(prompt, Mapping) or dict(prompt) != {"id": binding["runtime_prompt_id"], "content_digest": binding["runtime_prompt_digest"]}:
             raise ValueError("EP readback Runtime Prompt does not bind persisted request")
+        action_context = request.producer_contract.action_context
+        if action_context is None or provenance.get("action_context_envelope") != action_context.to_dict():
+            raise ValueError("EP readback Action context does not bind persisted request")
+        planning_context = request.producer_contract.planning_context
+        if planning_context is None or provenance.get("planning_context_envelope") != planning_context.to_dict():
+            raise ValueError("EP readback planning context does not bind persisted request")
 
     def preflight(self) -> dict[str, Any]:
         """Verify EP identity and v1.2 support without submitting anything."""

@@ -33,13 +33,44 @@ telemetry.
 - Producer identity and contract version;
 - correlation ID, optional Mission ID, and Engineering Action ID;
 - a host-neutral `RuntimePromptEnvelope` with format, content, and digest;
-- execution constraints and deterministic execution metadata; and
+- execution constraints and deterministic execution metadata;
+- where Forge submits to EP, a separate Forge Action Context Envelope; and
 - references to Host-owned receipts and execution evidence when they exist.
 
 Receipts and evidence references are carried solely for traceability. They
 remain owned and authored by the Execution Host. The envelope contains no
 Forge classes, planning implementation, host transport, provider, or renderer
 dependency.
+
+## Forge Action Context Envelope 1.0
+
+The complete Runtime Prompt is an Execution Host input and is never a Console
+projection. For a Forge-to-EP submission, Forge additionally derives one
+bounded Action Context Envelope from the immutable Action objective. The
+envelope contains only:
+
+- the Action ID;
+- a whitespace-normalized, credential-redacted Action summary (maximum 500
+  characters);
+- the source Runtime-Prompt-generation digest;
+- a deterministic generator ID, model label and generator version;
+- a digest of the summary and a digest of the entire envelope.
+
+The current generator is explicitly labelled
+forge-redacted-action-summary / deterministic-template / 1.0. It is not
+represented as an AI model: this avoids attributing generated reasoning where
+the implementation is a deterministic safety-preserving projection.
+
+The EP HTTP adapter transmits this document only in Forge provenance contract
+1.2, records the envelope digest in Forge's immutable exchange audit, and
+requires exact readback. EP/CENTRAL may display the separately persisted
+summary and generator/digest metadata, but must not derive a replacement
+summary from a Runtime Prompt, Forge's mutable execution context, or a current
+Mission projection.
+
+EP stores this envelope prospectively as immutable Central evidence. Runs
+submitted before provenance 1.2 remain explicitly unavailable in the EP
+Console; they are never backfilled.
 
 ## Lifecycle and relationships
 
@@ -73,9 +104,9 @@ Current: Human Architect → Engineering Prompt → Engineering Platform
 Future:  Mission → Forge → Producer → Runtime Prompt → Engineering Platform
 ```
 
-Engineering Platform implementation is unchanged in this increment. Its
-existing adapter remains the sole mapping location and will adopt this contract
-in a future increment.
+Engineering Platform's authenticated adapter is the sole transport mapping.
+It validates and stores the prospective Action Context Envelope separately from
+the Runtime Prompt and retains its execution/evidence ownership.
 
 ## Future hosts
 
@@ -93,5 +124,6 @@ is the only current Engineering Platform-aware mapping.
 
 ## Out of scope
 
-This increment implements no Producer persistence, Execution Host support,
-additional Host, Engineering Platform modification, transport, or execution.
+This increment does not make EP a Forge planning authority, expose raw Runtime
+Prompt text in the Console, generate an AI-authored Action summary, backfill
+historical executions, or change Host execution/evidence semantics.

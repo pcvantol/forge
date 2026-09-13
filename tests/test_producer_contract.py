@@ -8,6 +8,8 @@ import unittest
 from forge.models import (
     DEFAULT_FORGE_PRODUCER,
     ExecutionReceiptReference,
+    ForgeActionContextEnvelope,
+    ForgePlanningContextEnvelope,
     Producer,
     ProducerContract,
     ProducerIdentity,
@@ -32,6 +34,76 @@ def contract(**overrides: object) -> ProducerContract:
 
 
 class ProducerContractTests(unittest.TestCase):
+    def test_planning_context_is_versioned_redacted_and_keeps_only_an_opaque_decision_reference(self) -> None:
+        context = ForgePlanningContextEnvelope.create(
+            mission_id="mission-1", mission_revision="7", intent_id="intent-1", intent_revision="3",
+            action_id="action-1", mission_title="Mission api_key=should-not-leave-forge",
+            business_summary="Deliver the bounded business result.",
+            engineering_summary="Implement token=should-not-leave-forge safely.",
+            mission_lifecycle="ACTIVE", decision_evidence_reference="architecture-review:mission-1",
+        )
+        document = context.to_dict()
+        self.assertEqual(document["mission_title"], "Mission api_key=[REDACTED]")
+        self.assertEqual(document["engineering_summary"], "Implement token=[REDACTED] safely.")
+        self.assertEqual(document["mission_lifecycle"], "ACTIVE")
+        self.assertEqual(document["decision_evidence_reference"], "architecture-review:mission-1")
+        self.assertTrue(str(document["decision_evidence_reference_digest"]).startswith("sha256:"))
+        self.assertTrue(str(document["envelope_digest"]).startswith("sha256:"))
+        with self.assertRaisesRegex(ValueError, "opaque"):
+            ForgePlanningContextEnvelope.create(
+                mission_id="mission-1", mission_revision="7", intent_id="intent-1", intent_revision="3",
+                action_id="action-1", decision_evidence_reference="not an opaque evidence reference",
+            )
+
+    def test_action_context_is_immutable_redacted_and_digest_bound(self) -> None:
+        context = ForgeActionContextEnvelope.create(
+            action_id="action-1",
+            summary="Rotate api_key=super-secret and use Bearer abcdefghijklmnop.",
+            source_digest="sha256:" + "b" * 64,
+        )
+        document = context.to_dict()
+        self.assertEqual(document["summary"], "Rotate api_key=[REDACTED] and use Bearer [REDACTED].")
+        self.assertEqual(document["generator"], {
+            "id": "forge-redacted-action-summary",
+            "model": "deterministic-template",
+            "version": "1.0",
+            "source_digest": "sha256:" + "b" * 64,
+        })
+        self.assertTrue(str(document["summary_digest"]).startswith("sha256:"))
+        self.assertTrue(str(document["envelope_digest"]).startswith("sha256:"))
+        with self.assertRaises(FrozenInstanceError):
+            context.summary = "changed"  # type: ignore[misc]
+        with self.assertRaisesRegex(ValueError, "digest"):
+            ForgeActionContextEnvelope(
+                action_id=context.action_id, summary=context.summary, source_digest=context.source_digest,
+                summary_digest=context.summary_digest, envelope_digest="sha256:" + "0" * 64,
+            )
+
+    def test_default_execution_contract_derives_context_only_from_objective(self) -> None:
+        from forge.models.execution_host import ExecutionRequest
+        from forge.models.runtime_prompt import ProviderPromptDefinition, RuntimePrompt, RuntimePromptSection, RuntimePromptSectionKind
+
+        sections = tuple(
+            RuntimePromptSection(
+                kind,
+                ("Safe action objective api_key=not-for-EP",) if kind is RuntimePromptSectionKind.OBJECTIVE else (kind.value,),
+            )
+            for kind in RuntimePromptSectionKind
+        )
+        prompt = RuntimePrompt(
+            "prompt-1", "intent-1", "1", "action-1", ProviderPromptDefinition("provider", "1"),
+            "sha256:" + "c" * 64, sections, mission_id="mission-1",
+            execution_metadata=(("mission_revision", "1"),),
+        )
+        request = ExecutionRequest(
+            "engineering-platform", "mission-1", "intent-1", "1", "action-1", prompt,
+            "workspace-1", "forge", "correlation-1", "2026-09-12T00:00:00Z",
+        )
+        context = request.producer_contract.action_context
+        self.assertIsNotNone(context)
+        self.assertEqual(context.summary, "Safe action objective api_key=[REDACTED]")
+        self.assertEqual(context.source_digest, prompt.generation_request_digest)
+
     def test_default_forge_producer_reports_the_canonical_application_release(self) -> None:
         self.assertEqual(DEFAULT_FORGE_PRODUCER.identity.version, canonical_version())
         self.assertEqual(DEFAULT_FORGE_PRODUCER.contract_version, "1.0")
@@ -62,6 +134,24 @@ class ProducerContractTests(unittest.TestCase):
         self.assertEqual(document["receipt_references"][0]["host_id"], "host-1")
         self.assertEqual(document["engineering_action_id"], "action-1")
         self.assertNotIn("engineering_platform", repr(item).lower())
+
+    def test_contract_rejects_context_for_another_action(self) -> None:
+        context = ForgeActionContextEnvelope.create(
+            action_id="other-action", summary="Safe summary", source_digest="sha256:" + "d" * 64,
+        )
+        with self.assertRaisesRegex(ValueError, "Action context"):
+            contract(action_context=context)
+
+    def test_contract_rejects_planning_context_that_conflicts_with_immutable_metadata(self) -> None:
+        context = ForgePlanningContextEnvelope.create(
+            mission_id="mission-1", mission_revision="7", intent_id="intent-1", intent_revision="3",
+            action_id="action-1",
+        )
+        with self.assertRaisesRegex(ValueError, "planning context"):
+            contract(
+                planning_context=context,
+                execution_metadata=(("mission_revision", "6"), ("intent_id", "intent-1"), ("intent_revision", "3")),
+            )
 
     def test_contract_version_and_required_identity_are_enforced(self) -> None:
         with self.assertRaisesRegex(ValueError, "version"):
