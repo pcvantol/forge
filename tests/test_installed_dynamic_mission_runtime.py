@@ -202,9 +202,9 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
     @staticmethod
     def _truth() -> RepositoryTruthSnapshot:
         return RepositoryTruthSnapshot(
-            "forge-initial-truth", "forge", "fixture-initial-revision", "2026-09-11T16:00:00Z",
+            "forge-initial-truth", "forge", "a" * 40, "2026-09-11T16:00:00Z",
             (RepositoryTruthEvidence(
-                "forge-main", "git_commit", "fixture-initial-revision", "https://example.invalid/forge",
+                "forge-main", "git_commit", "a" * 40, "https://example.invalid/forge",
                 "sha256:" + "b" * 64,
             ),),
         )
@@ -433,12 +433,15 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         blocked = self.runtime.start(mission.id, self._truth())
         self.assertEqual(blocked.status, "BLOCKED")
         first = self.host.requests[-1]
+        self.assertEqual(first.repository_revision_binding.requested_revision, "a" * 40)
+        self.assertIsNone(first.repository_revision_binding.allowed_baseline_revision)
 
         self.host.outcome = ExecutionEvidenceOutcome.COMPLETE
         completed = self.runtime.recover(
             mission.id,
             RecoveryAuthorization(
                 mission.id, first.action_id, "operator-e2e-recovery-001", "The verified host precondition was corrected.",
+                "b" * 40,
             ),
         )
         self.assertEqual(completed.status, "COMPLETED")
@@ -446,6 +449,8 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         retry = self.host.requests[-1]
         self.assertEqual(retry.retry_of_correlation_id, first.correlation_id)
         self.assertEqual(retry.original_correlation_id, first.correlation_id)
+        self.assertEqual(retry.repository_revision_binding.allowed_baseline_revision, "b" * 40)
+        self.assertEqual(retry.repository_revision_binding.transition_authority_id, "operator-e2e-recovery-001")
         self.assertEqual(retry.producer_contract.producer.identity.version, canonical_version())
         state = self.runtime.states.get(mission.id)
         self.assertIn("authorized_recovery", [item["reason"] for item in state.state_history])

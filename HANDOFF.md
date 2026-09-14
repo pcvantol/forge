@@ -10,6 +10,8 @@ generic handoff contract.
    [Genesis provenance](FORGE_GENESIS_PROVENANCE.md).
 3. Validate a bounded change with `bash scripts/validate.sh` and record the
    Forge-specific result in the handoff.
+4. For the Engineering Platform terminal-evidence v1.4 adapter increment,
+   see [Forge–EP v1.4 producer readback](docs/handoff/forge-ep-v14-producer-readback.md).
 
 Forge remains a first-class peer of Workspace. An installed Engineering
 Platform may serve as an Execution Host, but its source checkout is not a

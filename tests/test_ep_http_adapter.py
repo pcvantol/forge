@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
-from forge.models import ForgeActionContextEnvelope, ForgePlanningContextEnvelope, Producer, ProducerContract, ProducerIdentity, RuntimePrompt, RuntimePromptEnvelope, RuntimePromptSection, RuntimePromptSectionKind, ProviderPromptDefinition
+from forge.models import ForgeActionContextEnvelope, ForgePlanningContextEnvelope, Producer, ProducerContract, ProducerIdentity, RepositoryRevisionBinding, RuntimePrompt, RuntimePromptEnvelope, RuntimePromptSection, RuntimePromptSectionKind, ProviderPromptDefinition
 from forge.models.execution_host import ExecutionRequest
 from forge.models import ExecutionDispatch, ExecutionEvidenceOutcome
 from forge.runtime.database import RuntimeDatabase
@@ -50,14 +50,19 @@ def _request() -> ExecutionRequest:
         business_summary="Deliver the fixture outcome.", engineering_summary="Exercise the Forge to EP contract.",
         mission_lifecycle="ACTIVE", decision_evidence_reference="architecture-review:fixture",
     )
+    revision_binding = RepositoryRevisionBinding(
+        "a" * 40, None, "repository-truth:fixture", "sha256:" + "f" * 64,
+    )
     contract = ProducerContract(Producer(ProducerIdentity("forge", "FORGE", "2.7.2")), "forge-correlation-fixture",
         "action-fixture", RuntimePromptEnvelope(prompt.id, "1.0", "text/markdown", "exact persisted prompt", "sha256:" + "a" * 64),
         ("Execute only the supplied Runtime Prompt.",),
         (("intent_id", "intent-fixture"), ("intent_revision", "7"), ("mission_revision", "3"),
          ("repository_id", "forge"), ("workspace_id", "workspace-1")), action_context=context,
-        planning_context=planning, mission_id="mission-fixture")
+        planning_context=planning, mission_id="mission-fixture",
+        repository_revision_binding=revision_binding)
     return ExecutionRequest("engineering-platform", "mission-fixture", "intent-fixture", "7", "action-fixture", prompt,
-        "workspace-1", "forge", "forge-correlation-fixture", "2026-09-07T00:00:00Z", producer_contract=contract)
+        "workspace-1", "forge", "forge-correlation-fixture", "2026-09-07T00:00:00Z",
+        producer_contract=contract, repository_revision_binding=revision_binding)
 
 
 class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
@@ -72,7 +77,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         )
         self.request = _request()
         self.compatible = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
-            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.3"]}}
+            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.4"]}}
         self.readback = json.loads((FIXTURES / "forge-producer-readback-v1.1.json").read_text())
         self.readback["contract_version"] = "1.2"
         self.readback["producer"]["version"] = "2.7.2"
@@ -91,7 +96,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             "execution_duration_ms": 60_000,
         })
         artifact = json.loads((FIXTURES / "forge-terminal-evidence-v1.1.json").read_text())
-        artifact["contract_version"] = "1.3"
+        artifact["contract_version"] = "1.4"
         artifact["producer"]["version"] = "2.7.2"
         artifact["provenance"].update({
             "contract_version": "1.3", "producer_contract_version": "1.0",
@@ -122,9 +127,32 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 "activity": {"provider_invocations": 1, "host_validation_actions": 2},
             },
         }
+        artifact["repository"] = {
+            "id": "forge", "requested_revision": "a" * 40,
+            "execution_baseline": "a" * 40,
+            "baseline_transition": {
+                "status": "EXACT", "from": "a" * 40, "to": "a" * 40,
+                "allowed_to": None,
+            },
+            "candidate": "c" * 40, "revision": "1" * 40, "revision_required": True,
+        }
+        artifact["delivery"] = {"status": "DELIVERED", "revision": "1" * 40}
+        self.artifact = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        accepted_request_digest = EngineeringPlatformHttpExecutionHost(
+            self.config, self.database,
+        )._expected_ep_accepted_request_digest(self.request)
+        self.readback["submission"]["accepted_request_digest"] = accepted_request_digest
+        artifact["submission"]["accepted_request_digest"] = accepted_request_digest
         self.artifact = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
 
-    def _accepted_submission(self) -> dict[str, object]:
+    def _accepted_submission(self, request: ExecutionRequest | None = None) -> dict[str, object]:
+        request = self.request if request is None else request
+        accepted_request_digest = (
+            "sha256:" + "c" * 64 if request.repository_revision_binding is None else
+            EngineeringPlatformHttpExecutionHost(
+                self.config, self.database,
+            )._expected_ep_accepted_request_digest(request)
+        )
         return {
             "submission_id": "submission-fixture",
             "receipt": {
@@ -139,19 +167,43 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 "forge_provenance_contract_version": "1.3",
                 "forge_application_version": "2.7.2",
                 "producer_readback_contract_version": "1.2",
-                "accepted_request_digest": "sha256:" + "c" * 64,
+                "accepted_request_digest": accepted_request_digest,
             },
         }
 
     def tearDown(self) -> None:
         self.database.close(); self.temporary.cleanup()
 
-    def _seed_binding(self) -> None:
+    def _seed_binding(self, request: ExecutionRequest | None = None) -> None:
+        request = self.request if request is None else request
         host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
-        host._binding(self.request)
-        self.database.save_execution_host_binding(self.request.correlation_id,
-            {"correlation_id": self.request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture",
-             "submission_receipt": self._accepted_submission()["receipt"]})
+        host._binding(request)
+        self.database.save_execution_host_binding(request.correlation_id,
+            {"correlation_id": request.correlation_id, "submission_id": "submission-fixture", "host_run_id": "run-fixture",
+             "submission_receipt": self._accepted_submission(request)["receipt"]})
+
+    def _request_with_revision_binding(self, binding: RepositoryRevisionBinding) -> ExecutionRequest:
+        contract = replace(self.request.producer_contract, repository_revision_binding=binding)
+        return replace(self.request, producer_contract=contract, repository_revision_binding=binding)
+
+    def _historical_request(self) -> ExecutionRequest:
+        contract = replace(self.request.producer_contract, repository_revision_binding=None)
+        return replace(self.request, producer_contract=contract, repository_revision_binding=None)
+
+    def _seed_historical_v13_binding(self, request: ExecutionRequest) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        current = host._request_binding(self.request)
+        for key in (
+            "repository_revision_binding", "repository_revision_binding_digest",
+            "submission_payload_digest",
+        ):
+            current.pop(key)
+        current["producer_contract_digest"] = request.producer_contract.digest()
+        self.database.save_execution_host_binding(
+            request.correlation_id,
+            {**current, "submission_id": "submission-fixture", "host_run_id": "run-fixture",
+             "submission_receipt": self._accepted_submission(request)["receipt"]},
+        )
 
     @staticmethod
     def _urlopen(responses: list[bytes], observed: list[object]):
@@ -202,6 +254,14 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             "action_context_envelope": self.request.producer_contract.action_context.to_dict(),
             "planning_context_envelope": self.request.producer_contract.planning_context.to_dict(),
         })
+        self.assertEqual(
+            submitted["constraints"]["repository_revision_binding"],
+            {"requested_revision": "a" * 40, "allowed_baseline_revision": None},
+        )
+        persisted = self.database.execution_host_binding(self.request.correlation_id)
+        self.assertEqual(persisted["repository_revision_binding"], self.request.repository_revision_binding.to_dict())
+        self.assertEqual(persisted["submission_payload_digest"], EngineeringPlatformHttpExecutionHost._payload_digest(submitted))
+        self.assertEqual(received["document"]["repository_revision_binding_digest"], self.request.repository_revision_binding.digest())
         self.database.close()
         self.database = RuntimeDatabase(".", path=Path(self.temporary.name) / "runtime.db", forge_version="test")
         observed = []
@@ -229,6 +289,24 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 json.dumps(self.compatible).encode(), json.dumps(accepted).encode()], observed)):
             with self.assertRaisesRegex(ValueError, "accepted-request digest is invalid"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).dispatch(self.request)
+
+    def test_submission_receipt_and_readback_must_bind_ep_accepted_request_semantics(self) -> None:
+        accepted = self._accepted_submission()
+        accepted["receipt"]["accepted_request_digest"] = "sha256:" + "d" * 64  # type: ignore[index]
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(accepted).encode()], observed)):
+            with self.assertRaisesRegex(ValueError, "accepted-request digest does not bind"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).dispatch(self.request)
+
+        self.database._connection.execute("DELETE FROM execution_host_bindings")
+        self._seed_binding()
+        readback = json.loads(json.dumps(self.readback))
+        readback["submission"]["accepted_request_digest"] = "sha256:" + "d" * 64
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "accepted-request digest does not bind"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
 
     def test_capability_preflight_rejects_legacy_and_never_posts(self) -> None:
         legacy = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
@@ -299,6 +377,186 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "HISTORICAL_BINDING"):
             host.recover_dispatch(self.request)
 
+    def test_changed_revision_binding_cannot_reuse_a_correlation_or_send(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        host._binding(self.request)
+        changed = self._request_with_revision_binding(RepositoryRevisionBinding(
+            "a" * 40, "b" * 40, "repository-truth:fixture", "sha256:" + "f" * 64,
+            "recovery-authority:fixture",
+        ))
+        with patch("forge.scheduler.ep_http_adapter._open") as transport:
+            with self.assertRaisesRegex(ValueError, "REQUEST_RETARGETING_BLOCKED"):
+                host.dispatch(changed)
+        transport.assert_not_called()
+
+    def test_exact_pin_and_explicit_transition_bind_v14_artifact_to_persisted_request(self) -> None:
+        transition = RepositoryRevisionBinding(
+            "a" * 40, "b" * 40, "repository-truth:fixture", "sha256:" + "f" * 64,
+            "recovery-authority:fixture",
+        )
+        request = self._request_with_revision_binding(transition)
+        self._seed_binding(request)
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        artifact["repository"].update({
+            "execution_baseline": "b" * 40,
+            "baseline_transition": {
+                "status": "ALLOWED", "from": "a" * 40, "to": "b" * 40,
+                "allowed_to": "b" * 40,
+            },
+        })
+        accepted_request_digest = EngineeringPlatformHttpExecutionHost(
+            self.config, self.database,
+        )._expected_ep_accepted_request_digest(request)
+        readback["submission"]["accepted_request_digest"] = accepted_request_digest
+        artifact["submission"]["accepted_request_digest"] = accepted_request_digest
+        raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
+            evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                ExecutionDispatch(request, "run-fixture")
+            )
+        self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+
+    def test_v14_revision_binding_rejects_wrong_request_baseline_candidate_or_shape(self) -> None:
+        cases = (
+            ("request", lambda a: a["repository"].update({
+                "requested_revision": "d" * 40,
+                "baseline_transition": {"status": "EXACT", "from": "d" * 40, "to": "a" * 40, "allowed_to": None},
+            })),
+            ("baseline", lambda a: a["repository"].update({
+                "execution_baseline": "b" * 40,
+                "baseline_transition": {"status": "EXACT", "from": "a" * 40, "to": "b" * 40, "allowed_to": None},
+            })),
+            ("candidate", lambda a: a["repository"].update({"candidate": "d" * 40})),
+            ("sha", lambda a: a["repository"].update({"execution_baseline": "not-a-sha"})),
+            ("missing", lambda a: a["repository"].pop("candidate")),
+        )
+        for label, mutate in cases:
+            with self.subTest(label=label):
+                self._seed_binding()
+                readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+                mutate(artifact)
+                with self.assertRaises(ValueError):
+                    self._terminal_retrieval(readback, artifact)
+                self.database._connection.execute("DELETE FROM execution_host_bindings")
+
+    def test_blocked_terminal_artifact_is_preserved_without_delivery_qualification(self) -> None:
+        self._seed_binding()
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        readback["result"].update({"outcome": "BLOCKED", "delivery_qualified": False})
+        readback["run"]["state"] = "BLOCKED"
+        readback["evidence"]["repository"]["revision"] = None
+        artifact["run"].update({"outcome": "BLOCKED", "delivery_qualified": False})
+        artifact["report"]["terminal_state"] = "BLOCKED"
+        artifact["repository"].update({"candidate": None, "revision": None, "revision_required": False})
+        artifact["delivery"] = {"status": "NOT_DELIVERED", "revision": None}
+        artifact["assurance"] = {
+            "status": "NOT_RECORDED", "profile": None,
+            "quality_review": "NOT_RECORDED", "security_review": "NOT_RECORDED",
+            "repair_rounds": {"used": 0, "maximum": 3},
+            "findings": {"open_blocking": 0, "open_non_blocking": 0, "artifact": None},
+        }
+        artifact["repository"]["candidate"] = None
+        raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
+            evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                ExecutionDispatch(self.request, "run-fixture")
+            )
+        self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.BLOCKED)
+        self.assertIsNone(evidence.repository_evidence.repository_revision)
+
+    def test_validation_only_complete_cannot_be_interpreted_as_a_delivery(self) -> None:
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        readback["result"]["delivery_qualified"] = False
+        readback["evidence"]["repository"]["revision"] = None
+        artifact["run"]["delivery_qualified"] = False
+        artifact["repository"].update({"revision": None, "revision_required": False})
+        artifact["delivery"] = {"status": "NOT_DELIVERED", "revision": None}
+        with self.assertRaisesRegex(ValueError, "delivery requirement"):
+            self._terminal_retrieval(readback, artifact)
+
+    def test_historical_v13_artifact_is_read_without_retargeting_or_rewriting(self) -> None:
+        request = self._historical_request()
+        self._seed_historical_v13_binding(request)
+        artifact = json.loads(self.artifact)
+        artifact["contract_version"] = "1.3"
+        artifact["repository"] = {"id": "forge", "revision": "1" * 40, "revision_required": True}
+        artifact.pop("delivery")
+        raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        before = raw
+        readback = json.loads(json.dumps(self.readback))
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+        historical_config = replace(
+            self.config, peer_configuration_revision=2,
+            peer_configuration_digest="sha256:" + "e" * 64,
+        )
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
+            evidence = EngineeringPlatformHttpExecutionHost(historical_config, self.database).retrieve_evidence(
+                ExecutionDispatch(request, "run-fixture")
+            )
+        self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+        self.assertEqual(raw, before)
+
+    def test_historical_v14_unspecified_request_binding_is_read_without_backfill(self) -> None:
+        request = self._historical_request()
+        self._seed_historical_v13_binding(request)
+        artifact = json.loads(self.artifact)
+        artifact["repository"].update({
+            "requested_revision": None,
+            "baseline_transition": {
+                "status": "UNSPECIFIED", "from": None, "to": "a" * 40,
+                "allowed_to": None,
+            },
+        })
+        raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        readback = json.loads(json.dumps(self.readback))
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+        before = self.database.execution_host_binding(request.correlation_id)
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
+            evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                ExecutionDispatch(request, "run-fixture")
+            )
+        self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+        self.assertEqual(self.database.execution_host_binding(request.correlation_id), before)
+
+        invented = json.loads(raw)
+        invented["repository"].update({
+            "requested_revision": "a" * 40,
+            "baseline_transition": {
+                "status": "EXACT", "from": "a" * 40, "to": "a" * 40,
+                "allowed_to": None,
+            },
+        })
+        invented_raw = json.dumps(invented, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(invented_raw).hexdigest()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode(), invented_raw], [])):
+            with self.assertRaisesRegex(ValueError, "historical v1.4 artifact invents"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                    ExecutionDispatch(request, "run-fixture")
+                )
+
+    def test_historical_request_recovery_uses_its_persisted_binding_without_resubmission(self) -> None:
+        request = self._historical_request()
+        self._seed_historical_v13_binding(request)
+        before = self.database.execution_host_binding(request.correlation_id)
+        historical_config = replace(
+            self.config, peer_configuration_revision=2,
+            peer_configuration_digest="sha256:" + "e" * 64,
+        )
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(self.readback).encode()], observed)):
+            dispatch = EngineeringPlatformHttpExecutionHost(historical_config, self.database).recover_dispatch(request)
+        self.assertEqual(dispatch.host_run_id, "run-fixture")
+        self.assertEqual([item.get_method() for item in observed], ["GET", "GET"])
+        self.assertEqual(self.database.execution_host_binding(request.correlation_id), before)
+
     def test_valid_hash_from_another_run_is_rejected_after_raw_artifact_fetch(self) -> None:
         self._seed_binding()
         substituted = json.loads(self.artifact)
@@ -347,23 +605,27 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "host start evidence"):
             self._terminal_retrieval(json.loads(json.dumps(self.readback)), artifact)
 
-    def test_historical_artifact_without_timing_uses_complete_authenticated_readback(self) -> None:
+    def test_v14_artifact_without_its_bound_timing_fails_closed(self) -> None:
         readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
         artifact["run"].pop("execution_started_at")
         artifact["run"].pop("execution_completed_at")
         artifact["run"].pop("execution_duration_ms")
 
-        evidence = self._terminal_retrieval(readback, artifact)
-
-        self.assertEqual(evidence.execution_duration_ms, 60_000)
+        with self.assertRaisesRegex(ValueError, "v1.4 artifact execution timing"):
+            self._terminal_retrieval(readback, artifact)
 
     def test_terminal_evidence_carries_the_exact_persisted_retry_lineage(self) -> None:
-        self._seed_binding()
         request = replace(self.request, retry_of_correlation_id="prior-correlation")
+        self._seed_binding(request)
         readback = json.loads(json.dumps(self.readback))
         artifact = json.loads(self.artifact)
         readback["provenance"]["forge_execution"]["retry_of_correlation_id"] = "prior-correlation"
         artifact["provenance"]["retry_of_correlation_id"] = "prior-correlation"
+        accepted_request_digest = EngineeringPlatformHttpExecutionHost(
+            self.config, self.database,
+        )._expected_ep_accepted_request_digest(request)
+        readback["submission"]["accepted_request_digest"] = accepted_request_digest
+        artifact["submission"]["accepted_request_digest"] = accepted_request_digest
         raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
         readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
@@ -480,6 +742,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         artifact["run"].update({"outcome": "FAILED", "delivery_qualified": False})
         artifact["report"]["terminal_state"] = "FAILED"
         artifact["repository"].update({"revision": None, "revision_required": False})
+        artifact["delivery"] = {"status": "NOT_DELIVERED", "revision": None}
         raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
         readback = json.loads(json.dumps(self.readback))
         readback["result"].update({"outcome": "FAILED", "delivery_qualified": False})
@@ -507,13 +770,16 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 )
         self.assertEqual(len(observed), 2, "a missing terminal artifact must never be fetched or fabricated")
 
-    def _terminal_retrieval(self, readback: dict, artifact: dict):
-        self._seed_binding()
+    def _terminal_retrieval(self, readback: dict, artifact: dict,
+                            request: ExecutionRequest | None = None, *, seed: bool = True):
+        request = self.request if request is None else request
+        if seed:
+            self._seed_binding(request)
         raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
         readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
                 json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
-            return EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture"))
+            return EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(request, "run-fixture"))
 
     def test_terminal_outcome_qualification_digest_and_flags_must_have_parity(self) -> None:
         cases = (
@@ -538,7 +804,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
         readback["evidence"]["repository"]["revision"] = None
         artifact["repository"].update({"revision": None, "revision_required": False})
-        with self.assertRaisesRegex(ValueError, "qualified delivery revision"):
+        with self.assertRaisesRegex(ValueError, "delivery"):
             self._terminal_retrieval(readback, artifact)
 
     def test_exact_host_verified_noop_assurance_without_a_profile_is_accepted(self) -> None:

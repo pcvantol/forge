@@ -24,6 +24,7 @@ from forge.models.action import EngineeringAction
 from forge.models.action_derivation import DerivationPolicy, GovernanceRefinementRequired
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.execution_host import ExecutionDispatch, ExecutionEvidenceOutcome, ExecutionHostEvidence
+from forge.models.producer import RepositoryRevisionBinding
 from forge.models.mission_completion import (
     CanonicalExecutionEvidenceReference,
     MissionCompletionEvidence,
@@ -594,7 +595,49 @@ class InstalledDynamicMissionRuntime:
             completion_evidence=self._completion_evidence,
             completion_evaluator=MissionCompletionEvaluator(),
             runtime_database=self.database,
+            repository_revision_binding_factory=self._repository_revision_binding,
         )
+
+    @staticmethod
+    def _repository_revision_binding(
+        state: MissionExecutionState, action: EngineeringAction,
+    ) -> RepositoryRevisionBinding:
+        """Bind a new EP request to persisted Truth, never checkout state.
+
+        A baseline transition is available only on the already-authorized
+        recovery path.  Its authority identity remains in the Forge producer
+        contract/audit; EP receives the deliberately narrower two-SHA
+        constraint required by its contract.
+        """
+        truth = state.repository_truth
+        if not isinstance(truth, Mapping):
+            raise InstalledDynamicMissionError("new EP request lacks canonical Repository Truth")
+        try:
+            truth_id = truth["source_id"]
+            revision = truth["revision"]
+            truth_digest = truth["content_digest"]
+        except KeyError as error:
+            raise InstalledDynamicMissionError("new EP request Repository Truth is incomplete") from error
+        if not all(isinstance(value, str) and value for value in (truth_id, revision, truth_digest)):
+            raise InstalledDynamicMissionError("new EP request Repository Truth is invalid")
+        authorization = state.resume.get("authorized_recovery") if state.resume else None
+        allowed_baseline = None
+        authority_id = None
+        if isinstance(authorization, Mapping) and authorization.get("action_id") == action.id:
+            candidate = authorization.get("allowed_baseline_revision")
+            if candidate is not None:
+                if not isinstance(candidate, str) or not candidate:
+                    raise InstalledDynamicMissionError("recovery baseline transition authority is invalid")
+                authority = authorization.get("authorization_id")
+                if not isinstance(authority, str) or not authority:
+                    raise InstalledDynamicMissionError("recovery baseline transition authority is incomplete")
+                allowed_baseline, authority_id = candidate, authority
+        try:
+            return RepositoryRevisionBinding(
+                revision, allowed_baseline, truth_id, truth_digest, authority_id,
+            )
+        except ValueError as error:
+            raise InstalledDynamicMissionError(str(error)) from error
 
     def _planning_input(self, state: MissionExecutionState) -> MissionPlannerInput:
         mission = ArchitectureMission.from_dict(dict(state.mission))

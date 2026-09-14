@@ -11,6 +11,7 @@ from forge.models.execution_host import (
     ExecutionHostEvidence,
     ExecutionRepositoryEvidence,
 )
+from forge.models.producer import RepositoryRevisionBinding
 
 
 _OUTCOMES = frozenset(item.value.upper() for item in ExecutionEvidenceOutcome)
@@ -45,6 +46,15 @@ def _sha256(value: Any, name: str) -> str:
         int(value.removeprefix("sha256:"), 16)
     except ValueError as error:
         raise ValueError(f"EP terminal evidence {name} must be a SHA-256 identity") from error
+    return value
+
+
+def _git_sha(value: Any, name: str, *, nullable: bool = False) -> str | None:
+    if value is None and nullable:
+        return None
+    value = _string(value, name)
+    if len(value) != 40 or any(character not in "0123456789abcdef" for character in value):
+        raise ValueError(f"EP terminal evidence {name} must be a full lowercase SHA")
     return value
 
 
@@ -174,8 +184,80 @@ def _terminal_timing(run: Mapping[str, Any], artifact_run: Mapping[str, Any]) ->
     return started, completed, duration
 
 
+def _v14_repository_binding(
+    document: Mapping[str, Any],
+    repository: Mapping[str, Any],
+    delivery: Any,
+    revision_binding: RepositoryRevisionBinding | None,
+    *,
+    outcome: str,
+    delivery_qualified: bool,
+) -> tuple[str | None, str | None]:
+    """Validate the v1.4 terminal fields against Forge's stored request.
+
+    Readback and artifact agreement alone cannot establish that an EP-returned
+    revision was the value Forge actually requested.  The persisted Producer
+    Contract is the independent comparison source here.
+    """
+    expected_document_keys = {
+        "artifact_type", "contract_version", "submission", "producer", "correlation", "provenance",
+        "run", "host_execution", "repository", "delivery", "report", "references", "assurance",
+    }
+    if set(document) != expected_document_keys:
+        raise ValueError("EP terminal v1.4 artifact schema is incomplete")
+    repository_keys = {
+        "id", "requested_revision", "execution_baseline", "baseline_transition", "candidate",
+        "revision", "revision_required",
+    }
+    if set(repository) != repository_keys:
+        raise ValueError("EP terminal v1.4 repository evidence is incomplete")
+    if not isinstance(delivery, Mapping) or set(delivery) != {"status", "revision"}:
+        raise ValueError("EP terminal v1.4 delivery evidence is incomplete")
+    requested = _git_sha(repository.get("requested_revision"), "requested repository revision", nullable=True)
+    baseline = _git_sha(repository.get("execution_baseline"), "execution baseline", nullable=True)
+    candidate = _git_sha(repository.get("candidate"), "implementation candidate", nullable=True)
+    revision = _git_sha(repository.get("revision"), "delivery revision", nullable=True)
+    transition = _object(repository.get("baseline_transition"), "baseline transition")
+    if set(transition) != {"status", "from", "to", "allowed_to"}:
+        raise ValueError("EP terminal v1.4 baseline transition is incomplete")
+    transition_from = _git_sha(transition.get("from"), "baseline transition source", nullable=True)
+    transition_to = _git_sha(transition.get("to"), "baseline transition target", nullable=True)
+    transition_allowed = _git_sha(transition.get("allowed_to"), "allowed baseline transition", nullable=True)
+    if repository.get("execution_baseline") != transition_to:
+        raise ValueError("EP terminal execution baseline differs from its transition evidence")
+    if revision_binding is None:
+        # EP v1.4 can terminalize a submission accepted before Forge supplied
+        # this constraint.  It represents that immutable history explicitly,
+        # rather than inventing a pin while emitting the newer artifact shape.
+        if (transition.get("status") != "UNSPECIFIED" or requested is not None
+                or transition_from is not None or transition_allowed is not None):
+            raise ValueError("EP historical v1.4 artifact invents a repository request binding")
+    elif requested != revision_binding.requested_revision or transition_from != requested:
+        raise ValueError("EP terminal requested revision differs from persisted Forge request")
+    elif revision_binding.allowed_baseline_revision is None:
+        if (transition.get("status") != "EXACT" or transition_allowed is not None
+                or (baseline is not None and baseline != requested)):
+            raise ValueError("EP terminal exact repository pin is inconsistent")
+    elif (transition.get("status") != "ALLOWED"
+          or transition_allowed != revision_binding.allowed_baseline_revision
+          or (baseline is not None and baseline != transition_allowed)):
+        raise ValueError("EP terminal allowed baseline transition is inconsistent")
+    if candidate is not None and baseline is None:
+        raise ValueError("EP terminal candidate exists without an execution baseline")
+    if repository.get("revision_required") is not (outcome == "COMPLETE"):
+        raise ValueError("EP terminal delivery requirement contradicts its outcome")
+    if delivery.get("revision") != revision or delivery.get("status") not in {"DELIVERED", "NOT_DELIVERED"}:
+        raise ValueError("EP terminal delivery evidence is inconsistent")
+    if (delivery.get("status") == "DELIVERED") != delivery_qualified:
+        raise ValueError("EP terminal delivery status contradicts qualification")
+    if delivery_qualified != (outcome == "COMPLETE" and revision is not None):
+        raise ValueError("EP terminal delivery qualification is inconsistent")
+    return baseline, revision
+
+
 def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: str,
                       receipt_id: str | None = None,
+                      repository_revision_binding: RepositoryRevisionBinding | None = None,
                       resolved_from_host_run_id: str | None = None) -> ExecutionHostEvidence:
     """Map one immutable EP terminal artifact only when every identity agrees.
 
@@ -206,9 +288,10 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("EP terminal artifact is invalid JSON") from error
     document = _object(document, "artifact document")
-    if document.get("artifact_type") != "EP_TERMINAL_EVIDENCE" or document.get("contract_version") not in {"1.2", "1.3"}:
+    if document.get("artifact_type") != "EP_TERMINAL_EVIDENCE" or document.get("contract_version") not in {"1.2", "1.3", "1.4"}:
         raise ValueError("unsupported EP terminal artifact contract")
-    if document.get("contract_version") == "1.3":
+    artifact_contract = document["contract_version"]
+    if artifact_contract in {"1.3", "1.4"}:
         _host_execution(document)
 
     artifact_correlation = _object(document.get("correlation"), "artifact correlation")
@@ -250,6 +333,11 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         raise ValueError("EP terminal evidence retry correlation is invalid")
     if artifact_run.get("id") != run.get("id"):
         raise ValueError("EP terminal artifact run differs from readback")
+    if artifact_contract == "1.4" and any(
+            artifact_run.get(key) is None for key in (
+                "execution_started_at", "execution_completed_at", "execution_duration_ms",
+            )):
+        raise ValueError("EP terminal v1.4 artifact execution timing is incomplete")
     execution_started_at, execution_completed_at, execution_duration_ms = _terminal_timing(run, artifact_run)
     if (artifact_submission.get("id"), artifact_submission.get("project_id"), artifact_submission.get("repository_id")) != (
         submission.get("id"), submission.get("project_id"), submission.get("repository_id"),
@@ -270,6 +358,14 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         raise ValueError("EP terminal artifact revision is invalid")
     if (repository.get("id"), revision) != (repository_readback.get("id"), repository_readback.get("revision")):
         raise ValueError("EP terminal artifact repository differs from readback")
+    if artifact_contract == "1.4":
+        _, revision = _v14_repository_binding(
+            document, repository, document.get("delivery"), repository_revision_binding,
+            outcome=outcome, delivery_qualified=qualified_readback,
+        )
+    elif repository_revision_binding is not None:
+        raise ValueError("EP historical terminal artifact cannot satisfy a v1.4 Forge request binding")
+
     if outcome == "COMPLETE":
         if not qualified_readback or not revision or repository.get("revision_required") is not True:
             raise ValueError("EP complete terminal artifact lacks qualified delivery revision")
@@ -322,6 +418,12 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
             raise ValueError("EP terminal assurance candidate identity is invalid")
         if assurance.get("quality_review") not in {"PASS", "FAIL", "UNRESOLVED"} or assurance.get("security_review") not in {"PASS", "FAIL", "UNRESOLVED"}:
             raise ValueError("EP terminal assurance review result is invalid")
+    if artifact_contract == "1.4":
+        candidate = _git_sha(repository.get("candidate"), "implementation candidate", nullable=True)
+        # A host-verified no-op has no reviewed implementation candidate, but
+        # it may still report the repository's observed candidate revision.
+        if not no_assurance_recorded and candidate != profile.get("candidate_sha"):
+            raise ValueError("EP terminal v1.4 candidate differs from assurance evidence")
 
     prompt = _object(provenance.get("runtime_prompt"), "runtime prompt")
     report_id = _string(artifact_report.get("id"), "artifact report id")

@@ -19,8 +19,8 @@ from .secure_store import MacOSKeychainSecureStoreAdapter, SecretReference, Secr
 PEER_CONFIGURATION_SCHEMA_VERSION = "1.0"
 PEER_PRODUCT = "engineering-platform"
 PRODUCER_READBACK_CONTRACT = "1.2"
-TERMINAL_EVIDENCE_CONTRACT = "1.3"
-_REPLACEABLE_LEGACY_CONTRACT_PAIRS = frozenset({("1.2", "1.2")})
+TERMINAL_EVIDENCE_CONTRACT = "1.4"
+_REPLACEABLE_LEGACY_CONTRACT_PAIRS = frozenset({("1.2", "1.2"), ("1.2", "1.3")})
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
@@ -249,8 +249,8 @@ class EngineeringPlatformPeerConfigurationStore:
         A retired peer-contract version must remain unusable for runtime reads.
         It can nevertheless be replaced by an explicit operator action that
         matches its immutable revision and digest.  This avoids trapping an
-        installation on a stale v1.2 terminal-evidence contract after Forge is
-        upgraded to the v1.3 peer contract.
+        installation on a stale terminal-evidence contract after Forge is
+        upgraded to the v1.4 peer contract.
         """
         try:
             columns = tuple(
@@ -617,6 +617,7 @@ class EngineeringPlatformPeerConfigurationService:
                 EngineeringPlatformPeerConfiguration.from_dict(stored.document)
                 if stored is not None and stored.current_contracts else None
             )
+            predecessor = None if stored is None else dict(stored.document)
             operator_id = str(values.get("operator_id", ""))
             operator_reference = sha256(operator_id.encode("utf-8")).hexdigest()[:16]
 
@@ -632,6 +633,14 @@ class EngineeringPlatformPeerConfigurationService:
                         "configuration_digest": configuration.configuration_digest,
                         "peer_product": configuration.peer_product,
                         "ep_instance_id": configuration.expected_ep_instance_id,
+                        "previous_state": (
+                            "UNCONFIGURED" if predecessor is None else
+                            "producer-readback:" + str(predecessor["producer_readback_contract"])
+                            + ";terminal-evidence:" + str(predecessor["terminal_evidence_contract"])
+                        ),
+                        "request_digest": (
+                            None if predecessor is None else predecessor["configuration_digest"]
+                        ),
                     },
                     occurred_at=configuration.updated_at,
                 )

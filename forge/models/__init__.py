@@ -299,6 +299,7 @@ from .producer import (
     ProducerContract,
     ProducerIdentity,
     ProducerType,
+    RepositoryRevisionBinding,
     RuntimePromptEnvelope,
 )
 from .agent_policy import (
@@ -572,6 +573,7 @@ __all__ = [
     "ProducerContract",
     "ProducerIdentity",
     "ProducerType",
+    "RepositoryRevisionBinding",
     "RuntimePromptEnvelope",
     "ENGINEERING_MISSION_SCHEMA_VERSION",
     "EngineeringMission",

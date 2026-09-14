@@ -27,6 +27,7 @@ FORGE_ACTION_CONTEXT_GENERATOR_VERSION = "1.0"
 FORGE_PLANNING_CONTEXT_ENVELOPE_VERSION = "1.0"
 _TYPE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _SHA256 = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_GIT_SHA = re.compile(r"[0-9a-f]{40}\Z")
 _OPAQUE_REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}\Z")
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b(api[ _-]?key|authorization|bearer|password|secret|token)\b\s*([:=])\s*[^\s,;]+"
@@ -369,6 +370,61 @@ class RuntimePromptEnvelope:
                 "content": self.content, "content_digest": self.content_digest}
 
 
+@dataclass(frozen=True)
+class RepositoryRevisionBinding:
+    """Forge-owned, immutable source binding for one repository Action.
+
+    The execution host receives only ``requested_revision`` and
+    ``allowed_baseline_revision``.  Forge retains the Repository Truth and,
+    when a transition is authorized, the governing authority that made those
+    two values admissible.  This prevents an adapter from selecting ambient
+    main, a local checkout HEAD, or text embedded in a prompt.
+    """
+
+    requested_revision: str
+    allowed_baseline_revision: str | None
+    repository_truth_id: str
+    repository_truth_digest: str
+    transition_authority_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if (not isinstance(self.requested_revision, str)
+                or _GIT_SHA.fullmatch(self.requested_revision) is None):
+            raise ValueError("repository revision binding requested revision must be a full SHA")
+        if (self.allowed_baseline_revision is not None
+                and (not isinstance(self.allowed_baseline_revision, str)
+                     or _GIT_SHA.fullmatch(self.allowed_baseline_revision) is None)):
+            raise ValueError("repository revision binding allowed baseline must be a full SHA")
+        if (not isinstance(self.repository_truth_id, str) or not self.repository_truth_id
+                or not _SHA256.fullmatch(self.repository_truth_digest)):
+            raise ValueError("repository revision binding requires immutable Repository Truth provenance")
+        if self.allowed_baseline_revision is None:
+            if self.transition_authority_id is not None:
+                raise ValueError("exact repository revision pin cannot carry transition authority")
+        elif (not isinstance(self.transition_authority_id, str)
+              or not self.transition_authority_id):
+            raise ValueError("repository baseline transition requires explicit authority")
+
+    def to_dict(self) -> dict[str, str | None]:
+        return {
+            "requested_revision": self.requested_revision,
+            "allowed_baseline_revision": self.allowed_baseline_revision,
+            "repository_truth_id": self.repository_truth_id,
+            "repository_truth_digest": self.repository_truth_digest,
+            "transition_authority_id": self.transition_authority_id,
+        }
+
+    def ep_constraint(self) -> dict[str, str | None]:
+        """Return the exact, intentionally narrow EP request shape."""
+        return {
+            "requested_revision": self.requested_revision,
+            "allowed_baseline_revision": self.allowed_baseline_revision,
+        }
+
+    def digest(self) -> str:
+        return _canonical_digest(self.to_dict())
+
+
 @dataclass(frozen=True, order=True)
 class ExecutionReceiptReference:
     """A host-owned receipt reference; Forge only carries it for correlation."""
@@ -405,6 +461,7 @@ class ProducerContract:
     receipt_references: tuple[ExecutionReceiptReference, ...] = ()
     execution_evidence_references: tuple[str, ...] = ()
     contract_version: str = PRODUCER_CONTRACT_VERSION
+    repository_revision_binding: RepositoryRevisionBinding | None = None
 
     def __post_init__(self) -> None:
         if self.contract_version != PRODUCER_CONTRACT_VERSION:
@@ -439,11 +496,14 @@ class ProducerContract:
             }
             if any(dict(metadata).get(key) != value for key, value in expected.items()):
                 raise ValueError("producer contract planning context must match its immutable execution metadata")
+        if self.repository_revision_binding is not None and not isinstance(
+                self.repository_revision_binding, RepositoryRevisionBinding):
+            raise ValueError("producer contract repository revision binding is invalid")
         object.__setattr__(self, "receipt_references", tuple(sorted(self.receipt_references)))
         object.__setattr__(self, "execution_evidence_references", tuple(sorted(self.execution_evidence_references)))
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        document = {
             "contract_version": self.contract_version,
             "producer": self.producer.to_dict(),
             "correlation_id": self.correlation_id,
@@ -457,6 +517,11 @@ class ProducerContract:
             "receipt_references": [item.to_dict() for item in self.receipt_references],
             "execution_evidence_references": list(self.execution_evidence_references),
         }
+        # Preserve original historical contract bytes and digest semantics:
+        # absence means a request predates this prospective EP constraint.
+        if self.repository_revision_binding is not None:
+            document["repository_revision_binding"] = self.repository_revision_binding.to_dict()
+        return document
 
     def digest(self) -> str:
         payload = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":")).encode("utf-8")

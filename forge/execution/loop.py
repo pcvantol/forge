@@ -20,6 +20,7 @@ from forge.governance import ApprovalRecord, ExecutionPolicy, ExecutionPolicyKin
 from forge.models.action import EngineeringAction, EngineeringActionStatus
 from forge.models.architecture_mission import ArchitectureMission
 from forge.models.execution_host import ExecutionHost, ExecutionHostEvidence
+from forge.models.producer import RepositoryRevisionBinding
 from forge.models.mission_completion import (MissionCompletionEvidence,
                                               MissionCriterionEvaluationStatus)
 from forge.models.action_derivation import DerivationPolicy
@@ -50,6 +51,12 @@ class RepositoryTruthFactory(Protocol):
     def __call__(self, state: MissionExecutionState, evidence: ExecutionHostEvidence | None) -> Mapping[str, Any]: ...
 
 
+class RepositoryRevisionBindingFactory(Protocol):
+    """Return the already-authorized immutable revision binding for one Action."""
+
+    def __call__(self, state: MissionExecutionState, action: EngineeringAction) -> RepositoryRevisionBinding: ...
+
+
 class MissionCompletionEvidenceFactory(Protocol):
     """Forge-owned association of approved criteria with canonical evidence."""
 
@@ -65,14 +72,23 @@ class RecoveryAuthorization:
     action_id: str
     authorization_id: str
     reason: str
+    allowed_baseline_revision: str | None = None
 
     def __post_init__(self) -> None:
         if not all((self.mission_id, self.action_id, self.authorization_id, self.reason)):
             raise ValueError("recovery authorization requires mission, action, identity, and reason")
+        if self.allowed_baseline_revision is not None:
+            if (not isinstance(self.allowed_baseline_revision, str)
+                    or len(self.allowed_baseline_revision) != 40
+                    or any(character not in "0123456789abcdef" for character in self.allowed_baseline_revision)):
+                raise ValueError("recovery baseline transition requires a full lowercase SHA")
 
     def to_dict(self) -> dict[str, str]:
-        return {"mission_id": self.mission_id, "action_id": self.action_id,
-                "authorization_id": self.authorization_id, "reason": self.reason}
+        document = {"mission_id": self.mission_id, "action_id": self.action_id,
+                    "authorization_id": self.authorization_id, "reason": self.reason}
+        if self.allowed_baseline_revision is not None:
+            document["allowed_baseline_revision"] = self.allowed_baseline_revision
+        return document
 
 
 @dataclass(frozen=True)
@@ -117,6 +133,7 @@ class ExecutionLoop:
         completion_evidence: MissionCompletionEvidenceFactory | None = None,
         completion_evaluator: MissionCompletionEvaluator | None = None,
         runtime_database: RuntimeDatabase | None = None,
+        repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise ExecutionLoopError("execution host, workspace, and repository identities are required")
@@ -132,6 +149,7 @@ class ExecutionLoop:
         self._completion_evidence = completion_evidence
         self._completion_evaluator = completion_evaluator or MissionCompletionEvaluator()
         self._runtime_database = runtime_database
+        self._repository_revision_binding_factory = repository_revision_binding_factory
 
     def run(self) -> MissionExecutionState | None:
         """Run the one dispatched Mission until terminal or awaiting host evidence."""
@@ -489,7 +507,8 @@ class ExecutionLoop:
                                       repository_identity=self._repository_identity,
                                       clock=self._clock, correlation_id_factory=self._correlation_id_factory,
                                       completion_context=completion, replan_after_evidence=self._replan_after_evidence,
-                                      evidence_progression_gate=self._pause_after_evidence)
+                                      evidence_progression_gate=self._pause_after_evidence,
+                                      repository_revision_binding_factory=self._repository_revision_binding_factory)
 
     def _pause_after_evidence(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...],
                               evidence: ExecutionHostEvidence, mission_complete: bool) -> MissionExecutionState | None:
