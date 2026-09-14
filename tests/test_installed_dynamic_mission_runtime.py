@@ -33,7 +33,7 @@ from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
-from forge.runtime.database import RuntimeDatabaseError
+from forge.runtime.database import RuntimeDatabaseError, RuntimeIntegrityError
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state.mission_state import MissionExecutionStatus
@@ -274,6 +274,155 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(readback[0]["source"], "LEGACY_EXTERNAL_SESSION_AUDIT")
         self.assertEqual(readback[0]["generation_state"], "HAPPENED_AND_CONFIRMED")
         self.assertFalse(readback[0]["result_available"])
+        self.assertEqual(self.provider.calls, 0)
+
+    def test_public_legacy_audit_can_authorize_and_replay_one_successor_without_regeneration(self) -> None:
+        """A linked, audit-only result is a predecessor without being backfilled.
+
+        The setup intentionally has no ``action_derivations`` row or provider
+        payload.  All observed behaviour below crosses the installed public
+        runtime surface; the fixture SQL represents only the immutable
+        external-session boundary that predates durable result storage.
+        """
+        mission, envelope = self._mission_and_envelope()
+        self.runtime.admit(mission, envelope)
+        truth = self.runtime._truth_from_snapshot(self._truth())
+        self.runtime.states.transition(
+            mission.id, MissionExecutionStatus.CREATED, occurred_at="2026-09-11T16:00:00Z",
+            reason="fixture_legacy_audit_predecessor", repository_truth=truth,
+        )
+        state = self.runtime.states.get(mission.id)
+        snapshot = PlanningSnapshot.from_planner_input(self.runtime._planning_input(state))
+        audit = {
+            "state": "HAPPENED_AND_CONFIRMED", "status": "completed", "provider_id": "fixture",
+            "snapshot_digest": snapshot.digest, "derivation_request_digest": _digest("legacy-derivation"),
+            "request_digest": _digest("legacy-generation"), "result_digest": _digest("legacy-result"),
+        }
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "INSERT INTO planning_provider_external_session_config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("fixture-config", "fixture", "CODEX_CLI_CHATGPT_SESSION",
+                 "EXTERNAL_AUTHENTICATED_SESSION", "CODEX_CLI_CHATGPT_SESSION", "/usr/bin/true",
+                 "fixture-v1", None, 1, "operator", 1, "2026-09-11T16:00:00Z",
+                 "2026-09-11T16:00:00Z", None, 30, 16000, 32768, 4096),
+            )
+            self.runtime.database._connection.execute(
+                "INSERT INTO planning_provider_external_session_audit VALUES (?,?,?,?,?,?)",
+                ("legacy-confirmed-predecessor", "fixture-config", "operator", "invocation",
+                 "2026-09-11T16:00:00Z", json.dumps(audit, sort_keys=True)),
+            )
+
+        readback = self.runtime.action_derivation_readback(mission.id)
+        self.assertEqual(len(readback), 1)
+        self.assertEqual(readback[0]["source"], "LEGACY_EXTERNAL_SESSION_AUDIT")
+        self.assertEqual(readback[0]["audit_id"], "legacy-confirmed-predecessor")
+        self.assertEqual(self.provider.calls, 0)
+        self.assertEqual(self.runtime.database.durable_action_derivation_readback(mission.id), ())
+
+        reservation = self.runtime.authorize_next_planning_attempt(
+            mission.id, predecessor_audit_id=readback[0]["audit_id"],
+            rationale="The confirmed legacy result is unavailable for replay.",
+        )
+        self.assertEqual(self.provider.calls, 0)
+        self.assertEqual(reservation["predecessor_source"], "LEGACY_EXTERNAL_SESSION_AUDIT")
+        with self.assertRaises(RuntimeIntegrityError):
+            self.runtime.authorize_next_planning_attempt(
+                mission.id, predecessor_audit_id=readback[0]["audit_id"],
+                rationale="A second successor for the same legacy audit is forbidden.",
+            )
+
+        original_transition = self.runtime.states.transition
+        self.runtime.states.transition = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeDatabaseError("fixture interruption after validation")
+        )
+        try:
+            with self.assertRaises(RuntimeDatabaseError):
+                self.runtime.resume_authorized_next_planning_attempt(
+                    mission.id, successor_attempt_id=reservation["derivation_id"],
+                )
+        finally:
+            self.runtime.states.transition = original_transition
+        self.assertEqual(self.provider.calls, 1)
+
+        self.runtime.close()
+        self.runtime = self._open_runtime()
+        replayed = self.runtime.resume_authorized_next_planning_attempt(
+            mission.id, successor_attempt_id=reservation["derivation_id"],
+        )
+        self.assertEqual(replayed.status, "READY")
+        self.assertEqual(self.provider.calls, 1)
+        self.assertEqual(len(replayed.action_ids), 1)
+        attempts = self.runtime.action_derivation_readback(mission.id)
+        self.assertEqual(len(attempts), 1)
+        successor = attempts[0]
+        self.assertEqual(successor["processing_phase"], "MATERIALIZED")
+        self.assertEqual(successor["predecessor_source"], "LEGACY_EXTERNAL_SESSION_AUDIT")
+        self.assertEqual(successor["predecessor_audit_id"], "legacy-confirmed-predecessor")
+
+    def test_public_legacy_audit_successor_rejects_unbound_other_and_ambiguous_evidence(self) -> None:
+        mission, envelope = self._mission_and_envelope()
+        self.runtime.admit(mission, envelope)
+        self.runtime.states.transition(
+            mission.id, MissionExecutionStatus.CREATED, occurred_at="2026-09-11T16:00:00Z",
+            reason="fixture_legacy_audit_rejections", repository_truth=self.runtime._truth_from_snapshot(self._truth()),
+        )
+        state = self.runtime.states.get(mission.id)
+        snapshot = PlanningSnapshot.from_planner_input(self.runtime._planning_input(state))
+        audit = {
+            "state": "HAPPENED_AND_CONFIRMED", "status": "completed", "provider_id": "fixture",
+            "snapshot_digest": snapshot.digest, "derivation_request_digest": _digest("legacy-derivation"),
+            "request_digest": _digest("legacy-generation"),
+        }
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "INSERT INTO planning_provider_external_session_config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("fixture-config", "fixture", "CODEX_CLI_CHATGPT_SESSION",
+                 "EXTERNAL_AUTHENTICATED_SESSION", "CODEX_CLI_CHATGPT_SESSION", "/usr/bin/true",
+                 "fixture-v1", None, 1, "operator", 1, "2026-09-11T16:00:00Z",
+                 "2026-09-11T16:00:00Z", None, 30, 16000, 32768, 4096),
+            )
+            self.runtime.database._connection.execute(
+                "INSERT INTO planning_provider_external_session_audit VALUES (?,?,?,?,?,?)",
+                ("legacy-audit-one", "fixture-config", "operator", "invocation",
+                 "2026-09-11T16:00:00Z", json.dumps(audit, sort_keys=True)),
+            )
+            self.runtime.database._connection.execute(
+                "INSERT INTO planning_provider_external_session_audit VALUES (?,?,?,?,?,?)",
+                ("legacy-audit-two", "fixture-config", "operator", "invocation",
+                 "2026-09-11T16:00:01Z", json.dumps(audit, sort_keys=True)),
+            )
+            other_mission_audit = {**audit, "snapshot_digest": "sha256:" + "f" * 64}
+            self.runtime.database._connection.execute(
+                "INSERT INTO planning_provider_external_session_audit VALUES (?,?,?,?,?,?)",
+                ("another-mission-audit", "fixture-config", "operator", "invocation",
+                 "2026-09-11T16:00:02Z", json.dumps(other_mission_audit, sort_keys=True)),
+            )
+
+        # The audit is observable but two confirmed invocations on one
+        # planning boundary are deliberately not interchangeable authority.
+        legacy = self.runtime.action_derivation_readback(mission.id)[0]
+        self.assertEqual(legacy["source"], "LEGACY_EXTERNAL_SESSION_AUDIT")
+        with self.assertRaises(RuntimeIntegrityError):
+            self.runtime.authorize_next_planning_attempt(
+                mission.id, predecessor_audit_id=legacy["audit_id"],
+                rationale="Ambiguous legacy evidence cannot authorize a successor.",
+            )
+        original_authorize = self.runtime.repository.operators.authorize
+        self.runtime.repository.operators.authorize = lambda _context: False
+        try:
+            with self.assertRaises(PermissionError):
+                self.runtime.authorize_next_planning_attempt(
+                    mission.id, predecessor_audit_id="legacy-audit-one",
+                    rationale="An unbound operator cannot authorize a successor.",
+                )
+        finally:
+            self.runtime.repository.operators.authorize = original_authorize
+
+        with self.assertRaises(RuntimeDatabaseError):
+            self.runtime.authorize_next_planning_attempt(
+                mission.id, predecessor_audit_id="another-mission-audit",
+                rationale="An audit from another Mission planning boundary is not authority.",
+            )
         self.assertEqual(self.provider.calls, 0)
 
     def test_public_recovery_retries_only_the_terminal_action_with_durable_lineage(self) -> None:

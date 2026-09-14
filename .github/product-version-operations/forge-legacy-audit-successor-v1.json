@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.15",
+  "classification_rationale": "native-codex-legacy-audit-successor-v1",
+  "component": "product",
+  "event_lineage": "native-codex-legacy-audit-successor-v1",
+  "expected_head": "9afc08ce754324cc00bee503df6c363ba480fa93",
+  "operation_id": "forge-legacy-audit-successor-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.16"
+}

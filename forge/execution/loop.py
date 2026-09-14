@@ -29,6 +29,7 @@ from forge.models.mission_planner import (MissionCriterionPlanningState, Mission
 from forge.planner import AIMissionPlanner, DerivationResult, MissionPlanner, ProposalValidationError
 from forge.planner.durable_derivation import DurableDerivationBlocked
 from forge.runtime import BootstrapMissionRunner, RuntimePromptFactory
+from forge.runtime.database import RuntimeDatabase
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
 
@@ -115,6 +116,7 @@ class ExecutionLoop:
         derivation_policy: DerivationPolicy | None = None,
         completion_evidence: MissionCompletionEvidenceFactory | None = None,
         completion_evaluator: MissionCompletionEvaluator | None = None,
+        runtime_database: RuntimeDatabase | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise ExecutionLoopError("execution host, workspace, and repository identities are required")
@@ -129,6 +131,7 @@ class ExecutionLoop:
         self._derivation_policy = derivation_policy
         self._completion_evidence = completion_evidence
         self._completion_evaluator = completion_evaluator or MissionCompletionEvaluator()
+        self._runtime_database = runtime_database
 
     def run(self) -> MissionExecutionState | None:
         """Run the one dispatched Mission until terminal or awaiting host evidence."""
@@ -273,8 +276,15 @@ class ExecutionLoop:
         resulting ``READY`` Action set for the ordinary Forge→EP route.
         """
         state = self._states.get(mission_id)
-        if (state.status is not MissionExecutionStatus.BLOCKED or state.actions or state.intents
-                or state.execution_correlation is not None):
+        successor = (None if self._runtime_database is None else
+                     self._runtime_database.durable_action_derivation_attempt(successor_attempt_id))
+        legacy_created = (
+            state.status is MissionExecutionStatus.CREATED
+            and isinstance(successor, Mapping)
+            and successor.get("predecessor_source") == "LEGACY_EXTERNAL_SESSION_AUDIT"
+        )
+        if ((state.status is not MissionExecutionStatus.BLOCKED and not legacy_created)
+                or state.actions or state.intents or state.execution_correlation is not None):
             raise ExecutionLoopError("authorized planning continuation requires a blocked zero-Action Mission")
         source = self._current_planning_input(state)
         if not self._dynamic_mode(source) or self._ai_planner is None or self._derivation_policy is None:

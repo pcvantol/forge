@@ -1,4 +1,4 @@
-# Forge AI Mission Planner 4.4
+# Forge AI Mission Planner 4.5
 
 ## Purpose and boundary
 
@@ -94,6 +94,14 @@ evidence for the same planning snapshot and provider. A linked
 automatic generation. It creates neither an attempt record nor a payload;
 insufficient linkage remains an explicit reconciliation requirement, never a
 reconstructed proposal or invented result kind.
+For a Mission that is still `CREATED`, the readback's `audit_id` may be used
+as an explicit legacy predecessor only when it is the sole confirmed audit for
+the exact Mission snapshot/provider, its external-session configuration binds
+the same provider, and its request digests are complete. Forge records only a
+new authorization and successor lineage that references that immutable audit;
+it does not backfill a historical attempt, result kind, validation or old
+authority. A different-Mission, malformed, or ambiguous audit is not
+authority and fails closed.
 Pre-durable `action_derivations` rows likewise read back as
 `LEGACY_ACTION_DERIVATION_RECORD` / `LEGACY_RECONCILIATION_REQUIRED`; they do
 not make a new attempt safe merely because they lack a replay payload.
@@ -103,12 +111,18 @@ installed public operation
 
 ```python
 InstalledDynamicMissionRuntime.authorize_next_planning_attempt(
-    mission_id: str, *, predecessor_attempt_id: str, rationale: str,
+    mission_id: str, *, predecessor_attempt_id: str | None = None,
+    predecessor_audit_id: str | None = None, rationale: str,
 ) -> dict[str, object]
 ```
 
 records a native-operator-authorized successor reservation and an immutable
 canonical `OWNER_PROGRAMME_AUTHORIZATION` decision for that exact predecessor.
+Exactly one predecessor argument is required. `predecessor_attempt_id` names a
+durable confirmed-result-unavailable attempt; `predecessor_audit_id` names the
+safe `audit_id` emitted by a uniquely linked legacy readback. The latter is an
+explicit new-generation authority, never a reconstruction or replay of the
+old provider response.
 It checks the
 same Mission and semantic planning facts (the approved Mission, criteria and
 non-bookkeeping evidence), no active Action or dispatch, binds predecessor and
@@ -131,6 +145,10 @@ policy provenance and zero-Action/no-dispatch condition before it reaches the
 provider. If a process stops after the one-time consume and durable result
 write, the same operation replays that result without a second provider call.
 It materializes only a valid Action set; it does not dispatch to EP.
+For the narrowly supported legacy-audit predecessor, the original Mission may
+remain `CREATED` with zero Actions; the reservation itself is still explicit,
+one-time, and independently authorized. Ordinary `CREATED` Missions and all
+other successor sources remain unable to use this continuation route.
 The normal public resume route remains the sole route to that later transport.
 
 `scripts/qualify_durable_installed_surface.py` is the non-generating artifact
