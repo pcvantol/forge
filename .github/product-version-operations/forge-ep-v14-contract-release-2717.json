@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.16",
+  "classification_rationale": "Forge EP v1.4 producer-readback contract activation from merged PR 116",
+  "component": "product",
+  "event_lineage": "Forge EP v1.4 producer-readback contract activation from merged PR 116",
+  "expected_head": "532c380a4b30c1d3c53e243e8bc4abbd0e04e96c",
+  "operation_id": "forge-ep-v14-contract-release-2717",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.17"
+}
