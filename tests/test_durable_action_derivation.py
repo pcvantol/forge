@@ -539,6 +539,37 @@ finally:
         self.assertEqual(len(replayed), 2)
         self.assertEqual(unavailable.calls, before_calls + 1)
 
+    def test_secret_bearing_successor_rationale_leaves_no_decision_or_reservation(self) -> None:
+        """Reject unsafe rationale before it can become governance evidence."""
+        unavailable = DurableFixtureProvider()
+        original_store = self.database.store_durable_action_derivation_result
+        self.database.store_durable_action_derivation_result = lambda _result: (_ for _ in ()).throw(
+            RuntimeDatabaseError("fixture result store interruption")
+        )
+        try:
+            with self.assertRaises(DurableDerivationBlocked):
+                DurableAIMissionPlanner(self.database, unavailable).plan(self.input, self.policy)
+        finally:
+            self.database.store_durable_action_derivation_result = original_store
+        predecessor = self.database.durable_action_derivation_readback(self.input.mission.id)[0]
+        coordinator = DurableActionDerivationCoordinator(self.database, unavailable)
+
+        with self.assertRaisesRegex(ValueError, "must not contain secret material"):
+            coordinator.authorize_next_attempt(
+                PlanningSnapshot.from_planner_input(self.input), self.input, self.policy,
+                predecessor_attempt_id=predecessor["derivation_id"], governance_repository=self.repository,
+                operator_context=self.repository.operators.context(), rationale="Bearer synthetic-test-token",
+            )
+
+        self.assertEqual(unavailable.calls, 1)
+        self.assertEqual(
+            [item["derivation_id"] for item in self.database.durable_action_derivation_readback(self.input.mission.id)],
+            [predecessor["derivation_id"]],
+        )
+        decision_id = "durable-action-derivation-reattempt:DURABLE_ACTION_DERIVATION_ATTEMPT:" + predecessor["derivation_id"]
+        with self.assertRaisesRegex(ValueError, "unknown canonical governance decision"):
+            self.repository.decision(decision_id)
+
     def test_successor_reservation_recovers_an_existing_decision_after_interruption(self) -> None:
         """A committed decision can complete its one reservation after a crash.
 

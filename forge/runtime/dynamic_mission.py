@@ -261,8 +261,10 @@ class InstalledDynamicMissionRuntime:
                 return (legacy,)
         return ()
 
-    def authorize_next_planning_attempt(self, mission_id: str, *, predecessor_attempt_id: str,
-                                        rationale: str) -> dict[str, object]:
+    def authorize_next_planning_attempt(
+        self, mission_id: str, *, predecessor_attempt_id: str | None = None,
+        predecessor_audit_id: str | None = None, rationale: str,
+    ) -> dict[str, object]:
         """Record one operator-authorized successor without invoking a provider.
 
         This operation is intentionally unavailable for ordinary failed plans,
@@ -280,7 +282,7 @@ class InstalledDynamicMissionRuntime:
         from forge.models.action_derivation import PlanningSnapshot
         return DurableActionDerivationCoordinator(self.database, _OneActionProvider(self.provider)).authorize_next_attempt(
             PlanningSnapshot.from_planner_input(planning_input), planning_input, policy,
-            predecessor_attempt_id=predecessor_attempt_id,
+            predecessor_attempt_id=predecessor_attempt_id, predecessor_audit_id=predecessor_audit_id,
             governance_repository=self.repository, operator_context=self.repository.operators.context(),
             rationale=rationale,
         )
@@ -591,6 +593,7 @@ class InstalledDynamicMissionRuntime:
                         else AIMissionPlanner(_OneActionProvider(self.provider))), derivation_policy=policy,
             completion_evidence=self._completion_evidence,
             completion_evaluator=MissionCompletionEvaluator(),
+            runtime_database=self.database,
         )
 
     def _planning_input(self, state: MissionExecutionState) -> MissionPlannerInput:

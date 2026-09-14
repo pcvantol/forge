@@ -2476,10 +2476,23 @@ class RuntimeDatabase:
         if document["attempt_metadata_digest"] != _durable_attempt_metadata_digest(document):
             raise RuntimeIntegrityError("durable action derivation attempt metadata integrity failed")
         if successor_authorized:
-            successor_fields = ("predecessor_attempt_id", "next_attempt_decision_id",
-                                "next_attempt_authority_revision", "authority_identity", "reason", "rationale")
+            successor_fields = ("predecessor_source", "predecessor_reference_id", "predecessor_digest",
+                                "next_attempt_decision_id", "next_attempt_authority_revision",
+                                "authority_identity", "reason", "rationale")
             if any(not isinstance(document.get(field), str) or not document[field] for field in successor_fields):
                 raise RuntimeDatabaseError("authorized successor attempt requires complete authority provenance")
+            source = document["predecessor_source"]
+            reference = document["predecessor_reference_id"]
+            if source not in {"DURABLE_ACTION_DERIVATION_ATTEMPT", "LEGACY_EXTERNAL_SESSION_AUDIT"}:
+                raise RuntimeDatabaseError("authorized successor attempt has an unknown predecessor source")
+            if not _SHA256_DIGEST.fullmatch(document["predecessor_digest"]):
+                raise RuntimeDatabaseError("authorized successor attempt predecessor binding is malformed")
+            if source == "DURABLE_ACTION_DERIVATION_ATTEMPT":
+                if document.get("predecessor_attempt_id") != reference:
+                    raise RuntimeDatabaseError("durable predecessor reference is inconsistent")
+            elif (document.get("predecessor_attempt_id") is not None
+                  or document.get("predecessor_audit_id") != reference):
+                raise RuntimeDatabaseError("legacy audit predecessor reference is inconsistent")
         if _contains_secret_field(document) or _contains_secret_value(document):
             raise RuntimeDatabaseError("durable action derivation attempt must not contain secret material")
         connection = self._connection
@@ -2488,8 +2501,13 @@ class RuntimeDatabase:
             if successor_authorized:
                 row = connection.execute(
                     "SELECT document FROM action_derivations "
-                    "WHERE json_extract(document, '$.predecessor_attempt_id')=?",
-                    (document["predecessor_attempt_id"],),
+                    "WHERE (json_extract(document, '$.predecessor_source')=? "
+                    "AND json_extract(document, '$.predecessor_reference_id')=?) "
+                    "OR (?='DURABLE_ACTION_DERIVATION_ATTEMPT' "
+                    "AND json_extract(document, '$.predecessor_source') IS NULL "
+                    "AND json_extract(document, '$.predecessor_attempt_id')=?)",
+                    (document["predecessor_source"], document["predecessor_reference_id"],
+                     document["predecessor_source"], document.get("predecessor_attempt_id")),
                 ).fetchone()
             else:
                 # Provider policy/configuration is provenance for an attempt,
@@ -2511,8 +2529,14 @@ class RuntimeDatabase:
                 connection.commit()
                 return persisted, False
             if successor_authorized and connection.execute(
-                "SELECT 1 FROM action_derivations WHERE json_extract(document, '$.predecessor_attempt_id')=? LIMIT 1",
-                (document["predecessor_attempt_id"],),
+                "SELECT 1 FROM action_derivations WHERE "
+                "(json_extract(document, '$.predecessor_source')=? "
+                "AND json_extract(document, '$.predecessor_reference_id')=?) "
+                "OR (?='DURABLE_ACTION_DERIVATION_ATTEMPT' "
+                "AND json_extract(document, '$.predecessor_source') IS NULL "
+                "AND json_extract(document, '$.predecessor_attempt_id')=?) LIMIT 1",
+                (document["predecessor_source"], document["predecessor_reference_id"],
+                 document["predecessor_source"], document.get("predecessor_attempt_id")),
             ).fetchone() is not None:
                 raise RuntimeIntegrityError("a durable Action-Derivation predecessor already has an authorized successor")
             self._action_derivation_write_state["permitted"] = True
@@ -2748,6 +2772,55 @@ class RuntimeDatabase:
             raise RuntimeIntegrityError("durable action derivation attempt metadata integrity failed")
         return document
 
+    def _matching_legacy_confirmed_external_session_audits(
+        self, snapshot_digest: str, provider_id: str,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return audit metadata that really binds one old provider boundary.
+
+        This is deliberately an internal projection: callers receive hashes
+        and identifiers, never the historical provider document itself.  The
+        configuration join prevents a document from claiming a provider other
+        than the one that wrote its external-session audit.
+        """
+        rows = self._connection.execute(
+            "SELECT audit.audit_id, audit.configuration_id, audit.occurred_at, audit.document, "
+            "config.provider_id AS configured_provider_id "
+            "FROM planning_provider_external_session_audit AS audit "
+            "JOIN planning_provider_external_session_config AS config "
+            "ON config.configuration_id=audit.configuration_id "
+            "WHERE audit.operation='invocation' ORDER BY audit.occurred_at, audit.audit_id"
+        ).fetchall()
+        matches: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                document = json.loads(row["document"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(document, Mapping):
+                continue
+            if (document.get("state") != "HAPPENED_AND_CONFIRMED"
+                    or document.get("snapshot_digest") != snapshot_digest
+                    or document.get("provider_id") != provider_id
+                    or row["configured_provider_id"] != provider_id):
+                continue
+            binding = {
+                "source": "LEGACY_EXTERNAL_SESSION_AUDIT", "audit_id": row["audit_id"],
+                "configuration_id": row["configuration_id"], "stored_at": row["occurred_at"],
+                "snapshot_digest": snapshot_digest, "provider_id": provider_id,
+                "document_digest": "sha256:" + sha256(
+                    json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+                ).hexdigest(),
+            }
+            matches.append({
+                **binding,
+                "derivation_request_digest": document.get("derivation_request_digest"),
+                "generation_request_digest": document.get("request_digest"),
+                "legacy_predecessor_digest": "sha256:" + sha256(
+                    json.dumps(binding, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+                ).hexdigest(),
+            })
+        return tuple(matches)
+
     def legacy_confirmed_result_unavailable(self, mission_id: str, snapshot_digest: str,
                                             provider_id: str) -> dict[str, Any] | None:
         """Safely surface a pre-durable confirmed external result without inventing it.
@@ -2761,30 +2834,57 @@ class RuntimeDatabase:
         if (not mission_id or not _SHA256_DIGEST.fullmatch(snapshot_digest)
                 or not provider_id):
             raise RuntimeDatabaseError("legacy provider audit lookup requires a complete planning boundary")
-        rows = self._connection.execute(
-            "SELECT audit_id, configuration_id, occurred_at, document "
-            "FROM planning_provider_external_session_audit WHERE operation='invocation' ORDER BY occurred_at"
-        ).fetchall()
-        for row in rows:
-            try:
-                document = json.loads(row["document"])
-            except (TypeError, ValueError):
-                continue
-            if (document.get("state") == "HAPPENED_AND_CONFIRMED"
-                    and document.get("snapshot_digest") == snapshot_digest
-                    and document.get("provider_id") == provider_id):
-                return {
-                    "audit_id": row["audit_id"], "mission_id": mission_id,
-                    "processing_phase": "CONFIRMED_RESULT_UNAVAILABLE",
-                    "generation_state": "HAPPENED_AND_CONFIRMED",
-                    "result_available": False, "result_kind": None,
-                    "source": "LEGACY_EXTERNAL_SESSION_AUDIT",
-                    "configuration_id": row["configuration_id"], "stored_at": row["occurred_at"],
-                    "snapshot_digest": snapshot_digest,
-                    "derivation_request_digest": document.get("derivation_request_digest"),
-                    "generation_request_digest": document.get("request_digest"),
-                }
-        return None
+        matches = self._matching_legacy_confirmed_external_session_audits(snapshot_digest, provider_id)
+        if not matches:
+            return None
+        legacy = matches[0]
+        return {
+            "audit_id": legacy["audit_id"], "mission_id": mission_id,
+            "processing_phase": "CONFIRMED_RESULT_UNAVAILABLE",
+            "generation_state": "HAPPENED_AND_CONFIRMED",
+            "result_available": False, "result_kind": None,
+            "source": "LEGACY_EXTERNAL_SESSION_AUDIT",
+            "configuration_id": legacy["configuration_id"], "stored_at": legacy["stored_at"],
+            "snapshot_digest": snapshot_digest,
+            "derivation_request_digest": legacy["derivation_request_digest"],
+            "generation_request_digest": legacy["generation_request_digest"],
+        }
+
+    def resolve_legacy_confirmed_result_predecessor(
+        self, mission_id: str, snapshot_digest: str, provider_id: str, audit_id: str,
+    ) -> dict[str, Any]:
+        """Resolve one audit-only confirmed result for explicit successor authority.
+
+        This records no historical attempt and returns no historical provider
+        payload.  The caller can persist a *new* authorization only after the
+        audit's configuration, provider, exact snapshot, and request digests
+        all bind unambiguously to the current planning boundary.
+        """
+        if (not mission_id or not _SHA256_DIGEST.fullmatch(snapshot_digest)
+                or not provider_id or not isinstance(audit_id, str) or not audit_id
+                or len(audit_id) > 256 or _contains_secret_value(audit_id)):
+            raise RuntimeDatabaseError("legacy audit predecessor requires a complete planning boundary")
+        matches = self._matching_legacy_confirmed_external_session_audits(snapshot_digest, provider_id)
+        selected = [item for item in matches if item["audit_id"] == audit_id]
+        if not selected:
+            raise RuntimeDatabaseError("legacy audit predecessor does not bind the current Mission planning boundary")
+        if len(matches) != 1:
+            raise RuntimeIntegrityError("legacy audit predecessor is ambiguous for the current planning boundary")
+        legacy = selected[0]
+        if any(not isinstance(legacy.get(field), str) or not _SHA256_DIGEST.fullmatch(legacy[field])
+               for field in ("derivation_request_digest", "generation_request_digest")):
+            raise RuntimeIntegrityError("legacy audit predecessor lacks complete request provenance")
+        return {
+            "mission_id": mission_id,
+            "source": "LEGACY_EXTERNAL_SESSION_AUDIT",
+            "reference_id": audit_id,
+            "predecessor_digest": legacy["legacy_predecessor_digest"],
+            "snapshot_digest": snapshot_digest,
+            "provider_id": provider_id,
+            "configuration_id": legacy["configuration_id"],
+            "generation_request_digest": legacy["generation_request_digest"],
+            "derivation_request_digest": legacy["derivation_request_digest"],
+        }
 
     def legacy_action_derivation_reconciliation(self, mission_id: str,
                                                 snapshot_digest: str | None = None) -> tuple[dict[str, Any], ...]:
@@ -2849,6 +2949,9 @@ class RuntimeDatabase:
                 "exception_type": document.get("exception_type"),
                 "error_location": document.get("error_location"),
                 "predecessor_attempt_id": document.get("predecessor_attempt_id"),
+                "predecessor_source": document.get("predecessor_source"),
+                "predecessor_reference_id": document.get("predecessor_reference_id"),
+                "predecessor_audit_id": document.get("predecessor_audit_id"),
                 "next_attempt_decision_id": document.get("next_attempt_decision_id"),
             })
         return (*self.legacy_action_derivation_reconciliation(mission_id), *values)

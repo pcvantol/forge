@@ -30,7 +30,12 @@ from forge.models.action_derivation import (
 from forge.models.mission_planner import MissionPlannerInput
 from forge.planner.openai_responses import ProviderSubmissionAmbiguous
 from forge.planner.provider_adapter import ProviderDerivationResponse
-from forge.runtime.database import RuntimeDatabase, RuntimeDatabaseError, RuntimeIntegrityError
+from forge.runtime.database import (
+    RuntimeDatabase,
+    RuntimeDatabaseError,
+    RuntimeIntegrityError,
+    _contains_secret_value,
+)
 from forge.planner.action_derivation import (
     ActionDerivationValidator,
     DerivationResult,
@@ -512,10 +517,55 @@ class DurableActionDerivationCoordinator:
             location="forge.execution.loop.ExecutionLoop._plan",
         )
 
+    def _resolve_unavailable_predecessor(
+        self, snapshot: PlanningSnapshot, *, predecessor_attempt_id: str | None = None,
+        predecessor_audit_id: str | None = None, provider_id: str | None = None,
+    ) -> dict[str, object]:
+        """Resolve a durable attempt or one unambiguous legacy audit.
+
+        The legacy branch projects the immutable audit as a predecessor for a
+        *new* authority record.  It never creates a historical attempt or
+        claims that the missing typed provider result can be replayed.
+        """
+        if (predecessor_attempt_id is None) == (predecessor_audit_id is None):
+            raise ValueError("select exactly one durable attempt or legacy audit predecessor")
+        boundary = _replay_boundary_digest(snapshot)
+        if predecessor_attempt_id is not None:
+            predecessor = self.database.durable_action_derivation_attempt(predecessor_attempt_id)
+            if (predecessor.get("mission_id") != snapshot.mission_id
+                    or predecessor.get("lifecycle") != "FAILED"
+                    or predecessor.get("processing_phase")
+                    != DurableDerivationPhase.CONFIRMED_RESULT_UNAVAILABLE.value):
+                raise PermissionError("only a confirmed-result-unavailable attempt can receive a successor")
+            try:
+                self.database.durable_action_derivation_result(predecessor_attempt_id)
+            except RuntimeDatabaseError:
+                pass
+            else:
+                raise RuntimeIntegrityError("a replayable provider result cannot receive a new attempt")
+            if predecessor.get("replay_boundary_digest") != boundary:
+                raise RuntimeIntegrityError("current planning facts no longer bind the unavailable result")
+            digest = predecessor.get("attempt_metadata_digest")
+            if not isinstance(digest, str):
+                raise RuntimeIntegrityError("durable predecessor lacks immutable provenance")
+            return {
+                "mission_id": snapshot.mission_id,
+                "source": "DURABLE_ACTION_DERIVATION_ATTEMPT",
+                "reference_id": predecessor_attempt_id,
+                "predecessor_digest": digest,
+                "replay_boundary_digest": boundary,
+            }
+        if not isinstance(provider_id, str) or not provider_id:
+            raise RuntimeDatabaseError("legacy audit predecessor requires the configured provider identity")
+        legacy = self.database.resolve_legacy_confirmed_result_predecessor(
+            snapshot.mission_id, snapshot.digest, provider_id, str(predecessor_audit_id),
+        )
+        return {**legacy, "replay_boundary_digest": boundary}
+
     def authorize_next_attempt(
         self, snapshot: PlanningSnapshot, planning_input: MissionPlannerInput, policy: DerivationPolicy,
-        *, predecessor_attempt_id: str, governance_repository: object, operator_context: object,
-        rationale: str,
+        *, predecessor_attempt_id: str | None = None, predecessor_audit_id: str | None = None,
+        governance_repository: object, operator_context: object, rationale: str,
     ) -> dict[str, object]:
         """Reserve, but do not invoke, one explicit successor after lost output.
 
@@ -525,23 +575,21 @@ class DurableActionDerivationCoordinator:
         """
         if not isinstance(rationale, str) or not rationale.strip() or len(rationale) > 512:
             raise ValueError("a bounded explicit next-attempt rationale is required")
+        # This becomes immutable canonical governance evidence before the
+        # durable successor document is built.  Validate it at this earliest
+        # persistence boundary rather than relying on the later attempt-store
+        # guard, which would otherwise leave a secret-bearing decision behind.
+        if _contains_secret_value(rationale.strip()):
+            raise ValueError("next-attempt rationale must not contain secret material")
         operators = getattr(governance_repository, "operators", None)
         authorize = getattr(operators, "authorize", None)
         if not callable(authorize) or not authorize(operator_context):
             raise PermissionError("trusted operator context is required for a next planning attempt")
-        predecessor = self.database.durable_action_derivation_attempt(predecessor_attempt_id)
-        if (predecessor.get("mission_id") != snapshot.mission_id
-                or predecessor.get("lifecycle") != "FAILED"
-                or predecessor.get("processing_phase") != DurableDerivationPhase.CONFIRMED_RESULT_UNAVAILABLE.value):
-            raise PermissionError("only a confirmed-result-unavailable attempt can receive a successor")
-        try:
-            self.database.durable_action_derivation_result(predecessor_attempt_id)
-        except RuntimeDatabaseError:
-            pass
-        else:
-            raise RuntimeIntegrityError("a replayable provider result cannot receive a new attempt")
-        if predecessor.get("replay_boundary_digest") != _replay_boundary_digest(snapshot):
-            raise RuntimeIntegrityError("current planning facts no longer bind the unavailable result")
+        current_provider_id = getattr(self.provider, "provider_id", None)
+        predecessor = self._resolve_unavailable_predecessor(
+            snapshot, predecessor_attempt_id=predecessor_attempt_id,
+            predecessor_audit_id=predecessor_audit_id, provider_id=current_provider_id,
+        )
         mission_state = self.database.get_document("mission_state", snapshot.mission_id)
         if (mission_state.get("status") not in {"CREATED", "BLOCKED"}
                 or mission_state.get("actions") or mission_state.get("execution_correlation") is not None
@@ -550,9 +598,13 @@ class DurableActionDerivationCoordinator:
         prepare = getattr(self.provider, "prepare_durable_attempt", None)
         if not callable(prepare):
             raise RuntimeDatabaseError("installed provider does not support durable Action-Derivation")
-        decision_id = "durable-action-derivation-reattempt:" + predecessor_attempt_id
+        predecessor_source = str(predecessor["source"])
+        predecessor_reference = str(predecessor["reference_id"])
+        decision_id = "durable-action-derivation-reattempt:" + predecessor_source + ":" + predecessor_reference
         authority_revision = _digest({
-            "predecessor_attempt_id": predecessor_attempt_id,
+            "predecessor_source": predecessor_source,
+            "predecessor_reference_id": predecessor_reference,
+            "predecessor_digest": predecessor["predecessor_digest"],
             "replay_boundary_digest": predecessor["replay_boundary_digest"],
             "rationale": rationale.strip(),
         })
@@ -563,15 +615,17 @@ class DurableActionDerivationCoordinator:
         successor_id = "codex-derivation-successor-" + authority_revision[7:39]
         try:
             governance_repository.record(GovernanceDecision(
-                decision_id=decision_id, subject_id=predecessor_attempt_id,
+                decision_id=decision_id, subject_id=predecessor_reference,
                 subject_revision=authority_revision,
                 capability=GovernanceCapability.OWNER_PROGRAMME_AUTHORIZATION,
                 decision="authorized", scope=("DURABLE_ACTION_DERIVATION_REATTEMPT",),
                 gates=("confirmed-result-unavailable", "one-successor", "no-active-dispatch"),
-                predecessor_digest=str(predecessor["attempt_metadata_digest"]),
+                predecessor_digest=str(predecessor["predecessor_digest"]),
                 evidence={"kind": "DURABLE_ACTION_DERIVATION_REATTEMPT_V1",
                           "mission_id": snapshot.mission_id,
-                          "predecessor_attempt_id": predecessor_attempt_id,
+                          "predecessor_source": predecessor_source,
+                          "predecessor_reference_id": predecessor_reference,
+                          "predecessor_digest": predecessor["predecessor_digest"],
                           "replay_boundary_digest": predecessor["replay_boundary_digest"],
                           "rationale": rationale.strip()},
             ), operator_context)
@@ -593,13 +647,19 @@ class DurableActionDerivationCoordinator:
             raise PermissionError("trusted operator context has no generated identity")
         document.update({
             "processing_phase": "SUCCESSOR_AUTHORIZED",
-            "predecessor_attempt_id": predecessor_attempt_id,
+            "predecessor_source": predecessor_source,
+            "predecessor_reference_id": predecessor_reference,
+            "predecessor_digest": predecessor["predecessor_digest"],
             "next_attempt_decision_id": decision_id,
             "next_attempt_authority_revision": authority_revision,
             "authority_identity": sha256(generated_uid.encode("utf-8")).hexdigest()[:16],
             "reason": "CONFIRMED_RESULT_UNAVAILABLE",
             "rationale": rationale.strip(),
         })
+        if predecessor_source == "DURABLE_ACTION_DERIVATION_ATTEMPT":
+            document["predecessor_attempt_id"] = predecessor_reference
+        else:
+            document["predecessor_audit_id"] = predecessor_reference
         document["attempt_metadata_digest"] = _digest({
             key: value for key, value in document.items() if key not in _MUTABLE_ATTEMPT_FIELDS
         })
@@ -633,12 +693,27 @@ class DurableActionDerivationCoordinator:
                 or not isinstance(generated_uid, str)
                 or reserved.get("authority_identity") != sha256(generated_uid.encode("utf-8")).hexdigest()[:16]):
             raise PermissionError("next planning attempt reservation is not usable by this operator")
-        predecessor_id = reserved.get("predecessor_attempt_id")
-        if not isinstance(predecessor_id, str) or not predecessor_id:
+        predecessor_source = reserved.get("predecessor_source")
+        predecessor_reference = reserved.get("predecessor_reference_id")
+        # Preserve a reservation made by the preceding durable release, while
+        # all new reservations bind a typed predecessor source explicitly.
+        if predecessor_source is None and isinstance(reserved.get("predecessor_attempt_id"), str):
+            predecessor_source = "DURABLE_ACTION_DERIVATION_ATTEMPT"
+            predecessor_reference = reserved["predecessor_attempt_id"]
+        if (predecessor_source not in {"DURABLE_ACTION_DERIVATION_ATTEMPT", "LEGACY_EXTERNAL_SESSION_AUDIT"}
+                or not isinstance(predecessor_reference, str) or not predecessor_reference):
             raise RuntimeIntegrityError("next planning attempt lacks a predecessor")
-        predecessor = self.database.durable_action_derivation_attempt(predecessor_id)
-        if (predecessor.get("lifecycle") != "FAILED"
-                or predecessor.get("processing_phase") != DurableDerivationPhase.CONFIRMED_RESULT_UNAVAILABLE.value
+        predecessor = self._resolve_unavailable_predecessor(
+            snapshot,
+            predecessor_attempt_id=(predecessor_reference
+                                    if predecessor_source == "DURABLE_ACTION_DERIVATION_ATTEMPT" else None),
+            predecessor_audit_id=(predecessor_reference
+                                  if predecessor_source == "LEGACY_EXTERNAL_SESSION_AUDIT" else None),
+            provider_id=reserved.get("provider_id") if isinstance(reserved.get("provider_id"), str) else None,
+        )
+        if (predecessor.get("source") != predecessor_source
+                or predecessor.get("reference_id") != predecessor_reference
+                or predecessor.get("predecessor_digest") != reserved.get("predecessor_digest")
                 or predecessor.get("replay_boundary_digest") != _replay_boundary_digest(snapshot)):
             raise RuntimeIntegrityError("next planning attempt no longer binds current planning facts")
         decision = governance_repository.decision(decision_id)
@@ -683,21 +758,35 @@ class DurableActionDerivationCoordinator:
                                        predecessor: Mapping[str, object], snapshot: PlanningSnapshot,
                                        authority_revision: str, rationale: str) -> bool:
         evidence = decision.get("evidence")
-        return (
+        common = (
             decision.get("decision_id") == decision_id
-            and decision.get("subject_id") == predecessor.get("derivation_id")
+            and decision.get("subject_id") == predecessor.get("reference_id")
             and decision.get("subject_revision") == authority_revision
             and decision.get("capability") == GovernanceCapability.OWNER_PROGRAMME_AUTHORIZATION.value
             and decision.get("decision") == "authorized"
             and decision.get("scope") == ["DURABLE_ACTION_DERIVATION_REATTEMPT"]
             and decision.get("gates") == ["confirmed-result-unavailable", "no-active-dispatch", "one-successor"]
-            and decision.get("predecessor_digest") == predecessor.get("attempt_metadata_digest")
+            and decision.get("predecessor_digest") == predecessor.get("predecessor_digest")
             and isinstance(evidence, Mapping)
             and evidence.get("kind") == "DURABLE_ACTION_DERIVATION_REATTEMPT_V1"
             and evidence.get("mission_id") == snapshot.mission_id
-            and evidence.get("predecessor_attempt_id") == predecessor.get("derivation_id")
             and evidence.get("replay_boundary_digest") == predecessor.get("replay_boundary_digest")
             and evidence.get("rationale") == rationale.strip()
+        )
+        if not common:
+            return False
+        if evidence.get("predecessor_source") is None:
+            # 2.7.15 reservations used an immutable durable attempt directly.
+            # Keep their established decision format consumable; audit-only
+            # predecessors always require the explicit source-aware shape.
+            return (
+                predecessor.get("source") == "DURABLE_ACTION_DERIVATION_ATTEMPT"
+                and evidence.get("predecessor_attempt_id") == predecessor.get("reference_id")
+            )
+        return (
+            evidence.get("predecessor_source") == predecessor.get("source")
+            and evidence.get("predecessor_reference_id") == predecessor.get("reference_id")
+            and evidence.get("predecessor_digest") == predecessor.get("predecessor_digest")
         )
 
     @staticmethod
@@ -705,6 +794,9 @@ class DurableActionDerivationCoordinator:
         return {
             "derivation_id": document.get("derivation_id"),
             "predecessor_attempt_id": document.get("predecessor_attempt_id"),
+            "predecessor_audit_id": document.get("predecessor_audit_id"),
+            "predecessor_source": document.get("predecessor_source"),
+            "predecessor_reference_id": document.get("predecessor_reference_id"),
             "next_attempt_decision_id": document.get("next_attempt_decision_id"),
             "processing_phase": document.get("processing_phase"),
             "generation_request_digest": document.get("generation_request_digest"),
