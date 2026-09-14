@@ -245,6 +245,29 @@ class CodexCliSessionTests(unittest.TestCase):
         self.assertEqual(evidence[-1]["diagnostic"]["terminal_events"], ["turn.completed"])
         self.assertNotIn("private model output", json.dumps(evidence[-1]["diagnostic"]))
 
+    def test_durable_prepared_policy_change_fails_before_exec(self):
+        configured = self.configure()
+        runner = Runner()
+        provider = self.provider(runner)
+        specification = provider.prepare_durable_attempt(
+            self.snapshot, self.input, self.policy, "durable-derivation",
+        )
+        self.service.configure(
+            configuration_id="codex-config", provider_id="codex-session", operator_context=self.context,
+            expected_version=configured["version"],
+            authentication_mode=ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION,
+            provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,
+            external_session_type=CODEX_CLI_CHATGPT_SESSION_TYPE,
+            executable_path="/usr/local/bin/codex", adapter_version="1.0", model=None, profile="changed",
+            timeout_seconds=30, input_token_bound=64000, context_token_bound=128000, output_token_bound=16000,
+        )
+        with self.assertRaisesRegex(PermissionError, "changed after its attempt was claimed"):
+            provider.derive_with_planning_input(
+                self.snapshot, self.input, self.policy, derivation_id="durable-derivation",
+                durable_attempt_specification=specification, durable_result_sink=lambda _response: None,
+            )
+        self.assertFalse(any("exec" in command for command, _kwargs in runner.calls))
+
     def test_malformed_or_extra_structured_output_is_never_a_proposal(self):
         self.configure()
         response = self.provider(Runner(document(extra=True))).invoke(

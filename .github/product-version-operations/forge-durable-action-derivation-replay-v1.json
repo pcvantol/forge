@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.14",
+  "classification_rationale": "native-codex-durable-action-derivation-replay-v1",
+  "component": "product",
+  "event_lineage": "native-codex-durable-action-derivation-replay-v1",
+  "expected_head": "45ccd0ce5ba536eb5070db9d0d74b03dbe140a77",
+  "operation_id": "forge-durable-action-derivation-replay-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.15"
+}

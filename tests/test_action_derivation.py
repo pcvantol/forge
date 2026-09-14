@@ -148,6 +148,21 @@ class ActionDerivationTests(unittest.TestCase):
         ambiguous = BoundedActionDerivationProvider(FixtureExecutor(ProviderSideEffectState.MAY_HAVE_HAPPENED))
         self.assertEqual(ambiguous.reconcile(request), ProviderSideEffectState.MAY_HAVE_HAPPENED)
 
+    def test_durable_sink_runs_only_after_adapter_provenance_validation(self) -> None:
+        request = ProviderDerivationRequest("derivation-1", self.snapshot, "fixture-provider", "fixture-1")
+        mismatched = ProviderDerivationResponse(
+            ProviderInvocationEvidence(
+                "wrong-provider", "fixture-1", "1.0", request.digest, self.snapshot.digest,
+                _digest("b"), ProviderSideEffectState.HAPPENED_AND_CONFIRMED,
+            ), proposals=(proposal(snapshot=self.snapshot),),
+        )
+        received = []
+        with self.assertRaises(ValueError):
+            BoundedActionDerivationProvider(FixtureExecutor(mismatched)).invoke(
+                request, durable_result_sink=received.append,
+            )
+        self.assertEqual(received, [])
+
     def test_replan_identity_preserves_completed_history_and_avoids_churn(self) -> None:
         current = proposal(snapshot=self.snapshot)
         self.assertEqual(classify_replan_identity(current, current), DerivedActionIdentityState.UNCHANGED)

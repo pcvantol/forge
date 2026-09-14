@@ -232,6 +232,7 @@ class DerivationLifecycle(str, Enum):
     VALIDATED = "VALIDATED"
     MATERIALIZED = "MATERIALIZED"
     GOVERNANCE_REFINEMENT_REQUIRED = "GOVERNANCE_REFINEMENT_REQUIRED"
+    MATERIALIZATION_FAILED = "MATERIALIZATION_FAILED"
     FAILED = "FAILED"
     STALE = "STALE"
     SUPERSEDED = "SUPERSEDED"
@@ -285,7 +286,8 @@ _LIFECYCLE_TRANSITIONS = {
     DerivationLifecycle.PROVIDER_RUNNING: {DerivationLifecycle.PROPOSAL_RECEIVED, DerivationLifecycle.FAILED},
     DerivationLifecycle.PROPOSAL_RECEIVED: {DerivationLifecycle.VALIDATION_RUNNING, DerivationLifecycle.STALE},
     DerivationLifecycle.VALIDATION_RUNNING: {DerivationLifecycle.VALIDATED, DerivationLifecycle.GOVERNANCE_REFINEMENT_REQUIRED, DerivationLifecycle.FAILED, DerivationLifecycle.STALE},
-    DerivationLifecycle.VALIDATED: {DerivationLifecycle.MATERIALIZED, DerivationLifecycle.STALE},
+    DerivationLifecycle.VALIDATED: {DerivationLifecycle.VALIDATION_RUNNING, DerivationLifecycle.MATERIALIZED, DerivationLifecycle.MATERIALIZATION_FAILED, DerivationLifecycle.STALE},
+    DerivationLifecycle.MATERIALIZATION_FAILED: {DerivationLifecycle.VALIDATION_RUNNING, DerivationLifecycle.MATERIALIZED, DerivationLifecycle.STALE},
     DerivationLifecycle.MATERIALIZED: {DerivationLifecycle.SUPERSEDED},
     DerivationLifecycle.GOVERNANCE_REFINEMENT_REQUIRED: set(),
     DerivationLifecycle.FAILED: set(),

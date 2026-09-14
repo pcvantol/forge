@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 36
+RUNTIME_SCHEMA_VERSION = 37
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -35,7 +35,7 @@ _TABLES = frozenset((
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
     "scheduler_submissions", "installation_operator_binding", "installation_operator_audit",
-    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_external_session_config", "planning_provider_external_session_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations", "action_derivation_reattempt_authorizations", "action_derivation_reattempt_consumptions",
+    "planning_provider_security_config", "planning_provider_security_audit", "planning_provider_external_session_config", "planning_provider_external_session_audit", "planning_provider_generation_permits", "token_preflight_receipts", "token_preflight_receipt_consumptions", "token_preflight_failures", "action_derivations", "action_derivation_results", "action_derivation_reattempt_authorizations", "action_derivation_reattempt_consumptions",
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings", "execution_host_exchange_audit",
@@ -62,6 +62,15 @@ _TOKEN_PREFLIGHT_FAILURE_PROVIDER_ID = re.compile(r"[a-z][a-z0-9-]{0,127}\Z")
 _TOKEN_PREFLIGHT_FAILURE_REQUEST_ID = re.compile(r"req_[A-Za-z0-9]{1,128}\Z")
 _TOKEN_PREFLIGHT_FAILURE_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _SHA256_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_DURABLE_ATTEMPT_MUTABLE_FIELDS = frozenset((
+    "lifecycle", "processing_phase", "error_code", "exception_type", "error_location",
+    "result_kind", "provider_result_digest", "result_payload_digest", "result_metadata_digest",
+    "materialized_at", "materialization_digest",
+))
+_DURABLE_PROVIDER_TEXT_LIMIT = 4096
+_DURABLE_FORBIDDEN_PROVIDER_TEXT = (
+    "system prompt", "developer message", "tool transcript", "chain of thought", "<|system|>",
+)
 _OPERATIONAL_LOG_EVENT = re.compile(r"[a-z][a-z0-9_]{2,127}\Z")
 _OPERATIONAL_LOG_COMPONENTS = frozenset((
     "forge_runtime", "forge_mission_runtime", "forge_execution_host",
@@ -135,6 +144,43 @@ def _contains_secret_value(value: Any) -> bool:
         lowered = value.lower()
         return lowered.startswith(("sk-", "bearer ", "keychain://")) or "api key " in lowered
     return False
+
+
+def _durable_attempt_metadata(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Return only immutable provenance bound to a durable provider result."""
+    return {key: value for key, value in document.items()
+            if key not in _DURABLE_ATTEMPT_MUTABLE_FIELDS and key != "attempt_metadata_digest"}
+
+
+def _durable_attempt_metadata_digest(document: Mapping[str, Any]) -> str:
+    return "sha256:" + sha256(
+        json.dumps(_durable_attempt_metadata(document), sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def _validate_durable_provider_payload(value: Any, *, depth: int = 0) -> None:
+    """Reject unbounded or prompt/credential-shaped provider content at rest."""
+    if depth > 12:
+        raise RuntimeDatabaseError("durable action derivation payload nesting is excessive")
+    if isinstance(value, Mapping):
+        if len(value) > 64 or any(
+            any(token in str(key).lower() for token in ("secret", "authorization", "api_key", "password", "prompt", "transcript", "traceback"))
+            for key in value
+        ):
+            raise RuntimeDatabaseError("durable action derivation result contains forbidden provider material")
+        for item in value.values():
+            _validate_durable_provider_payload(item, depth=depth + 1)
+    elif isinstance(value, (tuple, list)):
+        if len(value) > 128:
+            raise RuntimeDatabaseError("durable action derivation payload collection is excessive")
+        for item in value:
+            _validate_durable_provider_payload(item, depth=depth + 1)
+    elif isinstance(value, str):
+        lowered = value.lower()
+        if (len(value) > _DURABLE_PROVIDER_TEXT_LIMIT or _contains_secret_value(value)
+                or any(marker in lowered for marker in _DURABLE_FORBIDDEN_PROVIDER_TEXT)):
+            raise RuntimeDatabaseError("durable action derivation result contains forbidden provider material")
 
 
 def _mission_operational_context(document: Mapping[str, Any]) -> dict[str, str | None]:
@@ -402,6 +448,35 @@ class RuntimeDatabase:
             sql = "" if row is None or row["sql"] is None else " ".join(row["sql"].lower().split())
             if row is None or row["tbl_name"] != "forge_operational_logs" or f"before {operation}" not in sql or "immutable" not in sql:
                 raise RuntimeIntegrityError(f"Forge operational log migration found incompatible {name} trigger")
+
+    _ACTION_DERIVATION_RESULT_TABLE_SHAPE = (
+        ("derivation_id", "TEXT", 0, 1), ("result_kind", "TEXT", 1, 0),
+        ("result_digest", "TEXT", 1, 0), ("payload_digest", "TEXT", 1, 0),
+        ("metadata_digest", "TEXT", 1, 0), ("stored_at", "TEXT", 1, 0),
+        ("document", "TEXT", 1, 0),
+    )
+
+    def _require_action_derivation_result_structure(self) -> None:
+        columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                        for row in self._connection.execute("PRAGMA table_info(action_derivation_results)"))
+        if columns != self._ACTION_DERIVATION_RESULT_TABLE_SHAPE:
+            raise RuntimeIntegrityError("durable action-derivation result migration found incompatible table shape")
+        foreign_keys = {(row["table"], row["from"], row["to"])
+                        for row in self._connection.execute("PRAGMA foreign_key_list(action_derivation_results)")}
+        if foreign_keys != {("action_derivations", "derivation_id", "derivation_id")}:
+            raise RuntimeIntegrityError("durable action-derivation result migration found incompatible foreign reference")
+        for name, operation, fragment in (
+            ("action_derivation_results_authorized_insert", "insert", "canonical action derivation producer required"),
+            ("action_derivation_results_immutable_update", "update", "action derivation results are immutable"),
+            ("action_derivation_results_immutable_delete", "delete", "action derivation results are immutable"),
+        ):
+            row = self._connection.execute(
+                "SELECT tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name=?", (name,)
+            ).fetchone()
+            sql = "" if row is None or row["sql"] is None else " ".join(row["sql"].lower().split())
+            if (row is None or row["tbl_name"] != "action_derivation_results"
+                    or f"before {operation}" not in sql or fragment not in sql):
+                raise RuntimeIntegrityError(f"durable action-derivation result migration found incompatible {name} trigger")
 
     def _migrate_governance_19_to_20(self, forge_version: str) -> None:
         """Create and verify all governance objects before advancing schema metadata.
@@ -721,6 +796,20 @@ class RuntimeDatabase:
                     CREATE TRIGGER IF NOT EXISTS action_derivations_failed_immutable_update BEFORE UPDATE ON action_derivations
                     WHEN OLD.lifecycle = 'FAILED'
                     BEGIN SELECT RAISE(ABORT, 'failed action derivation records are immutable'); END;
+                    CREATE TABLE IF NOT EXISTS action_derivation_results (
+                        derivation_id TEXT PRIMARY KEY, result_kind TEXT NOT NULL,
+                        result_digest TEXT NOT NULL, payload_digest TEXT NOT NULL,
+                        metadata_digest TEXT NOT NULL, stored_at TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY (derivation_id) REFERENCES action_derivations(derivation_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_results_authorized_insert BEFORE INSERT ON action_derivation_results
+                    WHEN forge_action_derivation_write_permitted() != 1
+                    BEGIN SELECT RAISE(ABORT, 'canonical action derivation producer required'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_results_immutable_update BEFORE UPDATE ON action_derivation_results
+                    BEGIN SELECT RAISE(ABORT, 'action derivation results are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS action_derivation_results_immutable_delete BEFORE DELETE ON action_derivation_results
+                    BEGIN SELECT RAISE(ABORT, 'action derivation results are immutable'); END;
                     CREATE TABLE IF NOT EXISTS action_derivation_reattempt_authorizations (
                         authorization_id TEXT PRIMARY KEY, successor_attempt_id TEXT NOT NULL UNIQUE,
                         mission_id TEXT NOT NULL, predecessor_attempt_id TEXT NOT NULL,
@@ -1508,6 +1597,44 @@ class RuntimeDatabase:
                 self._require_operational_log_structure()
                 self._set_metadata({"schema_version":"36","migration_version":"36","last_migration":"36"})
                 self._connection.execute("PRAGMA user_version=36")
+        elif version == 36:
+            # A provider result must survive the return from the external
+            # process independently of the mutable Mission projection.  The
+            # result row is deliberately append-only and is guarded by the
+            # already-existing canonical Action-Derivation writer authority.
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                existing_tables = {row["name"] for row in self._connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )}
+                if "action_derivation_results" in existing_tables:
+                    foreign_keys = {(row["table"], row["from"], row["to"])
+                                    for row in self._connection.execute("PRAGMA foreign_key_list(action_derivation_results)")}
+                    if foreign_keys != {("action_derivations", "derivation_id", "derivation_id")}:
+                        if self._connection.execute("SELECT 1 FROM action_derivation_results LIMIT 1").fetchone() is not None:
+                            raise RuntimeIntegrityError("schema-36 migration found a durable result with incompatible lineage")
+                        for trigger in (
+                            "action_derivation_results_authorized_insert",
+                            "action_derivation_results_immutable_update",
+                            "action_derivation_results_immutable_delete",
+                        ):
+                            self._connection.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+                        self._connection.execute("DROP TABLE action_derivation_results")
+                statements = (
+                    "CREATE TABLE IF NOT EXISTS action_derivation_results (derivation_id TEXT PRIMARY KEY, result_kind TEXT NOT NULL, result_digest TEXT NOT NULL, payload_digest TEXT NOT NULL, metadata_digest TEXT NOT NULL, stored_at TEXT NOT NULL, document TEXT NOT NULL, FOREIGN KEY (derivation_id) REFERENCES action_derivations(derivation_id))",
+                    "CREATE TRIGGER IF NOT EXISTS action_derivation_results_authorized_insert BEFORE INSERT ON action_derivation_results WHEN forge_action_derivation_write_permitted() != 1 BEGIN SELECT RAISE(ABORT, 'canonical action derivation producer required'); END",
+                    "CREATE TRIGGER IF NOT EXISTS action_derivation_results_immutable_update BEFORE UPDATE ON action_derivation_results BEGIN SELECT RAISE(ABORT, 'action derivation results are immutable'); END",
+                    "CREATE TRIGGER IF NOT EXISTS action_derivation_results_immutable_delete BEFORE DELETE ON action_derivation_results BEGIN SELECT RAISE(ABORT, 'action derivation results are immutable'); END",
+                )
+                for statement in statements:
+                    self._connection.execute(statement)
+                self._require_action_derivation_result_structure()
+                self._set_metadata({"schema_version":"37","migration_version":"37","last_migration":"37"})
+                self._connection.execute("PRAGMA user_version=37")
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1593,6 +1720,7 @@ class RuntimeDatabase:
         if self._connection.execute("PRAGMA user_version").fetchone()[0] != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database schema version is inconsistent")
         self._require_canary_closure_structure()
+        self._require_action_derivation_result_structure()
         self._require_peer_configuration_structure()
         self._require_execution_host_exchange_audit_structure()
         self._require_operational_log_structure()
@@ -1625,46 +1753,53 @@ class RuntimeDatabase:
             self._connection.execute("UPDATE runtime_metadata SET value = 'valid' WHERE key = 'integrity_status'")
             self._connection.commit()
 
-    def save_mission_state(self, state: Any) -> dict[str, Any]:
+    def _validated_mission_state_document(self, state: Any) -> tuple[dict[str, Any], str, str, dict[str, str | None]]:
         document = _document(state, "mission state")
         mission_id = document.get("mission_id") or document.get("id")
         lifecycle = document.get("lifecycle") or document.get("status")
         required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")))
         if not isinstance(mission_id, str) or not mission_id or not isinstance(lifecycle, str) or not lifecycle or any(value is None for value in required[2:]):
             raise RuntimeDatabaseError("mission state requires identity, lifecycle, status, progress, resume point, and execution policy")
-        context = _mission_operational_context(document)
+        return document, mission_id, lifecycle, _mission_operational_context(document)
+
+    def _write_mission_state_in_transaction(self, document: Mapping[str, Any], mission_id: str,
+                                            lifecycle: str, context: Mapping[str, str | None]) -> None:
+        existing = self._connection.execute(
+            "SELECT status FROM mission_state WHERE mission_id = ?", (mission_id,)
+        ).fetchone()
+        self._connection.execute("""INSERT INTO mission_state
+            (mission_id, lifecycle, status, current_intent, current_action, progress, resume_point, execution_policy, document)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(mission_id) DO UPDATE SET lifecycle=excluded.lifecycle, status=excluded.status,
+            current_intent=excluded.current_intent, current_action=excluded.current_action, progress=excluded.progress,
+            resume_point=excluded.resume_point, execution_policy=excluded.execution_policy, document=excluded.document""", (
+            mission_id, lifecycle, str(document.get("status", lifecycle)), self._dump(document.get("current_engineering_intent")),
+            self._dump(document.get("current_engineering_action")), self._dump(document.get("progress", {})),
+            self._dump(document.get("resume", document.get("resume_point", {}))), self._dump(document.get("execution_policy")), self._dump(document),
+        ))
+        execution_evidence = document.get("execution_evidence")
+        failure_code = (
+            execution_evidence.get("failure_code")
+            if isinstance(execution_evidence, dict) and isinstance(execution_evidence.get("failure_code"), str)
+            else None
+        )
+        reason_code = document.get("waiting_reason")
+        self._append_operational_event(
+            component="forge_mission_runtime",
+            level=("ERROR" if failure_code is not None else "WARNING" if str(document["status"]) in {"BLOCKED", "FAILED"} else "INFO"),
+            event="mission_state_transitioned",
+            mission_id=context["mission_id"], action_id=context["action_id"],
+            correlation_id=context["correlation_id"], run_id=context["run_id"],
+            details={"previous_state": None if existing is None else existing["status"],
+                     "new_state": str(document["status"]), "lifecycle": str(lifecycle),
+                     "reason_code": reason_code if isinstance(reason_code, str) else None,
+                     "failure_code": failure_code},
+        )
+
+    def save_mission_state(self, state: Any) -> dict[str, Any]:
+        document, mission_id, lifecycle, context = self._validated_mission_state_document(state)
         with self._connection:
-            existing = self._connection.execute(
-                "SELECT status FROM mission_state WHERE mission_id = ?", (mission_id,)
-            ).fetchone()
-            self._connection.execute("""INSERT INTO mission_state
-                (mission_id, lifecycle, status, current_intent, current_action, progress, resume_point, execution_policy, document)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(mission_id) DO UPDATE SET lifecycle=excluded.lifecycle, status=excluded.status,
-                current_intent=excluded.current_intent, current_action=excluded.current_action, progress=excluded.progress,
-                resume_point=excluded.resume_point, execution_policy=excluded.execution_policy, document=excluded.document""", (
-                mission_id, lifecycle, str(document.get("status", lifecycle)), self._dump(document.get("current_engineering_intent")),
-                self._dump(document.get("current_engineering_action")), self._dump(document.get("progress", {})),
-                self._dump(document.get("resume", document.get("resume_point", {}))), self._dump(document.get("execution_policy")), self._dump(document),
-            ))
-            execution_evidence = document.get("execution_evidence")
-            failure_code = (
-                execution_evidence.get("failure_code")
-                if isinstance(execution_evidence, dict) and isinstance(execution_evidence.get("failure_code"), str)
-                else None
-            )
-            reason_code = document.get("waiting_reason")
-            self._append_operational_event(
-                component="forge_mission_runtime",
-                level=("ERROR" if failure_code is not None else "WARNING" if str(document["status"]) in {"BLOCKED", "FAILED"} else "INFO"),
-                event="mission_state_transitioned",
-                mission_id=context["mission_id"], action_id=context["action_id"],
-                correlation_id=context["correlation_id"], run_id=context["run_id"],
-                details={"previous_state": None if existing is None else existing["status"],
-                         "new_state": str(document["status"]), "lifecycle": str(lifecycle),
-                         "reason_code": reason_code if isinstance(reason_code, str) else None,
-                         "failure_code": failure_code},
-            )
+            self._write_mission_state_in_transaction(document, mission_id, lifecycle, context)
         return document
 
     def create_mission_state(self, state: Any) -> dict[str, Any]:
@@ -2313,6 +2448,533 @@ class RuntimeDatabase:
         finally:
             self._action_derivation_write_state["permitted"] = False
         return document
+
+    def begin_durable_action_derivation_attempt(self, attempt: Any) -> tuple[dict[str, Any], bool]:
+        """Claim one durable provider boundary before an external invocation.
+
+        The returned flag is true only for the caller that committed the
+        claim.  A competing caller receives the existing record and must
+        reconcile it; it must never start a second provider invocation.
+        """
+        document = _document(attempt, "durable action derivation attempt")
+        required = (
+            "derivation_id", "mission_id", "snapshot_digest", "contract_version",
+            "provider_configuration", "generation_request_digest", "derivation_request_digest",
+            "attempt_metadata_digest", "processing_phase", "runtime_id", "installation_id",
+            "provider_id", "adapter_version",
+        )
+        if any(not isinstance(document.get(field), str) or not document[field] for field in required):
+            raise RuntimeDatabaseError("durable action derivation attempt requires complete identity and provenance")
+        successor_authorized = document.get("processing_phase") == "SUCCESSOR_AUTHORIZED"
+        if (document.get("lifecycle") != "DERIVATION_REQUESTED"
+                or document["processing_phase"] not in {"ATTEMPT_RECORDED", "SUCCESSOR_AUTHORIZED"}
+                or any(not _SHA256_DIGEST.fullmatch(document[field]) for field in (
+                    "snapshot_digest", "provider_configuration", "generation_request_digest",
+                "derivation_request_digest", "attempt_metadata_digest",
+            ))):
+            raise RuntimeDatabaseError("durable action derivation attempt provenance is malformed")
+        if document["attempt_metadata_digest"] != _durable_attempt_metadata_digest(document):
+            raise RuntimeIntegrityError("durable action derivation attempt metadata integrity failed")
+        if successor_authorized:
+            successor_fields = ("predecessor_attempt_id", "next_attempt_decision_id",
+                                "next_attempt_authority_revision", "authority_identity", "reason", "rationale")
+            if any(not isinstance(document.get(field), str) or not document[field] for field in successor_fields):
+                raise RuntimeDatabaseError("authorized successor attempt requires complete authority provenance")
+        if _contains_secret_field(document) or _contains_secret_value(document):
+            raise RuntimeDatabaseError("durable action derivation attempt must not contain secret material")
+        connection = self._connection
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            if successor_authorized:
+                row = connection.execute(
+                    "SELECT document FROM action_derivations "
+                    "WHERE json_extract(document, '$.predecessor_attempt_id')=?",
+                    (document["predecessor_attempt_id"],),
+                ).fetchone()
+            else:
+                # Provider policy/configuration is provenance for an attempt,
+                # not a permit to silently start a second external call for
+                # the same Mission snapshot.  A changed current policy is
+                # checked by the coordinator before replay and fails closed.
+                row = connection.execute(
+                    "SELECT document FROM action_derivations WHERE mission_id=? AND snapshot_digest=? "
+                    "AND contract_version=? AND json_extract(document, '$.predecessor_attempt_id') IS NULL",
+                    tuple(document[field] for field in ("mission_id", "snapshot_digest", "contract_version")),
+                ).fetchone()
+            if row is not None:
+                persisted = json.loads(row["document"])
+                bindings = (
+                    "mission_id", "snapshot_digest", "contract_version", "runtime_id", "installation_id",
+                )
+                if any(persisted.get(field) != document[field] for field in bindings):
+                    raise RuntimeIntegrityError("durable action derivation attempt identity is conflicting")
+                connection.commit()
+                return persisted, False
+            if successor_authorized and connection.execute(
+                "SELECT 1 FROM action_derivations WHERE json_extract(document, '$.predecessor_attempt_id')=? LIMIT 1",
+                (document["predecessor_attempt_id"],),
+            ).fetchone() is not None:
+                raise RuntimeIntegrityError("a durable Action-Derivation predecessor already has an authorized successor")
+            self._action_derivation_write_state["permitted"] = True
+            try:
+                connection.execute(
+                    "INSERT INTO action_derivations "
+                    "(derivation_id, mission_id, snapshot_digest, contract_version, provider_configuration, lifecycle, generation_request_digest, document) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    tuple(document[field] for field in (
+                        "derivation_id", "mission_id", "snapshot_digest", "contract_version",
+                        "provider_configuration", "lifecycle", "generation_request_digest",
+                    )) + (self._dump(document),),
+                )
+                self._append_operational_event(
+                    component="forge_planning_provider", level="INFO", event="action_derivation_attempt_recorded",
+                    mission_id=document["mission_id"], action_id=document["derivation_id"],
+                    details={"operation": "attempt_recorded", "action_derivation_id": document["derivation_id"],
+                             "request_digest": document["generation_request_digest"],
+                             "result_state": document["processing_phase"]},
+                )
+            finally:
+                self._action_derivation_write_state["permitted"] = False
+            connection.commit()
+            return document, True
+        except Exception:
+            connection.rollback()
+            raise
+
+    def advance_durable_action_derivation(
+        self, derivation_id: str, *, lifecycle: str, processing_phase: str,
+        error_code: str | None = None, exception_type: str | None = None,
+        location: str | None = None,
+    ) -> dict[str, Any]:
+        """Advance a claimed attempt without retaining a provider payload."""
+        from forge.models.action_derivation import DerivationLifecycle, _LIFECYCLE_TRANSITIONS
+
+        if not derivation_id or not processing_phase:
+            raise RuntimeDatabaseError("durable action derivation transition requires identity and phase")
+        if error_code is not None and (not isinstance(error_code, str) or len(error_code) > 96):
+            raise RuntimeDatabaseError("durable action derivation error code is invalid")
+        if exception_type is not None and (not isinstance(exception_type, str) or len(exception_type) > 128):
+            raise RuntimeDatabaseError("durable action derivation exception type is invalid")
+        if location is not None and (not isinstance(location, str) or len(location) > 256):
+            raise RuntimeDatabaseError("durable action derivation location is invalid")
+        try:
+            requested = DerivationLifecycle(lifecycle)
+        except ValueError as error:
+            raise RuntimeDatabaseError("durable action derivation lifecycle is invalid") from error
+        connection = self._connection
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            row = connection.execute("SELECT lifecycle, document FROM action_derivations WHERE derivation_id=?", (derivation_id,)).fetchone()
+            if row is None:
+                raise RuntimeDatabaseError("durable action derivation attempt is missing")
+            document = json.loads(row["document"])
+            if document.get("attempt_metadata_digest") != _durable_attempt_metadata_digest(document):
+                raise RuntimeIntegrityError("durable action derivation attempt metadata integrity failed")
+            current = DerivationLifecycle(row["lifecycle"])
+            if current is requested:
+                if document.get("processing_phase") == processing_phase:
+                    connection.commit()
+                    return document
+                raise RuntimeIntegrityError("durable action derivation phase rewrite is denied")
+            if requested not in _LIFECYCLE_TRANSITIONS[current]:
+                raise RuntimeIntegrityError("durable action derivation lifecycle transition is invalid")
+            document.update({"lifecycle": requested.value, "processing_phase": processing_phase})
+            if error_code is not None:
+                document["error_code"] = error_code
+            if exception_type is not None:
+                document["exception_type"] = exception_type
+            if location is not None:
+                document["error_location"] = location
+            self._action_derivation_write_state["permitted"] = True
+            try:
+                connection.execute(
+                    "UPDATE action_derivations SET lifecycle=?, document=? WHERE derivation_id=?",
+                    (requested.value, self._dump(document), derivation_id),
+                )
+                self._append_operational_event(
+                    component="forge_planning_provider",
+                    level="WARNING" if requested in {DerivationLifecycle.FAILED, DerivationLifecycle.MATERIALIZATION_FAILED} else "INFO",
+                    event="action_derivation_state_changed", mission_id=document["mission_id"],
+                    action_id=derivation_id,
+                    details={"operation": "state_changed", "action_derivation_id": derivation_id,
+                             "request_digest": document["generation_request_digest"],
+                             "failure_code": error_code, "result_state": processing_phase},
+                )
+            finally:
+                self._action_derivation_write_state["permitted"] = False
+            connection.commit()
+            return document
+        except Exception:
+            connection.rollback()
+            raise
+
+    def store_durable_action_derivation_result(self, result: Any) -> dict[str, Any]:
+        """Atomically retain one bounded typed result before it reaches validation."""
+        document = _document(result, "durable action derivation result")
+        required = (
+            "derivation_id", "result_kind", "result_digest", "payload_digest", "metadata_digest",
+            "stored_at", "payload", "attempt_metadata_digest", "provider_id", "adapter_version",
+            "provider_configuration_revision", "effective_policy_digest", "generation_request_digest",
+        )
+        if any(field not in document for field in required):
+            raise RuntimeDatabaseError("durable action derivation result is incomplete")
+        required_text = tuple(field for field in required if field != "payload")
+        if (document["result_kind"] not in {"PROPOSALS", "GOVERNANCE_REFINEMENT", "CONTRACT_INVALID"}
+                or any(not isinstance(document[field], str) or not document[field] for field in required_text)
+                or any(not _SHA256_DIGEST.fullmatch(document[field]) for field in (
+                    "result_digest", "payload_digest", "metadata_digest",
+                ))):
+            raise RuntimeDatabaseError("durable action derivation result provenance is malformed")
+        payload = document["payload"]
+        evidence = payload.get("evidence") if isinstance(payload, Mapping) else None
+        if (not isinstance(evidence, Mapping)
+                or evidence.get("request_digest") != document.get("derivation_request_digest")
+                or evidence.get("result_digest") != document.get("result_digest")
+                or evidence.get("side_effect_state") != "HAPPENED_AND_CONFIRMED"):
+            raise RuntimeDatabaseError("durable action derivation result does not bind confirmed provider evidence")
+        if ((document["result_kind"] == "CONTRACT_INVALID")
+                != (evidence.get("status") == "contract_invalid")):
+            raise RuntimeIntegrityError("durable action derivation result kind does not bind provider classification")
+        serialized_payload = self._dump(payload)
+        if len(serialized_payload.encode("utf-8")) > 65536:
+            raise RuntimeDatabaseError("durable action derivation result exceeds its bounded payload size")
+        if (_contains_secret_field(payload) or _contains_secret_value(payload)
+                or "prompt" in document or "transcript" in document or "traceback" in document):
+            raise RuntimeDatabaseError("durable action derivation result contains forbidden material")
+        _validate_durable_provider_payload(payload)
+        expected_payload_digest = "sha256:" + sha256(serialized_payload.encode("utf-8")).hexdigest()
+        if expected_payload_digest != document["payload_digest"]:
+            raise RuntimeIntegrityError("durable action derivation result payload digest is inconsistent")
+        metadata = {key: value for key, value in document.items() if key not in {"payload", "metadata_digest"}}
+        expected_metadata_digest = "sha256:" + sha256(self._dump(metadata).encode("utf-8")).hexdigest()
+        if expected_metadata_digest != document["metadata_digest"]:
+            raise RuntimeIntegrityError("durable action derivation result metadata digest is inconsistent")
+        connection = self._connection
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            existing = connection.execute(
+                "SELECT document FROM action_derivation_results WHERE derivation_id=?", (document["derivation_id"],)
+            ).fetchone()
+            if existing is not None:
+                persisted = json.loads(existing["document"])
+                if persisted != document:
+                    raise RuntimeIntegrityError("durable action derivation result replacement is denied")
+                connection.commit()
+                return persisted
+            attempt = connection.execute(
+                "SELECT lifecycle, document FROM action_derivations WHERE derivation_id=?", (document["derivation_id"],)
+            ).fetchone()
+            if attempt is None:
+                raise RuntimeDatabaseError("durable action derivation result has no attempt")
+            attempt_document = json.loads(attempt["document"])
+            if attempt_document.get("attempt_metadata_digest") != _durable_attempt_metadata_digest(attempt_document):
+                raise RuntimeIntegrityError("durable action derivation attempt metadata integrity failed")
+            if attempt["lifecycle"] != "PROVIDER_RUNNING":
+                raise RuntimeIntegrityError("durable action derivation result is not at the provider boundary")
+            binding_fields = (
+                "attempt_metadata_digest", "provider_id", "provider_configuration_revision",
+                "effective_policy_digest", "generation_request_digest", "derivation_request_digest",
+                "adapter_version",
+            )
+            if any(document.get(field) != attempt_document.get(field) for field in binding_fields):
+                raise RuntimeIntegrityError("durable action derivation result does not bind its request")
+            if evidence.get("snapshot_digest") != attempt_document.get("snapshot_digest"):
+                raise RuntimeIntegrityError("durable action derivation result does not bind its snapshot")
+            if (evidence.get("provider_id") != attempt_document.get("provider_id")
+                    or evidence.get("model") != attempt_document.get("provider_model")
+                    or evidence.get("adapter_version") != attempt_document.get("adapter_version")):
+                raise RuntimeIntegrityError("durable action derivation result does not bind its configured provider")
+            attempt_document.update({
+                "lifecycle": "PROPOSAL_RECEIVED", "processing_phase": "RESULT_AVAILABLE",
+                "result_kind": document["result_kind"], "provider_result_digest": document["result_digest"],
+                "result_payload_digest": document["payload_digest"], "result_metadata_digest": document["metadata_digest"],
+            })
+            self._action_derivation_write_state["permitted"] = True
+            try:
+                connection.execute(
+                    "INSERT INTO action_derivation_results VALUES (?,?,?,?,?,?,?)",
+                    (document["derivation_id"], document["result_kind"], document["result_digest"],
+                     document["payload_digest"], document["metadata_digest"], document["stored_at"], self._dump(document)),
+                )
+                connection.execute(
+                    "UPDATE action_derivations SET lifecycle='PROPOSAL_RECEIVED', document=? WHERE derivation_id=?",
+                    (self._dump(attempt_document), document["derivation_id"]),
+                )
+                self._append_operational_event(
+                    component="forge_planning_provider", level="INFO", event="action_derivation_result_stored",
+                    mission_id=attempt_document["mission_id"], action_id=document["derivation_id"],
+                    details={"operation": "result_stored", "action_derivation_id": document["derivation_id"],
+                             "request_digest": attempt_document["generation_request_digest"],
+                             "result_state": document["result_kind"]}, occurred_at=document["stored_at"],
+                )
+            finally:
+                self._action_derivation_write_state["permitted"] = False
+            connection.commit()
+            return document
+        except Exception:
+            connection.rollback()
+            raise
+
+    def durable_action_derivation_result(self, derivation_id: str) -> dict[str, Any]:
+        """Return the internal typed payload only to the canonical replay path."""
+        row = self._connection.execute(
+            "SELECT document FROM action_derivation_results WHERE derivation_id=?", (derivation_id,)
+        ).fetchone()
+        if row is None:
+            raise RuntimeDatabaseError("durable action derivation result is unavailable")
+        document = json.loads(row["document"])
+        attempt = self.durable_action_derivation_attempt(derivation_id)
+        if document.get("attempt_metadata_digest") != attempt.get("attempt_metadata_digest"):
+            raise RuntimeIntegrityError("durable action derivation result does not bind its immutable attempt")
+        payload = document.get("payload")
+        if not isinstance(payload, dict):
+            raise RuntimeIntegrityError("durable action derivation result payload is malformed")
+        if "sha256:" + sha256(self._dump(payload).encode("utf-8")).hexdigest() != document.get("payload_digest"):
+            raise RuntimeIntegrityError("durable action derivation result payload integrity failed")
+        metadata = {key: value for key, value in document.items() if key not in {"payload", "metadata_digest"}}
+        if "sha256:" + sha256(self._dump(metadata).encode("utf-8")).hexdigest() != document.get("metadata_digest"):
+            raise RuntimeIntegrityError("durable action derivation result metadata integrity failed")
+        return document
+
+    def durable_action_derivation_attempt(self, derivation_id: str) -> dict[str, Any]:
+        """Read an integrity-checked attempt for the internal replay boundary."""
+        row = self._connection.execute(
+            "SELECT document FROM action_derivations WHERE derivation_id=?", (derivation_id,)
+        ).fetchone()
+        if row is None:
+            raise RuntimeDatabaseError("durable action derivation attempt is unavailable")
+        document = json.loads(row["document"])
+        if document.get("attempt_metadata_digest") != _durable_attempt_metadata_digest(document):
+            raise RuntimeIntegrityError("durable action derivation attempt metadata integrity failed")
+        return document
+
+    def legacy_confirmed_result_unavailable(self, mission_id: str, snapshot_digest: str,
+                                            provider_id: str) -> dict[str, Any] | None:
+        """Safely surface a pre-durable confirmed external result without inventing it.
+
+        Old external-session audit rows have no typed payload and no
+        Action-Derivation row.  A matching immutable planning snapshot is the
+        only available Mission binding; it blocks new generation and asks for
+        explicit reconciliation rather than treating missing new storage as
+        proof that the provider never ran.
+        """
+        if (not mission_id or not _SHA256_DIGEST.fullmatch(snapshot_digest)
+                or not provider_id):
+            raise RuntimeDatabaseError("legacy provider audit lookup requires a complete planning boundary")
+        rows = self._connection.execute(
+            "SELECT audit_id, configuration_id, occurred_at, document "
+            "FROM planning_provider_external_session_audit WHERE operation='invocation' ORDER BY occurred_at"
+        ).fetchall()
+        for row in rows:
+            try:
+                document = json.loads(row["document"])
+            except (TypeError, ValueError):
+                continue
+            if (document.get("state") == "HAPPENED_AND_CONFIRMED"
+                    and document.get("snapshot_digest") == snapshot_digest
+                    and document.get("provider_id") == provider_id):
+                return {
+                    "audit_id": row["audit_id"], "mission_id": mission_id,
+                    "processing_phase": "CONFIRMED_RESULT_UNAVAILABLE",
+                    "generation_state": "HAPPENED_AND_CONFIRMED",
+                    "result_available": False, "result_kind": None,
+                    "source": "LEGACY_EXTERNAL_SESSION_AUDIT",
+                    "configuration_id": row["configuration_id"], "stored_at": row["occurred_at"],
+                    "snapshot_digest": snapshot_digest,
+                    "derivation_request_digest": document.get("derivation_request_digest"),
+                    "generation_request_digest": document.get("request_digest"),
+                }
+        return None
+
+    def legacy_action_derivation_reconciliation(self, mission_id: str,
+                                                snapshot_digest: str | None = None) -> tuple[dict[str, Any], ...]:
+        """Project pre-durable derivation rows without inventing a result.
+
+        Earlier Action-Derivation records did not carry a replayable typed
+        provider receipt.  They stay visible to operators as a reconciliation
+        requirement and prevent an automatic new boundary for the exact same
+        snapshot; Forge never backfills their missing result kind or payload.
+        """
+        if not mission_id:
+            raise RuntimeDatabaseError("legacy action derivation lookup requires a Mission identity")
+        rows = self._connection.execute(
+            "SELECT derivation_id, document FROM action_derivations WHERE mission_id=? "
+            "AND json_extract(document, '$.attempt_metadata_digest') IS NULL ORDER BY rowid", (mission_id,)
+        ).fetchall()
+        values: list[dict[str, Any]] = []
+        for row in rows:
+            document = json.loads(row["document"])
+            if snapshot_digest is not None and document.get("snapshot_digest") != snapshot_digest:
+                continue
+            values.append({
+                "derivation_id": document.get("derivation_id"), "mission_id": mission_id,
+                "lifecycle": document.get("lifecycle"),
+                "processing_phase": "LEGACY_RECONCILIATION_REQUIRED",
+                "generation_state": "NOT_INFERRED", "result_available": False,
+                "result_kind": None, "source": "LEGACY_ACTION_DERIVATION_RECORD",
+                "snapshot_digest": document.get("snapshot_digest"),
+                "generation_request_digest": document.get("generation_request_digest"),
+                "derivation_request_digest": None,
+            })
+        return tuple(values)
+
+    def durable_action_derivation_readback(self, mission_id: str) -> tuple[dict[str, Any], ...]:
+        """Expose safe attempt metadata without provider payload or diagnostics."""
+        rows = self._connection.execute(
+            "SELECT derivation_id, document FROM action_derivations WHERE mission_id=? "
+            "AND json_extract(document, '$.attempt_metadata_digest') IS NOT NULL ORDER BY rowid", (mission_id,)
+        ).fetchall()
+        values: list[dict[str, Any]] = []
+        for row in rows:
+            document = self.durable_action_derivation_attempt(row["derivation_id"])
+            result = self._connection.execute(
+                "SELECT result_kind, result_digest, payload_digest, metadata_digest, stored_at "
+                "FROM action_derivation_results WHERE derivation_id=?", (row["derivation_id"],)
+            ).fetchone()
+            values.append({
+                "derivation_id": document.get("derivation_id"), "mission_id": document.get("mission_id"),
+                "lifecycle": document.get("lifecycle"), "processing_phase": document.get("processing_phase"),
+                "provider_id": document.get("provider_id"),
+                "provider_configuration_revision": document.get("provider_configuration_revision"),
+                "generation_request_digest": document.get("generation_request_digest"),
+                "derivation_request_digest": document.get("derivation_request_digest"),
+                "snapshot_digest": document.get("snapshot_digest"),
+                "result_available": result is not None,
+                "result_kind": None if result is None else result["result_kind"],
+                "result_digest": None if result is None else result["result_digest"],
+                "payload_digest": None if result is None else result["payload_digest"],
+                "metadata_digest": None if result is None else result["metadata_digest"],
+                "stored_at": None if result is None else result["stored_at"],
+                "error_code": document.get("error_code"),
+                "exception_type": document.get("exception_type"),
+                "error_location": document.get("error_location"),
+                "predecessor_attempt_id": document.get("predecessor_attempt_id"),
+                "next_attempt_decision_id": document.get("next_attempt_decision_id"),
+            })
+        return (*self.legacy_action_derivation_reconciliation(mission_id), *values)
+
+    def has_active_mission_dispatch(self, mission_id: str) -> bool:
+        """Detect an EP-facing dispatch, not a local planning lease.
+
+        A dispatcher lease can remain active when planning blocks before any
+        Action exists.  Treating that lease as an EP dispatch would make an
+        otherwise valid explicit successor impossible.  Scheduler submission
+        lineage or an Action-bound correlation remains a hard stop.
+        """
+        if self.outstanding_scheduler_submission(mission_id) is not None:
+            return True
+        row = self._connection.execute(
+            "SELECT document FROM mission_state WHERE mission_id=?", (mission_id,)
+        ).fetchone()
+        if row is None:
+            return False
+        document = json.loads(row["document"])
+        return bool(document.get("actions")) and document.get("execution_correlation") is not None
+
+    def activate_authorized_durable_action_derivation(self, derivation_id: str,
+                                                       next_attempt_decision_id: str) -> dict[str, Any]:
+        """Consume a reserved successor once immediately before its provider call."""
+        connection = self._connection
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            row = connection.execute("SELECT lifecycle, document FROM action_derivations WHERE derivation_id=?", (derivation_id,)).fetchone()
+            if row is None:
+                raise RuntimeDatabaseError("authorized successor attempt is missing")
+            document = json.loads(row["document"])
+            if document.get("attempt_metadata_digest") != _durable_attempt_metadata_digest(document):
+                raise RuntimeIntegrityError("durable action derivation attempt metadata integrity failed")
+            if (row["lifecycle"] != "DERIVATION_REQUESTED"
+                    or document.get("processing_phase") != "SUCCESSOR_AUTHORIZED"
+                    or document.get("next_attempt_decision_id") != next_attempt_decision_id):
+                raise RuntimeIntegrityError("authorized successor attempt is stale or already consumed")
+            document.update({"lifecycle": "PROVIDER_RUNNING", "processing_phase": "GENERATION_IN_PROGRESS"})
+            self._action_derivation_write_state["permitted"] = True
+            try:
+                connection.execute(
+                    "UPDATE action_derivations SET lifecycle='PROVIDER_RUNNING', document=? WHERE derivation_id=?",
+                    (self._dump(document), derivation_id),
+                )
+                self._append_operational_event(
+                    component="forge_planning_provider", level="INFO", event="action_derivation_successor_consumed",
+                    mission_id=document["mission_id"], action_id=derivation_id,
+                    details={"operation": "successor_consumed", "action_derivation_id": derivation_id,
+                             "request_digest": document["generation_request_digest"],
+                             "result_state": "GENERATION_IN_PROGRESS"},
+                )
+            finally:
+                self._action_derivation_write_state["permitted"] = False
+            connection.commit()
+            return document
+        except Exception:
+            connection.rollback()
+            raise
+
+    def commit_durable_action_derivation_materialization(self, state: Any, derivation_id: str) -> dict[str, Any]:
+        """Commit Mission Actions/history and the attempt marker as one SQLite unit."""
+        document, mission_id, lifecycle, context = self._validated_mission_state_document(state)
+        if (not derivation_id or not isinstance(document.get("revision"), int)
+                or not isinstance(document.get("planning_history"), list)
+                or not any(item.get("derivation_id") == derivation_id for item in document["planning_history"]
+                           if isinstance(item, Mapping))
+                or not document.get("actions") or not document.get("intents")):
+            raise RuntimeDatabaseError("durable Action materialization requires Actions, history, and attempt identity")
+        connection = self._connection
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            current = connection.execute("SELECT document FROM mission_state WHERE mission_id=?", (mission_id,)).fetchone()
+            if current is None:
+                raise RuntimeDatabaseError("durable Action materialization Mission is missing")
+            current_document = json.loads(current["document"])
+            if current_document.get("revision") != document["revision"] - 1:
+                raise RuntimeIntegrityError("durable Action materialization Mission revision is stale")
+            attempt = connection.execute(
+                "SELECT lifecycle, document FROM action_derivations WHERE derivation_id=?", (derivation_id,)
+            ).fetchone()
+            if attempt is None:
+                raise RuntimeDatabaseError("durable Action materialization attempt is missing")
+            if attempt["lifecycle"] not in {"VALIDATED", "MATERIALIZATION_FAILED"}:
+                raise RuntimeIntegrityError("durable Action materialization is not validated")
+            if connection.execute(
+                "SELECT 1 FROM action_derivation_results WHERE derivation_id=?", (derivation_id,)
+            ).fetchone() is None:
+                raise RuntimeIntegrityError("durable Action materialization result is unavailable")
+            attempt_document = json.loads(attempt["document"])
+            if attempt_document.get("attempt_metadata_digest") != _durable_attempt_metadata_digest(attempt_document):
+                raise RuntimeIntegrityError("durable action derivation attempt metadata integrity failed")
+            if attempt_document.get("mission_id") != mission_id:
+                raise RuntimeIntegrityError("durable Action materialization is cross-Mission")
+            materialization_source = {
+                "mission_id": mission_id, "revision": document["revision"],
+                "actions": document["actions"], "intents": document["intents"],
+                "planning_history": document["planning_history"],
+            }
+            attempt_document.update({
+                "lifecycle": "MATERIALIZED", "processing_phase": "MATERIALIZED",
+                "materialization_digest": "sha256:" + sha256(
+                    self._dump(materialization_source).encode("utf-8")
+                ).hexdigest(),
+            })
+            self._action_derivation_write_state["permitted"] = True
+            try:
+                connection.execute(
+                    "UPDATE action_derivations SET lifecycle='MATERIALIZED', document=? WHERE derivation_id=?",
+                    (self._dump(attempt_document), derivation_id),
+                )
+                self._write_mission_state_in_transaction(document, mission_id, lifecycle, context)
+                self._append_operational_event(
+                    component="forge_planning_provider", level="INFO", event="action_derivation_materialized",
+                    mission_id=mission_id, action_id=derivation_id,
+                    details={"operation": "materialized", "action_derivation_id": derivation_id,
+                             "request_digest": attempt_document["generation_request_digest"],
+                             "result_state": "MATERIALIZED"},
+                )
+            finally:
+                self._action_derivation_write_state["permitted"] = False
+            connection.commit()
+            return document
+        except Exception:
+            connection.rollback()
+            raise
 
     def create_action_derivation_canary_closure(self, closure: Any) -> dict[str, Any]:
         """Persist one immutable, non-executing Action-Derivation canary closure."""

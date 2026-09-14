@@ -17,7 +17,7 @@ import re
 import subprocess
 import tempfile
 import time
-from typing import Callable
+from typing import Callable, Mapping
 import uuid
 
 from forge.models.action_derivation import (
@@ -271,12 +271,41 @@ class CodexCliChatGPTSessionPlanningProvider:
         self.adapter_version = adapter_version
         self._temporary_directory = temporary_directory
 
+    @property
+    def provider_id(self) -> str:
+        """Configured provider identity for non-generating status readback."""
+        return self.configuration.provider_id
+
     def preflight(self) -> CodexCliSessionReadiness:
         """Read the supported local CLI status without generating a proposal."""
         return self._readiness_checker.check(self.configuration.current_policy())
 
+    def prepare_durable_attempt(self, snapshot: PlanningSnapshot, planning_input: MissionPlannerInput,
+                                derivation_policy: DerivationPolicy, derivation_id: str,
+                                attempt_authority_id: str | None = None) -> dict[str, object]:
+        """Return the non-secret identity bound before a provider process starts."""
+        if not snapshot.is_current_for(planning_input) or not derivation_id:
+            raise PermissionError("Codex durable derivation requires the current canonical planning snapshot")
+        policy = self.configuration.current_policy()
+        schema = _output_schema(tuple(scope.scope for scope in planning_input.approved_scopes), derivation_policy, snapshot)
+        request = ProviderDerivationRequest(derivation_id, snapshot, policy.provider_id, policy.model,
+                                            attempt_authority_id)
+        return {
+            "provider_id": policy.provider_id,
+            "provider_model": policy.model,
+            "adapter_version": self.adapter_version,
+            "provider_configuration_revision": str(policy.version),
+            "provider_policy_digest": _policy_digest(policy),
+            "generation_request_digest": _digest(_request_material(request, policy, schema)),
+            "derivation_request_digest": request.digest,
+        }
+
     def derive_with_planning_input(self, snapshot: PlanningSnapshot, planning_input: MissionPlannerInput,
-                                   derivation_policy: DerivationPolicy) -> tuple[DerivedActionProposal, ...] | GovernanceRefinementRequired:
+                                   derivation_policy: DerivationPolicy, *, derivation_id: str | None = None,
+                                   attempt_authority_id: str | None = None,
+                                   durable_attempt_specification: Mapping[str, object] | None = None,
+                                   durable_result_sink: Callable[[ProviderDerivationResponse], None] | None = None,
+                                   ) -> tuple[DerivedActionProposal, ...] | GovernanceRefinementRequired:
         """Bridge the existing planner pipeline without granting provider authority.
 
         The surrounding :class:`AIMissionPlanner` still validates this return
@@ -285,17 +314,30 @@ class CodexCliChatGPTSessionPlanningProvider:
         """
         if not snapshot.is_current_for(planning_input):
             raise PermissionError("Codex derivation requires the current canonical planning snapshot")
-        policy = self.configuration.current_policy()
+        actual_derivation_id = derivation_id or f"codex-derivation-{uuid.uuid4()}"
+        if durable_attempt_specification is None:
+            durable_attempt_specification = self.prepare_durable_attempt(
+                snapshot, planning_input, derivation_policy, actual_derivation_id, attempt_authority_id,
+            )
+        provider_id = durable_attempt_specification.get("provider_id")
+        model = durable_attempt_specification.get("provider_model")
+        if not isinstance(provider_id, str) or not provider_id:
+            raise PermissionError("Codex durable derivation requires prepared provider provenance")
         request = ProviderDerivationRequest(
-            f"codex-derivation-{uuid.uuid4()}", snapshot, policy.provider_id, policy.model,
+            actual_derivation_id, snapshot, provider_id,
+            None if model is None else str(model),
+            attempt_authority_id,
         )
         response = BoundedActionDerivationProvider(self, adapter_version=self.adapter_version).invoke(
             request, approved_scopes=tuple(scope.scope for scope in planning_input.approved_scopes),
             derivation_policy=derivation_policy,
+            durable_attempt_specification=durable_attempt_specification,
+            durable_result_sink=durable_result_sink,
         )
         return response.governance_refinement if response.proposals is None else response.proposals
 
     def invoke(self, request: ProviderDerivationRequest, **authority: object) -> ProviderDerivationResponse:
+        prepared = authority.get("durable_attempt_specification")
         policy = self.configuration.current_policy()
         if request.provider_id != policy.provider_id or request.model != policy.model:
             raise PermissionError("Codex invocation does not bind the configured provider and selected model")
@@ -310,6 +352,17 @@ class CodexCliChatGPTSessionPlanningProvider:
         schema = _output_schema(scopes, derivation_policy, request.snapshot)
         request_digest = _digest(_request_material(request, policy, schema))
         policy_digest = _policy_digest(policy)
+        if prepared is not None:
+            if not isinstance(prepared, Mapping) or any(prepared.get(key) != value for key, value in {
+                "provider_id": policy.provider_id,
+                "provider_model": policy.model,
+                "adapter_version": self.adapter_version,
+                "provider_configuration_revision": str(policy.version),
+                "provider_policy_digest": policy_digest,
+                "generation_request_digest": request_digest,
+                "derivation_request_digest": request.digest,
+            }.items()):
+                raise PermissionError("Codex durable derivation policy changed after its attempt was claimed")
         permit = self.configuration.policy_service._acquire_generation_permit(policy, policy_digest, request_digest)
         started = _now()
         self._record_invocation(policy, request, request_digest, "STARTED", started)
@@ -345,7 +398,8 @@ class CodexCliChatGPTSessionPlanningProvider:
             _digest(document), ProviderSideEffectState.HAPPENED_AND_CONFIRMED, None, started, completed, status,
             None, None,
         )
-        return ProviderDerivationResponse(evidence, proposals=proposals, governance_refinement=refinement)
+        response = ProviderDerivationResponse(evidence, proposals=proposals, governance_refinement=refinement)
+        return response
 
     def reconcile(self, request: ProviderDerivationRequest) -> ProviderSideEffectState:
         # The stable CLI has no idempotency/status lookup for an interrupted
@@ -554,7 +608,8 @@ def _policy_digest(policy: PlanningProviderInvocationPolicy) -> str:
 def _request_material(request: ProviderDerivationRequest, policy: PlanningProviderInvocationPolicy,
                       schema: dict[str, object]) -> dict[str, object]:
     return {"provider_id": request.provider_id, "model": request.model, "profile": policy.profile,
-            "snapshot_digest": request.snapshot.digest, "schema": schema, "prompt": _prompt(request)}
+            "snapshot_digest": request.snapshot.digest, "attempt_authority_id": request.attempt_authority_id,
+            "schema": schema, "prompt": _prompt(request)}
 
 
 def _prompt(request: ProviderDerivationRequest) -> dict[str, object]:

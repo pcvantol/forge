@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from hashlib import sha256
+import json
 import unittest
 
 from forge.architecture import ArchitectureWorkspace
@@ -15,7 +17,11 @@ from forge.governance_authority import (
     CanonicalGovernanceRepository,
     MissionPlanningEvidenceEnvelope,
 )
-from forge.models.action_derivation import DerivedActionProposal, ProposalProvenance
+from forge.models.action_derivation import (
+    DerivedActionProposal, ProposalProvenance, ProviderInvocationEvidence,
+    ProviderSideEffectState, PlanningSnapshot,
+)
+from forge.planner.provider_adapter import ProviderDerivationResponse
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.execution_host import (
     ExecutionDispatch,
@@ -27,10 +33,15 @@ from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
+from forge.runtime.database import RuntimeDatabaseError
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state.mission_state import MissionExecutionStatus
 from forge._version import canonical_version
+
+
+def _digest(value: object) -> str:
+    return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 class _Provider:
@@ -40,17 +51,51 @@ class _Provider:
     def preflight(self):
         return SimpleNamespace(ready=True, state=SimpleNamespace(value="READY"))
 
-    def derive_with_planning_input(self, snapshot, _planning_input, _policy):
+    @property
+    def provider_id(self) -> str:
+        return "fixture"
+
+    def prepare_durable_attempt(self, snapshot, _planning_input, _policy, derivation_id,
+                                attempt_authority_id=None):
+        request = _digest({"derivation": derivation_id, "snapshot": snapshot.digest,
+                           "authority": attempt_authority_id})
+        return {
+            "provider_id": "fixture", "provider_configuration_revision": "1",
+            "provider_model": None, "adapter_version": "fixture-v1",
+            "provider_policy_digest": _digest({"provider": "fixture", "revision": 1}),
+            "generation_request_digest": _digest({"snapshot": snapshot.digest, "provider": "fixture",
+                                                    "authority": attempt_authority_id}),
+            "derivation_request_digest": request,
+        }
+
+    def derive_with_planning_input(self, snapshot, _planning_input, _policy, *, derivation_id,
+                                   attempt_authority_id=None, durable_attempt_specification=None,
+                                   durable_result_sink=None):
+        if durable_attempt_specification is None:
+            raise AssertionError("durable invocation must use the prepared attempt specification")
         self.calls += 1
-        return (DerivedActionProposal(
+        proposals = (DerivedActionProposal(
             "status-projection-action", "durable-status-projection", "Deliver the approved status projection.", (),
             ("forge/__main__.py",), ("focused status validation",), ("python -m unittest",), 1, False,
             ("protected-delivery",), ("scope-drift",),
             ProposalProvenance(
-                f"fixture-derivation-{self.calls}", snapshot.id, snapshot.digest, "fixture-v1", "fixture", None,
+                derivation_id, snapshot.id, snapshot.digest, "fixture-v1", "fixture", None,
                 tuple(item.source_id for item in snapshot.evidence),
             ),
         ),)
+        if durable_result_sink is None:
+            return proposals
+        response = ProviderDerivationResponse(
+            ProviderInvocationEvidence(
+                "fixture", None, "fixture-v1",
+                _digest({"derivation": derivation_id, "snapshot": snapshot.digest,
+                         "authority": attempt_authority_id}),
+                snapshot.digest, _digest({"result": "status-projection", "derivation": derivation_id}),
+                ProviderSideEffectState.HAPPENED_AND_CONFIRMED, status="completed",
+            ), proposals=proposals,
+        )
+        durable_result_sink(response)
+        return proposals
 
 
 class _Host:
@@ -175,6 +220,11 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
         self.assertEqual(waiting.planning_invocations, 1)
         self.assertEqual(len(waiting.action_ids), 1)
+        readback = self.runtime.action_derivation_readback(mission.id)
+        self.assertEqual(len(readback), 1)
+        self.assertEqual(readback[0]["processing_phase"], "MATERIALIZED")
+        self.assertTrue(readback[0]["result_available"])
+        self.assertNotIn("payload", readback[0])
         planning_context = self.host.requests[-1].producer_contract.planning_context
         self.assertIsNotNone(planning_context)
         self.assertEqual(planning_context.mission_title, "Durable status projection")
@@ -195,6 +245,36 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         state = self.runtime.states.get(mission.id)
         self.assertTrue(state.completion["all_required_criteria_proven"])
         self.assertEqual(state.execution_history[-1]["receipt_id"], "ep-receipt-status-projection")
+
+    def test_public_readback_surfaces_linked_legacy_confirmed_result_without_generation(self) -> None:
+        mission, envelope = self._mission_and_envelope()
+        self.runtime.admit(mission, envelope)
+        state = self.runtime.states.get(mission.id)
+        self.runtime._initial_truth[mission.id] = self.runtime._truth_from_snapshot(self._truth())
+        snapshot = PlanningSnapshot.from_planner_input(self.runtime._planning_input(state))
+        audit = {
+            "state": "HAPPENED_AND_CONFIRMED", "status": "completed", "provider_id": "fixture",
+            "snapshot_digest": snapshot.digest, "derivation_request_digest": _digest("legacy-derivation"),
+            "request_digest": _digest("legacy-generation"), "result_digest": _digest("legacy-result"),
+        }
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "INSERT INTO planning_provider_external_session_config VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("fixture-config", "fixture", "CODEX_CLI_CHATGPT_SESSION",
+                 "EXTERNAL_AUTHENTICATED_SESSION", "CODEX_CLI_CHATGPT_SESSION", "/usr/bin/true",
+                 "fixture-v1", None, 1, "operator", 1, "2026-09-11T16:00:00Z",
+                 "2026-09-11T16:00:00Z", None, 30, 16000, 32768, 4096),
+            )
+            self.runtime.database._connection.execute(
+                "INSERT INTO planning_provider_external_session_audit VALUES (?,?,?,?,?,?)",
+                ("legacy-confirmed", "fixture-config", "operator", "invocation",
+                 "2026-09-11T16:00:00Z", json.dumps(audit, sort_keys=True)),
+            )
+        readback = self.runtime.action_derivation_readback(mission.id)
+        self.assertEqual(readback[0]["source"], "LEGACY_EXTERNAL_SESSION_AUDIT")
+        self.assertEqual(readback[0]["generation_state"], "HAPPENED_AND_CONFIRMED")
+        self.assertFalse(readback[0]["result_available"])
+        self.assertEqual(self.provider.calls, 0)
 
     def test_public_recovery_retries_only_the_terminal_action_with_durable_lineage(self) -> None:
         mission, envelope = self._mission_and_envelope()
@@ -220,6 +300,39 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(retry.producer_contract.producer.identity.version, canonical_version())
         state = self.runtime.states.get(mission.id)
         self.assertIn("authorized_recovery", [item["reason"] for item in state.state_history])
+
+    def test_public_successor_reservation_is_explicit_and_does_not_dispatch(self) -> None:
+        mission, envelope = self._mission_and_envelope()
+        self.runtime.admit(mission, envelope)
+        original_store = self.runtime.database.store_durable_action_derivation_result
+        def fail_confirmed_store(_result):
+            raise RuntimeDatabaseError("qualification result store interruption")
+        self.runtime.database.store_durable_action_derivation_result = fail_confirmed_store
+        try:
+            blocked = self.runtime.start(mission.id, self._truth())
+        finally:
+            self.runtime.database.store_durable_action_derivation_result = original_store
+        self.assertEqual(blocked.status, "BLOCKED")
+        predecessor = self.runtime.action_derivation_readback(mission.id)[0]
+        self.assertEqual(predecessor["processing_phase"], "CONFIRMED_RESULT_UNAVAILABLE")
+        reservation = self.runtime.authorize_next_planning_attempt(
+            mission.id, predecessor_attempt_id=predecessor["derivation_id"],
+            rationale="The confirmed provider result was not retained for replay.",
+        )
+        self.assertEqual(self.provider.calls, 1)
+        planned = self.runtime.resume_authorized_next_planning_attempt(
+            mission.id, successor_attempt_id=reservation["derivation_id"],
+        )
+        self.assertEqual(planned.status, "READY")
+        self.assertEqual(self.provider.calls, 2)
+        self.assertEqual(self.host.requests, [])
+        successor = self.runtime.action_derivation_readback(mission.id)[1]
+        self.assertEqual(successor["processing_phase"], "MATERIALIZED")
+
+        # Only the ordinary public resume crosses the existing EP boundary.
+        waiting = self.runtime.resume(mission.id)
+        self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
+        self.assertEqual(len(self.host.requests), 1)
 
     def test_terminal_evidence_reconciliation_never_creates_a_second_dispatch(self) -> None:
         mission, envelope = self._mission_and_envelope()

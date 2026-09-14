@@ -30,6 +30,13 @@ from .codex_cli_session import (
     CodexCliSessionReadinessChecker,
     CodexCliSessionReadinessState,
 )
+from .durable_derivation import (
+    DURABLE_RESULT_SCHEMA_VERSION,
+    DurableAIMissionPlanner,
+    DurableActionDerivationCoordinator,
+    DurableDerivationBlocked,
+    DurableDerivationPhase,
+)
 
 __all__ = ["MissionPlanner", "AIMissionPlanner", "ActionDerivationProvider", "ActionDerivationValidator",
            "DerivationResult", "ProposalValidationError", "planner_input_from_derivation",
@@ -39,4 +46,6 @@ __all__ = ["MissionPlanner", "AIMissionPlanner", "ActionDerivationProvider", "Ac
            "CanonicalTokenPreflightAuthority", "CODEX_CLI_CHATGPT_SESSION_ADAPTER_VERSION",
            "CodexCliChatGPTSessionPlanningProvider", "CodexCliChatGPTSessionPlanningProviderConfiguration",
            "CodexCliInvocationClassification", "CodexCliInvocationDiagnostic", "CodexCliInvocationRejected",
-           "CodexCliSessionReadiness", "CodexCliSessionReadinessChecker", "CodexCliSessionReadinessState"]
+           "CodexCliSessionReadiness", "CodexCliSessionReadinessChecker", "CodexCliSessionReadinessState",
+           "DURABLE_RESULT_SCHEMA_VERSION", "DurableAIMissionPlanner", "DurableActionDerivationCoordinator",
+           "DurableDerivationBlocked", "DurableDerivationPhase"]
