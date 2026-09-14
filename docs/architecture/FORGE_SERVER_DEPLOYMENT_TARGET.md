@@ -86,15 +86,17 @@ from per-correlation `execution_host_bindings`. The versioned record binds its
 own identity, revision and canonical digest to the owning Forge runtime ID,
 `engineering-platform`, one fixed endpoint, expected EP instance ID, Execution
 Host ID, EP project and repository IDs, Forge repository identity, the exact
-producer-readback contract `1.2` and terminal-evidence contract `1.3`, one opaque credential
+producer-readback contract `1.2` and terminal-evidence contract `1.4`, one opaque credential
 reference, bounded timeout, loopback-HTTP decision and creation/update
 provenance.
 
 Configuration writes are idempotent. A changed binding requires an explicit
 replacement with both the observed revision and digest. Each newly created
 correlation persists that configuration identity in the existing correlation
-binding; recovery and evidence readback reject historic records without it and
-reject any later endpoint, instance, project, repository or binding retarget.
+binding; dispatch and recovery reject any later endpoint, instance, project,
+repository or binding retarget. Evidence readback may instead consume an
+already-bound historical v1.3 artifact through its original correlation, with
+its original bytes and no added revision constraint or peer retarget.
 This does not grant Mission, submission or mutation authority.
 
 A binding with a retired contract is deliberately unusable for status,
@@ -102,17 +104,20 @@ preflight and execution. The explicit configuration command can nevertheless
 perform one guarded upgrade: it first verifies the old record's complete
 structure, ownership, canonical digest and revision, then requires
 `--replace` with those exact observed values before it writes the current
-contract record. This permits the v1.2-to-v1.3 terminal-evidence cutover
+contract record. This permits the v1.3-to-v1.4 terminal-evidence cutover
 without accepting a stale or malformed peer for runtime use.
 
 The shared `EngineeringPlatformExecutionHostFactory` is the sole product
 composition route for both CLI preflight and runtime use. It rereads the
 persisted binding, verifies the Forge runtime identity and contract, resolves
 the Keychain reference, and constructs the existing
-`EngineeringPlatformHttpExecutionHost`. That adapter now rejects request
+`EngineeringPlatformHttpExecutionHost`. That adapter rejects request
 host/repository scope mismatches before submission and repeats exact product,
-instance and exact v1.2/v1.3 compatibility checks for dispatch, recovery and evidence
-readback.
+instance and v1.2/v1.4 compatibility checks for new dispatch and recovery.
+It verifies a new request's Repository Truth pin, permitted recovery
+transition and canonical request-payload digest before submission; terminal
+v1.4 revisions are compared with that persisted Forge request, not merely
+with another EP response field.
 
 The supported reference is
 `keychain://<service>/<account>?namespace=<optional>&version=<optional>` and is

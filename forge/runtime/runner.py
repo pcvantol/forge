@@ -28,7 +28,7 @@ from forge.models.codex_runtime_prompt import (
 )
 from forge.models.producer import (
     ExecutionReceiptReference, ForgeActionContextEnvelope, ForgePlanningContextEnvelope,
-    Producer, ProducerContract, ProducerIdentity, RuntimePromptEnvelope,
+    Producer, ProducerContract, ProducerIdentity, RepositoryRevisionBinding, RuntimePromptEnvelope,
 )
 from forge.models.intent import IntentReference
 from forge.scheduler import BootstrapMissionScheduler
@@ -62,6 +62,12 @@ class EvidenceProgressionGate(Protocol):
 
     def __call__(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...],
                  evidence: ExecutionHostEvidence, mission_complete: bool) -> MissionExecutionState | None: ...
+
+
+class RepositoryRevisionBindingFactory(Protocol):
+    """Freeze the Forge-owned Repository Truth and recovery authority for one Action."""
+
+    def __call__(self, state: MissionExecutionState, action: EngineeringAction) -> RepositoryRevisionBinding: ...
 
 
 def _document(value: Any) -> dict[str, Any]:
@@ -172,6 +178,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
             evidence_references = contract_document.get("execution_evidence_references", ())
             context_document = contract_document.get("action_context")
             planning_document = contract_document.get("planning_context")
+            revision_document = contract_document.get("repository_revision_binding")
             if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping) or not isinstance(constraints, list):
                 raise TypeError
             identity = producer["identity"]
@@ -240,6 +247,25 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
                     envelope_digest=required(planning_document["envelope_digest"]),
                     envelope_version=required(planning_document["envelope_version"]),
                 )
+            revision_binding = None
+            if "repository_revision_binding" in contract_document:
+                revision_keys = {
+                    "requested_revision", "allowed_baseline_revision", "repository_truth_id",
+                    "repository_truth_digest", "transition_authority_id",
+                }
+                if not isinstance(revision_document, Mapping) or set(revision_document) != revision_keys:
+                    raise TypeError
+                allowed = revision_document["allowed_baseline_revision"]
+                authority = revision_document["transition_authority_id"]
+                if allowed is not None and not isinstance(allowed, str):
+                    raise TypeError
+                if authority is not None and not isinstance(authority, str):
+                    raise TypeError
+                revision_binding = RepositoryRevisionBinding(
+                    required(revision_document["requested_revision"]), allowed,
+                    required(revision_document["repository_truth_id"]),
+                    required(revision_document["repository_truth_digest"]), authority,
+                )
             mission_id = required(contract_document["mission_id"])
             contract = ProducerContract(
                 Producer(ProducerIdentity(required(identity["id"]), required(identity["type"]), required(identity["version"])),
@@ -251,9 +277,31 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
                 planning_context=planning_context, mission_id=mission_id,
                 receipt_references=tuple(ExecutionReceiptReference(item["host_id"], item["receipt_id"]) for item in receipts),
                 execution_evidence_references=tuple(evidence_references), contract_version=required(contract_document["contract_version"]),
+                repository_revision_binding=revision_binding,
             )
         except (KeyError, TypeError, ValueError) as error:
             raise MissionRunnerError("persisted Producer Contract is malformed") from error
+    request_revision = document.get("repository_revision_binding")
+    if "repository_revision_binding" in document:
+        try:
+            if not isinstance(request_revision, Mapping) or set(request_revision) != {
+                "requested_revision", "allowed_baseline_revision", "repository_truth_id",
+                "repository_truth_digest", "transition_authority_id",
+            }:
+                raise TypeError
+            allowed = request_revision["allowed_baseline_revision"]
+            authority = request_revision["transition_authority_id"]
+            if allowed is not None and not isinstance(allowed, str):
+                raise TypeError
+            if authority is not None and not isinstance(authority, str):
+                raise TypeError
+            request_revision = RepositoryRevisionBinding(
+                str(request_revision["requested_revision"]), allowed,
+                str(request_revision["repository_truth_id"]),
+                str(request_revision["repository_truth_digest"]), authority,
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise MissionRunnerError("persisted repository revision binding is malformed") from error
     return ExecutionRequest(
         host_id=str(document["host_id"]), mission_id=str(document["mission_id"]),
         intent_id=str(document["intent_id"]), intent_revision=str(document["intent_revision"]),
@@ -264,12 +312,13 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
         original_correlation_id=document.get("original_correlation_id"),
         producer_contract=contract,
         repository_identity=document.get("repository_identity", document["repository_id"]),
+        repository_revision_binding=request_revision,
     )
 
 
 def _request_document(request: ExecutionRequest) -> dict[str, Any]:
     """Persist the full request including the canonical Runtime Prompt form."""
-    return {
+    document = {
         "host_id": request.host_id,
         "mission_id": request.mission_id,
         "intent_id": request.intent_id,
@@ -285,6 +334,9 @@ def _request_document(request: ExecutionRequest) -> dict[str, Any]:
         "original_correlation_id": request.original_correlation_id,
         "producer_contract": request.producer_contract.to_dict(),
     }
+    if request.repository_revision_binding is not None:
+        document["repository_revision_binding"] = request.repository_revision_binding.to_dict()
+    return document
 
 
 class BootstrapMissionRunner:
@@ -310,6 +362,7 @@ class BootstrapMissionRunner:
         completion_context: CompletionContextFactory | None = None,
         replan_after_evidence: ReplanAfterEvidence | None = None,
         evidence_progression_gate: EvidenceProgressionGate | None = None,
+        repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise MissionRunnerError("runtime host, workspace, and repository identities are required")
@@ -326,6 +379,7 @@ class BootstrapMissionRunner:
         self._completion_context = completion_context
         self._replan_after_evidence = replan_after_evidence
         self._evidence_progression_gate = evidence_progression_gate
+        self._repository_revision_binding_factory = repository_revision_binding_factory
 
     def start(self, mission: Any, intents: Sequence[Any], actions: Sequence[Any]) -> MissionExecutionState:
         """Persist the one permitted Mission and make it available to the Runtime."""
@@ -376,12 +430,17 @@ class BootstrapMissionRunner:
         prompt = self._prompt_factory(intent, action)
         planning_context = self._planning_context(state, action, prompt)
         retry_of, original = self._recovery_lineage(state, action)
+        revision_binding = (
+            None if self._repository_revision_binding_factory is None
+            else self._repository_revision_binding_factory(state, action)
+        )
         request = ExecutionRequest(
             self._host_id, state.mission_id, action.intent_id, action.intent_revision, action.id, prompt,
             self._workspace_id, self._repository_id, self._correlation_id_factory(), self._now(),
             retry_of_correlation_id=retry_of, original_correlation_id=original,
             repository_identity=self._repository_identity,
             planning_context=planning_context,
+            repository_revision_binding=revision_binding,
         )
         envelope = {"request": _request_document(request), "host_run_id": None}
         return self._store.transition(

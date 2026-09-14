@@ -1,4 +1,4 @@
-"""Concrete, strict HTTP v1.2 readback / v1.3 evidence host adapter.
+"""Concrete, strict HTTP v1.2 readback / v1.4 evidence host adapter.
 
 The runtime database remains the recovery authority. This adapter keeps only
 the EP submission/run binding which follows from a persisted Forge request.
@@ -6,6 +6,7 @@ the EP submission/run binding which follows from a persisted Forge request.
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from dataclasses import dataclass, field, replace
 from typing import Any, Mapping, Protocol
 from urllib.error import HTTPError, URLError
@@ -55,11 +56,11 @@ class EngineeringPlatformHttpConfiguration:
     peer_configuration_revision: int = 0
     peer_configuration_digest: str = ""
     producer_readback_contract: str = "1.2"
-    terminal_evidence_contract: str = "1.3"
+    terminal_evidence_contract: str = "1.4"
 
 
 class EngineeringPlatformHttpExecutionHost:
-    """EP v1.2 transport with compatibility preflight and durable idempotency."""
+    """EP v1.2/v1.4 transport with compatibility preflight and durable idempotency."""
 
     SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)
     FORGE_PROVENANCE_CONTRACT_VERSION = "1.3"
@@ -74,8 +75,8 @@ class EngineeringPlatformHttpExecutionHost:
         )
         if (not all(required) or config.peer_configuration_revision < 1
                 or any(character in "\r\n" for character in config.bearer_token)
-                or config.producer_readback_contract != "1.2" or config.terminal_evidence_contract != "1.3"):
-            raise ValueError("EP HTTP configuration requires a complete persisted v1.2/v1.3 peer binding")
+                or config.producer_readback_contract != "1.2" or config.terminal_evidence_contract != "1.4"):
+            raise ValueError("EP HTTP configuration requires a complete persisted v1.2/v1.4 peer binding")
         # The product factory already canonicalizes this.  Revalidate direct
         # construction without ever permitting HTTP except for loopback.
         if canonical_endpoint(config.base_url, allow_loopback_http=config.allow_loopback_http) != config.base_url:
@@ -90,7 +91,10 @@ class EngineeringPlatformHttpExecutionHost:
         return quote(value, safe="")
 
     def _json(self, path: str, *, method: str = "GET", body: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        data = None if body is None else json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        # The digest persisted with a correlation binds the exact serialized
+        # submission.  Reuse the transport serializer so non-ASCII prompt text
+        # cannot make the audited digest differ from the bytes sent to EP.
+        data = None if body is None else self._canonical_json_bytes(body)
         request = Request(self.config.base_url.rstrip("/") + path, data=data, method=method,
                           headers={"Authorization": "Bearer " + self.config.bearer_token, "Content-Type": "application/json"})
         try:
@@ -130,6 +134,38 @@ class EngineeringPlatformHttpExecutionHost:
     def _metadata(request: ExecutionRequest) -> dict[str, str]:
         return dict(request.producer_contract.execution_metadata)
 
+    @staticmethod
+    def _canonical_json_bytes(value: Mapping[str, Any]) -> bytes:
+        return json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")
+
+    @classmethod
+    def _payload_digest(cls, value: Mapping[str, Any]) -> str:
+        return "sha256:" + sha256(cls._canonical_json_bytes(value)).hexdigest()
+
+    def _expected_ep_accepted_request_digest(self, request: ExecutionRequest) -> str:
+        """Recompute EP #222's accepted-request binding for a new request.
+
+        This is deliberately distinct from ``submission_payload_digest``:
+        EP's versioned receipt covers its accepted request semantics, while
+        Forge's digest covers the exact bytes it sent.  Both must remain bound
+        to the persisted correlation.
+        """
+        contract = request.producer_contract
+        accepted = {
+            "repository_id": request.repository_id,
+            "producer": contract.producer.identity.to_dict(),
+            # EP records the SHA-256 of the exact prompt text it received,
+            # rather than Forge's distinct Runtime Prompt provenance digest.
+            "prompt_digest": sha256(contract.runtime_prompt.content.encode("utf-8")).hexdigest(),
+            "constraints": self._payload(request)["constraints"],
+            "correlation_id": request.correlation_id,
+            "mission_id": request.mission_id,
+            "engineering_action_id": request.action_id,
+        }
+        return "sha256:" + sha256(self._canonical_json_bytes(accepted) + b"\n").hexdigest()
+
     def _mission_revision(self, request: ExecutionRequest) -> str:
         revision = self._metadata(request).get("mission_revision")
         if not revision:
@@ -150,6 +186,10 @@ class EngineeringPlatformHttpExecutionHost:
         planning_context = contract.planning_context
         if action_context is None or planning_context is None:
             raise ValueError("Forge Producer Contract lacks immutable Action or planning context")
+        revision_binding = request.repository_revision_binding
+        if revision_binding is None:
+            raise ValueError("EP_REQUEST_REPOSITORY_REVISION_BINDING_REQUIRED")
+        payload = self._payload(request)
         return {"correlation_id": request.correlation_id, "host_id": request.host_id, "project_id": self.config.project_id,
                 "repository_id": request.repository_id, "mission_id": request.mission_id,
                 "repository_identity": request.repository_identity,
@@ -163,13 +203,41 @@ class EngineeringPlatformHttpExecutionHost:
                 "producer": contract.producer.identity.to_dict(), "producer_contract_digest": contract.digest(),
                 "action_context_envelope_digest": action_context.envelope_digest,
                 "planning_context_envelope_digest": planning_context.envelope_digest,
+                "repository_revision_binding": revision_binding.to_dict(),
+                "repository_revision_binding_digest": revision_binding.digest(),
+                "submission_payload_digest": self._payload_digest(payload),
                 "retry_of_correlation_id": request.retry_of_correlation_id}
 
-    def _binding(self, request: ExecutionRequest) -> dict[str, Any]:
+    def _binding(self, request: ExecutionRequest, *, allow_historical_readback: bool = False) -> dict[str, Any]:
         # Saved before any network request: an ambiguous send is retried with
         # the exact same configuration and idempotency key, never retargeted.
-        expected = self._request_binding(request)
         existing = self._bindings.execution_host_binding(request.correlation_id)
+        if (allow_historical_readback and request.repository_revision_binding is None
+                and existing is not None):
+            self._validate_request_scope(request)
+            contract = request.producer_contract
+            action_context, planning_context = contract.action_context, contract.planning_context
+            if action_context is None or planning_context is None:
+                raise ValueError("Forge Producer Contract lacks immutable Action or planning context")
+            historical_identity = {
+                "correlation_id": request.correlation_id, "host_id": request.host_id,
+                "project_id": self.config.project_id, "repository_id": request.repository_id,
+                "mission_id": request.mission_id, "repository_identity": request.repository_identity,
+                "mission_revision": self._mission_revision(request), "intent_id": request.intent_id,
+                "intent_revision": request.intent_revision, "action_id": request.action_id,
+                "runtime_prompt_id": contract.runtime_prompt.id,
+                "runtime_prompt_digest": contract.runtime_prompt.content_digest,
+                "producer": contract.producer.identity.to_dict(),
+                "producer_contract_digest": contract.digest(),
+                "action_context_envelope_digest": action_context.envelope_digest,
+                "planning_context_envelope_digest": planning_context.envelope_digest,
+                "retry_of_correlation_id": request.retry_of_correlation_id,
+            }
+            if any(key not in existing or existing.get(key) != value
+                   for key, value in historical_identity.items()):
+                raise ValueError("EP_HISTORICAL_REQUEST_BINDING_MISMATCH")
+            return existing
+        expected = self._request_binding(request)
         configuration_keys = {
             "peer_binding_id", "peer_configuration_revision", "peer_configuration_digest",
             "expected_ep_instance_id", "project_id", "repository_id", "repository_identity", "host_id",
@@ -177,30 +245,41 @@ class EngineeringPlatformHttpExecutionHost:
         if existing is not None:
             if not configuration_keys <= set(existing):
                 raise ValueError("EP_HISTORICAL_BINDING_CONFIGURATION_IDENTITY_MISSING")
-            if any(existing.get(key) != expected[key] for key in configuration_keys):
+            if (not allow_historical_readback
+                    and any(existing.get(key) != expected[key] for key in configuration_keys)):
                 raise ValueError("EP_CORRELATION_CONFIGURATION_RETARGETING_BLOCKED")
+            request_keys = frozenset(expected) - configuration_keys
+            if any(key not in existing or existing.get(key) != expected[key] for key in request_keys):
+                raise ValueError("EP_CORRELATION_REQUEST_RETARGETING_BLOCKED")
+            if allow_historical_readback:
+                return existing
         return self._bindings.save_execution_host_binding(request.correlation_id, expected)
 
     def _payload(self, request: ExecutionRequest) -> dict[str, Any]:
-        binding, contract = self._request_binding(request), request.producer_contract
+        self._validate_request_scope(request)
+        contract = request.producer_contract
         action_context = contract.action_context
         planning_context = contract.planning_context
+        revision_binding = request.repository_revision_binding
         if action_context is None or planning_context is None:  # Guarded by _request_binding; keeps this payload total.
             raise ValueError("Forge Producer Contract lacks immutable Action or planning context")
+        if revision_binding is None:
+            raise ValueError("EP_REQUEST_REPOSITORY_REVISION_BINDING_REQUIRED")
         return {"repository_id": request.repository_id, "producer": contract.producer.identity.to_dict(),
                 "prompt": contract.runtime_prompt.content, "idempotency_key": request.correlation_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
                 "engineering_action_id": request.action_id, "constraints": {"forge_execution": {
                 "contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION, "host_id": request.host_id, "repository_id": request.repository_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-                "mission_revision": binding["mission_revision"], "intent_id": request.intent_id,
+                "mission_revision": self._mission_revision(request), "intent_id": request.intent_id,
                 "intent_revision": request.intent_revision, "action_id": request.action_id,
                 "runtime_prompt": {"id": contract.runtime_prompt.id, "content_digest": contract.runtime_prompt.content_digest},
                     "retry_of_correlation_id": request.retry_of_correlation_id,
                     "producer_contract_version": contract.contract_version,
                     "forge_application_version": contract.producer.identity.version,
                     "action_context_envelope": action_context.to_dict(),
-                    "planning_context_envelope": planning_context.to_dict()}}}
+                    "planning_context_envelope": planning_context.to_dict()},
+                    "repository_revision_binding": revision_binding.ep_constraint()}}
 
     def _audit_document(self, request: ExecutionRequest, binding: Mapping[str, Any], *, receipt: Mapping[str, Any] | None = None) -> dict[str, object]:
         contract = request.producer_contract
@@ -222,6 +301,9 @@ class EngineeringPlatformHttpExecutionHost:
             "planning_context_decision_evidence_reference_digest": (
                 None if contract.planning_context is None else contract.planning_context.decision_evidence_reference_digest
             ),
+            "repository_revision_binding": binding.get("repository_revision_binding"),
+            "repository_revision_binding_digest": binding.get("repository_revision_binding_digest"),
+            "submission_payload_digest": binding.get("submission_payload_digest"),
             "correlation_id": request.correlation_id,
             "ep_project_id": self.config.project_id,
             "ep_repository_id": request.repository_id,
@@ -256,6 +338,9 @@ class EngineeringPlatformHttpExecutionHost:
         if (not digest.startswith("sha256:") or len(digest) != 71
                 or any(character not in "0123456789abcdef" for character in digest[7:])):
             raise ValueError("EP submission receipt accepted-request digest is invalid")
+        if (request.repository_revision_binding is not None
+                and digest != self._expected_ep_accepted_request_digest(request)):
+            raise ValueError("EP submission receipt accepted-request digest does not bind persisted request")
         return receipt
 
     def _submission_receipt_id(self, request: ExecutionRequest, binding: Mapping[str, Any]) -> str:
@@ -289,6 +374,8 @@ class EngineeringPlatformHttpExecutionHost:
             "action_context_generator_version", "action_context_summary_digest", "action_context_envelope_digest",
             "planning_context_envelope_version", "planning_context_envelope_digest",
             "planning_context_decision_evidence_reference_digest",
+            "repository_revision_binding", "repository_revision_binding_digest",
+            "submission_payload_digest",
             "ep_project_id", "ep_repository_id", "ep_instance_id", "submission_id", "receipt_id",
             "receipt_contract_version", "ep_application_version", "producer_readback_contract_version",
             "accepted_request_digest",
@@ -311,11 +398,24 @@ class EngineeringPlatformHttpExecutionHost:
             "planning_context_decision_evidence_reference_digest": (
                 contract.planning_context.decision_evidence_reference_digest if contract.planning_context else None
             ),
+            "repository_revision_binding": binding.get("repository_revision_binding"),
+            "repository_revision_binding_digest": binding.get("repository_revision_binding_digest"),
+            "submission_payload_digest": binding.get("submission_payload_digest"),
             "correlation_id": request.correlation_id, "ep_project_id": self.config.project_id,
             "ep_repository_id": request.repository_id, "ep_instance_id": self.config.expected_instance_id,
             "submission_id": binding.get("submission_id"), "receipt_contract_version": "1.0",
             "producer_readback_contract_version": self.config.producer_readback_contract,
         }
+        if request.repository_revision_binding is None:
+            # The older immutable audit fact has no v1.4 constraint digest;
+            # retain its original contract shape instead of backfilling it.
+            historical_keys = {
+                "repository_revision_binding", "repository_revision_binding_digest",
+                "submission_payload_digest",
+            }
+            expected_keys -= historical_keys
+            for key in historical_keys:
+                expected.pop(key)
         if set(document) != expected_keys or any(document.get(key) != value for key, value in expected.items()):
             raise ValueError("EP persisted submission receipt audit does not bind the submitted Forge envelope")
         receipt_id = document.get("receipt_id")
@@ -345,6 +445,9 @@ class EngineeringPlatformHttpExecutionHost:
             raise ValueError("EP readback correlation does not bind persisted request")
         if submission.get("repository_id") != request.repository_id or submission.get("project_id") != self.config.project_id:
             raise ValueError("EP readback submission does not bind project and repository")
+        if (request.repository_revision_binding is not None
+                and submission.get("accepted_request_digest") != self._expected_ep_accepted_request_digest(request)):
+            raise ValueError("EP readback accepted-request digest does not bind persisted request")
         if dict(producer) != binding["producer"]:
             raise ValueError("EP readback producer does not bind persisted request")
         expected_provenance = {"host_id": request.host_id, "repository_id": request.repository_id,
@@ -523,7 +626,10 @@ class EngineeringPlatformHttpExecutionHost:
         return self._dispatch_from_readback(request, binding, readback)
 
     def recover_dispatch(self, request: ExecutionRequest) -> ExecutionDispatch | None:
-        binding = self._binding(request)
+        # A persisted pre-v1.4 correlation is read back exactly as it was
+        # stored.  It is never backfilled with the new constraint or retried
+        # as a new submission; absent binding storage still fails closed.
+        binding = self._binding(request, allow_historical_readback=True)
         self.preflight()
         return self._dispatch_from_readback(request, binding, self._readback(request, binding))
 
@@ -543,7 +649,9 @@ class EngineeringPlatformHttpExecutionHost:
         return ExecutionDispatch(request, run["id"])
 
     def retrieve_evidence(self, dispatch: ExecutionDispatch) -> ExecutionHostEvidence | None:
-        request, binding = dispatch.request, self._binding(dispatch.request)
+        request, binding = dispatch.request, self._binding(
+            dispatch.request, allow_historical_readback=True,
+        )
         self.preflight()
         if binding.get("host_run_id") not in (None, dispatch.host_run_id):
             raise ValueError("persisted dispatch run differs from requested evidence run")
@@ -580,6 +688,7 @@ class EngineeringPlatformHttpExecutionHost:
         )
         evidence = terminal_evidence(
             readback, raw, host_id=self.config.host_id,
+            repository_revision_binding=request.repository_revision_binding,
             resolved_from_host_run_id=resolved_from_host_run_id,
         )
         evidence = replace(evidence, receipt_id=self._submission_receipt_id(request, binding))

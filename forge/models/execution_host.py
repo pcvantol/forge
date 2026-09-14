@@ -17,6 +17,7 @@ from .producer import (
     ForgePlanningContextEnvelope,
     Producer,
     ProducerContract,
+    RepositoryRevisionBinding,
     RuntimePromptEnvelope,
 )
 
@@ -124,6 +125,7 @@ class ExecutionRequest:
     producer_contract: ProducerContract | None = None
     repository_identity: str | None = None
     planning_context: ForgePlanningContextEnvelope | None = None
+    repository_revision_binding: RepositoryRevisionBinding | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.mission_id, self.intent_id, self.intent_revision,
@@ -158,8 +160,16 @@ class ExecutionRequest:
             raise ValueError("execution request Producer Contract must match its Runtime Prompt")
         if self.planning_context is not None and contract.planning_context != self.planning_context:
             raise ValueError("execution request planning context must match its Producer Contract")
+        binding = self.repository_revision_binding
+        if binding is None:
+            binding = contract.repository_revision_binding
+        elif contract.repository_revision_binding != binding:
+            raise ValueError("execution request repository revision binding must match its Producer Contract")
+        if binding is not None and not isinstance(binding, RepositoryRevisionBinding):
+            raise ValueError("execution request repository revision binding is invalid")
         object.__setattr__(self, "producer_contract", contract)
         object.__setattr__(self, "planning_context", contract.planning_context)
+        object.__setattr__(self, "repository_revision_binding", binding)
 
     def _default_producer_contract(self) -> ProducerContract:
         """Bridge legacy in-process prompt objects into the canonical envelope."""
@@ -204,6 +214,7 @@ class ExecutionRequest:
             execution_metadata=metadata,
             action_context=ForgeActionContextEnvelope.from_runtime_prompt(self.runtime_prompt),
             planning_context=self.planning_context,
+            repository_revision_binding=self.repository_revision_binding,
         )
 
 

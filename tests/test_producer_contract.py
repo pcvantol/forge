@@ -14,6 +14,7 @@ from forge.models import (
     ProducerContract,
     ProducerIdentity,
     ProducerType,
+    RepositoryRevisionBinding,
     RuntimePromptEnvelope,
 )
 from forge._version import canonical_version
@@ -158,6 +159,25 @@ class ProducerContractTests(unittest.TestCase):
             contract(contract_version="2.0")
         with self.assertRaisesRegex(ValueError, "constraints"):
             contract(execution_constraints=())
+
+    def test_repository_revision_binding_is_digest_bound_and_transition_authorized(self) -> None:
+        exact = RepositoryRevisionBinding(
+            "a" * 40, None, "repository-truth:forge", "sha256:" + "b" * 64,
+        )
+        self.assertEqual(exact.ep_constraint(), {
+            "requested_revision": "a" * 40, "allowed_baseline_revision": None,
+        })
+        self.assertIn("repository_revision_binding", contract(repository_revision_binding=exact).to_dict())
+        with self.assertRaisesRegex(ValueError, "full SHA"):
+            RepositoryRevisionBinding("short", None, "truth", "sha256:" + "b" * 64)
+        with self.assertRaisesRegex(ValueError, "explicit authority"):
+            RepositoryRevisionBinding("a" * 40, "b" * 40, "truth", "sha256:" + "b" * 64)
+        transition = RepositoryRevisionBinding(
+            "a" * 40, "b" * 40, "truth", "sha256:" + "b" * 64, "recovery-authority:1",
+        )
+        self.assertEqual(transition.ep_constraint(), {
+            "requested_revision": "a" * 40, "allowed_baseline_revision": "b" * 40,
+        })
 
 
 if __name__ == "__main__":

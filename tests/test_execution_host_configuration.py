@@ -106,14 +106,14 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         self.assertIn(b"keychain://forge.ep/consumer", persisted)
 
     def test_retired_terminal_evidence_contract_requires_a_guarded_replacement(self) -> None:
-        """A v1.2 binding can be upgraded, but can never run while stale."""
+        """A v1.3 binding can be upgraded, but can never run while stale."""
         current = self.service.configure(**self.values())
         database_path = self.root / "forge.db"
         with sqlite3.connect(database_path) as connection:
             document = json.loads(connection.execute(
                 "SELECT document FROM execution_host_peer_configuration"
             ).fetchone()[0])
-            document["terminal_evidence_contract"] = "1.2"
+            document["terminal_evidence_contract"] = "1.3"
             basis = {key: document[key] for key in current.configuration_basis()}
             legacy_digest = EngineeringPlatformPeerConfiguration.digest_for(basis)
             document["configuration_digest"] = legacy_digest
@@ -129,11 +129,20 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
             replace=True, expected_revision=current.configuration_revision,
             expected_digest=legacy_digest, occurred_at="2026-09-10T18:01:00Z",
         ))
-        self.assertEqual((upgraded.configuration_revision, upgraded.terminal_evidence_contract), (2, "1.3"))
+        self.assertEqual((upgraded.configuration_revision, upgraded.terminal_evidence_contract), (2, "1.4"))
         self.assertEqual(read_peer_configuration(self.root).configuration, upgraded)
+        database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        try:
+            page = database.operational_log_page(events=("execution_host_configuration_replaced",), page_size=5)
+            replacement = page["items"][0]
+            self.assertEqual(replacement["details"]["previous_state"], "producer-readback:1.2;terminal-evidence:1.3")
+            self.assertEqual(replacement["details"]["request_digest"], legacy_digest)
+            self.assertEqual(replacement["details"]["configuration_digest"], upgraded.configuration_digest)
+        finally:
+            database.close()
 
     def test_unknown_retired_contract_is_never_accepted_as_a_replacement_candidate(self) -> None:
-        """Only the explicitly supported v1.2-to-v1.3 cutover is recoverable."""
+        """Only the explicitly supported v1.3-to-v1.4 cutover is recoverable."""
         current = self.service.configure(**self.values())
         database_path = self.root / "forge.db"
         with sqlite3.connect(database_path) as connection:
@@ -260,7 +269,7 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
             "contract_version": "1.0",
             "producer": {"id": "engineering-platform", "version": "2.3.0"},
             "instance": {"id": "ep-instance-1"},
-            "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.3"]},
+            "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.4"]},
         }
         keychain_result = subprocess.CompletedProcess([], 0, stdout=SYNTHETIC_SECRET + "\n", stderr="")
         observed: list[tuple[str, str, str | None]] = []
