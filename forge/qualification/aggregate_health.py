@@ -46,6 +46,8 @@ class HealthObservation:
     safe_reason: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.state, ObservationState):
+            raise ValueError("health observations require a recognized observation state")
         if self.observed_at.tzinfo is None:
             raise ValueError("health observations require a timezone-aware timestamp")
         if self.expires_at is not None and self.expires_at.tzinfo is None:
@@ -64,6 +66,10 @@ class HealthCheck:
     def __post_init__(self) -> None:
         if not self.check_id:
             raise ValueError("health checks require a stable check ID")
+        if not isinstance(self.requirement, CheckRequirement):
+            raise ValueError("health checks require a recognized requirement")
+        if not isinstance(self.optional_unknown_impact, OptionalUnknownImpact):
+            raise ValueError("health checks require a recognized optional unknown impact")
         if self.capability == "":
             raise ValueError("health check capability must be absent or non-empty")
         if self.maximum_age <= timedelta():
@@ -94,6 +100,7 @@ class AggregateHealthEvaluator:
     """Evaluate supplied observations without collecting or changing them."""
 
     def evaluate_liveness(self, observation: HealthObservation | None, *, now: datetime) -> LivenessReport:
+        self._validate_now(now)
         state = self._observation_state(observation, timedelta.max, now)
         return LivenessReport(state=state, live=state is AggregateHealthState.HEALTHY)
 
@@ -113,8 +120,7 @@ class AggregateHealthEvaluator:
         return AggregateHealthReport(self._evaluate(checks, now, empty_is_unknown=True), tuple(check.check_id for check in checks))
 
     def _evaluate(self, checks: tuple[HealthCheck, ...], now: datetime, *, empty_is_unknown: bool) -> AggregateHealthState:
-        if now.tzinfo is None:
-            raise ValueError("health evaluation requires a timezone-aware current time")
+        self._validate_now(now)
         applicable = tuple(check for check in checks if check.requirement is not CheckRequirement.DISABLED)
         if not applicable:
             return AggregateHealthState.UNKNOWN if empty_is_unknown else AggregateHealthState.HEALTHY
@@ -140,10 +146,19 @@ class AggregateHealthEvaluator:
     def _observation_state(observation: HealthObservation | None, maximum_age: timedelta, now: datetime) -> AggregateHealthState:
         if observation is None or observation.state in {ObservationState.UNKNOWN, ObservationState.TIMEOUT}:
             return AggregateHealthState.UNKNOWN
-        if observation.expires_at is not None and observation.expires_at < now:
+        if observation.state is ObservationState.FAIL:
+            return AggregateHealthState.UNAVAILABLE
+        if observation.state is not ObservationState.PASS:
+            return AggregateHealthState.UNKNOWN
+        if observation.expires_at is not None and observation.expires_at <= now:
+            return AggregateHealthState.UNKNOWN
+        if observation.observed_at > now:
             return AggregateHealthState.UNKNOWN
         if now - observation.observed_at > maximum_age:
             return AggregateHealthState.UNKNOWN
-        if observation.state is ObservationState.FAIL:
-            return AggregateHealthState.UNAVAILABLE
         return AggregateHealthState.HEALTHY
+
+    @staticmethod
+    def _validate_now(now: datetime) -> None:
+        if now.tzinfo is None:
+            raise ValueError("health evaluation requires a timezone-aware current time")

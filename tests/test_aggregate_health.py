@@ -74,6 +74,27 @@ class AggregateHealthEvaluatorTests(unittest.TestCase):
                 self.assertEqual(result.state, AggregateHealthState.UNKNOWN)
                 self.assertFalse(result.ready)
 
+    def test_malformed_states_and_requirements_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "recognized observation state"):
+            HealthObservation("NOT_A_STATE", NOW)
+        with self.assertRaisesRegex(ValueError, "recognized requirement"):
+            HealthCheck("storage", "local", "REQUIRED", timedelta(minutes=5), observed())
+        with self.assertRaisesRegex(ValueError, "recognized optional unknown impact"):
+            HealthCheck("relay", "local", CheckRequirement.OPTIONAL, timedelta(minutes=5), observed(), "UNKNOWN")
+
+    def test_required_future_or_exactly_expired_observations_never_pass(self) -> None:
+        cases = (
+            HealthObservation(ObservationState.PASS, NOW + timedelta(seconds=1)),
+            HealthObservation(ObservationState.PASS, NOW, expires_at=NOW),
+        )
+        for observation in cases:
+            with self.subTest(observation=observation):
+                result = self.evaluator.evaluate_capability(
+                    "local", (check("storage", CheckRequirement.REQUIRED, observation),), now=NOW
+                )
+                self.assertEqual(result.state, AggregateHealthState.UNKNOWN)
+                self.assertFalse(result.ready)
+
     def test_declared_optional_unknown_policy_is_deterministic_and_visible(self) -> None:
         unknown = check("relay", CheckRequirement.OPTIONAL, None, unknown_impact=OptionalUnknownImpact.UNKNOWN)
         degraded = check("metrics", CheckRequirement.OPTIONAL, None, unknown_impact=OptionalUnknownImpact.DEGRADED)
