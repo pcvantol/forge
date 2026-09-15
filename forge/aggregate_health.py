@@ -40,6 +40,7 @@ class EvaluatedCheckState(str, Enum):
 
 
 LIVENESS_SCOPE = "liveness"
+MAX_OBSERVATION_VALIDITY = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,8 @@ class HealthCheck:
     def __post_init__(self) -> None:
         if not self.check_id or not self.scope:
             raise ValueError("health checks require stable check and scope identifiers")
+        if not isinstance(self.requirement, CheckRequirement):
+            raise ValueError("health check requirements must be CheckRequirement values")
 
 
 @dataclass(frozen=True)
@@ -65,15 +68,19 @@ class HealthObservation:
     valid_for: timedelta
 
     def __post_init__(self) -> None:
+        if not isinstance(self.state, ObservationState):
+            raise ValueError("health observation states must be ObservationState values")
         if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
             raise ValueError("health observation timestamps must be timezone-aware")
         if self.valid_for < timedelta(0):
             raise ValueError("health observation validity cannot be negative")
+        if self.valid_for > MAX_OBSERVATION_VALIDITY:
+            raise ValueError("health observation validity exceeds the bounded maximum")
 
     def is_fresh_at(self, now: datetime) -> bool:
         if now.tzinfo is None or now.utcoffset() is None:
             raise ValueError("health evaluation timestamps must be timezone-aware")
-        return now <= self.observed_at + self.valid_for
+        return self.observed_at <= now <= self.observed_at + self.valid_for
 
 
 @dataclass(frozen=True)

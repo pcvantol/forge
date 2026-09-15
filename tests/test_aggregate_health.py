@@ -8,6 +8,7 @@ from forge.aggregate_health import (
     HealthCheck,
     HealthObservation,
     LIVENESS_SCOPE,
+    MAX_OBSERVATION_VALIDITY,
     ObservationState,
     evaluate_health,
     evaluate_liveness,
@@ -62,6 +63,25 @@ class AggregateHealthTests(unittest.TestCase):
                 report = evaluate_health([check], observations, now=NOW)
                 self.assertEqual(report.status, AggregateHealth.UNKNOWN)
                 self.assertFalse(report.ready)
+
+    def test_future_required_pass_is_unknown_and_never_ready(self):
+        report = evaluate_health(
+            [HealthCheck("storage", "local", CheckRequirement.REQUIRED)],
+            [observation("storage", observed_at=NOW + timedelta(seconds=1))], now=NOW,
+        )
+        self.assertEqual(report.status, AggregateHealth.UNKNOWN)
+        self.assertFalse(report.ready)
+
+    def test_observations_require_typed_states_and_bounded_validity(self):
+        with self.assertRaises(ValueError):
+            HealthObservation("storage", "PASS", NOW, timedelta(minutes=1))
+        with self.assertRaises(ValueError):
+            HealthObservation("storage", ObservationState.PASS, NOW,
+                              MAX_OBSERVATION_VALIDITY + timedelta(microseconds=1))
+
+    def test_checks_require_typed_requirements(self):
+        with self.assertRaises(ValueError):
+            HealthCheck("storage", "local", "REQUIRED")
 
     def test_disabled_optional_relay_does_not_block_local_readiness(self):
         report = evaluate_health(
