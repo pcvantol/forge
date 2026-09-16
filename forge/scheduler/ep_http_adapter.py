@@ -47,6 +47,7 @@ class EngineeringPlatformHttpConfiguration:
     project_id: str
     bearer_token: str = field(repr=False)
     expected_instance_id: str = ""
+    expected_consumer_id: str = ""
     repository_id: str = ""
     repository_identity: str = ""
     allow_loopback_http: bool = False
@@ -65,12 +66,15 @@ class EngineeringPlatformHttpExecutionHost:
     SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)
     FORGE_PROVENANCE_CONTRACT_VERSION = "1.3"
     EP_SUBMISSION_RECEIPT_CONTRACT_VERSION = "1.0"
-    _COMPATIBILITY_KEYS = frozenset({"contract_version", "producer", "instance", "contracts"})
+    _COMPATIBILITY_KEYS = frozenset({
+        "contract_version", "producer", "instance", "contracts", "authentication",
+    })
 
     def __init__(self, config: EngineeringPlatformHttpConfiguration, bindings: ExecutionHostBindingStore) -> None:
         required = (
             config.base_url, config.project_id, config.bearer_token, config.expected_instance_id,
-            config.repository_id, config.repository_identity, config.host_id, config.peer_binding_id,
+            config.expected_consumer_id, config.repository_id, config.repository_identity,
+            config.host_id, config.peer_binding_id,
             config.peer_configuration_digest,
         )
         if (not all(required) or config.peer_configuration_revision < 1
@@ -96,7 +100,10 @@ class EngineeringPlatformHttpExecutionHost:
         # cannot make the audited digest differ from the bytes sent to EP.
         data = None if body is None else self._canonical_json_bytes(body)
         request = Request(self.config.base_url.rstrip("/") + path, data=data, method=method,
-                          headers={"Authorization": "Bearer " + self.config.bearer_token, "Content-Type": "application/json"})
+                          headers={"Authorization": "Bearer " + self.config.bearer_token,
+                                   "Content-Type": "application/json",
+                                   "EP-Project-ID": self.config.project_id,
+                                   "EP-Repository-ID": self.config.repository_id})
         try:
             with _open(request, timeout=self.config.timeout) as response:
                 raw = response.read(1_048_577)
@@ -197,6 +204,7 @@ class EngineeringPlatformHttpExecutionHost:
                 "peer_configuration_revision": self.config.peer_configuration_revision,
                 "peer_configuration_digest": self.config.peer_configuration_digest,
                 "expected_ep_instance_id": self.config.expected_instance_id,
+                "expected_ep_consumer_id": self.config.expected_consumer_id,
                 "mission_revision": self._mission_revision(request), "intent_id": request.intent_id,
                 "intent_revision": request.intent_revision, "action_id": request.action_id,
                 "runtime_prompt_id": contract.runtime_prompt.id, "runtime_prompt_digest": contract.runtime_prompt.content_digest,
@@ -240,7 +248,8 @@ class EngineeringPlatformHttpExecutionHost:
         expected = self._request_binding(request)
         configuration_keys = {
             "peer_binding_id", "peer_configuration_revision", "peer_configuration_digest",
-            "expected_ep_instance_id", "project_id", "repository_id", "repository_identity", "host_id",
+            "expected_ep_instance_id", "expected_ep_consumer_id", "project_id",
+            "repository_id", "repository_identity", "host_id",
         }
         if existing is not None:
             if not configuration_keys <= set(existing):
@@ -470,19 +479,38 @@ class EngineeringPlatformHttpExecutionHost:
     def preflight(self) -> dict[str, Any]:
         """Verify EP identity and v1.2 support without submitting anything."""
         declaration = self._json("/v1/producer-compatibility")
-        if set(declaration) != self._COMPATIBILITY_KEYS or declaration.get("contract_version") != "1.0":
+        if set(declaration) != self._COMPATIBILITY_KEYS or declaration.get("contract_version") != "1.1":
             raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         producer, instance, contracts = declaration.get("producer"), declaration.get("instance"), declaration.get("contracts")
+        authentication = declaration.get("authentication")
         if (not isinstance(producer, Mapping) or set(producer) != {"id", "version"}
                 or producer.get("id") != "engineering-platform"
                 or not isinstance(producer.get("version"), str) or not producer["version"]
                 or not isinstance(instance, Mapping) or set(instance) != {"id"}
                 or not isinstance(instance.get("id"), str) or not instance["id"]
                 or not isinstance(contracts, Mapping)
-                or set(contracts) != {"producer_readback", "terminal_evidence"}):
+                or set(contracts) != {"producer_readback", "terminal_evidence"}
+                or not isinstance(authentication, Mapping)
+                or set(authentication) != {
+                    "consumer_id", "consumer_status", "project_id", "project_status",
+                    "repository_id", "repository_role", "local_repository_binding",
+                    "submission_authorization",
+                }):
             raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         if instance["id"] != self.config.expected_instance_id:
             raise ValueError("EP_INSTANCE_IDENTITY_MISMATCH")
+        if authentication.get("consumer_id") != self.config.expected_consumer_id:
+            raise ValueError("EP_AUTHENTICATED_CONSUMER_IDENTITY_MISMATCH")
+        if (
+            authentication.get("consumer_status") != "ACTIVE"
+            or authentication.get("project_id") != self.config.project_id
+            or authentication.get("project_status") != "ACTIVE"
+            or authentication.get("repository_id") != self.config.repository_id
+            or authentication.get("repository_role") != "authority"
+            or authentication.get("local_repository_binding") != "BOUND"
+            or authentication.get("submission_authorization") != "AUTHORIZED"
+        ):
+            raise ValueError("EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH")
         versions = contracts.get("producer_readback")
         if not isinstance(versions, list) or versions != [self.config.producer_readback_contract]:
             raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")

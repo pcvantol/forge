@@ -23,6 +23,7 @@ from forge.execution_host_configuration import (
 )
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.database import RUNTIME_SCHEMA_VERSION
+from forge.qualification.installed_smoke import run as installed_smoke
 from forge.scheduler.ep_http_adapter import EngineeringPlatformHttpExecutionHost
 from forge.secure_store import SecretReference, SecretState
 
@@ -71,6 +72,7 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
             "binding_id": "ep-primary",
             "endpoint": "https://ep.test",
             "expected_ep_instance_id": "ep-instance-1",
+            "ep_consumer_id": "forge-consumer-1",
             "execution_host_id": "engineering-platform",
             "ep_project_id": "forge-project",
             "ep_repository_id": "forge-repository",
@@ -81,6 +83,9 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         }
         values.update(changes)
         return values
+
+    def test_packaged_smoke_requires_current_consumer_binding_schema(self) -> None:
+        installed_smoke()
 
     def test_configuration_is_idempotent_guarded_secret_free_and_survives_reopen(self) -> None:
         first = self.service.configure(**self.values())
@@ -135,7 +140,10 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         try:
             page = database.operational_log_page(events=("execution_host_configuration_replaced",), page_size=5)
             replacement = page["items"][0]
-            self.assertEqual(replacement["details"]["previous_state"], "producer-readback:1.2;terminal-evidence:1.3")
+            self.assertEqual(
+                replacement["details"]["previous_state"],
+                "schema:1.1;consumer-identity:BOUND;producer-readback:1.2;terminal-evidence:1.3",
+            )
             self.assertEqual(replacement["details"]["request_digest"], legacy_digest)
             self.assertEqual(replacement["details"]["configuration_digest"], upgraded.configuration_digest)
         finally:
@@ -162,6 +170,54 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
                 replace=True, expected_revision=current.configuration_revision,
                 expected_digest=invalid_digest, occurred_at="2026-09-10T18:01:00Z",
             ))
+
+    def test_schema_1_0_binding_is_readable_but_requires_guarded_consumer_upgrade(self) -> None:
+        current = self.service.configure(**self.values())
+        database_path = self.root / "forge.db"
+        with sqlite3.connect(database_path) as connection:
+            document = json.loads(connection.execute(
+                "SELECT document FROM execution_host_peer_configuration"
+            ).fetchone()[0])
+            document["schema_version"] = "1.0"
+            document.pop("ep_consumer_id")
+            basis = {key: document[key] for key in current.configuration_basis() if key != "ep_consumer_id"}
+            legacy_digest = EngineeringPlatformPeerConfiguration.digest_for(basis)
+            document["configuration_digest"] = legacy_digest
+            connection.execute(
+                "UPDATE execution_host_peer_configuration SET configuration_digest=?,document=?",
+                (legacy_digest, json.dumps(document, sort_keys=True, separators=(",", ":"))),
+            )
+
+        readback = self.service.readback()
+        self.assertEqual(readback.status, "CONSUMER_IDENTITY_REQUIRED")
+        self.assertIsNone(readback.configuration)
+        self.assertEqual(readback.stored_document["binding_id"], "ep-primary")
+        self.assertNotIn("ep_consumer_id", readback.stored_document)
+        with self.assertRaisesRegex(PeerConfigurationError, "CONSUMER_IDENTITY_REQUIRED"):
+            self.service.show()
+        with self.assertRaisesRegex(PeerConfigurationError, "CONSUMER_IDENTITY_REQUIRED"):
+            EngineeringPlatformExecutionHostFactory(_Resolver()).from_data_root(self.root)
+        with self.assertRaises(PeerConfigurationConflict):
+            self.service.configure(**self.values())
+
+        upgraded = self.service.configure(**self.values(
+            replace=True, expected_revision=current.configuration_revision,
+            expected_digest=legacy_digest, occurred_at="2026-09-10T18:01:00Z",
+        ))
+        self.assertEqual(upgraded.schema_version, "1.1")
+        self.assertEqual(upgraded.ep_consumer_id, "forge-consumer-1")
+        database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        try:
+            replacement = database.operational_log_page(
+                events=("execution_host_configuration_replaced",), page_size=5,
+            )["items"][0]
+            self.assertEqual(
+                replacement["details"]["previous_state"],
+                "schema:1.0;consumer-identity:UNBOUND;producer-readback:1.2;terminal-evidence:1.4",
+            )
+            self.assertEqual(replacement["details"]["ep_consumer_id"], "forge-consumer-1")
+        finally:
+            database.close()
 
     def test_configuration_change_is_recorded_in_the_redacted_operational_journal(self) -> None:
         first = self.service.configure(**self.values())
@@ -252,6 +308,7 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         configured = subprocess.run([
             *command, "execution-host", "configure", "--binding-id", "ep-primary",
             "--endpoint", "https://ep.test", "--expected-instance-id", "ep-instance-1",
+            "--consumer-id", "forge-consumer-1",
             "--host-id", "engineering-platform", "--project-id", "forge-project",
             "--repository-id", "forge-repository", "--repository-identity", "forge-source",
             "--credential-reference", "keychain://forge.ep/consumer", "--operator-id", "local-admin",
@@ -266,10 +323,17 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
     def test_cli_preflight_uses_real_service_resolver_and_adapter_and_only_reads_compatibility(self) -> None:
         self.service.configure(**self.values())
         declaration = {
-            "contract_version": "1.0",
+            "contract_version": "1.1",
             "producer": {"id": "engineering-platform", "version": "2.3.0"},
             "instance": {"id": "ep-instance-1"},
             "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.4"]},
+            "authentication": {
+                "consumer_id": "forge-consumer-1", "consumer_status": "ACTIVE",
+                "project_id": "forge-project", "project_status": "ACTIVE",
+                "repository_id": "forge-repository", "repository_role": "authority",
+                "local_repository_binding": "BOUND",
+                "submission_authorization": "AUTHORIZED",
+            },
         }
         keychain_result = subprocess.CompletedProcess([], 0, stdout=SYNTHETIC_SECRET + "\n", stderr="")
         observed: list[tuple[str, str, str | None]] = []
@@ -289,7 +353,9 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         self.assertEqual((report["status"], report["peer_instance_consistency"], report["compatibility"]),
                          ("PASS", "PASS", "PASS"))
         self.assertEqual(report["cryptographic_peer_identity"], "NOT_ASSERTED")
-        self.assertEqual(report["project_repository_scope"], "NOT_VERIFIED")
+        self.assertEqual(report["authenticated_consumer_identity"], "forge-consumer-1")
+        self.assertEqual(report["project_repository_scope"], "PASS")
+        self.assertEqual(report["mutation_authority"], "SUBMISSION_AUTHORIZED")
         self.assertEqual(observed,
                          [("GET", "https://ep.test/v1/producer-compatibility", f"Bearer {SYNTHETIC_SECRET}")])
         self.assertNotIn(SYNTHETIC_SECRET, output.getvalue())

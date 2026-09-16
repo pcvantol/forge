@@ -49,7 +49,8 @@ def _status(data_root: str | None) -> dict[str, object]:
                    "runtime_status": metadata.get("status", "unavailable")})
     result["dispatcher"] = {"status": dispatcher_status}
     try:
-        peer = read_peer_configuration(root).configuration
+        peer_readback = read_peer_configuration(root)
+        peer = peer_readback.configuration
         if peer is not None:
             result["execution_host_peer"] = {
                 "status": "CONFIGURED", "live_status": "NOT_VERIFIED",
@@ -57,6 +58,16 @@ def _status(data_root: str | None) -> dict[str, object]:
                 "configuration_revision": peer.configuration_revision,
                 "configuration_digest": peer.configuration_digest,
                 "owning_forge_runtime_id": peer.owning_forge_runtime_id,
+                "ep_consumer_id": peer.ep_consumer_id,
+            }
+        elif peer_readback.stored_document is not None:
+            result["execution_host_peer"] = {
+                "status": peer_readback.status,
+                "live_status": "NOT_VERIFIED",
+                "binding_id": peer_readback.stored_document["binding_id"],
+                "configuration_revision": peer_readback.stored_document["configuration_revision"],
+                "configuration_digest": peer_readback.stored_document["configuration_digest"],
+                "owning_forge_runtime_id": peer_readback.stored_document["owning_forge_runtime_id"],
             }
     except PeerConfigurationError as error:
         result["execution_host_peer"] = {
@@ -89,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     configure.add_argument("--binding-id", required=True)
     configure.add_argument("--endpoint", required=True)
     configure.add_argument("--expected-instance-id", required=True)
+    configure.add_argument("--consumer-id", required=True)
     configure.add_argument("--host-id", required=True)
     configure.add_argument("--project-id", required=True)
     configure.add_argument("--repository-id", required=True)
@@ -154,6 +166,7 @@ def main(argv: list[str] | None = None) -> int:
                     binding_id=args.binding_id,
                     endpoint=args.endpoint,
                     expected_ep_instance_id=args.expected_instance_id,
+                    ep_consumer_id=args.consumer_id,
                     execution_host_id=args.host_id,
                     ep_project_id=args.project_id,
                     ep_repository_id=args.repository_id,
@@ -168,11 +181,16 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 print(json.dumps({"status": "CONFIGURED", "configuration": configured.to_dict()}, sort_keys=True))
             elif args.execution_host_command == "show":
-                configured = service.show()
-                if configured is None:
+                readback = service.readback()
+                if readback.stored_document is None:
                     print(json.dumps({"status": "NOT_CONFIGURED"}, sort_keys=True))
                     return 1
-                print(json.dumps({"status": "CONFIGURED", "configuration": configured.to_dict()}, sort_keys=True))
+                print(json.dumps({
+                    "status": readback.status,
+                    "configuration": readback.stored_document,
+                }, sort_keys=True))
+                if readback.configuration is None:
+                    return 1
             elif args.execution_host_command == "preflight":
                 print(json.dumps(service.preflight(), sort_keys=True))
         except (PeerConfigurationError, ValueError) as error:

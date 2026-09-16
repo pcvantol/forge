@@ -80,7 +80,7 @@ _OPERATIONAL_LOG_LEVELS = frozenset(("DEBUG", "INFO", "WARNING", "ERROR"))
 _OPERATIONAL_LOG_DETAIL_KEYS = frozenset((
     "event_contract_version", "operation", "outcome", "previous_state", "new_state",
     "reason_code", "configuration_revision", "configuration_digest", "binding_id",
-    "peer_product", "ep_instance_id", "ep_application_version", "producer_contract_version",
+    "peer_product", "ep_instance_id", "ep_consumer_id", "ep_application_version", "producer_contract_version",
     "forge_application_version", "forge_provenance_contract_version", "receipt_contract_version",
     "receipt_id", "submission_id", "accepted_request_digest", "exchange_direction",
     "request_digest", "provider_id", "provider_type", "configuration_id", "permit_id",
