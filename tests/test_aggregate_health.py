@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import unittest
+from zoneinfo import ZoneInfo
 
 from forge.health import (
     AggregateHealthState,
@@ -161,6 +162,45 @@ class AggregateHealthTests(unittest.TestCase):
         self.assertEqual(freshness["storage.timeout"], ObservationFreshness.TIMED_OUT)
         self.assertFalse(result.capabilities[0].ready)
         self.assertEqual(result.aggregate.state, AggregateHealthState.UNKNOWN)
+
+    def test_freshness_uses_elapsed_time_across_daylight_saving_fallback(self) -> None:
+        local_timezone = ZoneInfo("Europe/Amsterdam")
+        observed_at = datetime(2026, 10, 25, 2, 0, tzinfo=local_timezone, fold=0)
+        evaluated_at = datetime(2026, 10, 25, 2, 30, tzinfo=local_timezone, fold=1)
+        max_age = timedelta(hours=1)
+        checks = (
+            HealthCheck(
+                "storage.read",
+                "storage",
+                ("local",),
+                CheckApplicability.REQUIRED,
+                max_age,
+            ),
+        )
+
+        result = evaluate_health(
+            liveness=LivenessObservation(True, observed_at, max_age),
+            capability_ids=("local",),
+            checks=checks,
+            observations=(HealthObservation("storage.read", ObservationState.PASS, observed_at),),
+            evaluated_at=evaluated_at,
+        )
+
+        self.assertEqual(result.liveness.freshness, ObservationFreshness.STALE)
+        self.assertEqual(result.liveness.state, LivenessState.UNKNOWN)
+        self.assertEqual(result.capabilities[0].checks[0].freshness, ObservationFreshness.STALE)
+        self.assertFalse(result.capabilities[0].ready)
+        self.assertEqual(result.aggregate.state, AggregateHealthState.UNKNOWN)
+
+    def test_expiry_order_uses_absolute_time_across_daylight_saving_fallback(self) -> None:
+        local_timezone = ZoneInfo("Europe/Amsterdam")
+        observed_at = datetime(2026, 10, 25, 2, 30, tzinfo=local_timezone, fold=1)
+        earlier_expiry = datetime(2026, 10, 25, 2, 45, tzinfo=local_timezone, fold=0)
+
+        with self.assertRaisesRegex(ValueError, "expire before"):
+            HealthObservation("storage.read", ObservationState.PASS, observed_at, earlier_expiry)
+        with self.assertRaisesRegex(ValueError, "expire before"):
+            LivenessObservation(True, observed_at, MAX_AGE, earlier_expiry)
 
     def test_unknown_optional_observation_is_visible_but_does_not_block_readiness(self) -> None:
         checks = (

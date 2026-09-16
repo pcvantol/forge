@@ -8,7 +8,7 @@ so evaluating health cannot generate work or mutate a domain service.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Iterable
 
@@ -53,6 +53,10 @@ def _require_aware(value: datetime, name: str) -> None:
         raise ValueError(f"{name} must be timezone-aware")
 
 
+def _as_utc(value: datetime) -> datetime:
+    return value.astimezone(timezone.utc)
+
+
 @dataclass(frozen=True)
 class HealthCheck:
     """One declared check and the named capabilities that depend on it."""
@@ -90,7 +94,7 @@ class HealthObservation:
         _require_aware(self.observed_at, "observed_at")
         if self.expires_at is not None:
             _require_aware(self.expires_at, "expires_at")
-            if self.expires_at < self.observed_at:
+            if _as_utc(self.expires_at) < _as_utc(self.observed_at):
                 raise ValueError("health observation cannot expire before it was observed")
 
 
@@ -110,7 +114,7 @@ class LivenessObservation:
             raise ValueError("liveness max_age cannot be negative")
         if self.expires_at is not None:
             _require_aware(self.expires_at, "expires_at")
-            if self.expires_at < self.observed_at:
+            if _as_utc(self.expires_at) < _as_utc(self.observed_at):
                 raise ValueError("liveness cannot expire before it was observed")
 
 
@@ -167,6 +171,9 @@ def _freshness(
     timed_out: bool,
     evaluated_at: datetime,
 ) -> ObservationFreshness:
+    observed_at = _as_utc(observed_at)
+    expires_at = _as_utc(expires_at) if expires_at is not None else None
+    evaluated_at = _as_utc(evaluated_at)
     if timed_out:
         return ObservationFreshness.TIMED_OUT
     if observed_at > evaluated_at:
