@@ -37,7 +37,6 @@ class CheckPurpose(str, Enum):
 class CheckApplicability(str, Enum):
     REQUIRED = "REQUIRED"
     OPTIONAL = "OPTIONAL"
-    DISABLED = "DISABLED"
 
 
 class ObservationState(str, Enum):
@@ -113,7 +112,12 @@ class HealthIdentity:
 
 @dataclass(frozen=True)
 class HealthCheckDefinition:
-    """One check projected from the canonical component registry."""
+    """One check projected from the canonical component registry.
+
+    Applicability records whether a check is required or optional. Enabled
+    state is separate so only an optional check may be disabled; a mandatory
+    readiness obligation cannot disappear by being relabelled disabled.
+    """
 
     component_id: str
     check_id: str
@@ -121,6 +125,7 @@ class HealthCheckDefinition:
     applicability: CheckApplicability
     freshness_timeout: timedelta
     capabilities: tuple[str, ...] = ()
+    enabled: bool = True
 
     def __post_init__(self) -> None:
         _require_identifier(self.component_id, "component id")
@@ -129,6 +134,8 @@ class HealthCheckDefinition:
             raise ValueError("check purpose is invalid")
         if not isinstance(self.applicability, CheckApplicability):
             raise ValueError("check applicability is invalid")
+        if not isinstance(self.enabled, bool):
+            raise ValueError("check enabled state must be boolean")
         if not isinstance(self.freshness_timeout, timedelta) or self.freshness_timeout <= timedelta(0):
             raise ValueError("freshness timeout must be positive")
         if not isinstance(self.capabilities, tuple):
@@ -138,10 +145,16 @@ class HealthCheckDefinition:
         for capability in self.capabilities:
             _require_identifier(capability, "capability id")
         if self.purpose is CheckPurpose.LIVENESS:
-            if self.applicability is not CheckApplicability.REQUIRED or self.capabilities:
-                raise ValueError("liveness checks must be required and capability-independent")
+            if (
+                self.applicability is not CheckApplicability.REQUIRED
+                or not self.enabled
+                or self.capabilities
+            ):
+                raise ValueError("liveness checks must be enabled, required, and capability-independent")
         elif not self.capabilities:
             raise ValueError("readiness checks must name at least one capability")
+        elif not self.enabled and self.applicability is not CheckApplicability.OPTIONAL:
+            raise ValueError("only optional readiness checks may be disabled")
 
 
 @dataclass(frozen=True)
@@ -194,6 +207,7 @@ class CheckEvaluation:
     check_id: str
     purpose: CheckPurpose
     applicability: CheckApplicability
+    enabled: bool
     capabilities: tuple[str, ...]
     state: CheckState
     freshness: ObservationFreshness
@@ -210,6 +224,7 @@ class CheckEvaluation:
             "check_id": self.check_id,
             "purpose": self.purpose.value,
             "applicability": self.applicability.value,
+            "enabled": self.enabled,
             "capabilities": list(self.capabilities),
             "state": self.state.value,
             "freshness": self.freshness.value,
@@ -267,6 +282,7 @@ class CapabilityReadiness:
 class HealthEvaluation:
     identity: HealthIdentity
     evaluated_at: datetime
+    capability_scope: tuple[str, ...]
     state: HealthState
     liveness: LivenessEvaluation
     capabilities: tuple[CapabilityReadiness, ...]
@@ -287,6 +303,7 @@ class HealthEvaluation:
             "runtime_id": self.identity.runtime_id,
             "installation_id": self.identity.installation_id,
             "evaluated_at": _timestamp(self.evaluated_at),
+            "capability_scope": list(self.capability_scope),
             "state": self.state.value,
             "liveness": self.liveness.to_dict(),
             "capabilities": [item.to_dict() for item in self.capabilities],
@@ -299,13 +316,30 @@ def evaluate_health(
     definitions: Iterable[HealthCheckDefinition],
     observations: Iterable[HealthObservation],
     *,
+    capability_scope: Iterable[str],
     evaluated_at: datetime,
 ) -> HealthEvaluation:
-    """Evaluate one immutable snapshot without collecting or persisting data."""
+    """Evaluate one immutable snapshot for an explicit readiness scope.
+
+    The caller supplies the canonical registry projection and must name every
+    capability advertised by this aggregate. Each requested capability needs
+    an enabled required readiness definition, so a liveness-only or optional-
+    only projection cannot become a green aggregate.
+    """
 
     if not isinstance(identity, HealthIdentity):
         raise TypeError("health identity is required")
     evaluated_at = _require_aware(evaluated_at, "evaluation time")
+    if isinstance(capability_scope, (str, bytes)):
+        raise ValueError("requested capabilities must be an iterable of identifiers")
+    capability_items = tuple(capability_scope)
+    if not capability_items:
+        raise ValueError("at least one requested capability is required")
+    if len(capability_items) != len(set(capability_items)):
+        raise ValueError("requested capabilities must be unique")
+    for capability_id in capability_items:
+        _require_identifier(capability_id, "requested capability id")
+    ordered_capability_scope = tuple(sorted(capability_items))
     definition_items = tuple(definitions)
     if not definition_items or not all(isinstance(item, HealthCheckDefinition) for item in definition_items):
         raise ValueError("at least one typed health check definition is required")
@@ -315,6 +349,18 @@ def evaluate_health(
         raise ValueError("health check ids must be unique")
     if not any(item.purpose is CheckPurpose.LIVENESS for item in ordered_definitions):
         raise ValueError("at least one liveness check is required")
+    for capability_id in ordered_capability_scope:
+        required_definitions = tuple(
+            item for item in ordered_definitions
+            if item.purpose is CheckPurpose.READINESS
+            and item.enabled
+            and item.applicability is CheckApplicability.REQUIRED
+            and capability_id in item.capabilities
+        )
+        if not required_definitions:
+            raise ValueError(
+                "each requested capability must have an enabled required readiness check"
+            )
 
     observation_items = tuple(observations)
     if not all(isinstance(item, HealthObservation) for item in observation_items):
@@ -339,8 +385,16 @@ def evaluate_health(
     )
     liveness = _evaluate_liveness(checks)
     capabilities = _evaluate_capabilities(checks)
-    state = _aggregate_state(checks, capabilities)
-    return HealthEvaluation(identity, evaluated_at, state, liveness, capabilities, checks)
+    state = _aggregate_state(checks, capabilities, ordered_capability_scope)
+    return HealthEvaluation(
+        identity,
+        evaluated_at,
+        ordered_capability_scope,
+        state,
+        liveness,
+        capabilities,
+        checks,
+    )
 
 
 def _observation_matches_definition(
@@ -365,9 +419,10 @@ def _evaluate_check(
         definition.check_id,
         definition.purpose,
         definition.applicability,
+        definition.enabled,
         tuple(sorted(definition.capabilities)),
     )
-    if definition.applicability is CheckApplicability.DISABLED:
+    if not definition.enabled:
         return CheckEvaluation(
             *common, CheckState.DISABLED, ObservationFreshness.NOT_APPLICABLE,
             None, None, None, None, timeout_seconds, "CHECK_DISABLED",
@@ -428,12 +483,17 @@ def _evaluate_capabilities(checks: tuple[CheckEvaluation, ...]) -> tuple[Capabil
     results: list[CapabilityReadiness] = []
     for capability_id in capability_ids:
         relevant = tuple(item for item in checks if capability_id in item.capabilities)
-        required = tuple(item for item in relevant if item.applicability is CheckApplicability.REQUIRED)
+        required = tuple(
+            item for item in relevant
+            if item.enabled and item.applicability is CheckApplicability.REQUIRED
+        )
         failed = tuple(item.check_id for item in required if item.state is CheckState.FAIL)
         unresolved = tuple(item.check_id for item in required if item.state is CheckState.UNKNOWN)
         optional_issues = tuple(
             item.check_id for item in relevant
-            if item.applicability is CheckApplicability.OPTIONAL and item.state is not CheckState.PASS
+            if item.enabled
+            and item.applicability is CheckApplicability.OPTIONAL
+            and item.state is not CheckState.PASS
         )
         if failed:
             state = ReadinessState.UNAVAILABLE
@@ -454,30 +514,42 @@ def _evaluate_capabilities(checks: tuple[CheckEvaluation, ...]) -> tuple[Capabil
 def _aggregate_state(
     checks: tuple[CheckEvaluation, ...],
     capabilities: tuple[CapabilityReadiness, ...],
+    capability_scope: tuple[str, ...],
 ) -> HealthState:
     required_liveness = tuple(
         item for item in checks
         if item.purpose is CheckPurpose.LIVENESS
+        and item.enabled
         and item.applicability is CheckApplicability.REQUIRED
     )
     if any(item.state is CheckState.FAIL for item in required_liveness):
         return HealthState.UNAVAILABLE
-    if any(item.state is CheckState.UNKNOWN for item in required_liveness):
-        return HealthState.UNKNOWN
+    liveness_unknown = any(item.state is CheckState.UNKNOWN for item in required_liveness)
 
-    required_capabilities = tuple(item for item in capabilities if item.required_check_ids)
-    if any(item.state is ReadinessState.UNKNOWN for item in required_capabilities):
-        return HealthState.UNKNOWN
+    required_capabilities = tuple(
+        item for item in capabilities if item.capability_id in capability_scope
+    )
     unavailable = tuple(
         item for item in required_capabilities
         if item.state is ReadinessState.UNAVAILABLE
     )
     if unavailable:
+        if liveness_unknown:
+            return HealthState.UNAVAILABLE
         if any(item.state is ReadinessState.READY for item in required_capabilities):
             return HealthState.DEGRADED
         return HealthState.UNAVAILABLE
+    if liveness_unknown or any(
+        item.state is ReadinessState.UNKNOWN for item in required_capabilities
+    ):
+        return HealthState.UNKNOWN
 
-    optional = tuple(item for item in checks if item.applicability is CheckApplicability.OPTIONAL)
+    optional = tuple(
+        item for item in checks
+        if item.enabled
+        and item.applicability is CheckApplicability.OPTIONAL
+        and any(capability_id in capability_scope for capability_id in item.capabilities)
+    )
     if any(item.state is not CheckState.PASS for item in optional):
         return HealthState.DEGRADED
     return HealthState.HEALTHY
