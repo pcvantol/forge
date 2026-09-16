@@ -73,6 +73,15 @@ constraint, but rejects a historic artifact that invents a pin or transition.
 It does not inject v1.4 fields, rewrite bytes, or retarget old peer/correlation
 records to a newer binding.
 
+A v1.4 correlation written before explicit consumer binding can already carry
+its immutable repository revision binding while omitting only
+`expected_ep_consumer_id`. Forge accepts that precise read-only shape only when
+an immutable configuration event proves a single guarded schema `1.0` to `1.1`
+consumer adoption with the original target identity preserved. Current
+Keychain authentication must still prove the configured EP instance, consumer,
+project and repository before readback. The adapter neither backfills the old
+record nor sends a POST; unverified adoption or target retargeting fails closed.
+
 ## Peer-configuration transition
 
 New work requires the peer configuration pair `1.2` / `1.4`.  A persisted

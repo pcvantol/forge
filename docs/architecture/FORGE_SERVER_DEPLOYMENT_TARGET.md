@@ -107,7 +107,12 @@ project match or rewrites historical correlation/request/evidence records. The
 supported configuration route requires the exact externally verified consumer
 and guarded replacement with the observed legacy revision and digest; its
 operational event records only the old schema/consumer-bound state and the new
-secret-free identity.
+secret-free identity. The schema `1.0` replacement is additionally constrained
+to adding that consumer field: endpoint, instance, execution host, project,
+repository, repository identity, owning runtime, credential reference and
+contracts must remain exact. Its immutable operational event binds the prior
+revision/digest to the new revision/digest and records a digest of the
+preserved target identity.
 
 A binding with a retired contract is deliberately unusable for status,
 preflight and execution. The explicit configuration command can nevertheless
@@ -134,6 +139,19 @@ It verifies a new request's Repository Truth pin, permitted recovery
 transition and canonical request-payload digest before submission; terminal
 v1.4 revisions are compared with that persisted Forge request, not merely
 with another EP response field.
+
+A pre-consumer-binding v1.4 correlation can already contain the complete
+repository revision binding while lacking only
+`expected_ep_consumer_id`. Read-only recovery recognizes that exact historical
+shape only after the immutable peer-configuration event proves the one-step
+schema `1.0` consumer adoption described above. It then authenticates the
+current Keychain credential and verifies the current EP instance, consumer and
+scope before GET readback. It never adds the consumer to the historical
+record, changes request bytes or digests, or sends a submission POST. Missing
+adoption evidence and any instance, binding, project, repository, repository
+identity or execution-host retarget fail before network use. This
+compatibility path exposes evidence only; it grants no new submission,
+provider-execution or Mission-completion authority.
 
 The supported reference is
 `keychain://<service>/<account>?namespace=<optional>&version=<optional>` and is

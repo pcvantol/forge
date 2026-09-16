@@ -87,6 +87,8 @@ _OPERATIONAL_LOG_DETAIL_KEYS = frozenset((
     "action_derivation_id", "policy_digest", "schema_version", "failure_code",
     "lifecycle", "queue_disposition", "result_state",
     "retry_parent_run_id", "resolution_submission_id", "resolved_from_host_run_id",
+    "previous_configuration_revision", "historical_readback_adoption",
+    "historical_target_identity_digest",
 ))
 _OPERATIONAL_LOG_CONTRACT_VERSION = "1.0"
 

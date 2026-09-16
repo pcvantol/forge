@@ -25,6 +25,7 @@ class ExecutionHostBindingStore(Protocol):
                                              event_kind: str, document: Mapping[str, Any]) -> dict[str, Any]: ...
     def execution_host_exchange_audit(self, correlation_id: str) -> tuple[dict[str, Any], ...]: ...
     def record_operational_event(self, **values: Any) -> dict[str, Any]: ...
+    def operational_log_page(self, **values: Any) -> dict[str, Any]: ...
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -216,6 +217,59 @@ class EngineeringPlatformHttpExecutionHost:
                 "submission_payload_digest": self._payload_digest(payload),
                 "retry_of_correlation_id": request.retry_of_correlation_id}
 
+    def _historical_configuration_adoption_verified(
+        self, existing: Mapping[str, Any], *, consumer_was_missing: bool,
+    ) -> bool:
+        previous_digest = existing.get("peer_configuration_digest")
+        previous_revision = existing.get("peer_configuration_revision")
+        if (
+            previous_digest == self.config.peer_configuration_digest
+            and previous_revision == self.config.peer_configuration_revision
+        ):
+            return not consumer_was_missing
+        if (
+            not isinstance(previous_digest, str)
+            or not isinstance(previous_revision, int)
+            or self.config.peer_configuration_revision != previous_revision + 1
+        ):
+            return False
+        try:
+            page = self._bindings.operational_log_page(
+                events=("execution_host_configuration_replaced",), page_size=200,
+            )
+        except (AttributeError, RuntimeError, ValueError):
+            return False
+        items = page.get("items") if isinstance(page, Mapping) else None
+        if not isinstance(items, (tuple, list)):
+            return False
+        expected_adoption = (
+            "LEGACY_CONSUMER_IDENTITY_ADOPTION_V1"
+            if consumer_was_missing else "TARGET_IDENTITY_PRESERVED_V1"
+        )
+        matches = []
+        for item in items:
+            details = item.get("details") if isinstance(item, Mapping) else None
+            if not isinstance(details, Mapping):
+                continue
+            if (
+                details.get("operation") == "replaced"
+                and details.get("binding_id") == self.config.peer_binding_id
+                and details.get("ep_instance_id") == self.config.expected_instance_id
+                and details.get("ep_consumer_id") == self.config.expected_consumer_id
+                and details.get("previous_configuration_revision") == previous_revision
+                and details.get("request_digest") == previous_digest
+                and details.get("configuration_revision") == self.config.peer_configuration_revision
+                and details.get("configuration_digest") == self.config.peer_configuration_digest
+                and details.get("historical_readback_adoption") == expected_adoption
+                and isinstance(details.get("historical_target_identity_digest"), str)
+                and len(details["historical_target_identity_digest"]) == 71
+                and details["historical_target_identity_digest"].startswith("sha256:")
+                and all(character in "0123456789abcdef"
+                        for character in details["historical_target_identity_digest"][7:])
+            ):
+                matches.append(item)
+        return len(matches) == 1
+
     def _binding(self, request: ExecutionRequest, *, allow_historical_readback: bool = False) -> dict[str, Any]:
         # Saved before any network request: an ambiguous send is retried with
         # the exact same configuration and idempotency key, never retargeted.
@@ -244,6 +298,26 @@ class EngineeringPlatformHttpExecutionHost:
             if any(key not in existing or existing.get(key) != value
                    for key, value in historical_identity.items()):
                 raise ValueError("EP_HISTORICAL_REQUEST_BINDING_MISMATCH")
+            historical_consumer_adoption = "expected_ep_consumer_id" not in existing
+            stable_configuration = {
+                "peer_binding_id": self.config.peer_binding_id,
+                "expected_ep_instance_id": self.config.expected_instance_id,
+                "expected_ep_consumer_id": self.config.expected_consumer_id,
+                "project_id": self.config.project_id,
+                "repository_id": self.config.repository_id,
+                "repository_identity": self.config.repository_identity,
+                "host_id": self.config.host_id,
+            }
+            if any(
+                key != "expected_ep_consumer_id" or not historical_consumer_adoption
+                for key in stable_configuration
+                if key not in existing or existing.get(key) != stable_configuration[key]
+            ):
+                raise ValueError("EP_CORRELATION_CONFIGURATION_RETARGETING_BLOCKED")
+            if not self._historical_configuration_adoption_verified(
+                existing, consumer_was_missing=historical_consumer_adoption,
+            ):
+                raise ValueError("EP_HISTORICAL_CONFIGURATION_ADOPTION_UNVERIFIED")
             return existing
         expected = self._request_binding(request)
         configuration_keys = {
@@ -252,8 +326,27 @@ class EngineeringPlatformHttpExecutionHost:
             "repository_id", "repository_identity", "host_id",
         }
         if existing is not None:
-            if not configuration_keys <= set(existing):
+            missing_configuration = configuration_keys - set(existing)
+            historical_consumer_adoption = (
+                allow_historical_readback
+                and missing_configuration == {"expected_ep_consumer_id"}
+            )
+            if missing_configuration and not historical_consumer_adoption:
                 raise ValueError("EP_HISTORICAL_BINDING_CONFIGURATION_IDENTITY_MISSING")
+            stable_configuration_keys = configuration_keys - {
+                "peer_configuration_revision", "peer_configuration_digest",
+            }
+            if historical_consumer_adoption:
+                stable_configuration_keys.remove("expected_ep_consumer_id")
+            if any(existing.get(key) != expected[key] for key in stable_configuration_keys):
+                raise ValueError("EP_CORRELATION_CONFIGURATION_RETARGETING_BLOCKED")
+            if (
+                allow_historical_readback
+                and not self._historical_configuration_adoption_verified(
+                    existing, consumer_was_missing=historical_consumer_adoption,
+                )
+            ):
+                raise ValueError("EP_HISTORICAL_CONFIGURATION_ADOPTION_UNVERIFIED")
             if (not allow_historical_readback
                     and any(existing.get(key) != expected[key] for key in configuration_keys)):
                 raise ValueError("EP_CORRELATION_CONFIGURATION_RETARGETING_BLOCKED")
