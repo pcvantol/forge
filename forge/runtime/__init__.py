@@ -26,6 +26,24 @@ from .bootstrap import (
 )
 from .data_root import DataRootError, DataRootResolver, RUNTIME_DIRECTORIES
 from .evidence import RuntimeDecisionEvidenceReference, RuntimeEvidence
+from .health import (
+    HEALTH_SCHEMA_REVISION,
+    CapabilityReadiness,
+    CheckApplicability,
+    CheckPurpose,
+    CheckState,
+    HealthCheckDefinition,
+    HealthEvaluation,
+    HealthIdentity,
+    HealthObservation,
+    HealthState,
+    LivenessEvaluation,
+    LivenessState,
+    ObservationFreshness,
+    ObservationState,
+    ReadinessState,
+    evaluate_health,
+)
 from .runner import BootstrapMissionRunner, MissionRunnerError, RuntimePromptFactory
 from .service import ForgeRuntimeService, RuntimeServiceTick
 
@@ -33,4 +51,5 @@ __all__ = [
     "BootstrapMissionRunner", "MissionRunnerError", "RuntimePromptFactory", "ForgeRuntimeService", "RuntimeServiceTick",
     "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError", "RuntimeDecisionEvidenceReference", "RuntimeEvidence",
     "RUNTIME_INSTANCE_VERSION", "RUNTIME_INITIALIZATION_VERSION", "RuntimeBootstrap", "RuntimeIdentity", "RuntimeInstance", "RuntimeLocation", "RuntimePlacement", "RuntimeRecovery", "RuntimeResolutionError", "RuntimeResolver", "repository_identity", "repository_uuid", "DataRootError", "DataRootResolver", "RUNTIME_DIRECTORIES",
+    "HEALTH_SCHEMA_REVISION", "CapabilityReadiness", "CheckApplicability", "CheckPurpose", "CheckState", "HealthCheckDefinition", "HealthEvaluation", "HealthIdentity", "HealthObservation", "HealthState", "LivenessEvaluation", "LivenessState", "ObservationFreshness", "ObservationState", "ReadinessState", "evaluate_health",
 ]
