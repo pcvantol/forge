@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.19",
+  "classification_rationale": "R121-1 historical v1.4 consumer adoption readback",
+  "component": "product",
+  "event_lineage": "R121-1 historical v1.4 consumer adoption readback",
+  "expected_head": "22ad8d81194eb8931510178fddb5d072ecbe67f7",
+  "operation_id": "forge-consumer-binding-review-fixes-v1",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.20"
+}

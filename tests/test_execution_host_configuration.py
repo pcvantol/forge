@@ -216,8 +216,50 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
                 "schema:1.0;consumer-identity:UNBOUND;producer-readback:1.2;terminal-evidence:1.4",
             )
             self.assertEqual(replacement["details"]["ep_consumer_id"], "forge-consumer-1")
+            self.assertEqual(replacement["details"]["previous_configuration_revision"], 1)
+            self.assertEqual(
+                replacement["details"]["historical_readback_adoption"],
+                "LEGACY_CONSUMER_IDENTITY_ADOPTION_V1",
+            )
+            self.assertRegex(
+                replacement["details"]["historical_target_identity_digest"],
+                r"\Asha256:[0-9a-f]{64}\Z",
+            )
         finally:
             database.close()
+
+    def test_schema_1_0_consumer_adoption_cannot_retarget_any_peer_identity(self) -> None:
+        current = self.service.configure(**self.values())
+        database_path = self.root / "forge.db"
+        with sqlite3.connect(database_path) as connection:
+            document = json.loads(connection.execute(
+                "SELECT document FROM execution_host_peer_configuration"
+            ).fetchone()[0])
+            document["schema_version"] = "1.0"
+            document.pop("ep_consumer_id")
+            basis = {key: document[key] for key in current.configuration_basis() if key != "ep_consumer_id"}
+            legacy_digest = EngineeringPlatformPeerConfiguration.digest_for(basis)
+            document["configuration_digest"] = legacy_digest
+            connection.execute(
+                "UPDATE execution_host_peer_configuration SET configuration_digest=?,document=?",
+                (legacy_digest, json.dumps(document, sort_keys=True, separators=(",", ":"))),
+            )
+
+        for changed in (
+            {"endpoint": "https://other.test"},
+            {"expected_ep_instance_id": "other-instance"},
+            {"ep_project_id": "other-project"},
+            {"ep_repository_id": "other-repository"},
+            {"repository_identity": "other-source"},
+        ):
+            with self.subTest(changed=changed):
+                with self.assertRaisesRegex(PeerConfigurationConflict, "may not retarget"):
+                    self.service.configure(**self.values(
+                        **changed, replace=True,
+                        expected_revision=current.configuration_revision,
+                        expected_digest=legacy_digest,
+                        occurred_at="2026-09-10T18:01:00Z",
+                    ))
 
     def test_configuration_change_is_recorded_in_the_redacted_operational_journal(self) -> None:
         first = self.service.configure(**self.values())

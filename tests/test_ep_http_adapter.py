@@ -210,6 +210,51 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
              "submission_receipt": self._accepted_submission(request)["receipt"]},
         )
 
+    def _record_configuration_adoption(
+        self, *, old_revision: int = 1, old_digest: str | None = None,
+        new_revision: int = 2, new_digest: str | None = None,
+        consumer_adoption: bool = False,
+    ) -> None:
+        self.database.record_operational_event(
+            component="forge_execution_host", level="INFO",
+            event="execution_host_configuration_replaced",
+            details={
+                "operation": "replaced", "outcome": "accepted",
+                "binding_id": self.config.peer_binding_id,
+                "configuration_revision": new_revision,
+                "configuration_digest": new_digest or "sha256:" + "e" * 64,
+                "peer_product": "engineering-platform",
+                "ep_instance_id": self.config.expected_instance_id,
+                "ep_consumer_id": self.config.expected_consumer_id,
+                "previous_state": (
+                    "schema:1.0;consumer-identity:UNBOUND;producer-readback:1.2;terminal-evidence:1.4"
+                    if consumer_adoption else
+                    "schema:1.1;consumer-identity:BOUND;producer-readback:1.2;terminal-evidence:1.4"
+                ),
+                "request_digest": old_digest or "sha256:" + "d" * 64,
+                "previous_configuration_revision": old_revision,
+                "historical_readback_adoption": (
+                    "LEGACY_CONSUMER_IDENTITY_ADOPTION_V1"
+                    if consumer_adoption else "TARGET_IDENTITY_PRESERVED_V1"
+                ),
+                "historical_target_identity_digest": "sha256:" + "a" * 64,
+            },
+        )
+
+    def _seed_historical_v14_without_consumer(self) -> dict[str, object]:
+        binding = EngineeringPlatformHttpExecutionHost(
+            self.config, self.database,
+        )._request_binding(self.request)
+        binding.pop("expected_ep_consumer_id")
+        persisted = {
+            **binding,
+            "submission_id": "submission-fixture",
+            "host_run_id": "run-fixture",
+            "submission_receipt": self._accepted_submission()["receipt"],
+        }
+        self.database.save_execution_host_binding(self.request.correlation_id, persisted)
+        return persisted
+
     @staticmethod
     def _urlopen(responses: list[bytes], observed: list[object]):
         def call(request, *, timeout):
@@ -520,6 +565,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             self.config, peer_configuration_revision=2,
             peer_configuration_digest="sha256:" + "e" * 64,
         )
+        self._record_configuration_adoption()
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
                 json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
             evidence = EngineeringPlatformHttpExecutionHost(historical_config, self.database).retrieve_evidence(
@@ -576,6 +622,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             self.config, peer_configuration_revision=2,
             peer_configuration_digest="sha256:" + "e" * 64,
         )
+        self._record_configuration_adoption()
         observed: list[object] = []
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
                 json.dumps(self.compatible).encode(), json.dumps(self.readback).encode()], observed)):
@@ -583,6 +630,75 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.assertEqual(dispatch.host_run_id, "run-fixture")
         self.assertEqual([item.get_method() for item in observed], ["GET", "GET"])
         self.assertEqual(self.database.execution_host_binding(request.correlation_id), before)
+
+    def test_historical_v14_consumer_adoption_recovers_without_backfill_or_post(self) -> None:
+        before = self._seed_historical_v14_without_consumer()
+        raw_before = self.database._connection.execute(
+            "SELECT document FROM execution_host_bindings WHERE correlation_id=?",
+            (self.request.correlation_id,),
+        ).fetchone()[0]
+        self._record_configuration_adoption(consumer_adoption=True)
+        migrated_config = replace(
+            self.config, peer_configuration_revision=2,
+            peer_configuration_digest="sha256:" + "e" * 64,
+        )
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(self.readback).encode()], observed)):
+            dispatch = EngineeringPlatformHttpExecutionHost(
+                migrated_config, self.database,
+            ).recover_dispatch(self.request)
+        self.assertIsNotNone(dispatch)
+        self.assertEqual(dispatch.host_run_id, "run-fixture")
+        self.assertEqual([request.get_method() for request in observed], ["GET", "GET"])
+        self.assertEqual(self.database.execution_host_binding(self.request.correlation_id), before)
+        self.assertEqual(
+            self.database._connection.execute(
+                "SELECT document FROM execution_host_bindings WHERE correlation_id=?",
+                (self.request.correlation_id,),
+            ).fetchone()[0],
+            raw_before,
+        )
+        self.assertNotIn("expected_ep_consumer_id", before)
+
+    def test_historical_v14_consumer_adoption_requires_exact_audit_and_target(self) -> None:
+        self._seed_historical_v14_without_consumer()
+        migrated_config = replace(
+            self.config, peer_configuration_revision=2,
+            peer_configuration_digest="sha256:" + "e" * 64,
+        )
+        host = EngineeringPlatformHttpExecutionHost(migrated_config, self.database)
+        with patch("forge.scheduler.ep_http_adapter._open") as transport:
+            with self.assertRaisesRegex(ValueError, "ADOPTION_UNVERIFIED"):
+                host.recover_dispatch(self.request)
+        transport.assert_not_called()
+
+        self._record_configuration_adoption(consumer_adoption=True)
+        changed_instance = replace(migrated_config, expected_instance_id="other-instance")
+        with patch("forge.scheduler.ep_http_adapter._open") as transport:
+            with self.assertRaisesRegex(ValueError, "RETARGETING_BLOCKED"):
+                EngineeringPlatformHttpExecutionHost(
+                    changed_instance, self.database,
+                ).recover_dispatch(self.request)
+        transport.assert_not_called()
+
+    def test_historical_v14_consumer_adoption_still_preflights_exact_consumer(self) -> None:
+        self._seed_historical_v14_without_consumer()
+        self._record_configuration_adoption(consumer_adoption=True)
+        migrated_config = replace(
+            self.config, peer_configuration_revision=2,
+            peer_configuration_digest="sha256:" + "e" * 64,
+        )
+        wrong_consumer = json.loads(json.dumps(self.compatible))
+        wrong_consumer["authentication"]["consumer_id"] = "other-valid-consumer"
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(wrong_consumer).encode()], observed)):
+            with self.assertRaisesRegex(ValueError, "CONSUMER_IDENTITY_MISMATCH"):
+                EngineeringPlatformHttpExecutionHost(
+                    migrated_config, self.database,
+                ).recover_dispatch(self.request)
+        self.assertEqual([request.get_method() for request in observed], ["GET"])
 
     def test_valid_hash_from_another_run_is_rejected_after_raw_artifact_fetch(self) -> None:
         self._seed_binding()

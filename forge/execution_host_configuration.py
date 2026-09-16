@@ -127,6 +127,33 @@ def canonical_endpoint(value: object, *, allow_loopback_http: bool) -> str:
     return f"{parsed.scheme}://{authority}"
 
 
+def _legacy_consumer_adoption_preserves_binding(
+    predecessor: Mapping[str, Any], candidate: "EngineeringPlatformPeerConfiguration",
+) -> bool:
+    """Return true only when schema 1.0 is changed by adding consumer identity."""
+
+    if predecessor.get("schema_version") != LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION:
+        return False
+    current = candidate.configuration_basis()
+    return all(
+        key == "schema_version" or current.get(key) == value
+        for key, value in predecessor.items()
+        if key not in {
+            "configuration_revision", "configuration_digest", "created_at", "created_by",
+            "updated_at", "updated_by",
+        }
+    )
+
+
+def _historical_target_identity(document: Mapping[str, Any]) -> dict[str, Any]:
+    keys = (
+        "binding_id", "owning_forge_runtime_id", "peer_product", "endpoint",
+        "expected_ep_instance_id", "execution_host_id", "ep_project_id",
+        "ep_repository_id", "repository_identity",
+    )
+    return {key: document.get(key) for key in keys}
+
+
 @dataclass(frozen=True)
 class EngineeringPlatformPeerConfiguration:
     """The sole selected EP peer binding, with no credential material."""
@@ -448,6 +475,14 @@ class EngineeringPlatformPeerConfigurationStore:
                 created_at=created_at, created_by=created_by, updated_at=now, updated_by=operator_id,
                 **basis,
             )
+            if (
+                stored is not None
+                and stored.document.get("schema_version") == LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION
+                and not _legacy_consumer_adoption_preserves_binding(stored.document, configured)
+            ):
+                raise PeerConfigurationConflict(
+                    "legacy consumer identity adoption may not retarget the existing EP peer binding"
+                )
             document = json.dumps(configured.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
             self._connection.execute(
                 "INSERT INTO execution_host_peer_configuration "
@@ -654,6 +689,15 @@ class EngineeringPlatformPeerConfigurationService:
             operator_reference = sha256(operator_id.encode("utf-8")).hexdigest()[:16]
 
             def record_change(configuration: EngineeringPlatformPeerConfiguration, operation: str) -> None:
+                consumer_adoption = (
+                    predecessor is not None
+                    and _legacy_consumer_adoption_preserves_binding(predecessor, configuration)
+                )
+                stable_target = (
+                    predecessor is not None
+                    and _historical_target_identity(predecessor)
+                    == _historical_target_identity(configuration.to_dict())
+                )
                 database._append_operational_event(
                     component="forge_execution_host", level="INFO",
                     event="execution_host_configuration_" + operation,
@@ -676,6 +720,18 @@ class EngineeringPlatformPeerConfigurationService:
                         ),
                         "request_digest": (
                             None if predecessor is None else predecessor["configuration_digest"]
+                        ),
+                        "previous_configuration_revision": (
+                            None if predecessor is None else predecessor["configuration_revision"]
+                        ),
+                        "historical_readback_adoption": (
+                            "LEGACY_CONSUMER_IDENTITY_ADOPTION_V1" if consumer_adoption else
+                            "TARGET_IDENTITY_PRESERVED_V1" if stable_target else None
+                        ),
+                        "historical_target_identity_digest": (
+                            None if not stable_target else EngineeringPlatformPeerConfiguration.digest_for(
+                                _historical_target_identity(predecessor)
+                            )
                         ),
                     },
                     occurred_at=configuration.updated_at,
