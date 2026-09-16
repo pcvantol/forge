@@ -68,6 +68,23 @@ Knowledge lifecycle/certification remains owned by the Knowledge Base.
 
 `docs/roadmap/0.1.md` is a compatibility redirect, not a second roadmap.
 
+## Current aggregate-health evidence
+
+The repository evidence for the local aggregate-health slice is reconciled as
+follows. These classifications do not promote the wider HTTP/CLI and installed
+service programme:
+
+| Evidence | Classification | Reconciled meaning |
+| --- | --- | --- |
+| PR #125 merge `9208cc8ff0f6582a936a861a8c8bfa67f320989b` | `MERGED_CANONICAL` | Forge contains deterministic, identity-bound, scoped liveness/readiness evaluation and focused regressions. |
+| Candidate `1d6a6faef5efb0a4aa57aea6bdf251a1a722a872` validation and distinct Quality/Security review receipts | `FORENSIC` | Candidate-bound execution evidence supports this source delivery; Engineering Platform Prompt History remains immutable and does not become Forge architecture authority. |
+| `FORGE_AGGREGATE_HEALTH_V1` HTTP/CLI, installed-service and full FH qualification nodes | `MERGED_CANONICAL` | Still documented as `PLANNED`; the library evaluator alone does not complete or activate them. |
+| Security review observation about same-zone daylight-saving-fold arithmetic | `FORENSIC` | Non-blocking follow-up evidence. Normalize collector timestamps to UTC and add a fold regression before installed health relies on local-zone timestamps; this observation grants no new work authority. |
+
+Architectural conclusions must preserve the distinction among source-delivered
+evaluation, candidate-specific validation, installed availability, and full
+FH qualification.
+
 ## Read order: peer authorities
 
 Resolve time-sensitive peer authority through the **Peer Authority Freshness

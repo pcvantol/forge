@@ -106,6 +106,30 @@ The exact instance-ID comparison is consistency evidence, not a newly invented
 cryptographic peer identity; preflight reports the latter as `NOT_ASSERTED`.
 `CONFIGURED` is therefore never presented as `LIVE_READY`.
 
+## Deterministic runtime health evaluation
+
+Forge now provides a library-only, read-only health evaluator in
+[`forge.runtime.health`](forge/runtime/health.py). Callers supply an immutable
+component-registry projection, identity-bound observations, an explicit
+capability scope, and the evaluation time. The evaluator performs no discovery,
+probe, provider generation, Mission operation, peer submission, or domain
+mutation.
+
+Liveness and capability readiness remain separate. A green aggregate requires
+fresh passing liveness plus at least one enabled required readiness definition
+for every requested capability. Missing, stale, expired, timed-out, future, or
+wrong-identity required evidence fails closed. Optional failures degrade a
+ready scope, while a disabled optional relay is visible but does not block local
+readiness. Known mandatory failures take precedence over unknown evidence, and
+a required execution-peer outage blocks only capability scopes that depend on
+that peer.
+
+The stable public model includes `HealthIdentity`, `HealthCheckDefinition`,
+`HealthObservation`, and `evaluate_health`, with deterministic serialized
+HEALTHY, DEGRADED, UNAVAILABLE, and UNKNOWN results. This source delivery does
+not claim an HTTP/CLI endpoint, installed service, authenticated diagnostic
+surface, or completion of the broader FH roadmap and qualification nodes.
+
 ## Managed repository status
 
 Forge is the first-class repository [`pcvantol/forge`](https://github.com/pcvantol/forge),
