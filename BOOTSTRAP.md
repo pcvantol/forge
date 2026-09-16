@@ -10,6 +10,9 @@ Quality and Security reviews. Start health work with
 [`forge/runtime/health.py`](forge/runtime/health.py), its
 [`focused regressions`](tests/test_runtime_health.py), and the
 [`aggregate-health contract`](docs/architecture/FORGE_AGGREGATE_HEALTH_V1.md).
+The separate, non-empty finalization PR #126 is merged at
+`406b1d8cc409916bc7fe321eb705f25bdab39586`; this rolling checkpoint is
+reconciled to that protected delivery.
 
 This delivery is the local evaluation boundary only. It does not complete the
 planned HTTP/CLI routes, installed Forge Server, OpenAPI/Postman drift gates, or

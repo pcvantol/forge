@@ -129,6 +129,12 @@ The stable public model includes `HealthIdentity`, `HealthCheckDefinition`,
 HEALTHY, DEGRADED, UNAVAILABLE, and UNKNOWN results. This source delivery does
 not claim an HTTP/CLI endpoint, installed service, authenticated diagnostic
 surface, or completion of the broader FH roadmap and qualification nodes.
+Implementation PR #125 is merged at
+`9208cc8ff0f6582a936a861a8c8bfa67f320989b`; the separate, non-empty
+finalization PR #126 is merged at
+`406b1d8cc409916bc7fe321eb705f25bdab39586`. The finalization delivery records
+the bounded handoff and reconciles current-state navigation without extending
+the evaluator's scope.
 
 ## Managed repository status
 

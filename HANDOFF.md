@@ -12,6 +12,10 @@ public runtime exports, and 15 focused regressions. The exact reviewed candidate
 `1d6a6faef5efb0a4aa57aea6bdf251a1a722a872` passed the focused health suite,
 the aggregate-health roadmap suite, and the 666-test canonical validation, with
 distinct passing Quality and Security reviews.
+Finalization PR #126 is separately merged at
+`406b1d8cc409916bc7fe321eb705f25bdab39586`; its non-empty documentation
+delivery records this mission-related handoff and reconciles the rolling
+current-state navigation without changing runtime or execution semantics.
 
 The delivery covers scoped liveness/readiness aggregation, required/optional/
 disabled applicability, fail-closed freshness, identity and check-scope
