@@ -1,6 +1,22 @@
 # Forge bootstrap
 
-## Current pickup checkpoint — 10 September 2026
+## Current pickup checkpoint — 16 September 2026
+
+Implementation PR #125 merged the deterministic, read-only aggregate-health
+evaluator at `9208cc8ff0f6582a936a861a8c8bfa67f320989b`. The evaluated candidate
+`1d6a6faef5efb0a4aa57aea6bdf251a1a722a872` passed the focused health and
+architecture regressions, the full canonical validation suite, and distinct
+Quality and Security reviews. Start health work with
+[`forge/runtime/health.py`](forge/runtime/health.py), its
+[`focused regressions`](tests/test_runtime_health.py), and the
+[`aggregate-health contract`](docs/architecture/FORGE_AGGREGATE_HEALTH_V1.md).
+
+This delivery is the local evaluation boundary only. It does not complete the
+planned HTTP/CLI routes, installed Forge Server, OpenAPI/Postman drift gates, or
+full FH qualification. Engineering Platform Prompt History remains immutable
+execution evidence and is not copied into Forge architecture authority.
+
+## Consolidation and parking baseline — 10 September 2026
 
 Read the [consolidation and parking roadmap](docs/roadmap/CONSOLIDATION_PARKING_2026_09_10.md)
 and [documentary DAG](docs/roadmap/CONSOLIDATION_PARKING_2026_09_10_DAG.json)
