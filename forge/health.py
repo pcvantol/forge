@@ -278,6 +278,14 @@ def evaluate_capability_readiness(
 
     evaluated = tuple(_evaluate_check(item, observation_map.get(item.check_id), evaluated_at) for item in declared)
     applicable = tuple(item for item in evaluated if item.applicability is not CheckApplicability.DISABLED)
+    if not applicable:
+        return CapabilityReadiness(
+            capability_id,
+            False,
+            AggregateHealthState.UNKNOWN,
+            evaluated,
+            (),
+        )
     required = tuple(item for item in applicable if item.applicability is CheckApplicability.REQUIRED)
     optional = tuple(item for item in applicable if item.applicability is CheckApplicability.OPTIONAL)
 

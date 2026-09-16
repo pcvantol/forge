@@ -72,6 +72,30 @@ class AggregateHealthTests(unittest.TestCase):
         self.assertEqual(local.checks[0].freshness, ObservationFreshness.DISABLED)
         self.assertEqual(result.aggregate.state, AggregateHealthState.HEALTHY)
 
+    def test_disabled_only_capability_is_unknown_and_never_ready(self) -> None:
+        checks = (
+            check("storage.read", CheckApplicability.REQUIRED, "local"),
+            check("relay.connect", CheckApplicability.DISABLED, "remote_access"),
+        )
+        result = self.evaluate(
+            ("local", "remote_access"),
+            checks,
+            (observation("storage.read"),),
+        )
+        readiness = {item.capability_id: item for item in result.capabilities}
+
+        self.assertTrue(readiness["local"].ready)
+        self.assertEqual(readiness["local"].state, AggregateHealthState.HEALTHY)
+        self.assertFalse(readiness["remote_access"].ready)
+        self.assertEqual(readiness["remote_access"].state, AggregateHealthState.UNKNOWN)
+        self.assertEqual(
+            readiness["remote_access"].checks[0].freshness,
+            ObservationFreshness.DISABLED,
+        )
+        self.assertEqual(result.aggregate.state, AggregateHealthState.UNKNOWN)
+        self.assertEqual(result.aggregate.ready_capabilities, ("local",))
+        self.assertEqual(result.aggregate.blocked_capabilities, ("remote_access",))
+
     def test_enabled_optional_failure_degrades_without_blocking(self) -> None:
         checks = (
             check("storage.read", CheckApplicability.REQUIRED, "local"),
