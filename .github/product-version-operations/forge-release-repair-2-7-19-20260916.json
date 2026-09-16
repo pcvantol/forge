@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.18",
+  "classification_rationale": "production release 35078676074 failed before PyPI publication because publish-pypi could not read its private draft receipt; preserve forge-v2.7.18 and issue a new patch release",
+  "component": "product",
+  "event_lineage": "production release 35078676074 failed before PyPI publication because publish-pypi could not read its private draft receipt; preserve forge-v2.7.18 and issue a new patch release",
+  "expected_head": "9091d70c5b0597520c1cafe04f7dd1e29e43de3d",
+  "operation_id": "forge-release-repair-2-7-19-20260916",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.19"
+}
