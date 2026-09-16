@@ -46,13 +46,23 @@ def observation(
     check_id: str,
     state: ObservationState = ObservationState.PASS,
     *,
+    identity: HealthIdentity = IDENTITY,
+    component_id: str = "forge_server",
+    purpose: CheckPurpose = CheckPurpose.READINESS,
+    capabilities: tuple[str, ...] = ("local_work",),
     observed_at: datetime = NOW,
     expires_at: datetime | None = None,
     reason_code: str | None = None,
 ) -> HealthObservation:
+    if check_id == "process":
+        purpose = CheckPurpose.LIVENESS
+        capabilities = ()
     if state is not ObservationState.PASS and reason_code is None:
         reason_code = f"{state.value}_OBSERVATION"
-    return HealthObservation(check_id, state, observed_at, expires_at, reason_code)
+    return HealthObservation(
+        identity, component_id, check_id, purpose, capabilities,
+        state, observed_at, expires_at, reason_code,
+    )
 
 
 def liveness() -> HealthCheckDefinition:
@@ -69,7 +79,15 @@ class RuntimeHealthTests(unittest.TestCase):
         result = evaluate_health(
             IDENTITY,
             definitions,
-            tuple(observation(item.check_id) for item in definitions),
+            (
+                observation("process"),
+                observation("storage"),
+                observation(
+                    "execution_peer",
+                    component_id="engineering_platform",
+                    capabilities=("dispatch",),
+                ),
+            ),
             evaluated_at=NOW,
         )
 
@@ -79,19 +97,31 @@ class RuntimeHealthTests(unittest.TestCase):
         self.assertTrue(result.readiness_for("dispatch").ready)
         self.assertEqual(result.to_dict()["schema_revision"], "1.0")
 
-    def test_required_failure_is_unavailable_without_collapsing_liveness(self) -> None:
+    def test_required_peer_failure_degrades_otherwise_ready_runtime(self) -> None:
         result = evaluate_health(
             IDENTITY,
-            (liveness(), check("storage"), check("execution_peer", capabilities=("dispatch",))),
+            (
+                liveness(),
+                check("storage"),
+                check(
+                    "execution_peer",
+                    component_id="engineering_platform",
+                    capabilities=("dispatch",),
+                ),
+            ),
             (
                 observation("process"),
                 observation("storage"),
-                observation("execution_peer", ObservationState.FAIL, reason_code="PEER_UNREACHABLE"),
+                observation(
+                    "execution_peer", ObservationState.FAIL,
+                    component_id="engineering_platform", capabilities=("dispatch",),
+                    reason_code="PEER_UNREACHABLE",
+                ),
             ),
             evaluated_at=NOW,
         )
 
-        self.assertEqual(result.state, HealthState.UNAVAILABLE)
+        self.assertEqual(result.state, HealthState.DEGRADED)
         self.assertEqual(result.liveness.state, LivenessState.ALIVE)
         self.assertEqual(result.readiness_for("local_work").state, ReadinessState.READY)
         self.assertEqual(result.readiness_for("dispatch").state, ReadinessState.UNAVAILABLE)
@@ -138,7 +168,10 @@ class RuntimeHealthTests(unittest.TestCase):
             (
                 observation("process"),
                 observation("storage"),
-                observation("relay", ObservationState.FAIL, reason_code="RELAY_UNREACHABLE"),
+                observation(
+                    "relay", ObservationState.FAIL,
+                    component_id="dashboard_relay", reason_code="RELAY_UNREACHABLE",
+                ),
             ),
             evaluated_at=NOW,
         )
@@ -153,7 +186,14 @@ class RuntimeHealthTests(unittest.TestCase):
     def test_disabled_optional_relay_needs_no_observation_and_is_not_a_failure(self) -> None:
         for disabled_observation in (
             (),
-            (observation("relay", ObservationState.FAIL, reason_code="LAST_KNOWN_RELAY_FAILURE"),),
+            (
+                observation(
+                    "relay", ObservationState.FAIL,
+                    component_id="dashboard_relay",
+                    capabilities=("remote_access",),
+                    reason_code="LAST_KNOWN_RELAY_FAILURE",
+                ),
+            ),
         ):
             with self.subTest(last_known_observation=bool(disabled_observation)):
                 result = evaluate_health(
@@ -164,6 +204,7 @@ class RuntimeHealthTests(unittest.TestCase):
                         check(
                             "relay", component_id="dashboard_relay",
                             applicability=CheckApplicability.DISABLED,
+                            capabilities=("remote_access",),
                         ),
                     ),
                     (observation("process"), observation("storage"), *disabled_observation),
@@ -174,6 +215,10 @@ class RuntimeHealthTests(unittest.TestCase):
                 self.assertEqual(result.state, HealthState.HEALTHY)
                 self.assertTrue(result.readiness_for("local_work").ready)
                 self.assertFalse(result.readiness_for("local_work").degraded)
+                self.assertEqual(
+                    result.readiness_for("remote_access").state,
+                    ReadinessState.UNKNOWN,
+                )
                 self.assertEqual(relay.state, CheckState.DISABLED)
                 self.assertEqual(relay.freshness, ObservationFreshness.NOT_APPLICABLE)
 
@@ -248,24 +293,59 @@ class RuntimeHealthTests(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             first.state = HealthState.UNKNOWN  # type: ignore[misc]
 
-    def test_future_observations_and_capabilities_without_required_checks_fail_closed(self) -> None:
+    def test_unknown_optional_observation_degrades_without_becoming_required(self) -> None:
         result = evaluate_health(
             IDENTITY,
             (
                 liveness(),
-                check("storage", applicability=CheckApplicability.OPTIONAL),
+                check(
+                    "relay", component_id="dashboard_relay",
+                    applicability=CheckApplicability.OPTIONAL,
+                    capabilities=("remote_access",),
+                ),
             ),
             (
                 observation("process"),
-                observation("storage", observed_at=NOW + timedelta(seconds=1)),
+                observation(
+                    "relay", component_id="dashboard_relay",
+                    capabilities=("remote_access",),
+                    observed_at=NOW + timedelta(seconds=1),
+                ),
             ),
             evaluated_at=NOW,
         )
 
-        self.assertEqual(result.state, HealthState.UNKNOWN)
-        self.assertEqual(result.readiness_for("local_work").state, ReadinessState.UNKNOWN)
-        storage = next(item for item in result.checks if item.check_id == "storage")
-        self.assertEqual(storage.freshness, ObservationFreshness.FUTURE)
+        self.assertEqual(result.state, HealthState.DEGRADED)
+        self.assertEqual(result.readiness_for("remote_access").state, ReadinessState.UNKNOWN)
+        relay = next(item for item in result.checks if item.check_id == "relay")
+        self.assertEqual(relay.freshness, ObservationFreshness.FUTURE)
+
+    def test_observations_are_bound_to_runtime_installation_and_check_scope(self) -> None:
+        definitions = (liveness(), check("storage"))
+        wrong_identities = (
+            HealthIdentity("0.7.1", "runtime-primary", "installation-primary"),
+            HealthIdentity("0.7.0", "runtime-other", "installation-primary"),
+            HealthIdentity("0.7.0", "runtime-primary", "installation-other"),
+        )
+        for wrong_identity in wrong_identities:
+            with self.subTest(identity=wrong_identity):
+                with self.assertRaisesRegex(ValueError, "identity"):
+                    evaluate_health(
+                        IDENTITY,
+                        definitions,
+                        (observation("process"), observation("storage", identity=wrong_identity)),
+                        evaluated_at=NOW,
+                    )
+        with self.assertRaisesRegex(ValueError, "scope"):
+            evaluate_health(
+                IDENTITY,
+                definitions,
+                (
+                    observation("process"),
+                    observation("storage", capabilities=("dispatch",)),
+                ),
+                evaluated_at=NOW,
+            )
 
     def test_invalid_registry_and_observation_inputs_are_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "unique"):

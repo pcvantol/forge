@@ -146,16 +146,35 @@ class HealthCheckDefinition:
 
 @dataclass(frozen=True)
 class HealthObservation:
-    """A bounded observation collected outside the health evaluator."""
+    """A bounded observation collected for one runtime and check scope."""
 
+    identity: HealthIdentity
+    component_id: str
     check_id: str
+    purpose: CheckPurpose
+    capabilities: tuple[str, ...]
     state: ObservationState
     observed_at: datetime
     expires_at: datetime | None = None
     reason_code: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.identity, HealthIdentity):
+            raise ValueError("observation identity is required")
+        _require_identifier(self.component_id, "component id")
         _require_identifier(self.check_id, "check id")
+        if not isinstance(self.purpose, CheckPurpose):
+            raise ValueError("observation purpose is invalid")
+        if not isinstance(self.capabilities, tuple):
+            raise ValueError("observation capabilities must be an immutable tuple")
+        if len(self.capabilities) != len(set(self.capabilities)):
+            raise ValueError("observation capabilities must be unique")
+        for capability in self.capabilities:
+            _require_identifier(capability, "capability id")
+        if self.purpose is CheckPurpose.LIVENESS and self.capabilities:
+            raise ValueError("liveness observations must be capability-independent")
+        if self.purpose is CheckPurpose.READINESS and not self.capabilities:
+            raise ValueError("readiness observations must name at least one capability")
         if not isinstance(self.state, ObservationState):
             raise ValueError("observation state is invalid")
         observed_at = _require_aware(self.observed_at, "observation time")
@@ -306,6 +325,12 @@ def evaluate_health(
     unknown_ids = set(observation_ids).difference(definition_ids)
     if unknown_ids:
         raise ValueError("observations must reference declared health checks")
+    definition_by_id = {item.check_id: item for item in ordered_definitions}
+    if any(item.identity != identity for item in observation_items):
+        raise ValueError("observation identity must match the health evaluation")
+    if any(not _observation_matches_definition(item, definition_by_id[item.check_id])
+           for item in observation_items):
+        raise ValueError("observation scope must match its declared health check")
     observation_by_id = {item.check_id: item for item in observation_items}
 
     checks = tuple(
@@ -316,6 +341,17 @@ def evaluate_health(
     capabilities = _evaluate_capabilities(checks)
     state = _aggregate_state(checks, capabilities)
     return HealthEvaluation(identity, evaluated_at, state, liveness, capabilities, checks)
+
+
+def _observation_matches_definition(
+    observation: HealthObservation,
+    definition: HealthCheckDefinition,
+) -> bool:
+    return (
+        observation.component_id == definition.component_id
+        and observation.purpose is definition.purpose
+        and tuple(sorted(observation.capabilities)) == tuple(sorted(definition.capabilities))
+    )
 
 
 def _evaluate_check(
@@ -419,12 +455,28 @@ def _aggregate_state(
     checks: tuple[CheckEvaluation, ...],
     capabilities: tuple[CapabilityReadiness, ...],
 ) -> HealthState:
-    required = tuple(item for item in checks if item.applicability is CheckApplicability.REQUIRED)
-    if any(item.state is CheckState.FAIL for item in required):
+    required_liveness = tuple(
+        item for item in checks
+        if item.purpose is CheckPurpose.LIVENESS
+        and item.applicability is CheckApplicability.REQUIRED
+    )
+    if any(item.state is CheckState.FAIL for item in required_liveness):
         return HealthState.UNAVAILABLE
-    if (any(item.state is CheckState.UNKNOWN for item in required)
-            or any(item.state is ReadinessState.UNKNOWN for item in capabilities)):
+    if any(item.state is CheckState.UNKNOWN for item in required_liveness):
         return HealthState.UNKNOWN
+
+    required_capabilities = tuple(item for item in capabilities if item.required_check_ids)
+    if any(item.state is ReadinessState.UNKNOWN for item in required_capabilities):
+        return HealthState.UNKNOWN
+    unavailable = tuple(
+        item for item in required_capabilities
+        if item.state is ReadinessState.UNAVAILABLE
+    )
+    if unavailable:
+        if any(item.state is ReadinessState.READY for item in required_capabilities):
+            return HealthState.DEGRADED
+        return HealthState.UNAVAILABLE
+
     optional = tuple(item for item in checks if item.applicability is CheckApplicability.OPTIONAL)
     if any(item.state is not CheckState.PASS for item in optional):
         return HealthState.DEGRADED
