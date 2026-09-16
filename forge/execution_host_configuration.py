@@ -16,7 +16,8 @@ from .runtime.data_root import DataRootResolver
 from .secure_store import MacOSKeychainSecureStoreAdapter, SecretReference, SecretState
 
 
-PEER_CONFIGURATION_SCHEMA_VERSION = "1.0"
+PEER_CONFIGURATION_SCHEMA_VERSION = "1.1"
+LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION = "1.0"
 PEER_PRODUCT = "engineering-platform"
 PRODUCER_READBACK_CONTRACT = "1.2"
 TERMINAL_EVIDENCE_CONTRACT = "1.4"
@@ -27,10 +28,11 @@ _TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z
 _FIELDS = frozenset((
     "schema_version", "binding_id", "configuration_revision", "configuration_digest",
     "owning_forge_runtime_id", "peer_product", "endpoint", "expected_ep_instance_id",
-    "execution_host_id", "ep_project_id", "ep_repository_id", "repository_identity",
+    "ep_consumer_id", "execution_host_id", "ep_project_id", "ep_repository_id", "repository_identity",
     "producer_readback_contract", "terminal_evidence_contract", "credential_reference",
     "allow_loopback_http", "timeout_seconds", "created_at", "created_by", "updated_at", "updated_by",
 ))
+_LEGACY_FIELDS = _FIELDS - {"ep_consumer_id"}
 _TABLE_SHAPE = (
     ("singleton", "INTEGER", 0, 1), ("binding_id", "TEXT", 1, 0),
     ("configuration_revision", "INTEGER", 1, 0),
@@ -73,7 +75,8 @@ class _StoredPeerConfiguration:
     @property
     def current_contracts(self) -> bool:
         return (
-            self.document["producer_readback_contract"] == PRODUCER_READBACK_CONTRACT
+            self.document["schema_version"] == PEER_CONFIGURATION_SCHEMA_VERSION
+            and self.document["producer_readback_contract"] == PRODUCER_READBACK_CONTRACT
             and self.document["terminal_evidence_contract"] == TERMINAL_EVIDENCE_CONTRACT
         )
 
@@ -134,6 +137,7 @@ class EngineeringPlatformPeerConfiguration:
     owning_forge_runtime_id: str
     endpoint: str
     expected_ep_instance_id: str
+    ep_consumer_id: str
     execution_host_id: str
     ep_project_id: str
     ep_repository_id: str
@@ -162,6 +166,7 @@ class EngineeringPlatformPeerConfiguration:
             (self.binding_id, "binding identity"),
             (self.owning_forge_runtime_id, "owning Forge runtime identity"),
             (self.expected_ep_instance_id, "expected EP instance identity"),
+            (self.ep_consumer_id, "expected EP consumer identity"),
             (self.execution_host_id, "Execution Host identity"),
             (self.ep_project_id, "EP project identity"),
             (self.ep_repository_id, "EP repository identity"),
@@ -198,6 +203,7 @@ class EngineeringPlatformPeerConfiguration:
             "peer_product": self.peer_product,
             "endpoint": self.endpoint,
             "expected_ep_instance_id": self.expected_ep_instance_id,
+            "ep_consumer_id": self.ep_consumer_id,
             "execution_host_id": self.execution_host_id,
             "ep_project_id": self.ep_project_id,
             "ep_repository_id": self.ep_repository_id,
@@ -285,11 +291,19 @@ class EngineeringPlatformPeerConfigurationStore:
             document = json.loads(row["document"])
         except (TypeError, json.JSONDecodeError) as error:
             raise PeerConfigurationError("EP peer configuration record is unreadable") from error
-        if not isinstance(document, Mapping) or set(document) != _FIELDS:
+        if not isinstance(document, Mapping):
             raise PeerConfigurationError("EP peer configuration record is incomplete or contains unknown fields")
         normalized = dict(document)
-        if normalized.get("schema_version") != PEER_CONFIGURATION_SCHEMA_VERSION:
+        schema_version = normalized.get("schema_version")
+        expected_fields = (
+            _FIELDS if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION
+            else _LEGACY_FIELDS if schema_version == LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION
+            else None
+        )
+        if expected_fields is None:
             raise PeerConfigurationError("EP peer configuration schema is unsupported")
+        if set(normalized) != expected_fields:
+            raise PeerConfigurationError("EP peer configuration record is incomplete or contains unknown fields")
         if normalized.get("peer_product") != PEER_PRODUCT:
             raise PeerConfigurationError("EP peer product is incompatible")
         for value, label in (
@@ -304,6 +318,8 @@ class EngineeringPlatformPeerConfigurationStore:
             (normalized.get("updated_by"), "modification operator identity"),
         ):
             _identifier(value, label)
+        if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION:
+            _identifier(normalized.get("ep_consumer_id"), "expected EP consumer identity")
         revision = normalized.get("configuration_revision")
         if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
             raise PeerConfigurationError("EP peer configuration revision is invalid")
@@ -326,12 +342,15 @@ class EngineeringPlatformPeerConfigurationStore:
             (PRODUCER_READBACK_CONTRACT, TERMINAL_EVIDENCE_CONTRACT),
         }:
             raise PeerConfigurationError("EP peer contract version is unsupported")
-        basis = {key: normalized[key] for key in (
+        basis_fields = [
             "schema_version", "binding_id", "owning_forge_runtime_id", "peer_product", "endpoint",
             "expected_ep_instance_id", "execution_host_id", "ep_project_id", "ep_repository_id",
             "repository_identity", "producer_readback_contract", "terminal_evidence_contract",
             "credential_reference", "allow_loopback_http", "timeout_seconds",
-        )}
+        ]
+        if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION:
+            basis_fields.insert(6, "ep_consumer_id")
+        basis = {key: normalized[key] for key in basis_fields}
         digest = normalized.get("configuration_digest")
         if (not isinstance(digest, str) or _DIGEST.fullmatch(digest) is None
                 or digest != EngineeringPlatformPeerConfiguration.digest_for(basis)):
@@ -356,6 +375,7 @@ class EngineeringPlatformPeerConfigurationStore:
         binding_id: str,
         endpoint: str,
         expected_ep_instance_id: str,
+        ep_consumer_id: str,
         execution_host_id: str,
         ep_project_id: str,
         ep_repository_id: str,
@@ -382,6 +402,7 @@ class EngineeringPlatformPeerConfigurationStore:
             "peer_product": PEER_PRODUCT,
             "endpoint": canonical_endpoint(endpoint, allow_loopback_http=allow_loopback_http),
             "expected_ep_instance_id": expected_ep_instance_id,
+            "ep_consumer_id": ep_consumer_id,
             "execution_host_id": execution_host_id,
             "ep_project_id": ep_project_id,
             "ep_repository_id": ep_repository_id,
@@ -450,6 +471,8 @@ class ReadOnlyPeerConfiguration:
     configuration: EngineeringPlatformPeerConfiguration | None
     runtime_id: str
     storage_schema: int
+    status: str
+    stored_document: dict[str, Any] | None
 
 
 def read_peer_configuration(
@@ -494,20 +517,28 @@ def read_peer_configuration(
         if table is None:
             if schema == RUNTIME_SCHEMA_VERSION:
                 raise PeerConfigurationError("EP peer configuration storage is missing")
+            stored = None
             configuration = None
         else:
             store = EngineeringPlatformPeerConfigurationStore(connection, runtime_id, writable=False)
-            if allow_legacy_contract_replacement:
-                stored = store._stored()
-                configuration = (
-                    EngineeringPlatformPeerConfiguration.from_dict(stored.document)
-                    if stored is not None and stored.current_contracts else None
-                )
-            else:
-                configuration = store.load()
+            stored = store._stored()
+            configuration = (
+                EngineeringPlatformPeerConfiguration.from_dict(stored.document)
+                if stored is not None and stored.current_contracts else None
+            )
             if configuration is not None and schema < RUNTIME_SCHEMA_VERSION:
                 raise PeerConfigurationError("EP peer configuration exists under an unqualified storage schema")
-        return ReadOnlyPeerConfiguration(configuration, runtime_id, schema)
+        if stored is None:
+            status, stored_document = "NOT_CONFIGURED", None
+        elif configuration is not None:
+            status, stored_document = "CONFIGURED", configuration.to_dict()
+        elif stored.document["schema_version"] == LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION:
+            status, stored_document = "CONSUMER_IDENTITY_REQUIRED", dict(stored.document)
+        else:
+            status, stored_document = "CONTRACT_UPGRADE_REQUIRED", dict(stored.document)
+        return ReadOnlyPeerConfiguration(
+            configuration, runtime_id, schema, status, stored_document,
+        )
     except sqlite3.Error as error:
         raise PeerConfigurationError("Forge runtime storage is unavailable") from error
     except OSError as error:
@@ -547,6 +578,7 @@ class EngineeringPlatformExecutionHostFactory:
             project_id=configuration.ep_project_id,
             bearer_token=bearer_token,
             expected_instance_id=configuration.expected_ep_instance_id,
+            expected_consumer_id=configuration.ep_consumer_id,
             repository_id=configuration.ep_repository_id,
             repository_identity=configuration.repository_identity,
             allow_loopback_http=configuration.allow_loopback_http,
@@ -574,7 +606,7 @@ class EngineeringPlatformExecutionHostFactory:
         """Read-only CLI-preflight route; the returned host can perform only preflight."""
         readback = read_peer_configuration(data_root)
         if readback.configuration is None:
-            raise PeerConfigurationError("EP peer is not configured")
+            raise PeerConfigurationError("EP peer is not runtime-ready: " + readback.status)
         return self._build(readback.configuration, _PreflightOnlyBindings())
 
 
@@ -633,9 +665,13 @@ class EngineeringPlatformPeerConfigurationService:
                         "configuration_digest": configuration.configuration_digest,
                         "peer_product": configuration.peer_product,
                         "ep_instance_id": configuration.expected_ep_instance_id,
+                        "ep_consumer_id": configuration.ep_consumer_id,
                         "previous_state": (
                             "UNCONFIGURED" if predecessor is None else
-                            "producer-readback:" + str(predecessor["producer_readback_contract"])
+                            "schema:" + str(predecessor["schema_version"])
+                            + ";consumer-identity:"
+                            + ("BOUND" if "ep_consumer_id" in predecessor else "UNBOUND")
+                            + ";producer-readback:" + str(predecessor["producer_readback_contract"])
                             + ";terminal-evidence:" + str(predecessor["terminal_evidence_contract"])
                         ),
                         "request_digest": (
@@ -658,6 +694,7 @@ class EngineeringPlatformPeerConfigurationService:
                         "configuration_digest": configured.configuration_digest,
                         "peer_product": configured.peer_product,
                         "ep_instance_id": configured.expected_ep_instance_id,
+                        "ep_consumer_id": configured.ep_consumer_id,
                     },
                 )
             return configured
@@ -665,7 +702,21 @@ class EngineeringPlatformPeerConfigurationService:
             database.close()
 
     def show(self) -> EngineeringPlatformPeerConfiguration | None:
-        return read_peer_configuration(self.data_root).configuration
+        readback = read_peer_configuration(self.data_root)
+        if readback.configuration is None and readback.stored_document is not None:
+            explanation = (
+                "; peer contracts are not at the current versions"
+                if readback.status == "CONTRACT_UPGRADE_REQUIRED"
+                else ""
+            )
+            raise PeerConfigurationError(
+                "EP peer is not runtime-ready: " + readback.status + explanation
+            )
+        return readback.configuration
+
+    def readback(self) -> ReadOnlyPeerConfiguration:
+        """Read current or guarded-upgrade state without resolving a credential."""
+        return read_peer_configuration(self.data_root)
 
     def preflight(self) -> dict[str, Any]:
         host = self.factory.from_data_root(self.data_root)
@@ -679,7 +730,8 @@ class EngineeringPlatformPeerConfigurationService:
             "peer_instance_consistency": "PASS",
             "cryptographic_peer_identity": "NOT_ASSERTED",
             "compatibility": "PASS",
-            "project_repository_scope": "NOT_VERIFIED",
-            "mutation_authority": "NOT_VERIFIED",
+            "authenticated_consumer_identity": declaration["authentication"]["consumer_id"],
+            "project_repository_scope": "PASS",
+            "mutation_authority": "SUBMISSION_AUTHORIZED",
             "declaration": declaration,
         }

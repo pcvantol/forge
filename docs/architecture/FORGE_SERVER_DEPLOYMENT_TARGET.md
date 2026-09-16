@@ -85,7 +85,7 @@ secret-free `execution_host_peer_configuration` record in `forge.db`, separate
 from per-correlation `execution_host_bindings`. The versioned record binds its
 own identity, revision and canonical digest to the owning Forge runtime ID,
 `engineering-platform`, one fixed endpoint, expected EP instance ID, Execution
-Host ID, EP project and repository IDs, Forge repository identity, the exact
+Host ID, expected EP consumer ID, EP project and repository IDs, Forge repository identity, the exact
 producer-readback contract `1.2` and terminal-evidence contract `1.4`, one opaque credential
 reference, bounded timeout, loopback-HTTP decision and creation/update
 provenance.
@@ -94,10 +94,20 @@ Configuration writes are idempotent. A changed binding requires an explicit
 replacement with both the observed revision and digest. Each newly created
 correlation persists that configuration identity in the existing correlation
 binding; dispatch and recovery reject any later endpoint, instance, project,
-repository or binding retarget. Evidence readback may instead consume an
+consumer, repository or binding retarget. Evidence readback may instead consume an
 already-bound historical v1.3 artifact through its original correlation, with
 its original bytes and no added revision constraint or peer retarget.
 This does not grant Mission, submission or mutation authority.
+
+Peer-configuration schema `1.1` includes the expected EP consumer in both the
+canonical digest and each new correlation binding. A stored schema `1.0`
+record remains secret-free readable as `CONSUMER_IDENTITY_REQUIRED`, but cannot
+construct a runtime or submit. Migration never guesses `consumer`, chooses a
+project match or rewrites historical correlation/request/evidence records. The
+supported configuration route requires the exact externally verified consumer
+and guarded replacement with the observed legacy revision and digest; its
+operational event records only the old schema/consumer-bound state and the new
+secret-free identity.
 
 A binding with a retired contract is deliberately unusable for status,
 preflight and execution. The explicit configuration command can nevertheless
@@ -113,7 +123,13 @@ persisted binding, verifies the Forge runtime identity and contract, resolves
 the Keychain reference, and constructs the existing
 `EngineeringPlatformHttpExecutionHost`. That adapter rejects request
 host/repository scope mismatches before submission and repeats exact product,
-instance and v1.2/v1.4 compatibility checks for new dispatch and recovery.
+instance, authenticated consumer, project/repository authorization and
+v1.2/v1.4 compatibility checks for new dispatch and recovery. It sends the
+credential resolved from the normal Keychain reference plus project/repository
+scope to EP's authenticated `/v1/producer-compatibility` form. EP derives the
+actual consumer from that credential. Forge rejects a valid credential for a
+different consumer—even on the same EP instance and in the same project—before
+issuing the submission POST.
 It verifies a new request's Repository Truth pin, permitted recovery
 transition and canonical request-payload digest before submission; terminal
 v1.4 revisions are compared with that persisted Forge request, not merely
@@ -127,13 +143,12 @@ certificate validation. HTTP is restricted to an explicitly enabled loopback
 origin. Redirects are not followed, so a bearer value is never forwarded to a
 different origin.
 
-`forge execution-host preflight` uses only EP's existing read-only
-`/v1/producer-compatibility` route. It can verify product, instance and
-contracts, but deliberately reports EP project/repository existence and
-current mutation authority as `NOT_VERIFIED`. The instance-ID comparison is
-identity consistency, not a cryptographic identity claim, which remains
-`NOT_ASSERTED`. Source qualification uses
-isolated roots, test credentials and a simulated peer. No real Forge/EP
-installation has been configured, no live E2E has run, and planning-provider
-configuration, Mission governance, installer/Workspace work and EP #175 remain
-separate and parked.
+`forge execution-host preflight` uses only EP's read-only authenticated
+`/v1/producer-compatibility` route. It verifies product, instance, contracts,
+EP-derived consumer identity, active project and authority-repository binding,
+and submission authorization without admitting a submission. The instance-ID
+comparison is identity consistency, not a cryptographic identity claim, which
+remains `NOT_ASSERTED`. Source qualification uses isolated roots and synthetic
+credentials; EP response doubles are named where used. Installed composition
+and live E2E remain separately evidenced rather than inferred from source
+qualification.

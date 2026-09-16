@@ -18,10 +18,10 @@ def run() -> None:
     PlanningDocumentLoader()
     if EngineeringPlatformHttpExecutionHost.SUPPORTED_PRODUCER_READBACK_CONTRACTS != ("1.2",):
         raise RuntimeError("installed Forge wheel does not contain the strict EP v1.2 consumer")
-    if PEER_CONFIGURATION_SCHEMA_VERSION != "1.0":
+    if PEER_CONFIGURATION_SCHEMA_VERSION != "1.1":
         raise RuntimeError("installed Forge wheel does not contain the durable EP peer configuration factory")
     EngineeringPlatformExecutionHostFactory()
-    if not files("forge.schemas").joinpath("engineering-platform-peer-configuration-1.0.schema.json").is_file():
+    if not files("forge.schemas").joinpath("engineering-platform-peer-configuration-1.1.schema.json").is_file():
         raise RuntimeError("installed Forge wheel omits the EP peer configuration schema")
 
 

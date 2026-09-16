@@ -71,13 +71,18 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.database = RuntimeDatabase(".", path=Path(self.temporary.name) / "runtime.db", forge_version="test")
         self.config = EngineeringPlatformHttpConfiguration(
             "https://ep.test", "forge", "credential",
-            expected_instance_id="instance-fixture", repository_id="forge", repository_identity="forge",
+            expected_instance_id="instance-fixture", expected_consumer_id="forge-consumer",
+            repository_id="forge", repository_identity="forge",
             peer_binding_id="ep-primary", peer_configuration_revision=1,
             peer_configuration_digest="sha256:" + "d" * 64,
         )
         self.request = _request()
-        self.compatible = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
-            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.4"]}}
+        self.compatible = {"contract_version": "1.1", "producer": {"id": "engineering-platform", "version": "2.3.0"},
+            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.2"], "terminal_evidence": ["1.4"]},
+            "authentication": {"consumer_id": "forge-consumer", "consumer_status": "ACTIVE",
+                "project_id": "forge", "project_status": "ACTIVE", "repository_id": "forge",
+                "repository_role": "authority", "local_repository_binding": "BOUND",
+                "submission_authorization": "AUTHORIZED"}}
         self.readback = json.loads((FIXTURES / "forge-producer-readback-v1.1.json").read_text())
         self.readback["contract_version"] = "1.2"
         self.readback["producer"]["version"] = "2.7.2"
@@ -309,8 +314,8 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).recover_dispatch(self.request)
 
     def test_capability_preflight_rejects_legacy_and_never_posts(self) -> None:
-        legacy = {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "2.3.0"},
-            "instance": {"id": "instance-fixture"}, "contracts": {"producer_readback": ["1.1"], "terminal_evidence": ["1.1"]}}
+        legacy = {**self.compatible,
+            "contracts": {"producer_readback": ["1.1"], "terminal_evidence": ["1.1"]}}
         observed: list[object] = []
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(legacy).encode()], observed)):
             with self.assertRaisesRegex(ValueError, "INCOMPATIBLE"):
@@ -338,6 +343,28 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
         self.assertNotIn("credential", str(error.exception))
         self.assertEqual(transport.call_args.args[0].get_method(), "GET")
+
+    def test_valid_same_project_credential_for_another_consumer_is_rejected(self) -> None:
+        other = json.loads(json.dumps(self.compatible))
+        other["authentication"]["consumer_id"] = "different-valid-consumer"
+        observed: list[object] = []
+        with patch(
+            "forge.scheduler.ep_http_adapter._open",
+            self._urlopen([json.dumps(other).encode()], observed),
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "EP_AUTHENTICATED_CONSUMER_IDENTITY_MISMATCH"
+            ):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).dispatch(
+                    self.request
+                )
+        self.assertEqual([request.get_method() for request in observed], ["GET"])
+        self.assertEqual(
+            self.database._connection.execute(
+                "SELECT count(*) FROM execution_host_bindings"
+            ).fetchone()[0],
+            1,
+        )
 
     def test_redirects_and_header_injection_are_rejected(self) -> None:
         self.assertIsNone(_NoRedirectHandler().redirect_request(None, None, 302, "redirect", {}, "https://other.test"))
