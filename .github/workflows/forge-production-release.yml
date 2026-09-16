@@ -184,7 +184,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: { name: pypi }
     permissions:
-      contents: read
+      # GitHub treats draft releases as private repository content.  This job
+      # must read back the immutable qualified-operation receipt retained by
+      # build-and-qualify before it is allowed to mutate PyPI.
+      contents: write
       id-token: write
     outputs:
       already_published: ${{ steps.existing.outputs.already_published }}

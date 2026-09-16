@@ -42,6 +42,15 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("forge-release-$VERSION-$SOURCE_SHA", workflow)
         self.assertIn('gh release create "$TAG" "$QUALIFIED" --draft --target "$SOURCE_SHA"', workflow)
         self.assertIn("Existing PyPI publication has no durable original release receipt", workflow)
+        publish_job = workflow[
+            workflow.index("  publish-pypi:"):
+            workflow.index("  registry-readback-and-published-evidence:")
+        ]
+        self.assertIn("contents: write", publish_job)
+        self.assertIn(
+            'gh release download "$TAG" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"',
+            publish_job,
+        )
         self.assertIn("forge-release-published-$VERSION-$SOURCE_SHA.json", workflow)
         self.assertIn("needs: [release-context, build-and-qualify, publish-pypi, registry-readback-and-published-evidence]", workflow)
         self.assertIn("gh release download \"$TAG\" --pattern \"$PUBLISHED_RECEIPT\" --dir published-readback", workflow)
