@@ -1,5 +1,16 @@
 # Forge bootstrap
 
+## Roadmap overview and autonomy-first focus
+
+Read the [roadmap overview and autonomy-first focus](docs/roadmap/ROADMAP_OVERVIEW_AND_AUTONOMY_FOCUS.md)
+for the preserved four-product sizing analysis and the shortest-path orientation
+toward Forge executing governed work packages itself through EP. Its dated
+[inventory](docs/roadmap/inventory/2026-09-17.json) records 194 named records,
+165 analytical rollup units and 34 possible kickoff families, not 34 approved
+Missions or a minimum prompt count. Reconcile actual owning evidence before
+selection. This is a documentary reference, not a new backlog, execution grant,
+peer-status authority or prerequisite to finish every product before autonomy.
+
 ## Project bootstrap design — Genesis and Managed
 
 For new-project initialization or adoption, read the canonical target
