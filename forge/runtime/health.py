@@ -450,7 +450,7 @@ def _evaluate_check(
             *common, CheckState.UNKNOWN, ObservationFreshness.EXPIRED,
             *observed, "OBSERVATION_EXPIRED",
         )
-    if age_seconds > timeout_seconds:
+    if age_seconds >= timeout_seconds:
         return CheckEvaluation(
             *common, CheckState.UNKNOWN, ObservationFreshness.STALE,
             *observed, "OBSERVATION_STALE",
