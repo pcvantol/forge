@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 37
+RUNTIME_SCHEMA_VERSION = 38
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -40,6 +40,12 @@ _TABLES = frozenset((
     "action_derivation_evidence_sets",
     "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings", "execution_host_exchange_audit",
     "execution_host_peer_configuration", "forge_operational_logs",
+    "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
+    "operational_reset_tombstones", "operational_reset_artifact_steps",
+))
+_OPERATIONAL_RESET_TABLES = frozenset((
+    "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
+    "operational_reset_tombstones", "operational_reset_artifact_steps",
 ))
 _TOKEN_PREFLIGHT_FAILURE_FIELDS = frozenset((
     "failure_id", "mission_id", "provider_id", "occurred_at", "main_head", "policy_digest",
@@ -103,6 +109,10 @@ class RuntimeDatabaseError(RuntimeError):
 
 class RuntimeIntegrityError(RuntimeDatabaseError):
     """The runtime database is inconsistent and must not be used."""
+
+
+class RuntimeMaintenanceActive(RuntimeDatabaseError):
+    """Normal runtime mutation is fenced by a durable maintenance operation."""
 
 
 def _json_value(value: Any) -> Any:
@@ -238,10 +248,22 @@ class RuntimeDatabase:
         self._action_derivation_write_state = {"permitted": False}
         self._action_derivation_reattempt_write_state = {"permitted": False}
         self._action_derivation_canary_closure_write_state = {"permitted": False}
+        self._maintenance_write_state = {"permitted": False}
         try:
             self._configure()
-            while self._connection.execute("PRAGMA user_version").fetchone()[0] != RUNTIME_SCHEMA_VERSION:
-                self._migrate(forge_version)
+            self._maintenance_write_state["permitted"] = True
+            try:
+                while self._connection.execute("PRAGMA user_version").fetchone()[0] != RUNTIME_SCHEMA_VERSION:
+                    self._migrate(forge_version)
+            finally:
+                self._maintenance_write_state["permitted"] = False
+            maintenance = self._connection.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()
+            if maintenance is not None and maintenance[0] is not None:
+                raise RuntimeMaintenanceActive(
+                    "Forge runtime is fenced by operational reset maintenance: " + str(maintenance[0])
+                )
             self._initialize_runtime_identity()
             self.validate_integrity()
         except Exception:
@@ -278,6 +300,7 @@ class RuntimeDatabase:
         self._connection.create_function("forge_action_derivation_write_permitted", 0, lambda: int(self._action_derivation_write_state["permitted"]))
         self._connection.create_function("forge_action_derivation_reattempt_write_permitted", 0, lambda: int(self._action_derivation_reattempt_write_state["permitted"]))
         self._connection.create_function("forge_action_derivation_canary_closure_write_permitted", 0, lambda: int(self._action_derivation_canary_closure_write_state["permitted"]))
+        self._connection.create_function("forge_maintenance_write_permitted", 0, lambda: int(self._maintenance_write_state["permitted"]))
 
     def _insert_governance_grant(self, grant_id: str, installation_id: str, operator_id: str, capability: str,
                                  provenance: str, digest: str, occurred_at: str) -> None:
@@ -479,6 +502,54 @@ class RuntimeDatabase:
             if (row is None or row["tbl_name"] != "action_derivation_results"
                     or f"before {operation}" not in sql or fragment not in sql):
                 raise RuntimeIntegrityError(f"durable action-derivation result migration found incompatible {name} trigger")
+
+    def _require_operational_reset_structure(self) -> None:
+        required_columns = {
+            "operational_reset_state": {
+                "singleton", "dataset_generation", "active_operation_id", "state", "updated_at",
+            },
+            "operational_reset_operations": {
+                "operation_id", "runtime_id", "profile", "state", "actor_reference", "authority_digest",
+                "plan_digest", "request_digest", "backup_digest", "backup_reference", "relevant_revision",
+                "source_revision", "implementation_digest", "schema_version", "policy_version",
+                "generation_before", "generation_after", "created_at", "updated_at", "document",
+            },
+            "operational_reset_audit": {"audit_id", "operation_id", "event", "occurred_at", "document"},
+            "operational_reset_tombstones": {
+                "record_kind", "record_id", "source_digest", "operation_id", "retired_at",
+            },
+            "operational_reset_artifact_steps": {
+                "operation_id", "relative_path", "classification", "source_digest", "size_bytes", "state",
+                "backup_relative_path", "updated_at",
+            },
+        }
+        for table, expected in required_columns.items():
+            actual = {str(row["name"]) for row in self._connection.execute(f'PRAGMA table_info("{table}")')}
+            if actual != expected:
+                raise RuntimeIntegrityError(f"operational reset migration found incompatible {table} table")
+        state_rows = self._connection.execute(
+            "SELECT singleton,dataset_generation FROM operational_reset_state"
+        ).fetchall()
+        if len(state_rows) != 1 or int(state_rows[0]["singleton"]) != 1 or int(state_rows[0]["dataset_generation"]) < 0:
+            raise RuntimeIntegrityError("operational reset durable state is inconsistent")
+        for table in sorted(_TABLES):
+            prefix = "operational_reset_authorize" if table in _OPERATIONAL_RESET_TABLES else "operational_reset_block"
+            for operation in ("insert", "update", "delete"):
+                name = f"{prefix}_{table}_{operation}"
+                row = self._connection.execute(
+                    "SELECT tbl_name,sql FROM sqlite_master WHERE type='trigger' AND name=?", (name,)
+                ).fetchone()
+                sql = "" if row is None or row["sql"] is None else " ".join(str(row["sql"]).lower().split())
+                expected_guard = (
+                    "forge_maintenance_write_permitted() != 1"
+                    if table in _OPERATIONAL_RESET_TABLES else
+                    "active_operation_id from operational_reset_state"
+                )
+                if (
+                    row is None or row["tbl_name"] != table or f"before {operation}" not in sql
+                    or expected_guard not in sql
+                ):
+                    raise RuntimeIntegrityError(f"operational reset migration found incompatible {name} trigger")
 
     def _migrate_governance_19_to_20(self, forge_version: str) -> None:
         """Create and verify all governance objects before advancing schema metadata.
@@ -907,14 +978,14 @@ class RuntimeDatabase:
                     BEGIN SELECT RAISE(ABORT, 'mission intake evidence is immutable'); END;
                 """)
                 self._set_metadata({
-                    "schema_version": str(RUNTIME_SCHEMA_VERSION),
-                    "migration_version": str(RUNTIME_SCHEMA_VERSION),
+                    "schema_version": "37",
+                    "migration_version": "37",
                     "forge_version": forge_version,
                     "created_at": _timestamp(),
-                    "last_migration": str(RUNTIME_SCHEMA_VERSION),
+                    "last_migration": "37",
                     "integrity_status": "valid",
                 })
-                self._connection.execute(f"PRAGMA user_version={RUNTIME_SCHEMA_VERSION}")
+                self._connection.execute("PRAGMA user_version=37")
         elif version == 1:
             with self._connection:
                 self._connection.executescript("""
@@ -1637,6 +1708,122 @@ class RuntimeDatabase:
             except Exception:
                 self._connection.rollback()
                 raise
+        elif version == 37:
+            # Operational reset is deliberately schema-owned.  The durable
+            # fence is visible to every already-open connection through pure
+            # schema triggers that read persisted maintenance state. Raw and
+            # read-only tooling therefore needs no connection-local UDF while
+            # idle; the UDF below authorizes only reset-table mutations.
+            self._connection.execute("BEGIN IMMEDIATE")
+            try:
+                self._connection.executescript("""
+                    CREATE TABLE IF NOT EXISTS operational_reset_state (
+                        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                        dataset_generation INTEGER NOT NULL CHECK (dataset_generation >= 0),
+                        active_operation_id TEXT,
+                        state TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    INSERT OR IGNORE INTO operational_reset_state VALUES (1, 0, NULL, 'IDLE', '1970-01-01T00:00:00Z');
+                    CREATE TABLE IF NOT EXISTS operational_reset_operations (
+                        operation_id TEXT PRIMARY KEY,
+                        runtime_id TEXT NOT NULL,
+                        profile TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        actor_reference TEXT NOT NULL,
+                        authority_digest TEXT NOT NULL,
+                        plan_digest TEXT NOT NULL,
+                        request_digest TEXT NOT NULL,
+                        backup_digest TEXT,
+                        backup_reference TEXT,
+                        relevant_revision TEXT NOT NULL,
+                        source_revision TEXT NOT NULL,
+                        implementation_digest TEXT NOT NULL,
+                        schema_version INTEGER NOT NULL,
+                        policy_version TEXT NOT NULL,
+                        generation_before INTEGER NOT NULL,
+                        generation_after INTEGER,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        document TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS operational_reset_audit (
+                        audit_id TEXT PRIMARY KEY,
+                        operation_id TEXT NOT NULL,
+                        event TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        document TEXT NOT NULL,
+                        FOREIGN KEY(operation_id) REFERENCES operational_reset_operations(operation_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS operational_reset_tombstones (
+                        record_kind TEXT NOT NULL,
+                        record_id TEXT NOT NULL,
+                        source_digest TEXT NOT NULL,
+                        operation_id TEXT NOT NULL,
+                        retired_at TEXT NOT NULL,
+                        PRIMARY KEY(record_kind, record_id),
+                        FOREIGN KEY(operation_id) REFERENCES operational_reset_operations(operation_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS operational_reset_artifact_steps (
+                        operation_id TEXT NOT NULL,
+                        relative_path TEXT NOT NULL,
+                        classification TEXT NOT NULL,
+                        source_digest TEXT NOT NULL,
+                        size_bytes INTEGER NOT NULL,
+                        state TEXT NOT NULL,
+                        backup_relative_path TEXT,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY(operation_id, relative_path),
+                        FOREIGN KEY(operation_id) REFERENCES operational_reset_operations(operation_id)
+                    );
+                    CREATE TRIGGER IF NOT EXISTS operational_reset_audit_immutable_update BEFORE UPDATE ON operational_reset_audit
+                    BEGIN SELECT RAISE(ABORT, 'operational reset audit is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS operational_reset_audit_immutable_delete BEFORE DELETE ON operational_reset_audit
+                    BEGIN SELECT RAISE(ABORT, 'operational reset audit is immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS operational_reset_tombstones_immutable_update BEFORE UPDATE ON operational_reset_tombstones
+                    BEGIN SELECT RAISE(ABORT, 'operational reset tombstones are immutable'); END;
+                    CREATE TRIGGER IF NOT EXISTS operational_reset_tombstones_immutable_delete BEFORE DELETE ON operational_reset_tombstones
+                    BEGIN SELECT RAISE(ABORT, 'operational reset tombstones are immutable'); END;
+                """)
+                reset_tables = {
+                    "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
+                    "operational_reset_tombstones", "operational_reset_artifact_steps",
+                }
+                existing_tables = {
+                    row[0] for row in self._connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                    )
+                }
+                for table in sorted(existing_tables):
+                    if table in reset_tables:
+                        for operation in ("INSERT", "UPDATE", "DELETE"):
+                            self._connection.execute(
+                                f"CREATE TRIGGER IF NOT EXISTS operational_reset_authorize_{table}_{operation.lower()} "
+                                f"BEFORE {operation} ON {table} "
+                                "WHEN forge_maintenance_write_permitted() != 1 "
+                                "BEGIN SELECT RAISE(ABORT, 'operational reset service authority required'); END"
+                            )
+                    else:
+                        for operation in ("INSERT", "UPDATE", "DELETE"):
+                            self._connection.execute(
+                                f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_{table}_{operation.lower()} "
+                                f"BEFORE {operation} ON {table} "
+                                "WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL "
+                                "BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END"
+                            )
+                self._maintenance_write_state["permitted"] = True
+                try:
+                    self._set_metadata({
+                        "schema_version": "38", "migration_version": "38",
+                        "last_migration": "38", "forge_version": forge_version,
+                    })
+                    self._connection.execute("PRAGMA user_version=38")
+                finally:
+                    self._maintenance_write_state["permitted"] = False
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -1726,6 +1913,7 @@ class RuntimeDatabase:
         self._require_peer_configuration_structure()
         self._require_execution_host_exchange_audit_structure()
         self._require_operational_log_structure()
+        self._require_operational_reset_structure()
         identity = self.runtime_identity
         expected_identity = "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)
         if identity.repository_identity != expected_identity or not identity.runtime_id or identity.status != "active":
@@ -1766,6 +1954,7 @@ class RuntimeDatabase:
 
     def _write_mission_state_in_transaction(self, document: Mapping[str, Any], mission_id: str,
                                             lifecycle: str, context: Mapping[str, str | None]) -> None:
+        self._reject_reset_retired_identity("mission_id", mission_id)
         existing = self._connection.execute(
             "SELECT status FROM mission_state WHERE mission_id = ?", (mission_id,)
         ).fetchone()
@@ -1812,6 +2001,7 @@ class RuntimeDatabase:
         required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")))
         if not isinstance(mission_id, str) or not mission_id or not isinstance(lifecycle, str) or not lifecycle or any(value is None for value in required[2:]):
             raise RuntimeDatabaseError("mission state requires identity, lifecycle, status, progress, resume point, and execution policy")
+        self._reject_reset_retired_identity("mission_id", mission_id)
         try:
             with self._connection:
                 self._connection.execute("""INSERT INTO mission_state
@@ -2002,8 +2192,16 @@ class RuntimeDatabase:
         row=self._connection.execute("SELECT document FROM execution_host_bindings WHERE correlation_id=?",(correlation_id,)).fetchone()
         return None if row is None else json.loads(row["document"])
 
+    def _reject_reset_retired_identity(self, record_kind: str, record_id: str) -> None:
+        if self._connection.execute(
+            "SELECT 1 FROM operational_reset_tombstones WHERE record_kind=? AND record_id=?",
+            (record_kind, record_id),
+        ).fetchone() is not None:
+            raise RuntimeIntegrityError(f"{record_kind} identity was retired by an operational reset")
+
     def save_execution_host_binding(self, correlation_id: str, document: Mapping[str, Any]) -> dict[str, Any]:
         if not correlation_id or document.get("correlation_id") != correlation_id: raise RuntimeDatabaseError("execution host binding correlation is invalid")
+        self._reject_reset_retired_identity("correlation_id", correlation_id)
         existing=self.execution_host_binding(correlation_id)
         if existing is not None and any(existing.get(key) not in (None,value) for key,value in document.items()): raise RuntimeIntegrityError("execution host binding is immutable")
         merged={**(existing or {}),**document}
@@ -2028,6 +2226,7 @@ class RuntimeDatabase:
                 or event_kind not in {"FORGE_SUBMISSION_SENT", "EP_SUBMISSION_RECEIPT_RECEIVED"}):
             raise RuntimeDatabaseError("execution host exchange audit identity is invalid")
         value = _document(document, "execution host exchange audit")
+        self._reject_reset_retired_identity("correlation_id", correlation_id)
         if _contains_secret_field(value) or _contains_secret_value(value):
             raise RuntimeDatabaseError("execution host exchange audit must not contain secrets")
         encoded = self._dump(value)
@@ -2238,6 +2437,9 @@ class RuntimeDatabase:
             raise RuntimeDatabaseError("scheduler submission requires a complete CREATED envelope")
         if not isinstance(document["iteration"], int) or document["iteration"] < 1:
             raise RuntimeDatabaseError("scheduler submission iteration must be positive")
+        self._reject_reset_retired_identity("submission_id", str(document["submission_id"]))
+        self._reject_reset_retired_identity("action_id", str(document["action_id"]))
+        self._reject_reset_retired_identity("mission_id", str(document["mission_id"]))
         existing = self.scheduler_submission(str(document["submission_id"]))
         if existing is not None:
             if existing.get("envelope") != document.get("envelope"):
@@ -2361,6 +2563,9 @@ class RuntimeDatabase:
                                  correlation_identity: str, executed_at: str, outcome: str) -> None:
         if not all((receipt_id, mission_id, execution_host, execution_run_id, engineering_report_id, correlation_identity, executed_at, outcome)):
             raise RuntimeDatabaseError("execution receipt requires complete identity, report, correlation, and outcome")
+        self._reject_reset_retired_identity("execution_receipt_id", receipt_id)
+        self._reject_reset_retired_identity("correlation_id", correlation_identity)
+        self._reject_reset_retired_identity("mission_id", mission_id)
         with self._connection:
             self._connection.execute("INSERT INTO execution_receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                      (receipt_id, mission_id, execution_host, execution_run_id, engineering_report_id, correlation_identity, executed_at, outcome))
@@ -2400,6 +2605,10 @@ class RuntimeDatabase:
         request_digest = document.get("generation_request_digest")
         if request_digest is not None and (not isinstance(request_digest, str) or not _SHA256_DIGEST.fullmatch(request_digest)):
             raise RuntimeDatabaseError("action derivation generation request digest is malformed")
+        self._reject_reset_retired_identity("action_derivation_id", document["derivation_id"])
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
+        if request_digest is not None:
+            self._reject_reset_retired_identity("generation_request_digest", request_digest)
         existing = self._connection.execute(
             "SELECT document FROM action_derivations WHERE derivation_id = ?", (document["derivation_id"],)
         ).fetchone()
@@ -2497,6 +2706,9 @@ class RuntimeDatabase:
                 raise RuntimeDatabaseError("legacy audit predecessor reference is inconsistent")
         if _contains_secret_field(document) or _contains_secret_value(document):
             raise RuntimeDatabaseError("durable action derivation attempt must not contain secret material")
+        self._reject_reset_retired_identity("action_derivation_id", document["derivation_id"])
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
+        self._reject_reset_retired_identity("generation_request_digest", document["generation_request_digest"])
         connection = self._connection
         connection.execute("BEGIN IMMEDIATE")
         try:
@@ -3224,6 +3436,10 @@ class RuntimeDatabase:
                     "installation_id", "created_at", "digest")
         if any(item not in document or document[item] in (None, "") for item in required):
             raise RuntimeDatabaseError("action derivation reattempt authorization requires complete lineage")
+        self._reject_reset_retired_identity("reattempt_authorization_id", document["authorization_id"])
+        self._reject_reset_retired_identity("action_derivation_id", document["successor_attempt_id"])
+        self._reject_reset_retired_identity("action_derivation_id", document["predecessor_attempt_id"])
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
         if (document["predecessor_terminal_state"] != "FAILED"
                 or not isinstance(document["attempt_sequence"], int) or document["attempt_sequence"] < 2
                 or not re.fullmatch(r"[0-9a-f]{40}", document["main_head"])
@@ -3325,6 +3541,9 @@ class RuntimeDatabase:
                     "context_with_requested_output", "result", "created_at")
         if any(item not in document for item in required) or document["result"] != "PASS":
             raise RuntimeDatabaseError("token preflight receipt requires a complete successful boundary")
+        self._reject_reset_retired_identity("token_preflight_receipt_id", document["receipt_id"])
+        self._reject_reset_retired_identity("token_request_digest", document["request_digest"])
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
         if any(not isinstance(document[item], str) or not document[item] for item in required[:8]):
             raise RuntimeDatabaseError("token preflight receipt identity is invalid")
         if any(not isinstance(document[item], int) or isinstance(document[item], bool) or document[item] < 0
@@ -3418,6 +3637,8 @@ class RuntimeDatabase:
                     "request_digest", "evidence_digest", "effective_contract_digest", "layer")
         if any(not isinstance(document.get(item), str) or not document[item] for item in required):
             raise RuntimeDatabaseError("token preflight failure requires complete bounded provenance")
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
+        self._reject_reset_retired_identity("token_request_digest", document["request_digest"])
         if (not _TOKEN_PREFLIGHT_FAILURE_ID.fullmatch(document["failure_id"])
                 or not _TOKEN_PREFLIGHT_FAILURE_PROVIDER_ID.fullmatch(document["provider_id"])
                 or not _TOKEN_PREFLIGHT_FAILURE_TIMESTAMP.fullmatch(document["occurred_at"])

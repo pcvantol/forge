@@ -272,6 +272,21 @@
     }
   ],
   "configuration_contract": "docs/architecture/FORGE_SERVER_CONFIGURATION_AND_DATA_OPERATIONS_V1.md",
+  "delivered_bounded_slices": [
+    {
+      "id": "FORGE_OPERATIONAL_RESET_V1",
+      "status": "IMPLEMENTED_LOCAL_SOURCE_QUALIFIED_PROTECTED_REVIEW_PENDING",
+      "contract": "docs/architecture/FORGE_OPERATIONAL_RESET_V1.md",
+      "runbook": "docs/operations/FORGE_OPERATIONAL_RESET_RUNBOOK.md",
+      "refines": [
+        "FC-STATE",
+        "FOC-5"
+      ],
+      "completes_parent_node": false,
+      "requires_console_or_server_daemon": false,
+      "production_reset_authorized": false
+    }
+  ],
   "configuration_work_packages": [
     {
       "id": "FC-CODEX",

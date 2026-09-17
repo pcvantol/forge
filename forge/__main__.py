@@ -93,6 +93,33 @@ def main(argv: list[str] | None = None) -> int:
     server_commands = server.add_subparsers(dest="server_command", required=True)
     server_commands.add_parser("init", help="create and validate the configured Forge data root")
     server_commands.add_parser("status", help="print read-only runtime status as JSON")
+    reset = server_commands.add_parser("reset", help="operate the Forge-owned operational-history reset")
+    reset_commands = reset.add_subparsers(dest="reset_command", required=True)
+    reset_commands.add_parser("preview", help="inspect a read-only reset plan")
+    prepare_reset = reset_commands.add_parser("prepare", help="authorize maintenance and create a verified backup")
+    prepare_reset.add_argument("--operation-id", required=True)
+    prepare_reset.add_argument("--plan-digest", required=True)
+    prepare_reset.add_argument("--acknowledge-operational-fk", action="append", default=[])
+    for name, help_text in (
+        ("apply", "apply the authorized destructive reset"),
+        ("verify", "verify reset integrity and preserved bindings"),
+    ):
+        reset_action = reset_commands.add_parser(name, help=help_text)
+        reset_action.add_argument("--operation-id", required=True)
+        reset_action.add_argument("--plan-digest", required=True)
+        reset_action.add_argument("--request-digest", required=True)
+        reset_action.add_argument("--backup-digest", required=True)
+    reset_status = reset_commands.add_parser("status", help="read durable reset status")
+    reset_status.add_argument("--operation-id")
+    resume_reset = reset_commands.add_parser("resume", help="reconcile the same interrupted reset operation")
+    resume_reset.add_argument("--operation-id", required=True)
+    resume_reset.add_argument("--plan-digest", required=True)
+    resume_reset.add_argument("--request-digest", required=True)
+    resume_reset.add_argument("--backup-digest")
+    finish_reset = reset_commands.add_parser("finish", help="safely leave durable maintenance")
+    finish_reset.add_argument("--operation-id", required=True)
+    finish_reset.add_argument("--verification-digest")
+    finish_reset.add_argument("--cancel-before-apply", action="store_true")
     subparsers.add_parser("status", help="print read-only runtime status as JSON")
     execution_host = subparsers.add_parser("execution-host", help="manage the selected Execution Host peer")
     execution_host_commands = execution_host.add_subparsers(dest="execution_host_command", required=True)
@@ -140,6 +167,63 @@ def main(argv: list[str] | None = None) -> int:
             database.close()
     elif args.command == "status" or (args.command == "server" and args.server_command == "status"):
         print(json.dumps(_status(args.data_root), sort_keys=True))
+    elif args.command == "server" and args.server_command == "reset":
+        from .runtime.operational_reset import ForgeOperationalResetService, OperationalResetError
+        service = ForgeOperationalResetService(args.data_root)
+        try:
+            if args.reset_command == "preview":
+                result = service.preview()
+            elif args.reset_command == "prepare":
+                result = service.prepare(
+                    operation_id=args.operation_id,
+                    expected_plan_digest=args.plan_digest,
+                    acknowledge_operational_fk=args.acknowledge_operational_fk,
+                )
+            elif args.reset_command in {"apply", "verify"}:
+                result = getattr(service, args.reset_command)(
+                    operation_id=args.operation_id, plan_digest=args.plan_digest,
+                    request_digest=args.request_digest, backup_digest=args.backup_digest,
+                )
+            elif args.reset_command == "status":
+                result = service.status(operation_id=args.operation_id)
+            elif args.reset_command == "resume":
+                result = service.resume(
+                    operation_id=args.operation_id, plan_digest=args.plan_digest,
+                    request_digest=args.request_digest, backup_digest=args.backup_digest,
+                )
+            else:
+                result = service.finish(
+                    operation_id=args.operation_id, verification_digest=args.verification_digest,
+                    cancel_before_apply=args.cancel_before_apply,
+                )
+            print(json.dumps(service.operator_envelope(args.reset_command, result), sort_keys=True))
+        except (OperationalResetError, OSError, sqlite3.Error, PermissionError, ValueError) as error:
+            finding = {"code": type(error).__name__, "message": str(error)}
+            failure = {
+                "operation_id": getattr(args, "operation_id", None),
+                "state": "ERROR", "allowed": False, "blockers": [finding],
+                "error": str(error),
+            }
+            try:
+                envelope = service.operator_envelope(args.reset_command, failure)
+            except Exception:
+                # Even an unreadable target retains the coordinator's stable
+                # top-level contract; no success or target identity is guessed.
+                envelope = {
+                    "contract_version": "operational-reset-v1", "product": "forge",
+                    "command": args.reset_command, "operation_id": failure["operation_id"],
+                    "state": "ERROR", "allowed": False,
+                    "target": {
+                        "instance_id": None, "database_path": str(service.database_path),
+                        "database_identity": None, "schema_version": None,
+                    },
+                    "profile": "forge-operational-history-v1", "dataset_generation": None,
+                    "plan_digest": None, "relevant_revision_digest": None,
+                    "backup": None, "counts": {}, "blockers": [finding], "integrity": {},
+                    "preserved_bindings_digest": None, "details": failure,
+                }
+            print(json.dumps(envelope, sort_keys=True))
+            return 1
     elif args.command == "execution-host":
         try:
             if args.execution_host_command == "credential-access":

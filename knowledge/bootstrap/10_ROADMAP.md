@@ -48,6 +48,15 @@ guarded controls after Mission views; FOC-Q qualifies the integrated installed
 console. The JSON records the exact dependencies. This feature is not a new
 first-E2E prerequisite and changes no executable bootstrap graph or live Mission.
 
+The bounded product-owned operational-history reset is an implemented
+clean-state preparation slice beneath FC-STATE/FOC-5, with its own
+[contract](../../docs/architecture/FORGE_OPERATIONAL_RESET_V1.md),
+[runbook](../../docs/operations/FORGE_OPERATIONAL_RESET_RUNBOOK.md) and
+[delivery status](../../docs/reports/FORGE_OPERATIONAL_RESET_DELIVERY_STATUS.md).
+It does not complete any FOC node, full FC-STATE, Console, Server daemon,
+export/import/relocation/VACUUM or universal installer. A source implementation,
+protected release, installed command and live read-only preview remain distinct.
+
 This is instance administration, not a revival of Forge Studio or a replacement
 for Workspace's project, Mission-authoring, approval, chat and policy UX.
 EP retains execution/assurance/Git mutation; Forge Platform retains installation

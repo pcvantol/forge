@@ -241,6 +241,12 @@ class PlanningProviderSecurityService:
         try:
             actual=self.invocation_policy(expected_policy.provider_id)
             if not self._same_policy(actual,expected_policy): raise PermissionError('canonical G011 policy changed before generation permit')
+            if connection.execute(
+                "SELECT 1 FROM operational_reset_tombstones "
+                "WHERE record_id=? AND record_kind IN ('generation_request_digest','token_request_digest')",
+                (request_digest,),
+            ).fetchone() is not None:
+                raise PermissionError('generation request identity was retired by an operational reset')
             connection.execute("INSERT INTO planning_provider_generation_permits VALUES (?,?,?,?,?,?,?,?)",(permit_id,actual.provider_id,actual.version,policy_digest,request_digest,'PENDING',now,now))
             self.db._append_operational_event(
                 component='forge_planning_provider', level='INFO',
