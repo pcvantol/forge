@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.20",
+  "classification_rationale": "codex/retry-readback-attempt-digest",
+  "component": "product",
+  "event_lineage": "codex/retry-readback-attempt-digest",
+  "expected_head": "83cf8dd6adc64b19575414aba7ac63d489f3b032",
+  "operation_id": "forge-version-2.7.21-retry-attempt-digest-20260917",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.21"
+}

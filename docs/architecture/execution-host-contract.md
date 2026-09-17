@@ -87,6 +87,16 @@ reject evidence that does not match the exact dispatch. This makes stale,
 unrelated, generic-latest, and retry-predecessor evidence ineligible for
 Mission progression.
 
+When a Host exposes an explicit internal operator-retry chain, every successor
+must name its exact parent run and preserve the original Producer, correlation,
+Mission, Action, Runtime Prompt, project and repository identities. A successor
+is a distinct Host attempt: its accepted-request digest and an explicitly
+allowed execution baseline may differ from the original request. Forge accepts
+those attempt-specific facts only along the verified parent chain, requires
+readback/artifact digest parity and one exact baseline-transition SHA, and
+records the resolved attempt without representing it as a second Forge
+submission.
+
 ## Evidence and observability
 
 Every returned evidence envelope identifies the Host, correlation, host run,
