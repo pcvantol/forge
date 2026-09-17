@@ -12,8 +12,9 @@ Start health work with
 [`forge/runtime/health.py`](forge/runtime/health.py), its
 [`focused regressions`](tests/test_runtime_health.py), and the
 [`aggregate-health contract`](docs/architecture/FORGE_AGGREGATE_HEALTH_V1.md).
-The separate, non-empty draft Finalization PR #129 reconciles this rolling
-checkpoint without changing runtime semantics.
+The separate, non-empty Finalization PR #129 is merged at
+`49596812cefb41250fab184f35dc2c28571e05e0`; this rolling checkpoint is
+reconciled to that protected delivery without changing runtime semantics.
 
 This delivery is the local evaluation boundary only. It does not complete the
 planned HTTP/CLI routes, installed Forge Server, OpenAPI/Postman drift gates, or

@@ -133,7 +133,8 @@ Implementation PR #128 is merged at
 `1726f774cb42894d3d3386e80adee9444c7a7914`; its exact candidate
 `dcf1e7a14f54e9c0eac0e0f0f95550b561232987` also makes an observation stale
 when its age exactly equals its timeout, with focused coverage for both
-liveness and readiness. The separate, non-empty draft Finalization PR #129
+liveness and readiness. The separate, non-empty Finalization PR #129 is merged
+at `49596812cefb41250fab184f35dc2c28571e05e0`; its documentation delivery
 records the bounded handoff and reconciles current-state navigation without
 extending the evaluator's scope.
 
