@@ -937,6 +937,33 @@ class ForgeOperationalResetService:
             if _has_symlink_component(archived) or not archived.is_file() or _file_digest(archived) != item["digest"]:
                 raise OperationalResetError("isolated external recovery artifact verification failed")
 
+    def _verify_operation_backup(self, operation: sqlite3.Row) -> Mapping[str, Any]:
+        """Re-read the authorized recovery image instead of trusting its state label."""
+        operation_id = str(operation["operation_id"])
+        expected_reference = f"backups/{operation_id}"
+        expected_digest = operation["backup_digest"]
+        if operation["backup_reference"] != expected_reference or not isinstance(expected_digest, str):
+            raise OperationalResetError("operation has no exact persisted recovery-backup binding")
+        backup = self._backup_directory(operation_id)
+        manifest_path = backup / "manifest.json"
+        if _has_symlink_component(manifest_path) or not manifest_path.is_file():
+            raise OperationalResetError("recovery backup manifest path is invalid")
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise OperationalResetError("recovery backup manifest is unreadable") from error
+        if not isinstance(manifest, dict):
+            raise OperationalResetError("recovery backup manifest is malformed")
+        if (
+            manifest.get("operation_id") != operation_id
+            or manifest.get("runtime_id") != operation["runtime_id"]
+            or manifest.get("plan_digest") != operation["plan_digest"]
+            or manifest.get("request_digest") != operation["request_digest"]
+        ):
+            raise OperationalResetError("recovery backup manifest operation binding is invalid")
+        self._verify_backup_files(backup, manifest, expected_digest=expected_digest)
+        return manifest
+
     def _require_effect_path(self, path: Path, relative: str, expected_digest: str) -> None:
         try:
             resolved = path.resolve(strict=True)
@@ -1004,6 +1031,11 @@ class ForgeOperationalResetService:
             connection.execute("BEGIN IMMEDIATE")
             trigger_sql: list[str] = []
             try:
+                # This is intentionally inside the write transaction and
+                # precedes trigger removal, tombstoning, permit invalidation,
+                # and every DELETE. A stale BACKUP_VERIFIED label can never
+                # authorize a purge after recovery bytes were changed.
+                self._verify_operation_backup(row)
                 current = self._relevant_revision(connection)
                 if current != row["relevant_revision"]:
                     raise OperationalResetError("meaningful source data changed after the approved preview")
@@ -1159,12 +1191,81 @@ class ForgeOperationalResetService:
                     self._apply_database(row)
                     state = "DATABASE_APPLIED"
                 if state in {"DATABASE_APPLIED", "APPLIED"}:
+                    # Resume after the database commit must still prove the
+                    # same recovery image before removing active artifacts.
+                    self._verify_operation_backup(row)
                     self._apply_artifacts(operation_id)
                 elif state in {"VERIFIED", "COMPLETED"}:
                     return self._operation_receipt(operation_id)
                 else:
                     raise OperationalResetError(f"operation is not ready to apply from state {state}")
         return self._operation_receipt(operation_id)
+
+    def _evaluate_post_reset(
+        self, connection: sqlite3.Connection, row: sqlite3.Row, *, backup_digest: str,
+    ) -> dict[str, Any]:
+        """Evaluate postconditions without changing operation or audit state."""
+        document = json.loads(row["document"])
+        plan = document["plan"]
+        integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+        quick = connection.execute("PRAGMA quick_check").fetchone()[0]
+        foreign_keys = list(connection.execute("PRAGMA foreign_key_check"))
+        counts = {
+            table: int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
+            for table in PURGE_TABLES
+        }
+        if integrity != "ok" or quick != "ok" or foreign_keys:
+            raise OperationalResetError("post-reset SQLite integrity verification failed")
+        if any(counts.values()):
+            raise OperationalResetError("post-reset operational tables are not empty")
+        if connection.execute(
+            "SELECT 1 FROM planning_provider_generation_permits "
+            "WHERE state IN ('PENDING','TRANSPORT_COMMITTED') LIMIT 1"
+        ).fetchone():
+            raise OperationalResetError("a pre-reset generation permit remains executable")
+        preserved: dict[str, dict[str, Any]] = {}
+        for table in PRESERVE_TABLES:
+            actual = self._row_digest(
+                connection, table, post_reset=(table == "planning_provider_generation_permits"),
+            )
+            expected = plan["preserved"][table]["expected_post_reset_digest"]
+            if actual != expected:
+                raise OperationalResetError(f"preserved table changed unexpectedly: {table}")
+            preserved[table] = {
+                "rows": int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]),
+                "digest": actual,
+            }
+        external, unknown = self._external_inventory()
+        active_effects = [
+            item for item in external if item.get("effect") in {"ARCHIVE_AND_REMOVE", "REMOVE_CACHE"}
+        ]
+        if unknown or active_effects:
+            raise OperationalResetError("post-reset active external operational data is not empty")
+        preserved_external = [
+            item for item in external
+            if item.get("effect") == "PRESERVE"
+            and item.get("category") == "INSTALLATION_AND_CONFIGURATION"
+            and not str(item.get("path", "")).startswith("backups/")
+        ]
+        if _digest(preserved_external) != plan["preserved_external_digest"]:
+            raise OperationalResetError("preserved external installation artifacts changed")
+        self._verify_operation_backup(row)
+        marker = self.marker_path.read_text(encoding="utf-8").strip()
+        if marker != row["runtime_id"]:
+            raise OperationalResetError("runtime identity changed during reset")
+        generation = int(connection.execute(
+            "SELECT dataset_generation FROM operational_reset_state WHERE singleton=1"
+        ).fetchone()[0])
+        if row["generation_after"] is None or generation != int(row["generation_after"]):
+            raise OperationalResetError("dataset generation does not match the applied operation")
+        verification = {
+            "integrity_check": "ok", "quick_check": "ok", "foreign_key_errors": 0,
+            "operational_rows": counts, "preserved": preserved,
+            "runtime_id": marker, "dataset_generation": generation,
+            "backup_digest": backup_digest, "active_external_effect_entries": 0,
+        }
+        verification["verification_digest"] = _digest(verification)
+        return verification
 
     def verify(
         self, *, operation_id: str, plan_digest: str, request_digest: str, backup_digest: str,
@@ -1176,87 +1277,39 @@ class ForgeOperationalResetService:
                     connection, operation_id, plan_digest=plan_digest,
                     request_digest=request_digest, backup_digest=backup_digest,
                 )
-                if row["state"] == "VERIFIED":
-                    return self._operation_receipt(operation_id)
-                if row["state"] != "APPLIED":
+                if row["state"] not in {"APPLIED", "VERIFIED"}:
                     raise OperationalResetError("verification requires a fully applied operation")
-                document = json.loads(row["document"])
-                plan = document["plan"]
-                integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-                quick = connection.execute("PRAGMA quick_check").fetchone()[0]
-                foreign_keys = list(connection.execute("PRAGMA foreign_key_check"))
-                counts = {
-                    table: int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
-                    for table in PURGE_TABLES
-                }
-                if integrity != "ok" or quick != "ok" or foreign_keys:
-                    raise OperationalResetError("post-reset SQLite integrity verification failed")
-                if any(counts.values()):
-                    raise OperationalResetError("post-reset operational tables are not empty")
-                if connection.execute(
-                    "SELECT 1 FROM planning_provider_generation_permits "
-                    "WHERE state IN ('PENDING','TRANSPORT_COMMITTED') LIMIT 1"
-                ).fetchone():
-                    raise OperationalResetError("a pre-reset generation permit remains executable")
-                preserved: dict[str, dict[str, Any]] = {}
-                for table in PRESERVE_TABLES:
-                    actual = self._row_digest(connection, table, post_reset=(table == "planning_provider_generation_permits"))
-                    expected = plan["preserved"][table]["expected_post_reset_digest"]
-                    if actual != expected:
-                        raise OperationalResetError(f"preserved table changed unexpectedly: {table}")
-                    preserved[table] = {
-                        "rows": int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]),
-                        "digest": actual,
-                    }
-                external, unknown = self._external_inventory()
-                active_effects = [
-                    item for item in external if item.get("effect") in {"ARCHIVE_AND_REMOVE", "REMOVE_CACHE"}
-                ]
-                if unknown or active_effects:
-                    raise OperationalResetError("post-reset active external operational data is not empty")
-                preserved_external = [
-                    item for item in external
-                    if item.get("effect") == "PRESERVE"
-                    and item.get("category") == "INSTALLATION_AND_CONFIGURATION"
-                    and not str(item.get("path", "")).startswith("backups/")
-                ]
-                if _digest(preserved_external) != plan["preserved_external_digest"]:
-                    raise OperationalResetError("preserved external installation artifacts changed")
-                manifest = json.loads((self._backup_directory(operation_id) / "manifest.json").read_text(encoding="utf-8"))
-                self._verify_backup_files(
-                    self._backup_directory(operation_id), manifest, expected_digest=backup_digest,
-                )
-                marker = self.marker_path.read_text(encoding="utf-8").strip()
-                if marker != row["runtime_id"]:
-                    raise OperationalResetError("runtime identity changed during reset")
-                generation = int(connection.execute(
-                    "SELECT dataset_generation FROM operational_reset_state WHERE singleton=1"
-                ).fetchone()[0])
-                if generation != int(row["generation_after"]):
-                    raise OperationalResetError("dataset generation does not match the applied operation")
-                verification = {
-                    "integrity_check": "ok", "quick_check": "ok", "foreign_key_errors": 0,
-                    "operational_rows": counts, "preserved": preserved,
-                    "runtime_id": marker, "dataset_generation": generation,
-                    "backup_digest": backup_digest, "active_external_effect_entries": 0,
-                }
-                verification_digest = _digest(verification)
-                verification["verification_digest"] = verification_digest
-                document["state"] = "VERIFIED"
-                document["verification"] = verification
-                now = _now()
-                with connection:
-                    connection.execute(
-                        "UPDATE operational_reset_operations SET state='VERIFIED',updated_at=?,document=? WHERE operation_id=?",
-                        (now, _json(document), operation_id),
+                already_verified = row["state"] == "VERIFIED"
+                connection.execute("BEGIN IMMEDIATE")
+                try:
+                    verification = self._evaluate_post_reset(
+                        connection, row, backup_digest=backup_digest,
                     )
-                    connection.execute(
-                        "UPDATE operational_reset_state SET state='VERIFIED',updated_at=? WHERE singleton=1 AND active_operation_id=?",
-                        (now, operation_id),
-                    )
-                    self._audit(connection, operation_id, "VERIFIED", {
-                        "verification_digest": verification_digest, "dataset_generation": generation,
-                    })
+                    document = json.loads(row["document"])
+                    if already_verified:
+                        if document.get("verification", {}).get("verification_digest") != verification["verification_digest"]:
+                            raise OperationalResetError("persisted verification no longer matches current postconditions")
+                        connection.rollback()
+                    else:
+                        document["state"] = "VERIFIED"
+                        document["verification"] = verification
+                        now = _now()
+                        connection.execute(
+                            "UPDATE operational_reset_operations SET state='VERIFIED',updated_at=?,document=? WHERE operation_id=?",
+                            (now, _json(document), operation_id),
+                        )
+                        connection.execute(
+                            "UPDATE operational_reset_state SET state='VERIFIED',updated_at=? WHERE singleton=1 AND active_operation_id=?",
+                            (now, operation_id),
+                        )
+                        self._audit(connection, operation_id, "VERIFIED", {
+                            "verification_digest": verification["verification_digest"],
+                            "dataset_generation": verification["dataset_generation"],
+                        })
+                        connection.commit()
+                except Exception:
+                    connection.rollback()
+                    raise
         return self._operation_receipt(operation_id)
 
     def resume(
@@ -1293,34 +1346,50 @@ class ForgeOperationalResetService:
         """Leave maintenance only after proof, or cancel before any purge."""
         with self._lock.acquire():
             with self._connect(read_only=False) as connection:
-                row = connection.execute(
-                    "SELECT * FROM operational_reset_operations WHERE operation_id=?", (_safe_operation_id(operation_id),)
-                ).fetchone()
-                if row is None:
-                    raise OperationalResetError("unknown operational reset operation")
-                active = connection.execute(
-                    "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
-                ).fetchone()[0]
-                if active != operation_id:
-                    if row["state"] in {"COMPLETED", "CANCELLED"}:
-                        return self._operation_receipt(operation_id)
-                    raise OperationalResetError("operation does not own durable maintenance")
-                document = json.loads(row["document"])
-                if cancel_before_apply:
-                    if row["state"] not in {"PREPARED", "BACKUP_VERIFIED"}:
-                        raise OperationalResetError("only an unapplied operation can be cancelled")
-                    final_state = "CANCELLED"
-                else:
-                    if row["state"] != "VERIFIED":
-                        raise OperationalResetError("maintenance can finish only after successful verification")
-                    actual = document.get("verification", {}).get("verification_digest")
-                    if not verification_digest or verification_digest != actual:
-                        raise OperationalResetError("exact verification digest is required to finish")
-                    final_state = "COMPLETED"
-                document["state"] = final_state
-                now = _now()
                 connection.execute("BEGIN IMMEDIATE")
                 try:
+                    row = connection.execute(
+                        "SELECT * FROM operational_reset_operations WHERE operation_id=?",
+                        (_safe_operation_id(operation_id),),
+                    ).fetchone()
+                    if row is None:
+                        raise OperationalResetError("unknown operational reset operation")
+                    active = connection.execute(
+                        "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+                    ).fetchone()[0]
+                    if active != operation_id:
+                        if row["state"] in {"COMPLETED", "CANCELLED"}:
+                            connection.rollback()
+                            return self._operation_receipt(operation_id)
+                        raise OperationalResetError("operation does not own durable maintenance")
+                    document = json.loads(row["document"])
+                    if cancel_before_apply:
+                        if row["state"] not in {"PREPARED", "BACKUP_VERIFIED"}:
+                            raise OperationalResetError("only an unapplied operation can be cancelled")
+                        final_state = "CANCELLED"
+                    else:
+                        if row["state"] != "VERIFIED":
+                            raise OperationalResetError("maintenance can finish only after successful verification")
+                        actual = document.get("verification", {}).get("verification_digest")
+                        if not verification_digest or verification_digest != actual:
+                            raise OperationalResetError("exact verification digest is required to finish")
+                        if row["source_revision"] != self._source_revision():
+                            raise OperationalResetError("source revision changed before maintenance release")
+                        if row["implementation_digest"] != self._implementation_digest():
+                            raise OperationalResetError("maintenance implementation changed before maintenance release")
+                        # Re-evaluate under the database write boundary and the
+                        # owning process lock. This deliberately does not
+                        # rewrite VERIFIED state or its audit receipt.
+                        current = self._evaluate_post_reset(
+                            connection, row, backup_digest=str(row["backup_digest"]),
+                        )
+                        if current["verification_digest"] != actual:
+                            raise OperationalResetError(
+                                "current postconditions differ from the authorized verification",
+                            )
+                        final_state = "COMPLETED"
+                    document["state"] = final_state
+                    now = _now()
                     connection.execute(
                         "UPDATE operational_reset_operations SET state=?,updated_at=?,document=? WHERE operation_id=?",
                         (final_state, now, _json(document), operation_id),

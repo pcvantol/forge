@@ -90,6 +90,7 @@ class OperationalResetTests(unittest.TestCase):
             })),
         )
         self.database._connection.commit()
+        self.database.save_action_derivation(self.old_action_derivation())
         if external:
             operational = self.root / "artifacts" / "operational"
             operational.mkdir()
@@ -97,6 +98,16 @@ class OperationalResetTests(unittest.TestCase):
             (self.root / "artifacts" / "controlled-installation-e2e-starter-exit-2026-09-14.md").write_text(
                 "installation qualification\n", encoding="utf-8",
             )
+
+    @staticmethod
+    def old_action_derivation() -> dict[str, object]:
+        return {
+            "derivation_id": "derivation-old", "mission_id": "MISSION-0042",
+            "snapshot_digest": "sha256:" + "4" * 64, "contract_version": "1",
+            "provider_configuration": "sha256:" + "5" * 64,
+            "lifecycle": "DERIVATION_REQUESTED",
+            "generation_request_digest": "sha256:" + "6" * 64,
+        }
 
     def prepare(self, service: ForgeOperationalResetService, operation: str = "forge-reset-test-0001") -> dict[str, object]:
         plan = service.preview()
@@ -369,6 +380,50 @@ class OperationalResetTests(unittest.TestCase):
         self.assertEqual(resumed["state"], "VERIFIED")
         self.assertEqual(resumed["pending_artifacts"], 0)
 
+    def test_tampered_backup_before_apply_keeps_database_and_maintenance_intact(self) -> None:
+        self.seed_operational_state(external=False)
+        service = self.service()
+        receipt = self.prepare(service)
+        backup_marker = self.root / str(receipt["backup_reference"]) / "runtime-instance.json"
+        backup_marker.write_text("tampered-before-apply\n", encoding="utf-8")
+        with self.assertRaisesRegex(OperationalResetError, "backup digest"):
+            service.apply(
+                operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+                request_digest=str(receipt["request_digest"]), backup_digest=str(receipt["backup_digest"]),
+            )
+        observer = sqlite3.connect(self.root / "forge.db")
+        try:
+            self.assertEqual(observer.execute("SELECT COUNT(*) FROM mission_state").fetchone()[0], 1)
+            self.assertEqual(observer.execute("SELECT COUNT(*) FROM action_derivations").fetchone()[0], 1)
+            self.assertEqual(observer.execute(
+                "SELECT state FROM operational_reset_operations WHERE operation_id='forge-reset-test-0001'"
+            ).fetchone()[0], "BACKUP_VERIFIED")
+            self.assertEqual(observer.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()[0], "forge-reset-test-0001")
+        finally:
+            observer.close()
+
+    def test_tampered_backup_during_database_applied_resume_preserves_active_artifact(self) -> None:
+        self.seed_operational_state()
+        service = self.service()
+        receipt = self.prepare(service)
+        crashing = self.service(fault_hook=OneShotFault("after_database_commit"))
+        with self.assertRaisesRegex(RuntimeError, "synthetic crash"):
+            crashing.apply(
+                operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+                request_digest=str(receipt["request_digest"]), backup_digest=str(receipt["backup_digest"]),
+            )
+        backup_marker = self.root / str(receipt["backup_reference"]) / "runtime-instance.json"
+        backup_marker.write_text("tampered-during-resume\n", encoding="utf-8")
+        with self.assertRaisesRegex(OperationalResetError, "backup digest"):
+            service.resume(
+                operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+                request_digest=str(receipt["request_digest"]), backup_digest=str(receipt["backup_digest"]),
+            )
+        self.assertTrue((self.root / "artifacts" / "operational" / "evidence.json").is_file())
+        self.assertEqual(service.status()["active_operation_id"], "forge-reset-test-0001")
+
     def test_same_operation_is_idempotent_and_new_empty_reset_is_meaningful_noop(self) -> None:
         service = self.service()
         receipt = self.complete(service)
@@ -412,6 +467,39 @@ class OperationalResetTests(unittest.TestCase):
                 request_digest=str(receipt["request_digest"]), backup_digest=str(receipt["backup_digest"]),
             )
 
+    def test_finish_rechecks_delayed_external_data_and_backup_without_rewriting_verification(self) -> None:
+        self.seed_operational_state(external=False)
+        service = self.service()
+        receipt = self.prepare(service)
+        receipt = service.apply(
+            operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+            request_digest=str(receipt["request_digest"]), backup_digest=str(receipt["backup_digest"]),
+        )
+        receipt = service.verify(
+            operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+            request_digest=str(receipt["request_digest"]), backup_digest=str(receipt["backup_digest"]),
+        )
+        audit_before = int(receipt["audit_events"])
+        delayed = self.root / "journals" / "delayed.jsonl"
+        delayed.write_text('{"old_callback":true}\n', encoding="utf-8")
+        with self.assertRaisesRegex(OperationalResetError, "external operational data"):
+            service.finish(
+                operation_id="forge-reset-test-0001", verification_digest=str(receipt["verification_digest"]),
+            )
+        status = service.status(operation_id="forge-reset-test-0001")
+        self.assertEqual(status["state"], "VERIFIED")
+        self.assertEqual(status["audit_events"], audit_before)
+        self.assertEqual(service.status()["active_operation_id"], "forge-reset-test-0001")
+        delayed.unlink()
+        backup_marker = self.root / str(receipt["backup_reference"]) / "runtime-instance.json"
+        backup_marker.write_text("tampered-after-verify\n", encoding="utf-8")
+        with self.assertRaisesRegex(OperationalResetError, "backup digest"):
+            service.finish(
+                operation_id="forge-reset-test-0001", verification_digest=str(receipt["verification_digest"]),
+            )
+        self.assertEqual(service.status(operation_id="forge-reset-test-0001")["state"], "VERIFIED")
+        self.assertEqual(service.status()["active_operation_id"], "forge-reset-test-0001")
+
     def test_old_callback_and_submission_identities_are_rejected_after_finish(self) -> None:
         self.seed_operational_state(external=False)
         self.database.close()
@@ -427,6 +515,22 @@ class OperationalResetTests(unittest.TestCase):
                     "intent_id": "new-intent", "action_id": "action-old", "iteration": 1,
                     "state": "CREATED", "envelope": {},
                 })
+            with self.assertRaisesRegex(Exception, "action_derivation_id identity was retired"):
+                database.save_action_derivation(self.old_action_derivation())
+            with self.assertRaisesRegex(Exception, "mission_id identity was retired"):
+                database.create_mission_state({
+                    "mission_id": "MISSION-0042", "lifecycle": "ACTIVE", "status": "ACTIVE",
+                    "progress": {}, "resume_point": {}, "execution_policy": {},
+                })
+            tombstone_kinds = {
+                row[0] for row in database._connection.execute(
+                    "SELECT DISTINCT record_kind FROM operational_reset_tombstones"
+                )
+            }
+            self.assertTrue({
+                "mission_id", "action_id", "submission_id", "correlation_id",
+                "action_derivation_id", "generation_request_digest",
+            } <= tombstone_kinds)
         finally:
             database.close()
 

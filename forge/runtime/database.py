@@ -1954,6 +1954,7 @@ class RuntimeDatabase:
 
     def _write_mission_state_in_transaction(self, document: Mapping[str, Any], mission_id: str,
                                             lifecycle: str, context: Mapping[str, str | None]) -> None:
+        self._reject_reset_retired_identity("mission_id", mission_id)
         existing = self._connection.execute(
             "SELECT status FROM mission_state WHERE mission_id = ?", (mission_id,)
         ).fetchone()
@@ -2000,6 +2001,7 @@ class RuntimeDatabase:
         required = (mission_id, lifecycle, document.get("status"), document.get("progress"), document.get("resume", document.get("resume_point")))
         if not isinstance(mission_id, str) or not mission_id or not isinstance(lifecycle, str) or not lifecycle or any(value is None for value in required[2:]):
             raise RuntimeDatabaseError("mission state requires identity, lifecycle, status, progress, resume point, and execution policy")
+        self._reject_reset_retired_identity("mission_id", mission_id)
         try:
             with self._connection:
                 self._connection.execute("""INSERT INTO mission_state
@@ -2224,6 +2226,7 @@ class RuntimeDatabase:
                 or event_kind not in {"FORGE_SUBMISSION_SENT", "EP_SUBMISSION_RECEIPT_RECEIVED"}):
             raise RuntimeDatabaseError("execution host exchange audit identity is invalid")
         value = _document(document, "execution host exchange audit")
+        self._reject_reset_retired_identity("correlation_id", correlation_id)
         if _contains_secret_field(value) or _contains_secret_value(value):
             raise RuntimeDatabaseError("execution host exchange audit must not contain secrets")
         encoded = self._dump(value)
@@ -2436,6 +2439,7 @@ class RuntimeDatabase:
             raise RuntimeDatabaseError("scheduler submission iteration must be positive")
         self._reject_reset_retired_identity("submission_id", str(document["submission_id"]))
         self._reject_reset_retired_identity("action_id", str(document["action_id"]))
+        self._reject_reset_retired_identity("mission_id", str(document["mission_id"]))
         existing = self.scheduler_submission(str(document["submission_id"]))
         if existing is not None:
             if existing.get("envelope") != document.get("envelope"):
@@ -2561,6 +2565,7 @@ class RuntimeDatabase:
             raise RuntimeDatabaseError("execution receipt requires complete identity, report, correlation, and outcome")
         self._reject_reset_retired_identity("execution_receipt_id", receipt_id)
         self._reject_reset_retired_identity("correlation_id", correlation_identity)
+        self._reject_reset_retired_identity("mission_id", mission_id)
         with self._connection:
             self._connection.execute("INSERT INTO execution_receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                      (receipt_id, mission_id, execution_host, execution_run_id, engineering_report_id, correlation_identity, executed_at, outcome))
@@ -2600,6 +2605,10 @@ class RuntimeDatabase:
         request_digest = document.get("generation_request_digest")
         if request_digest is not None and (not isinstance(request_digest, str) or not _SHA256_DIGEST.fullmatch(request_digest)):
             raise RuntimeDatabaseError("action derivation generation request digest is malformed")
+        self._reject_reset_retired_identity("action_derivation_id", document["derivation_id"])
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
+        if request_digest is not None:
+            self._reject_reset_retired_identity("generation_request_digest", request_digest)
         existing = self._connection.execute(
             "SELECT document FROM action_derivations WHERE derivation_id = ?", (document["derivation_id"],)
         ).fetchone()
@@ -2697,6 +2706,9 @@ class RuntimeDatabase:
                 raise RuntimeDatabaseError("legacy audit predecessor reference is inconsistent")
         if _contains_secret_field(document) or _contains_secret_value(document):
             raise RuntimeDatabaseError("durable action derivation attempt must not contain secret material")
+        self._reject_reset_retired_identity("action_derivation_id", document["derivation_id"])
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
+        self._reject_reset_retired_identity("generation_request_digest", document["generation_request_digest"])
         connection = self._connection
         connection.execute("BEGIN IMMEDIATE")
         try:
@@ -3424,6 +3436,10 @@ class RuntimeDatabase:
                     "installation_id", "created_at", "digest")
         if any(item not in document or document[item] in (None, "") for item in required):
             raise RuntimeDatabaseError("action derivation reattempt authorization requires complete lineage")
+        self._reject_reset_retired_identity("reattempt_authorization_id", document["authorization_id"])
+        self._reject_reset_retired_identity("action_derivation_id", document["successor_attempt_id"])
+        self._reject_reset_retired_identity("action_derivation_id", document["predecessor_attempt_id"])
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
         if (document["predecessor_terminal_state"] != "FAILED"
                 or not isinstance(document["attempt_sequence"], int) or document["attempt_sequence"] < 2
                 or not re.fullmatch(r"[0-9a-f]{40}", document["main_head"])
@@ -3525,6 +3541,9 @@ class RuntimeDatabase:
                     "context_with_requested_output", "result", "created_at")
         if any(item not in document for item in required) or document["result"] != "PASS":
             raise RuntimeDatabaseError("token preflight receipt requires a complete successful boundary")
+        self._reject_reset_retired_identity("token_preflight_receipt_id", document["receipt_id"])
+        self._reject_reset_retired_identity("token_request_digest", document["request_digest"])
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
         if any(not isinstance(document[item], str) or not document[item] for item in required[:8]):
             raise RuntimeDatabaseError("token preflight receipt identity is invalid")
         if any(not isinstance(document[item], int) or isinstance(document[item], bool) or document[item] < 0
@@ -3618,6 +3637,8 @@ class RuntimeDatabase:
                     "request_digest", "evidence_digest", "effective_contract_digest", "layer")
         if any(not isinstance(document.get(item), str) or not document[item] for item in required):
             raise RuntimeDatabaseError("token preflight failure requires complete bounded provenance")
+        self._reject_reset_retired_identity("mission_id", document["mission_id"])
+        self._reject_reset_retired_identity("token_request_digest", document["request_digest"])
         if (not _TOKEN_PREFLIGHT_FAILURE_ID.fullmatch(document["failure_id"])
                 or not _TOKEN_PREFLIGHT_FAILURE_PROVIDER_ID.fullmatch(document["provider_id"])
                 or not _TOKEN_PREFLIGHT_FAILURE_TIMESTAMP.fullmatch(document["occurred_at"])
