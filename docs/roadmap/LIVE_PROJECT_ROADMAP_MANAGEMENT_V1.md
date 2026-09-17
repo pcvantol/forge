@@ -14,12 +14,15 @@ F5 is not a scheduler; its parent refinement is navigation, not a backward edge.
 | --- | --- | --- |
 | PRM-F-CONTRACT | Versioned project/readiness/change contracts and identity mapping | none |
 | PRM-F-PROJECTION | Consistent project roadmap snapshot and HTTP read projection | PRM-F-CONTRACT |
-| PRM-F-ELIGIBILITY | Current condition-vector and approved-pending interpretation | PRM-F-CONTRACT |
+| PRM-F-ELIGIBILITY | Current condition-vector and approved-pending interpretation | PRM-F-CONTRACT, PRM-F-PRIORITY |
 | PRM-F-ACTIVATION | Existing-runtime guarded intake/activation and recovery | PRM-F-ELIGIBILITY |
-| PRM-F-CHANGES | Source-backed iteration deltas and advisory expectation refresh | PRM-F-PROJECTION |
-| PRM-F-Q | Installed service, restart and outer-loop qualification | PRM-F-ACTIVATION, PRM-F-CHANGES |
+| PRM-F-CHANGES | Source-backed lifecycle deltas, disposition-aware finding triage and advisory expectation refresh | PRM-F-PROJECTION |
+| PRM-F-PRIORITY | Recommended versus committed order, exact approved worksets and versioned Business/Architecture decisions | PRM-F-CONTRACT, PRM-F-CHANGES |
+| PRM-F-REPOSITORY | Idempotent milestone projection through authorized EP repository delivery with separate runtime/repository freshness | PRM-F-CHANGES |
+| PRM-F-DELEGATION | Explicit bounded delegated project decisions without implicit approval or mandate expansion | PRM-F-PRIORITY, PRM-F-ACTIVATION |
+| PRM-F-Q | Installed service, restart and separately scoped project-mode qualification | PRM-F-ACTIVATION, PRM-F-CHANGES, PRM-F-REPOSITORY, PRM-F-DELEGATION |
 
-All nodes remain PLANNED with empty qualification evidence. External evidence
+All nine nodes remain PLANNED with empty qualification evidence. External evidence
 is a real producer subset, not permission to allocate peer implementation.
 
 PRM-F-PROJECTION consumes F2/FH operation/HTTP subsets. PRM-F-ELIGIBILITY and
@@ -33,6 +36,35 @@ this decomposition; no child depends on full F5/F9, avoiding a cycle. Read-only
 projection may ship before activation. A qualified headless activation slice
 may ship before Workspace management; PRM-F-Q is integrated full-family proof,
 not a prerequisite for every independent bounded implementation.
+
+## Project-loop refinement and scoped rollout
+
+`PROJECT_LOOP_AUTHORITY_2026_09_17` adds explicit work for the owner-requested
+boundary between automatic facts and governed direction. PRM-F-CHANGES classifies
+findings without turning them into commands. PRM-F-PRIORITY keeps recommendations
+separate from the committed sequence and freezes exact approved workset membership.
+PRM-F-REPOSITORY plans bounded publication through the existing EP delivery owner,
+not a direct Forge filesystem/Git writer. Conflicts preserve execution evidence
+and show repository freshness independently; projection commits cannot recursively
+start product work.
+
+The planned project modes are MISSION_RELEASE, APPROVED_WORKLIST and
+DELEGATED_DEVELOPMENT. They are independent of MANUAL_RELEASE/AUTO_WHEN_ELIGIBLE
+and intermediate review cadence. MISSION_RELEASE is the recommended design default,
+not an activated setting. APPROVED_WORKLIST may progress only under its exact
+approved selector and limits; findings cannot silently enlarge it.
+
+PRM-F-DELEGATION is an additional qualified capability, not permission conferred
+by a mode selector. It requires separately governed delegated decision roles,
+exact subject decisions, time/scope/budget limits and current grants. It cannot
+waive mandatory human, assurance, merge or deployment gates. Standard manual and
+approved-worklist slices need not wait for full delegated development. Full-family
+PRM-F-Q includes all nodes; slice qualification must name its actually supported
+subset and relevant PMT cases.
+
+Mission 3 proves a single-Mission inner loop only. Its existing scope, zero-retry
+acceptance and telemetry/reporting conditions are unchanged. This roadmap adds
+no prerequisite or successor Mission to that attempt and does not start anything.
 
 ## Shared mandatory future acceptance
 
@@ -65,6 +97,18 @@ They extend the relevant service/inner/outer/UI layers, not a second simulator.
 | PMT-22 | Failed/ambiguous predecessor never grants new authority or fresh repair budget under a replacement Mission | SERVICE_OUTER |
 | PMT-23 | Missing API/capability or peer outage has no CLI/import/SQL/Inbox/IPC fallback; read-only rollout labels unsupported controls | SERVICE_UI |
 | PMT-24 | No remaining project gap yields bounded idle and no fabricated Expected/Candidate/Mission or extra provider call | OUTER_LOOP |
+| PMT-25 | Approval, dispatch, admission, running, blocked, failed, cancelled, partial delivery, reconciliation and acceptance remain distinct automatic facts | SERVICE_OUTER_UI |
+| PMT-26 | Authorized repository milestone projection preserves approved direction and separate freshness; duplicate, conflict or self-generated commit cannot start work | SERVICE_OUTER_UI |
+| PMT-27 | Out-of-scope reviewer findings create evidence-linked proposals, never new execution authority; urgent scoped stop is not permission to fix | OUTER_LOOP |
+| PMT-28 | A current acceptance defect cannot be hidden in a follow-up Candidate to claim success; governed repair or amendment remains required | INNER_OUTER_UI |
+| PMT-29 | Duplicate, rejected, deferred and accepted-risk findings preserve disposition; changed evidence may propose but not silently approve reopening | SERVICE_OUTER_UI |
+| PMT-30 | Human choice of any eligible authorized item may override the recommendation without bypassing dependencies; sorting never changes committed order | SERVICE_UI |
+| PMT-31 | APPROVED_WORKLIST executes only exact approved released subjects under the committed selector; high-ranked new findings cannot join or reorder it | OUTER_LOOP |
+| PMT-32 | DELEGATED_DEVELOPMENT requires qualified explicit role grants and exact auditable decisions; mode selection never replaces mandatory human gates | SERVICE_OUTER_UI |
+| PMT-33 | Delegation scope, expiry, revocation and consumed limits survive successor Missions, restart and mode switch; unknown authority stops release | SERVICE_OUTER |
+| PMT-34 | Priority and workset amendments bind exact revisions, impact and role decisions; stale or concurrent commands cannot broaden authorization | SERVICE_UI |
+| PMT-35 | Single-Mission multi-Action proof cannot qualify the project loop or alter Mission 3 acceptance; qualification slices remain separate | INNER_OUTER_UI |
+| PMT-36 | Capability contribution and acceptance remain many-to-many and evidence-bound; completed Mission counts or published projections cannot prove product completion | SERVICE_UI |
 
 The later outer-loop cases add a second positive path: create pending M2's
 Candidate, real separate approvals and bounded automatic release through public

@@ -178,6 +178,137 @@ from a changing Mission denominator, and no dummy next Mission when no work rema
 Read-only/docs/design outcomes retain their effect and artifact semantics; a report
 or approved design is not permission to implement the recommendation.
 
+## Project-loop authority refinement — 17 September 2026
+
+Owner-requested refinement `PROJECT_LOOP_AUTHORITY_2026_09_17`, observed against
+Forge `107936d56223a3fa9fef4b6d2ac6b831d97ff9d2` and Workspace
+`eb6c656a92d71666cb493059d517fd174857855d`. These are historical design bases,
+not live activation evidence. This section refines the existing contract and DAG;
+it creates no second backlog, scheduler, policy engine or executable programme.
+
+### Inner loop versus project loop
+
+The inner loop dynamically derives 1..n Actions inside one authorized Mission.
+The project loop reconciles results, updates the roadmap, proposes new work and
+releases a subsequent Mission only under its own current authority. A successful
+single-Mission multi-Action test does not qualify that second loop. Mission 3's
+already fixed acceptance, zero-retry requirement and attempt identity are not
+expanded, reset or satisfied by this documentary refinement. Production repair
+policy remains separately governed; the strict canary is not a blanket policy.
+
+### Automatic facts; governed direction
+
+Record authenticated approval, release, dispatch, EP admission, actual start,
+wait/block, failure, cancellation, partial delivery, terminal outcome, Forge
+reconciliation and required acceptance as separate source-backed facts. Preserve
+all actual statuses and unknowns; no current approval click is required merely
+to record a verified event. Facts must not promote a proposal into approved work.
+
+The canonical project authority repository owns approved roadmap direction and
+policy definitions. Forge owns the runtime decisions/evidence and their live
+projection. Persist factual state promptly in Forge, then publish meaningful
+milestone snapshots to the designated repository through the existing authorized
+EP/repository-delivery route. Forge does not acquire a direct target-Git writer.
+
+The repository projection contract pins project, repository, allowed paths,
+source snapshot/event identity, policy revision, expected base and publication
+operation. Use bounded coalescing, compare-and-swap, protected delivery and
+idempotent readback. Preserve human-authored goals, priority decisions and old
+evidence; generated progress sections never silently replace approved direction.
+A publication conflict yields a visible pending/conflicting projection, not a
+rewritten execution result or permission to bypass branch protection. Publish
+runtime freshness and repository freshness separately. Reconcile the same
+publication operation after uncertainty, not a new product Mission.
+
+Every event need not create a Git commit. Approval, start, material block/change
+and terminal reconciliation are meaningful publication boundaries under policy.
+A projection's own commit must not recursively generate another Mission,
+reprioritization or infinite projection commit. A final projection cannot require
+its own as-yet-nonexistent commit as completion evidence. No source-SHA/request-
+baseline mutation of already dispatched Actions; publication is a distinct effect.
+
+### Three project modes, independent of release and review cadence
+
+These names are PLANNED policy vocabulary, not shipped enums or an active default.
+The recommended default is MISSION_RELEASE; existing effective policies do not
+change by reading or merging this document.
+
+| Mode | Permitted selection | New scope and committed priority |
+| --- | --- | --- |
+| MISSION_RELEASE | Execute a specifically approved and released Mission; propose what follows | Applicable Business/Architecture decisions and explicit release remain human-governed unless independently covered by existing authority |
+| APPROVED_WORKLIST | Progress through an explicitly approved finite workset whose exact subjects have valid AUTO_WHEN_ELIGIBLE release | Forge cannot add findings, replace subjects or change committed order without an authorized amendment |
+| DELEGATED_DEVELOPMENT | Select, refine, prioritize and release new work only through a qualified bounded delegation | Requires separately authorized policy/grant and exact auditable subject decisions; selecting the mode supplies none of these |
+
+An approved workset pins subject revisions, membership, ordering or a specifically
+approved deterministic selection rule, dependencies, limits and release choices.
+Recommendations remain separately visible. Default: wait when the next committed
+item is ineligible; skipping or reordering requires the approved selector to
+explicitly permit it. Never silently promote a newly found Candidate as the
+"most important" next Mission. Exhausted worksets go idle and present proposals.
+
+Business owns value, cost and timing; Architecture owns technical scope and risk.
+Their required decisions remain distinct even when one authorized person holds
+both roles. Valid prior approval is not requested again just to release work.
+A human may select any eligible authorized backlog item instead of Forge's top
+recommendation; this does not waive prerequisites or amend a frozen subject.
+UI sorting is not a priority decision. A priority proposal binds old/new order,
+exact subjects, evidence, impact, proposer and required decision to a revision.
+Approval of scope, committed priority, permission to start and actual activation
+are orthogonal and separately audited.
+
+DELEGATED_DEVELOPMENT is not unrestricted self-approval. Its planned capability
+must reconcile the existing human-governed Business/Architecture contracts with
+an explicitly permitted delegated decision path before use. A mandatory personal
+human decision remains mandatory unless separately governed policy legitimately
+changes that obligation. Mode selection cannot rewrite that policy. Missing or
+unsupported delegation support means wait/unsupported, not fabricated approval.
+
+A delegation names issuer, delegated decision roles, goals, repositories/effects,
+risk exclusions, selection rule, time/budget/Mission ceilings, validity, revocation,
+stop conditions and exact policy revision. Decisions identify their real delegated
+actor and grant, not an invented human signer. Candidate proposal is never its
+own approval evidence. Recheck grants and remaining ceilings at selection,
+approval, release and protected effects; preserve consumption across Missions,
+restarts and mode changes. EP assurance, merge/publish/deploy authority, mandatory
+human gates and emergency fences remain independent. Forge cannot widen its own
+goals/grants or relabel risk to continue. Unknown applicability escalates.
+
+### Findings become proposals, not commands
+
+EP and review agents report evidence; they do not own backlog priority. Classify
+findings against the current Mission before deciding what follows:
+
+- A violated current acceptance criterion remains a current delivery/acceptance
+  problem; moving it to a Candidate cannot make that Mission pass. Use only the
+  authorized repair/progression policy or a governed amendment.
+- Non-blocking out-of-scope work becomes an evidence-linked new or refined
+  Candidate and a priority recommendation. It has no executable authority.
+- Duplicate, superseded, accepted-risk, deferred or rejected findings retain
+  their disposition and rationale. Reopen only for materially changed evidence
+  with the applicable decision; do not repeatedly regenerate rejected work.
+
+Record finding identity, origin run/Action/candidate, source evidence, impact,
+uncertainty, scope classification, links to existing work and proposed disposition.
+Candidate refinement is versioned and cannot overwrite approved/human edits.
+Severity is a proposal input, not a priority grant. An urgent finding may trigger
+an authorized scoped safety hold, but a hold is not authority for a broader fix.
+Completion may legitimately leave accepted non-blocking follow-up Candidates.
+
+### Qualification slices and the next-Mission boundary
+
+Qualify manual release, approved-worklist continuation and delegated development
+as distinct slices. A two-Mission positive case alone is insufficient: after M1,
+prove that an unapproved high-priority finding cannot replace already approved M2;
+that a human can choose a different eligible item; and that a stopped/expired
+delegation cannot launch more work. Use real owning decision/intake APIs, not
+approved rows injected by the test driver. Include all failure/block/cancellation
+and repository-projection boundaries, not only terminal success.
+
+PMT-25..36 in the shared registry capture these additional cases. Documentary
+checks prove graph/contract consistency only. Neither this merge nor an inner-loop
+PASS is project-loop qualification, an automatic backlog approval, or an instruction
+to start another Mission.
+
 ## Interfaces, rollout and evidence
 
 Workspace Client -> Workspace Server -> Forge/EP and Forge -> EP remain authenticated,
