@@ -190,6 +190,63 @@ class RuntimeHealthTests(unittest.TestCase):
                 self.assertEqual(result.readiness_for("local_work").state, ReadinessState.UNKNOWN)
                 self.assertFalse(result.readiness_for("local_work").ready)
 
+    def test_required_observations_fail_closed_at_the_freshness_timeout(self) -> None:
+        definitions = (liveness(), check("storage"))
+        cases = {
+            "liveness": (
+                "process",
+                (
+                    observation("process", observed_at=NOW - MAX_AGE),
+                    observation("storage"),
+                ),
+                LivenessState.UNKNOWN,
+                ReadinessState.READY,
+            ),
+            "readiness": (
+                "storage",
+                (
+                    observation("process"),
+                    observation("storage", observed_at=NOW - MAX_AGE),
+                ),
+                LivenessState.ALIVE,
+                ReadinessState.UNKNOWN,
+            ),
+        }
+        for name, (check_id, observations, liveness_state, readiness_state) in cases.items():
+            with self.subTest(name=name):
+                result = evaluate_health(
+                    IDENTITY,
+                    definitions,
+                    observations,
+                    capability_scope=LOCAL_SCOPE,
+                    evaluated_at=NOW,
+                )
+                boundary_check = next(item for item in result.checks if item.check_id == check_id)
+                self.assertEqual(boundary_check.state, CheckState.UNKNOWN)
+                self.assertEqual(boundary_check.freshness, ObservationFreshness.STALE)
+                self.assertEqual(boundary_check.age_seconds, MAX_AGE.total_seconds())
+                self.assertEqual(result.state, HealthState.UNKNOWN)
+                self.assertEqual(result.liveness.state, liveness_state)
+                self.assertEqual(result.readiness_for("local_work").state, readiness_state)
+
+        still_fresh = evaluate_health(
+            IDENTITY,
+            definitions,
+            (
+                observation(
+                    "process",
+                    observed_at=NOW - MAX_AGE + timedelta(microseconds=1),
+                ),
+                observation(
+                    "storage",
+                    observed_at=NOW - MAX_AGE + timedelta(microseconds=1),
+                ),
+            ),
+            capability_scope=LOCAL_SCOPE,
+            evaluated_at=NOW,
+        )
+        self.assertEqual(still_fresh.state, HealthState.HEALTHY)
+
     def test_optional_failure_degrades_but_does_not_block_local_readiness(self) -> None:
         result = evaluate_health(
             IDENTITY,
