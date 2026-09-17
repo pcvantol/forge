@@ -453,6 +453,21 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         with self.assertRaises(update.InstalledForgeUpdateError):
             update.assert_quiescent(update.database_snapshot(self.data_root / "forge.db"))
 
+    def test_completed_replay_requires_exact_activated_schema38_fingerprint(self) -> None:
+        snapshot = {
+            "user_version": 38,
+            "tables": {name: {} for name in update.NEW_SCHEMA_38_TABLES},
+            "schema_digest": "sha256:" + "1" * 64,
+        }
+        readback = {"database_schema_digest": snapshot["schema_digest"]}
+        update.assert_completed_schema(snapshot, readback)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
+            update.assert_completed_schema({**snapshot, "user_version": 37}, readback)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
+            update.assert_completed_schema(
+                {**snapshot, "schema_digest": "sha256:" + "2" * 64}, readback,
+            )
+
     def test_atomic_product_migrated_copy_rejects_late_live_mutation(self) -> None:
         self._installed_schema37()
         controller = self._controller()
@@ -524,6 +539,12 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(update.database_snapshot(self.data_root / "forge.db")["user_version"], 38)
         self.assertEqual(controller.run(), completed)
         self.assertEqual((self.data_root / "forge.db").stat().st_mode & 0o777, 0o600)
+        connection = sqlite3.connect(self.data_root / "forge.db")
+        connection.execute("PRAGMA user_version=37")
+        connection.commit()
+        connection.close()
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
+            controller.run()
 
 
 if __name__ == "__main__":

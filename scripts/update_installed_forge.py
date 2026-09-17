@@ -505,6 +505,10 @@ def database_snapshot(path: Path, *, existing_connection: sqlite3.Connection | N
         tables = sorted(row[0] for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         ))
+        schema_objects = [dict(row) for row in connection.execute(
+            "SELECT type,name,tbl_name,sql FROM sqlite_master "
+            "WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name"
+        )]
         table_metrics = {
             table: {"count": count, "digest": digest}
             for table in tables
@@ -548,6 +552,7 @@ def database_snapshot(path: Path, *, existing_connection: sqlite3.Connection | N
     snapshot = {
         "database": str(path), "integrity_check": integrity,
         "foreign_key_check": foreign_keys, "user_version": user_version,
+        "schema_digest": _digest_bytes(_json_bytes(schema_objects)),
         "metadata": metadata, "protected_metadata_digest": _digest_bytes(_json_bytes(protected_metadata)),
         "tables": table_metrics, "peer": peer,
         "writer_state": {
@@ -612,6 +617,19 @@ def assert_quiescent(snapshot: Mapping[str, Any]) -> None:
     if any(not isinstance(row, Mapping) or row.get("active_operation_id") is not None or row.get("state") != "IDLE"
            for row in reset):
         raise InstalledForgeUpdateError("Forge operational reset maintenance is active")
+
+
+def assert_completed_schema(snapshot: Mapping[str, Any], installed_readback: Mapping[str, Any]) -> None:
+    tables = snapshot.get("tables")
+    expected_digest = installed_readback.get("database_schema_digest")
+    if (
+        snapshot.get("user_version") != SCHEMA_AFTER
+        or not isinstance(tables, Mapping)
+        or not NEW_SCHEMA_38_TABLES.issubset(tables)
+        or not isinstance(expected_digest, str)
+        or snapshot.get("schema_digest") != expected_digest
+    ):
+        raise InstalledForgeUpdateError("completed runtime schema changed from the activated schema 38")
 
 
 def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], request: UpdateRequest) -> dict[str, Any]:
@@ -1261,6 +1279,7 @@ class InstalledForgeUpdateController:
             state, "ACTIVATED", installed_readback={
                 "identity": identity, "cli_version": version, "status": status,
                 "database_snapshot_digest": final_snapshot["snapshot_digest"],
+                "database_schema_digest": final_snapshot["schema_digest"],
                 "preservation": preservation, "resolver": self.request.resolver,
                 "resolved_executable": str(candidate.resolve()),
             }, safety_disposition="CANDIDATE_ACTIVE",
@@ -1361,6 +1380,7 @@ class InstalledForgeUpdateController:
             or installed_readback["preservation"].get("status") != "PASS"
         ):
             raise InstalledForgeUpdateError("completed operation lacks successful installation readback")
+        assert_completed_schema(final_snapshot, installed_readback)
 
     def _restore_database_writable(self) -> None:
         _assert_no_symlink_components(self.database)
