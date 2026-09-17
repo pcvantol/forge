@@ -5,17 +5,16 @@ generic handoff contract.
 
 ## Current aggregate-health handoff
 
-Implementation PR #125 is merged at
-`9208cc8ff0f6582a936a861a8c8bfa67f320989b`. It delivers the deterministic,
-read-only evaluator in [`forge/runtime/health.py`](forge/runtime/health.py), its
-public runtime exports, and 15 focused regressions. The exact reviewed candidate
-`1d6a6faef5efb0a4aa57aea6bdf251a1a722a872` passed the focused health suite,
-the aggregate-health roadmap suite, and the 666-test canonical validation, with
-distinct passing Quality and Security reviews.
-Finalization PR #126 is separately merged at
-`406b1d8cc409916bc7fe321eb705f25bdab39586`; its non-empty documentation
-delivery records this mission-related handoff and reconciles the rolling
-current-state navigation without changing runtime or execution semantics.
+Implementation PR #128 is merged at
+`1726f774cb42894d3d3386e80adee9444c7a7914`. It corrects the deterministic,
+read-only evaluator in [`forge/runtime/health.py`](forge/runtime/health.py) so
+an observation at the exact timeout boundary is stale rather than fresh. The
+exact reviewed candidate `dcf1e7a14f54e9c0eac0e0f0f95550b561232987`
+passed all 16 focused health regressions and the 667-test canonical validation,
+with distinct passing Quality and Security reviews. The separate, non-empty
+Finalization delivery is being prepared on
+`codex/finalize-inbox-cd4ba8cb829a4ee1b852369c602c3653` to record this
+mission-related handoff without changing runtime or execution semantics.
 
 The delivery covers scoped liveness/readiness aggregation, required/optional/
 disabled applicability, fail-closed freshness, identity and check-scope
@@ -25,6 +24,7 @@ HTTP/CLI routes, authentication, an installed server, OpenAPI/Postman parity,
 or full FH qualification. The Security review retained one non-blocking
 follow-up: normalize timestamp arithmetic to UTC and regress a same-zone
 daylight-saving fold before installed collectors rely on local-zone timestamps.
+That follow-up remains outside this timeout-boundary correction.
 
 Engineering Platform owns the immutable Prompt History and execution receipts;
 do not rewrite either as Forge product authority. Repository-local run handoff
