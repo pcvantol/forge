@@ -88,6 +88,19 @@ host-proven retry resolution evidence, never as a second Forge submission or a
 Forge-owned retry; Forge also appends a redacted operational audit event.
 Every missing, cyclic or mismatched lineage field fails closed.
 
+Each EP-owned retry is a distinct accepted attempt and therefore retains its
+own canonical accepted-request digest. Forge continues to recompute and require
+the original digest for the original submission. For an explicit, exact-parent
+retry successor it instead requires a canonical attempt digest, unchanged
+Forge correlation/provenance/producer/scope identity, and exact digest parity
+between producer readback and the immutable terminal artifact. A v1.4
+successor may carry an EP-authorized `ALLOWED` baseline transition only on that
+host-proven retry path: the original requested revision remains unchanged and
+`allowed_to`, transition target and execution baseline must be the same exact
+SHA. Forge records the terminal successor's attempt digest with the retry
+resolution audit binding; it does not reinterpret that digest as a new Forge
+submission receipt or rewrite the original request.
+
 Pinned EP producer source: `f7c08872a2d334cff097ea5f28822836e59f78c3`.
 The migration is source compatibility only; it does not assert that every
 installed EP instance has the declaration or runs this contract. A real Mission

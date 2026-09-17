@@ -530,7 +530,22 @@ class EngineeringPlatformHttpExecutionHost:
             raise ValueError("EP persisted submission receipt audit identity is invalid")
         return receipt_id
 
-    def _validate_readback(self, request: ExecutionRequest, binding: Mapping[str, Any], readback: Mapping[str, Any]) -> None:
+    @staticmethod
+    def _readback_accepted_request_digest(submission: Mapping[str, Any]) -> str:
+        digest = submission.get("accepted_request_digest")
+        if (not isinstance(digest, str) or not digest.startswith("sha256:") or len(digest) != 71
+                or any(character not in "0123456789abcdef" for character in digest[7:])):
+            raise ValueError("EP readback accepted-request digest is invalid")
+        return digest
+
+    def _validate_readback(
+        self,
+        request: ExecutionRequest,
+        binding: Mapping[str, Any],
+        readback: Mapping[str, Any],
+        *,
+        host_retry_successor: bool = False,
+    ) -> None:
         if readback.get("contract_version") not in self.SUPPORTED_PRODUCER_READBACK_CONTRACTS:
             raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
         required = {"contract_version", "submission", "producer", "correlation", "provenance", "disposition", "run", "result", "evidence"}
@@ -547,8 +562,14 @@ class EngineeringPlatformHttpExecutionHost:
             raise ValueError("EP readback correlation does not bind persisted request")
         if submission.get("repository_id") != request.repository_id or submission.get("project_id") != self.config.project_id:
             raise ValueError("EP readback submission does not bind project and repository")
-        if (request.repository_revision_binding is not None
-                and submission.get("accepted_request_digest") != self._expected_ep_accepted_request_digest(request)):
+        accepted_request_digest = self._readback_accepted_request_digest(submission)
+        # Forge can recompute only the request it submitted.  An EP-owned,
+        # explicitly parent-bound operator retry is a distinct accepted
+        # attempt and therefore has its own digest.  Its remaining request
+        # identity is still checked below and its digest must agree with the
+        # immutable terminal artifact before evidence can be returned.
+        if (request.repository_revision_binding is not None and not host_retry_successor
+                and accepted_request_digest != self._expected_ep_accepted_request_digest(request)):
             raise ValueError("EP readback accepted-request digest does not bind persisted request")
         if dict(producer) != binding["producer"]:
             raise ValueError("EP readback producer does not bind persisted request")
@@ -619,11 +640,13 @@ class EngineeringPlatformHttpExecutionHost:
         return self._readback_for_submission(request, binding, submission_id)
 
     def _readback_for_submission(self, request: ExecutionRequest, binding: Mapping[str, Any],
-                                 submission_id: str) -> dict[str, Any]:
+                                 submission_id: str, *, host_retry_successor: bool = False) -> dict[str, Any]:
         readback = self._json(
             f"/v1/projects/{self._segment(self.config.project_id)}/submissions/{self._segment(submission_id)}"
         )
-        self._validate_readback(request, binding, readback)
+        self._validate_readback(
+            request, binding, readback, host_retry_successor=host_retry_successor,
+        )
         if readback.get("submission", {}).get("id") != submission_id:
             raise ValueError("EP readback submission identity changed")
         return readback
@@ -653,7 +676,9 @@ class EngineeringPlatformHttpExecutionHost:
             if not isinstance(successor_id, str) or not successor_id or successor_id in seen_submissions:
                 raise ValueError("EP retry resolution successor identity is invalid")
             seen_submissions.add(successor_id)
-            successor = self._readback_for_submission(request, binding, successor_id)
+            successor = self._readback_for_submission(
+                request, binding, successor_id, host_retry_successor=True,
+            )
             successor_disposition = successor.get("disposition")
             if (not isinstance(successor_disposition, Mapping)
                     or successor_disposition.get("retry_parent_run_id") != expected_parent_run):
@@ -685,14 +710,19 @@ class EngineeringPlatformHttpExecutionHost:
         submission_id = submission.get("id") if isinstance(submission, Mapping) else None
         if not isinstance(submission_id, str) or not submission_id:
             raise ValueError("EP retry resolution submission identity is invalid")
+        accepted_request_digest = self._readback_accepted_request_digest(submission)
         resolution = {
             "submission_id": submission_id,
             "retry_parent_run_id": resolved_from_host_run_id,
             "run_id": evidence.host_run_id,
+            "accepted_request_digest": accepted_request_digest,
         }
         persisted = binding.get("operator_retry_resolution")
         if persisted is not None:
-            if persisted != resolution:
+            legacy_resolution = {
+                key: value for key, value in resolution.items() if key != "accepted_request_digest"
+            }
+            if persisted not in (resolution, legacy_resolution):
                 raise ValueError("EP retry resolution conflicts with the persisted Forge audit binding")
             return
         self._bindings.save_execution_host_binding(
@@ -710,6 +740,7 @@ class EngineeringPlatformHttpExecutionHost:
                 "resolution_submission_id": submission_id,
                 "retry_parent_run_id": resolved_from_host_run_id,
                 "resolved_from_host_run_id": resolved_from_host_run_id,
+                "accepted_request_digest": accepted_request_digest,
                 "result_state": evidence.outcome.value,
             },
         )

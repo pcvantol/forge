@@ -192,6 +192,7 @@ def _v14_repository_binding(
     *,
     outcome: str,
     delivery_qualified: bool,
+    host_retry_resolved: bool = False,
 ) -> tuple[str | None, str | None]:
     """Validate the v1.4 terminal fields against Forge's stored request.
 
@@ -235,8 +236,21 @@ def _v14_repository_binding(
     elif requested != revision_binding.requested_revision or transition_from != requested:
         raise ValueError("EP terminal requested revision differs from persisted Forge request")
     elif revision_binding.allowed_baseline_revision is None:
-        if (transition.get("status") != "EXACT" or transition_allowed is not None
-                or (baseline is not None and baseline != requested)):
+        exact = (transition.get("status") == "EXACT" and transition_allowed is None
+                 and (baseline is None or baseline == requested))
+        # EP owns operational retries.  Only the explicit parent-bound retry
+        # resolution path may introduce an attempt-specific allowed baseline;
+        # the original requested revision remains immutable and the terminal
+        # artifact must bind allowed_to, transition target and execution
+        # baseline to the same exact SHA.
+        retry_allowed = (
+            host_retry_resolved
+            and transition.get("status") == "ALLOWED"
+            and transition_allowed is not None
+            and baseline == transition_allowed
+            and transition_to == transition_allowed
+        )
+        if not exact and not retry_allowed:
             raise ValueError("EP terminal exact repository pin is inconsistent")
     elif (transition.get("status") != "ALLOWED"
           or transition_allowed != revision_binding.allowed_baseline_revision
@@ -362,6 +376,7 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         _, revision = _v14_repository_binding(
             document, repository, document.get("delivery"), repository_revision_binding,
             outcome=outcome, delivery_qualified=qualified_readback,
+            host_retry_resolved=resolved_from_host_run_id is not None,
         )
     elif repository_revision_binding is not None:
         raise ValueError("EP historical terminal artifact cannot satisfy a v1.4 Forge request binding")

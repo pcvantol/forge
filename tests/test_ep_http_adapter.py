@@ -500,6 +500,13 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 "execution_baseline": "b" * 40,
                 "baseline_transition": {"status": "EXACT", "from": "a" * 40, "to": "b" * 40, "allowed_to": None},
             })),
+            ("unapproved allowed baseline", lambda a: a["repository"].update({
+                "execution_baseline": "b" * 40,
+                "baseline_transition": {
+                    "status": "ALLOWED", "from": "a" * 40,
+                    "to": "b" * 40, "allowed_to": "b" * 40,
+                },
+            })),
             ("candidate", lambda a: a["repository"].update({"candidate": "d" * 40})),
             ("sha", lambda a: a["repository"].update({"execution_baseline": "not-a-sha"})),
             ("missing", lambda a: a["repository"].pop("candidate")),
@@ -848,11 +855,69 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         binding = self.database.execution_host_binding(self.request.correlation_id)
         self.assertEqual(binding["operator_retry_resolution"], {
             "submission_id": "retry-submission", "retry_parent_run_id": "run-fixture", "run_id": "retry-run",
+            "accepted_request_digest": self.readback["submission"]["accepted_request_digest"],
         })
         page = self.database.operational_log_page(correlation_id=self.request.correlation_id)
         event = next(item for item in page["items"] if item["event"] == "ep_operator_retry_resolution_evidence_accepted")
         self.assertEqual(event["run_id"], "retry-run")
         self.assertEqual(event["details"]["resolution_submission_id"], "retry-submission")
+
+    def test_host_proven_operator_retry_uses_its_attempt_digest_and_baseline_transition(self) -> None:
+        self._seed_binding()
+        parent = json.loads(json.dumps(self.readback))
+        parent["run"].update({"state": "BLOCKED", "terminal": False, "operator_resolution": "RETRIED"})
+        parent["result"].update({"outcome": "BLOCKED", "terminal": False, "delivery_qualified": False})
+        parent["evidence"]["terminal_artifact"] = None
+        parent["disposition"].update({"resolution_submission_id": "retry-submission", "retry_parent_run_id": None})
+
+        attempt_digest = "sha256:" + "b" * 64
+        retry_baseline = "b" * 40
+        successor = json.loads(json.dumps(self.readback))
+        successor["submission"].update({
+            "id": "retry-submission",
+            "accepted_request_digest": attempt_digest,
+        })
+        successor["run"].update({
+            "id": "retry-run", "state": "COMPLETE", "terminal": True,
+            "operator_resolution": "NONE",
+        })
+        successor["disposition"].update({
+            "resolution_submission_id": None,
+            "retry_parent_run_id": "run-fixture",
+        })
+
+        artifact = json.loads(self.artifact)
+        artifact["submission"].update({
+            "id": "retry-submission",
+            "accepted_request_digest": attempt_digest,
+        })
+        artifact["run"]["id"] = "retry-run"
+        artifact["repository"].update({
+            "execution_baseline": retry_baseline,
+            "baseline_transition": {
+                "status": "ALLOWED", "from": "a" * 40,
+                "to": retry_baseline, "allowed_to": retry_baseline,
+            },
+        })
+        raw = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        successor["evidence"]["terminal_artifact"]["digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(parent).encode(),
+                json.dumps(successor).encode(), raw], [])):
+            evidence = EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                ExecutionDispatch(self.request, "run-fixture")
+            )
+
+        self.assertEqual(evidence.host_run_id, "retry-run")
+        self.assertEqual(evidence.resolved_from_host_run_id, "run-fixture")
+        binding = self.database.execution_host_binding(self.request.correlation_id)
+        self.assertEqual(binding["operator_retry_resolution"], {
+            "submission_id": "retry-submission",
+            "retry_parent_run_id": "run-fixture",
+            "run_id": "retry-run",
+            "accepted_request_digest": attempt_digest,
+        })
 
     def test_operator_retry_resolution_requires_its_exact_parent_run(self) -> None:
         self._seed_binding()
@@ -868,6 +933,29 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
                 json.dumps(self.compatible).encode(), json.dumps(parent).encode(), json.dumps(successor).encode()], [])):
             with self.assertRaisesRegex(ValueError, "lineage"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                    ExecutionDispatch(self.request, "run-fixture")
+                )
+
+    def test_operator_retry_resolution_rejects_a_noncanonical_attempt_digest(self) -> None:
+        self._seed_binding()
+        parent = json.loads(json.dumps(self.readback))
+        parent["run"].update({"state": "BLOCKED", "terminal": False, "operator_resolution": "RETRIED"})
+        parent["result"].update({"outcome": "BLOCKED", "terminal": False, "delivery_qualified": False})
+        parent["evidence"]["terminal_artifact"] = None
+        parent["disposition"].update({"resolution_submission_id": "retry-submission", "retry_parent_run_id": None})
+        successor = json.loads(json.dumps(self.readback))
+        successor["submission"].update({
+            "id": "retry-submission", "accepted_request_digest": "sha256:not-a-digest",
+        })
+        successor["run"].update({"id": "retry-run", "operator_resolution": "NONE"})
+        successor["disposition"].update({
+            "resolution_submission_id": None, "retry_parent_run_id": "run-fixture",
+        })
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(parent).encode(),
+                json.dumps(successor).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "accepted-request digest is invalid"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
                     ExecutionDispatch(self.request, "run-fixture")
                 )
