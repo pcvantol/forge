@@ -276,19 +276,19 @@ jobs:
         with: { python-version: '3.11' }
       - name: Read back, hash, and reinstall both published distributions
         env:
+          READBACK_CACHE_TOKEN: ${{ github.run_id }}-${{ github.run_attempt }}
           VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           set -euo pipefail
           wheel="forge_autonomy-$VERSION-py3-none-any.whl"; sdist="forge_autonomy-$VERSION.tar.gz"
-          curl --fail --silent --show-error "https://pypi.org/pypi/forge-autonomy/$VERSION/json" -o pypi.json
-          python3 - "$wheel" "$sdist" release-input/dist/SHA256SUMS pypi.json <<'PY'
-          import json, sys
-          expected = {line.split()[1]: line.split()[0] for line in open(sys.argv[3])}
-          files = {item['filename']: item for item in json.load(open(sys.argv[4]))['urls']}
-          for name in sys.argv[1:3]:
-              assert name in files and files[name]['digests']['sha256'] == expected[name], 'remote hash mismatch'
-              print(files[name]['url'])
-          PY
+          python3 scripts/pypi_distribution_readback.py \
+            --version "$VERSION" \
+            --hashes release-input/dist/SHA256SUMS \
+            --output pypi.json \
+            --cache-token "$READBACK_CACHE_TOKEN" \
+            --attempts 24 \
+            --interval-seconds 15 \
+            --timeout-seconds 10
           mkdir registry-readback
           for artifact in "$wheel" "$sdist"; do
             artifact_url="$(python3 - "$artifact" <<'PY'

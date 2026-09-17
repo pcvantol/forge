@@ -60,6 +60,26 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("Unexpected PyPI identity lookup status", workflow)
         self.assertIn('for artifact in "$wheel" "$sdist"; do', workflow)
         self.assertIn("registry-readback-digests.json", workflow)
+        registry_job = workflow[published_job:complete_job]
+        self.assertIn("python3 scripts/pypi_distribution_readback.py", registry_job)
+        self.assertIn('READBACK_CACHE_TOKEN: ${{ github.run_id }}-${{ github.run_attempt }}', registry_job)
+        self.assertIn('--cache-token "$READBACK_CACHE_TOKEN"', registry_job)
+        self.assertIn("--attempts 24", registry_job)
+        self.assertIn("--interval-seconds 15", registry_job)
+        self.assertIn("--timeout-seconds 10", registry_job)
+        self.assertNotIn(
+            'curl --fail --silent --show-error "https://pypi.org/pypi/forge-autonomy/$VERSION/json"',
+            registry_job,
+        )
+        self.assertLess(
+            registry_job.index("python3 scripts/pypi_distribution_readback.py"),
+            registry_job.index('for artifact in "$wheel" "$sdist"; do'),
+        )
+        self.assertLess(
+            workflow.index("python3 scripts/pypi_distribution_readback.py"),
+            workflow.index("--mark-published"),
+        )
+        self.assertNotIn("gh-action-pypi-publish", registry_job)
         self.assertLess(
             workflow.index('for target in published-readback published-input/dist "$PENDING_READBACK"; do'),
             workflow.index("--complete"),
