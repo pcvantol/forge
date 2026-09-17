@@ -8,6 +8,15 @@
 > **Runtime planning reconciliation:** the canonical inner-Mission target is the
 > [Living Mission Graph and cross-repository Engineering Action DAG](LIVING_MISSION_GRAPH_AND_CROSS_REPOSITORY_ACTION_DAG.md).
 
+> **Parallel-runtime refinement — 2026-09-17:** the
+> [detailed multi-Action runtime design](PARALLEL_ACTION_RUNTIME_V1.md),
+> [seven-node owning roadmap](../roadmap/PARALLEL_ACTION_RUNTIME_V1.md),
+> [documentary JSON DAG](../roadmap/parallel-action-runtime-v1.json) and
+> [PA-01..PA-26 qualification](PARALLEL_ACTION_QUALIFICATION_V1.md)
+> concretize the second milestone below. Actual execution overlap and incremental
+> result-driven release are required, not just simultaneous eligibility. All added
+> PA nodes remain PLANNED; current serial Mission 3/reset work is unchanged.
+
 **AUTHORITY = DERIVED.** Source authority is the canonical Forge roadmap and product-owned EP/Workspace/Forge Platform contracts. This document never allocates peer implementation work.
 
 ## Current bootstrap reconciliation — 2026-09-07
@@ -52,10 +61,11 @@ This is the first real Forge -> EP -> Forge autonomy proof. It is deliberately s
 | Installed Forge Server / peer binding | IMPLEMENTATION/QUALIFICATION LANE | Required before live inner-loop canary. |
 | Forge exact receipt reconciliation | IMPLEMENTATION LANE | Required before replanning from live evidence. |
 | Dynamic same-Mission `reconcile -> replan -> derive successor` | TARGET RUNTIME GAP | First autonomy canary. |
-| Per-Action repository target | TARGET RUNTIME GAP | Required before cross-repository Mission graph. |
-| Forge-owned hard `depends_on` snapshot | BOOTSTRAP SEED EXISTS | Generalize from current Action dependencies. |
-| Multiple independently eligible Actions in flight | TARGET RUNTIME GAP | Second cross-repository canary. |
-| EP dependency enforcement/resource/capacity separation | EP-OWNED TARGET | Consume producer contract; Forge does not schedule resources. |
+| Per-Action repository target | TARGET RUNTIME GAP | PA-F0/PA-F1; required before cross-repository Mission graph. |
+| Forge-owned hard `depends_on` snapshot | BOOTSTRAP SEED EXISTS | PA-F0/PA-F2 generalize current Action dependencies. |
+| Multiple independently eligible Actions in flight | TARGET RUNTIME GAP | PA-F1/PA-F2/PA-F3; actual overlap in PA-FQ, not just two eligible rows. |
+| Incremental fan-in/replan without a wave barrier | TARGET RUNTIME GAP | PA-F4; A-only successor need not wait for unrelated B. |
+| EP dependency enforcement/resource/capacity separation | EP-OWNED TARGET | Consume PA-E evidence; Forge does not schedule resources. |
 | Evidence-gated cross-repository artifact unlock | CROSS-PRODUCT TARGET | Second canary; Forge Platform manifest is reference scenario. |
 | Project Intelligence / outer Mission loop | FOLLOW-ON CORE PRODUCT | Consumes completed Mission evidence. |
 | Workspace Roadmap/DAG Governance | FOLLOW-ON CORE PRODUCT | Not required for first machine loop. |
@@ -126,6 +136,14 @@ FP-A4 installer qualification
 ```
 
 The graph expresses logical dependencies only. EP separately decides whether an eligible Action may actually run based on leases, Agent capabilities and capacity.
+
+For the qualified parallel profile, closure must also show two compatible
+independent targets actually executing in overlapping intervals. The first
+bounded scenario may use already-authorized repositories on one host rather
+than waiting for the complete installer/Agent-fleet example. Per-result
+reconciliation can release an A-only successor while B still runs; only real
+multi-parent joins wait for both. The exact PA-F/PA-E dependencies are in the
+linked owning documentary DAGs and do not add a first-canary edge.
 
 ## Dependency semantics
 
@@ -222,13 +240,20 @@ Required proof:
 ```text
 FORGE_DERIVES_CROSS_REPO_DEPENDENCIES = TRUE
 INDEPENDENT_REPOSITORIES_BECOME_CONCURRENTLY_ELIGIBLE = TRUE
+INDEPENDENT_ACTION_EXECUTION_INTERVALS_OVERLAP = TRUE
+PER_ACTION_TARGET_STATE_AND_EVIDENCE_ISOLATED = TRUE
 DEPENDENT_ACTION_NEVER_EXECUTES_EARLY = TRUE
 ARTIFACT_EVIDENCE_UNLOCKS_SUCCESSOR = TRUE
+INCREMENTAL_REPLAN_WITHOUT_UNRELATED_SIBLING_BARRIER = TRUE
 EP_RESOURCE_POLICY_REMAINS_SEPARATE_FROM_FORGE_PLAN = TRUE
 MISSION_REPLANS_AFTER_PARALLEL_RESULTS = TRUE
 ```
 
-The Execution Agent + Forge Platform installer-role Mission is a preferred real dogfood candidate after the corresponding EP multi-execution/lease/capacity capability is qualified.
+The Execution Agent + Forge Platform installer-role Mission remains a preferred
+larger dogfood candidate after its corresponding EP capability is qualified.
+The bounded PA-FQ canary does not require the full fleet/UI first. Actual
+concurrency, isolated state/evidence, safe recovery, complete required assurance
+and efficiency measurements are distinct proof obligations.
 
 ## Authority boundaries
 
@@ -285,9 +310,9 @@ per-Action repository target
   + multiple Action persistence/in-flight state
   + EP multi-execution/lease/capacity qualification
   -> Forge cross-repo depends_on graph
-  -> independent Actions concurrently eligible
-  -> evidence-gated successor unlock
-  -> replan after parallel results
+  -> independent Actions concurrently eligible and actually overlapping
+  -> per-result incremental reconciliation and evidence-gated successor unlock
+  -> Mission completion with all required evidence and effects accounted for
 ```
 
 Project Intelligence/Workspace governance and universal installer productization are not inserted into the first inner-loop readiness chain.
@@ -299,6 +324,9 @@ Project Intelligence/Workspace governance and universal installer productization
 - Different repositories may become concurrently eligible when Forge declares no dependency.
 - EP can still delay either Action for repository/resource/Agent/provider reasons.
 - Same-repository parallel mutation is a separate, stricter qualification and is not implied.
+- A bounded eligible frontier replaces the serial singleton only through the PA implementation and qualification; no unbounded fan-out.
+- No global wave barrier: an A-only successor can advance without unrelated B, but an A+B join waits for both.
+- An Action is not one native subagent; provider-internal delegation has separate scope/capacity/qualification boundaries.
 
 ## Roadmap-to-action rule
 

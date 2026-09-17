@@ -5,6 +5,18 @@ and evidence-derived completion slice is source-delivered and deterministically
 qualified; live Forge→EP and cross-repository qualifications remain separately
 governed and unexecuted.
 
+## Parallel-runtime refinement — 2026-09-17
+
+The [Parallel Action runtime V1 design](PARALLEL_ACTION_RUNTIME_V1.md),
+[owning roadmap](../roadmap/PARALLEL_ACTION_RUNTIME_V1.md),
+[documentary DAG](../roadmap/parallel-action-runtime-v1.json) and
+[shared qualification catalogue](PARALLEL_ACTION_QUALIFICATION_V1.md)
+make the existing second Runtime milestone implementable: bounded planner
+fan-out, durable per-Action targets/state, asynchronous dispatch, incremental
+fan-in and actual EP execution overlap. All added PA implementation nodes remain
+PLANNED. This NO_BUMP design does not change the current serial Mission-3 proof,
+reset-maintenance work, active policy, credentials or installed runtime.
+
 ## Purpose
 
 An approved Mission is the stable human-governed boundary. Forge owns the dynamic engineering plan inside that boundary. It must be able to derive the first Engineering Action, reconcile real execution evidence, change the remaining plan, derive additional Actions, and stop only when Mission completion is proven by evidence.
@@ -147,15 +159,37 @@ Forge Living Mission Graph
 
 ## Parallel release from one Mission
 
-The target Runtime may release more than one eligible Action from the same Mission. It should select the maximal safe set allowed by the Living Mission Graph and submit them independently. EP remains free to serialize or delay them for execution-resource reasons.
+The target Runtime releases a **bounded eligible frontier** from the same Mission,
+not an enforced singleton or the entire backlog. Approved release/concurrency
+policy and peer capability limits constrain how many independent immutable Actions
+are offered. EP separately decides actual resource/capacity admission. Waiting due
+to a limit does not create a false logical dependency.
 
-The current Bootstrap Mission Scheduler's single in-flight Action rule is a bootstrap implementation limit, not a target invariant. The current runner-wide repository target is likewise a bootstrap limit; target architecture requires repository identity at the Action/submission boundary.
+The current Bootstrap Mission Scheduler's single in-flight Action rule and
+`_OneActionProvider` are bootstrap implementation limits, not target invariants.
+The loop-wide repository binding must become a verified per-Action mapping before
+cross-target release; two repositories require real scope, not a broader prompt.
 
 The delivered serial source slice retains that bootstrap limit. For an approved
 provider-derived scope with no Action definitions, it derives and validates an
 initial Action, reconciles canonical terminal evidence, refreshes current
 planning evidence, and may append a validated successor. Derivation lineage and
 completed materialized Actions survive a normal durable runtime reopen.
+
+The parallel refinement requires durable per-Action execution/correlation slots,
+per-repository Truth, graph revision guards and in-flight contribution reservations.
+Locks protect short state transitions, not full provider or HTTP waits. Process
+each result independently: after A succeeds, C depending only on A may start while
+B still runs. Only a real multi-parent dependency waits for both A and B. Do not
+invent a global wave barrier. Materialized siblings remain immutable during replan;
+duplicate/lost/late results cannot produce new submissions or overwrite another
+slot. See [the detailed model and recovery contract](PARALLEL_ACTION_RUNTIME_V1.md).
+
+An Engineering Action is not one subagent. Provider-internal delegation stays
+under the owning Action's scope; it neither replaces cross-repository Action
+admission nor requires a new full delivery cycle for every helper. Native nested
+implementation agents and same-repository parallel writers remain separately
+qualified, not implied by this target.
 
 ## Mission completion
 
@@ -172,6 +206,12 @@ The delivered evaluator identifies every approved criterion and binds it to an
 exact current Repository Truth snapshot plus canonical correlated terminal Host
 evidence. Unknown or absent evidence remains unsatisfied; neither provider prose
 nor an Execution Host completion assertion has planning or completion authority.
+
+For multi-in-flight operation, success evaluation also requires that all admitted
+side effects are accounted for. No Mission COMPLETE while a sibling can still
+write, cancellation is unacknowledged or an accepted request is uncertain.
+A failed predecessor blocks its dependants without rewriting unrelated successes;
+continuation/cancellation of independent siblings follows actual impact and policy.
 
 ## Qualification sequence
 
@@ -204,10 +244,20 @@ A later Mission spans at least two repositories and proves:
 ```text
 FORGE_DERIVES_CROSS_REPO_DEPENDENCIES = TRUE
 INDEPENDENT_REPOSITORIES_BECOME_CONCURRENTLY_ELIGIBLE = TRUE
+INDEPENDENT_ACTION_EXECUTION_INTERVALS_OVERLAP = TRUE
+PER_ACTION_TARGET_STATE_AND_EVIDENCE_ISOLATED = TRUE
 DEPENDENT_ACTION_NEVER_EXECUTES_EARLY = TRUE
 ARTIFACT_EVIDENCE_UNLOCKS_SUCCESSOR = TRUE
+INCREMENTAL_REPLAN_WITHOUT_UNRELATED_SIBLING_BARRIER = TRUE
 EP_RESOURCE_POLICY_REMAINS_SEPARATE_FROM_FORGE_PLAN = TRUE
 MISSION_REPLANS_AFTER_PARALLEL_RESULTS = TRUE
 ```
 
-The Execution Agent + Forge Platform installer role is a suitable real dogfood Mission for this second qualification once the required EP multi-execution/lease/capacity capabilities are qualified.
+The Execution Agent + Forge Platform installer role remains a suitable larger
+dogfood Mission once its own prerequisites exist. The first bounded qualification
+may instead use two already-authorized repositories on one host; no Agent-fleet
+or UI dependency is added merely to prove concurrency. It must prove actual EP
+execution overlap, independent per-Action recovery, incremental fan-in, complete
+required assurance and honest time/usage accounting. See PA-01..PA-26 in the
+[qualification catalogue](PARALLEL_ACTION_QUALIFICATION_V1.md). Eligibility alone
+is no longer sufficient closure evidence for the parallel-runtime milestone.

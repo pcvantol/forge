@@ -209,13 +209,55 @@ Qualification must prove:
 ```text
 FORGE_DERIVES_CROSS_REPO_DEPENDENCIES = TRUE
 INDEPENDENT_REPOSITORIES_BECOME_CONCURRENTLY_ELIGIBLE = TRUE
+INDEPENDENT_ACTION_EXECUTION_INTERVALS_OVERLAP = TRUE
+PER_ACTION_TARGET_STATE_AND_EVIDENCE_ISOLATED = TRUE
 DEPENDENT_ACTION_NEVER_EXECUTES_EARLY = TRUE
 ARTIFACT_EVIDENCE_UNLOCKS_SUCCESSOR = TRUE
+INCREMENTAL_REPLAN_WITHOUT_UNRELATED_SIBLING_BARRIER = TRUE
 EP_RESOURCE_POLICY_REMAINS_SEPARATE_FROM_FORGE_PLAN = TRUE
 MISSION_REPLANS_AFTER_PARALLEL_RESULTS = TRUE
 ```
 
 A suitable dogfood Mission is: make Engineering Platform Execution Agents production-ready and installable through Forge Platform. EP implementation/package Actions and Forge Platform installer-role work may advance in parallel, while the final platform component-manifest Action must depend on actual publication of qualified EP Server/Agent artifacts and their artifact digests/source revisions.
+
+### Concrete parallel-runtime delivery slice — 2026-09-17
+
+`FORGE_EP_PARALLEL_ACTION_RUNTIME_V1` refines this existing milestone through
+[the runtime design](../../docs/architecture/PARALLEL_ACTION_RUNTIME_V1.md),
+[seven-node Forge roadmap](../../docs/roadmap/PARALLEL_ACTION_RUNTIME_V1.md),
+[documentary DAG](../../docs/roadmap/parallel-action-runtime-v1.json) and
+[PA-01..PA-26 qualification](../../docs/architecture/PARALLEL_ACTION_QUALIFICATION_V1.md).
+All added implementation/qualification nodes remain PLANNED; NO_BUMP.
+
+```text
+PA-F0 contract -> PA-F1 multi-Action state/targets
+PA-F1 -> PA-F2 bounded planner fan-out
+PA-F1 + qualified EP admission/resources/isolation -> PA-F3 async dispatch
+PA-F2 + PA-F3 -> PA-F4 incremental reconcile/replan/joins/completion
+PA-F4 + EP evidence -> PA-F5 multi-active readmodels
+PA-F5 + EP PA-EQ -> PA-FQ installed actual-parallel qualification
+```
+
+EP owns its matching six-node roadmap at
+`docs/development/PARALLEL_ACTION_EXECUTION_V1_ROADMAP.md` and DAG. Forge
+PA-F0 supplies contracts to EP PA-E0; EP PA-EQ does not depend on Forge PA-FQ,
+so the integration is acyclic. The current singleton provider guard, current
+Action/correlation projection and loop-level target must be generalized together,
+not bypassed by a prompt or by removing one length check.
+
+The first qualified profile may use two already-authorized repositories on one
+host. It must demonstrate actual overlapping EP execution, not just eligibility.
+A-only successors can proceed while unrelated B runs; only true multi-parent
+joins wait for both. Materialized Actions, per-target baselines and authority
+remain immutable. Count full child usage and compare elapsed time at equal
+quality gates; native subagents are a distinct layer, not one Action per helper.
+
+This narrows an existing core Runtime gap without changing the current serial
+Mission-3 acceptance, its reset preparation, next-Mission governance or active
+policy. Full Agent-fleet/Workspace/native-subagent/Console productization is not
+an artificial predecessor. Same-repository parallel writes remain a separate
+stricter qualification. No actual Mission IDs or executable programme edges are
+allocated by this documentary plan.
 
 ## Governance-minimal execution
 
@@ -328,10 +370,10 @@ SECOND CROSS-REPOSITORY DAG QUALIFICATION:
 one Mission spanning >= 2 repositories
   -> Forge derives per-Action repository targets + depends_on
   -> independent Actions concurrently eligible
-  -> EP enforces resource/capacity separately
+  -> EP enforces resource/capacity separately and executes independent targets concurrently
   -> predecessor artifact/evidence unlocks dependent Action
-  -> Forge reconciles parallel results + replans
-  -> Mission completion
+  -> Forge reconciles each result + replans without unrelated sibling barrier
+  -> Mission completion after all required evidence and effects are accounted for
 
 OUTER LOOP:
 completed Mission evidence
