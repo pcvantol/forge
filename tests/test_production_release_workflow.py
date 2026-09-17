@@ -1,6 +1,7 @@
 """Guard the durable release-state ordering expected by production delivery."""
 
 import importlib.util
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -51,6 +52,9 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
             'gh release download "$TAG" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"',
             publish_job,
         )
+        self.assertIn("expected_digests_from_sha256sums(Path(sys.argv[3]), wanted)", publish_job)
+        self.assertIn("echo 'already_published=true' >> \"$GITHUB_OUTPUT\"", publish_job)
+        self.assertIn("if: steps.existing.outputs.already_published != 'true'", publish_job)
         self.assertIn("forge-release-published-$VERSION-$SOURCE_SHA.json", workflow)
         self.assertIn("needs: [release-context, build-and-qualify, publish-pypi, registry-readback-and-published-evidence]", workflow)
         self.assertIn("gh release download \"$TAG\" --pattern \"$PUBLISHED_RECEIPT\" --dir published-readback", workflow)
@@ -74,6 +78,15 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertLess(
             registry_job.index("python3 scripts/pypi_distribution_readback.py"),
             registry_job.index('for artifact in "$wheel" "$sdist"; do'),
+        )
+        verifier = 'python3 - "$VERSION" release-input/dist/SHA256SUMS registry-readback'
+        self.assertIn(verifier, registry_job)
+        self.assertIn("expected_digests_from_sha256sums", registry_job)
+        self.assertNotIn('grep " $artifact$"', registry_job)
+        self.assertNotIn("sha256sum --check", registry_job)
+        self.assertLess(
+            registry_job.index('for artifact in "$wheel" "$sdist"; do'),
+            registry_job.index(verifier),
         )
         self.assertLess(
             workflow.index("python3 scripts/pypi_distribution_readback.py"),
@@ -103,6 +116,104 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         script_start = workflow.index("        run: |\n", start) + len("        run: |\n")
         script_end = workflow.index("      - uses: actions/upload-artifact", script_start)
         return textwrap.dedent(workflow[script_start:script_end])
+
+    @staticmethod
+    def _registry_download_verifier() -> str:
+        workflow = Path(".github/workflows/forge-production-release.yml").read_text(encoding="utf-8")
+        marker = '          python3 - "$VERSION" release-input/dist/SHA256SUMS registry-readback <<\'PY\'\n'
+        script_start = workflow.index(marker) + len(marker)
+        script_end = workflow.index(
+            "          PY\n          python3 - registry-readback",
+            script_start,
+        )
+        return textwrap.dedent(workflow[script_start:script_end])
+
+    @staticmethod
+    def _existing_publication_verifier() -> str:
+        workflow = Path(".github/workflows/forge-production-release.yml").read_text(encoding="utf-8")
+        marker = '          python3 - "$wheel" "$sdist" release-input/dist/SHA256SUMS pypi.json <<\'PY\'\n'
+        script_start = workflow.index(marker) + len(marker)
+        script_end = workflow.index(
+            "          PY\n          echo 'already_published=true'",
+            script_start,
+        )
+        return textwrap.dedent(workflow[script_start:script_end])
+
+    def test_existing_publication_verifier_normalizes_qualified_paths_before_skip(self) -> None:
+        wheel = f"forge_autonomy-{self.version}-py3-none-any.whl"
+        sdist = f"forge_autonomy-{self.version}.tar.gz"
+        wheel_digest = sha256(b"qualified Forge wheel").hexdigest()
+        sdist_digest = sha256(b"qualified Forge source distribution").hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sums = root / "SHA256SUMS"
+            sums.write_text(
+                f"{wheel_digest}  dist/{wheel}\n{sdist_digest}  dist/{sdist}\n",
+                encoding="utf-8",
+            )
+            document = root / "pypi.json"
+            document.write_text(json.dumps({"urls": [
+                {"filename": wheel, "digests": {"sha256": wheel_digest}},
+                {"filename": sdist, "digests": {"sha256": sdist_digest}},
+            ]}), encoding="utf-8")
+            command = [sys.executable, "-", wheel, sdist, str(sums), str(document)]
+            script = self._existing_publication_verifier()
+
+            exact = subprocess.run(
+                command, input=script, check=False, capture_output=True, text=True,
+            )
+            self.assertEqual(0, exact.returncode, exact.stderr)
+
+            document.write_text(json.dumps({"urls": [
+                {"filename": wheel, "digests": {"sha256": "f" * 64}},
+                {"filename": sdist, "digests": {"sha256": sdist_digest}},
+            ]}), encoding="utf-8")
+            conflict = subprocess.run(
+                command, input=script, check=False, capture_output=True, text=True,
+            )
+            self.assertNotEqual(0, conflict.returncode)
+            self.assertIn("PUBLICATION_IDENTITY_CONFLICT", conflict.stderr)
+
+            document.write_text(json.dumps({"urls": [
+                {"filename": wheel, "digests": {"sha256": wheel_digest}},
+            ]}), encoding="utf-8")
+            partial = subprocess.run(
+                command, input=script, check=False, capture_output=True, text=True,
+            )
+            self.assertNotEqual(0, partial.returncode)
+            self.assertIn("partial PyPI release", partial.stderr)
+
+    def test_registry_download_verifier_uses_qualified_dist_paths_and_fails_closed(self) -> None:
+        wheel = f"forge_autonomy-{self.version}-py3-none-any.whl"
+        sdist = f"forge_autonomy-{self.version}.tar.gz"
+        wheel_bytes = b"qualified Forge wheel"
+        sdist_bytes = b"qualified Forge source distribution"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            downloads = root / "registry-readback"
+            downloads.mkdir()
+            (downloads / wheel).write_bytes(wheel_bytes)
+            (downloads / sdist).write_bytes(sdist_bytes)
+            sums = root / "SHA256SUMS"
+            sums.write_text(
+                f"{sha256(wheel_bytes).hexdigest()}  dist/{wheel}\n"
+                f"{sha256(sdist_bytes).hexdigest()}  dist/{sdist}\n",
+                encoding="utf-8",
+            )
+            command = [sys.executable, "-", self.version, str(sums), str(downloads)]
+            script = self._registry_download_verifier()
+
+            verified = subprocess.run(
+                command, input=script, check=False, capture_output=True, text=True,
+            )
+            self.assertEqual(0, verified.returncode, verified.stderr)
+
+            (downloads / wheel).write_bytes(b"different wheel bytes")
+            conflict = subprocess.run(
+                command, input=script, check=False, capture_output=True, text=True,
+            )
+            self.assertNotEqual(0, conflict.returncode)
+            self.assertIn("conflicts with qualified bytes", conflict.stderr)
 
     def _fixture(
         self,
