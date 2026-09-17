@@ -1,0 +1,502 @@
+name: Forge existing release reconciliation
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing Forge version already published to PyPI
+        required: true
+        type: string
+      product_source_sha:
+        description: Immutable protected source that produced the existing artifacts
+        required: true
+        type: string
+      original_run_id:
+        description: Failed original Forge production release run containing qualified artifacts
+        required: true
+        type: string
+      wheel_sha256:
+        description: Qualified wheel SHA-256 without prefix
+        required: true
+        type: string
+      sdist_sha256:
+        description: Qualified source-distribution SHA-256 without prefix
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forge-production-release
+  cancel-in-progress: false
+
+jobs:
+  # Draft releases require a write-capable token to be read. This job never
+  # downloads or executes package code and performs no release mutation.
+  snapshot-draft-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind the protected controller and capture every release asset
+        env:
+          VERSION: ${{ inputs.version }}
+          PRODUCT_SOURCE_SHA: ${{ inputs.product_source_sha }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$PRODUCT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$ORIGINAL_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$WHEEL_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$SDIST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          git merge-base --is-ancestor "$PRODUCT_SOURCE_SHA" origin/main
+          tag="forge-v$VERSION"
+          forge_gh_token="${{ github.token }}"
+          GH_TOKEN="$forge_gh_token" gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+            --json apiUrl,assets,createdAt,databaseId,id,isDraft,isImmutable,isPrerelease,tagName,targetCommitish,url \
+            > release-inventory.json
+          python3 scripts/reconcile_existing_release.py inventory \
+            --release-json release-inventory.json --version "$VERSION" \
+            --source-revision "$PRODUCT_SOURCE_SHA" > release-inventory-validated.json
+          mkdir release-assets
+          GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --dir release-assets
+          python3 scripts/reconcile_existing_release.py validate-assets \
+            --release-json release-inventory.json --asset-root release-assets \
+            --version "$VERSION" --source-revision "$PRODUCT_SOURCE_SHA" > release-assets-validated.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: forge-release-snapshot-${{ inputs.version }}-${{ github.sha }}
+          path: |
+            release-inventory.json
+            release-assets/
+          if-no-files-found: error
+
+  validate-existing-release:
+    needs: snapshot-draft-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: forge-release-snapshot-${{ inputs.version }}-${{ github.sha }}
+          path: release-snapshot
+      - name: Recover the original operation and qualify fresh PyPI readback
+        env:
+          VERSION: ${{ inputs.version }}
+          PRODUCT_SOURCE_SHA: ${{ inputs.product_source_sha }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
+        run: |
+          set -euo pipefail
+          operation="forge-release-$VERSION-$PRODUCT_SOURCE_SHA"
+          artifact="forge-autonomy-$VERSION-$PRODUCT_SOURCE_SHA"
+          qualified="forge-release-qualified-$VERSION-$PRODUCT_SOURCE_SHA.json"
+          forge_gh_token="${{ github.token }}"
+          GH_TOKEN="$forge_gh_token" gh run view "$ORIGINAL_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json databaseId,status,conclusion,headSha,event,workflowName,jobs > original-run.json
+          mkdir original-action
+          GH_TOKEN="$forge_gh_token" gh run download "$ORIGINAL_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$artifact" --dir original-action
+          test -f "original-action/release-evidence/operations/$operation.json"
+          test -f original-action/dist/SHA256SUMS
+          wheel="forge_autonomy-$VERSION-py3-none-any.whl"
+          sdist="forge_autonomy-$VERSION.tar.gz"
+          grep -Fxq "$WHEEL_SHA256  dist/$wheel" original-action/dist/SHA256SUMS
+          grep -Fxq "$SDIST_SHA256  dist/$sdist" original-action/dist/SHA256SUMS
+          cmp "original-action/release-evidence/operations/$operation.json" \
+            "release-snapshot/release-assets/$qualified"
+          python3 scripts/pypi_distribution_readback.py \
+            --version "$VERSION" --hashes original-action/dist/SHA256SUMS \
+            --output pypi.json --cache-token "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --attempts 24 --interval-seconds 15 --timeout-seconds 10
+          mkdir registry-readback
+          for filename in "$wheel" "$sdist"; do
+            artifact_url="$(python3 - "$filename" <<'PY'
+          import json
+          import sys
+          print(next(item["url"] for item in json.load(open("pypi.json", encoding="utf-8"))["urls"] if item["filename"] == sys.argv[1]))
+          PY
+            )"
+            curl --fail --silent --show-error --location "$artifact_url" -o "registry-readback/$filename"
+          done
+          python3 scripts/reconcile_existing_release.py validate \
+            --run-json original-run.json \
+            --qualified-action "original-action/release-evidence/operations/$operation.json" \
+            --qualified-release "release-snapshot/release-assets/$qualified" \
+            --hashes original-action/dist/SHA256SUMS \
+            --wheel "registry-readback/$wheel" --sdist "registry-readback/$sdist" \
+            --version "$VERSION" --source-revision "$PRODUCT_SOURCE_SHA" \
+            --original-run-id "$ORIGINAL_RUN_ID" --controller-source "$GITHUB_SHA" \
+            --reconciliation-run-id "$GITHUB_RUN_ID" \
+            --release-json release-snapshot/release-inventory.json > publication.json
+          cmp "original-action/dist/$wheel" "registry-readback/$wheel"
+          cmp "original-action/dist/$sdist" "registry-readback/$sdist"
+          mkdir validation-bundle
+          cp -R original-action/release-evidence validation-bundle/
+          cp publication.json release-snapshot/release-inventory.json validation-bundle/
+          cp -R release-snapshot/release-assets validation-bundle/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: forge-release-validation-${{ inputs.version }}-${{ github.sha }}
+          path: validation-bundle/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: forge-release-smoke-${{ inputs.version }}-${{ github.sha }}
+          path: registry-readback/forge_autonomy-*.whl
+          if-no-files-found: error
+
+  smoke-existing-release:
+    needs: validate-existing-release
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: forge-release-smoke-${{ inputs.version }}-${{ github.sha }}
+          path: registry-wheel
+      - name: Execute the qualified wheel without credentials or a privileged handoff
+        env:
+          VERSION: ${{ inputs.version }}
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+        run: |
+          set -euo pipefail
+          wheel="registry-wheel/forge_autonomy-$VERSION-py3-none-any.whl"
+          test "$(sha256sum "$wheel" | cut -d' ' -f1)" = "$WHEEL_SHA256"
+          python3 -m venv "$RUNNER_TEMP/forge-registry-wheel"
+          "$RUNNER_TEMP/forge-registry-wheel/bin/pip" install --no-index --no-deps "$wheel"
+          mkdir "$RUNNER_TEMP/forge-smoke-home"
+          cd "$RUNNER_TEMP"
+          env -i HOME="$RUNNER_TEMP/forge-smoke-home" TMPDIR="$RUNNER_TEMP" \
+            PATH="$RUNNER_TEMP/forge-registry-wheel/bin:/usr/bin:/bin" VERSION="$VERSION" \
+            PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 \
+            "$RUNNER_TEMP/forge-registry-wheel/bin/python" -I -c \
+            'import forge,pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
+          test "$(env -i HOME="$RUNNER_TEMP/forge-smoke-home" TMPDIR="$RUNNER_TEMP" \
+            PATH="$RUNNER_TEMP/forge-registry-wheel/bin:/usr/bin:/bin" \
+            "$RUNNER_TEMP/forge-registry-wheel/bin/forge" --version)" = "$VERSION"
+
+  reconcile-existing-release:
+    needs: [validate-existing-release, smoke-existing-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: forge-release-validation-${{ inputs.version }}-${{ github.sha }}
+          path: validation-bundle
+      - name: Resume the exact operation, publish the draft, clean up, and verify
+        env:
+          VERSION: ${{ inputs.version }}
+          PRODUCT_SOURCE_SHA: ${{ inputs.product_source_sha }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
+        run: |
+          set -euo pipefail
+          operation="forge-release-$VERSION-$PRODUCT_SOURCE_SHA"
+          tag="forge-v$VERSION"
+          qualified="forge-release-qualified-$VERSION-$PRODUCT_SOURCE_SHA.json"
+          published="forge-release-published-$VERSION-$PRODUCT_SOURCE_SHA.json"
+          pending="forge-cleanup-pending-$VERSION-$PRODUCT_SOURCE_SHA.json"
+          complete="forge-release-complete-$VERSION-$PRODUCT_SOURCE_SHA.json"
+          evidence_root=validation-bundle/release-evidence
+          forge_gh_token="${{ github.token }}"
+          git fetch --no-tags origin main
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          git merge-base --is-ancestor "$PRODUCT_SOURCE_SHA" origin/main
+
+          snapshot_release() {
+            destination="$1"
+            assets="$2"
+            GH_TOKEN="$forge_gh_token" gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+              --json apiUrl,assets,createdAt,databaseId,id,isDraft,isImmutable,isPrerelease,tagName,targetCommitish,url \
+              > "$destination"
+            python3 scripts/reconcile_existing_release.py same-release \
+              --expected-release-json validation-bundle/release-inventory.json \
+              --current-release-json "$destination" --version "$VERSION" \
+              --source-revision "$PRODUCT_SOURCE_SHA" > /dev/null
+            mkdir "$assets"
+            GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$assets"
+            python3 scripts/reconcile_existing_release.py validate-assets \
+              --release-json "$destination" --asset-root "$assets" \
+              --version "$VERSION" --source-revision "$PRODUCT_SOURCE_SHA" > /dev/null
+          }
+          verify_tag_state() {
+            release_json="$1"
+            draft="$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["isDraft"]).lower())' "$release_json")"
+            remote_tag="$(git ls-remote origin "refs/tags/$tag")"
+            if test "$draft" = true; then
+              test -z "$remote_tag" || { echo 'Draft release unexpectedly has a remote tag.' >&2; exit 1; }
+            else
+              test -n "$remote_tag" || { echo 'Published release lacks its remote tag.' >&2; exit 1; }
+              git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+              test "$(git rev-parse "$tag^{commit}")" = "$PRODUCT_SOURCE_SHA"
+            fi
+          }
+          verify_controller_runs() {
+            controller_evidence="$1"
+            while IFS=$'\t' read -r phase run_id controller_source; do
+              test -n "$phase" && test -n "$run_id" && test -n "$controller_source"
+              git merge-base --is-ancestor "$controller_source" origin/main
+              run_json="$(mktemp "$RUNNER_TEMP/forge-controller-run-XXXXXX.json")"
+              GH_TOKEN="$forge_gh_token" gh run view "$run_id" --repo "$GITHUB_REPOSITORY" \
+                --json databaseId,status,conclusion,headSha,event,workflowName > "$run_json"
+              python3 scripts/reconcile_existing_release.py validate-controller-run \
+                --run-json "$run_json" --controller-source "$controller_source" \
+                --reconciliation-run-id "$run_id" > /dev/null
+              rm -f -- "$run_json"
+            done < <(python3 - "$controller_evidence" <<'PY'
+          import json
+          import sys
+          evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+          for item in evidence["controller_runs"]:
+              print(item["phase"], item["run_id"], item["controller_source"], sep="\t")
+          PY
+            )
+          }
+
+          python3 - "$GITHUB_RUN_ID" "$GITHUB_SHA" > current-controller.json <<'PY'
+          import json
+          import sys
+          print(json.dumps({"controller_runs": [{
+              "phase": "current", "run_id": sys.argv[1], "controller_source": sys.argv[2],
+          }]}, sort_keys=True))
+          PY
+          verify_controller_runs current-controller.json
+
+          snapshot_release current-before.json current-assets-before
+          for original in validation-bundle/release-assets/*; do
+            cmp "$original" "current-assets-before/$(basename "$original")"
+          done
+          cmp "$evidence_root/operations/$operation.json" "current-assets-before/$qualified"
+          verify_tag_state current-before.json
+
+          state=QUALIFIED
+          if test -f "current-assets-before/$published"; then
+            followup_args=(--published "current-assets-before/$published")
+            test ! -f "current-assets-before/$pending" || followup_args+=(--pending "current-assets-before/$pending")
+            test ! -f "current-assets-before/$complete" || followup_args+=(--complete "current-assets-before/$complete")
+            python3 scripts/reconcile_existing_release.py validate-followup \
+              "${followup_args[@]}" --original-run-id "$ORIGINAL_RUN_ID" \
+              --release-json current-before.json > followup-state.json
+            verify_controller_runs followup-state.json
+            state="$(python3 -c 'import json; print(json.load(open("followup-state.json"))["state"])')"
+            receipt="$(python3 -c 'import json; print(json.load(open("followup-state.json"))["receipt"])')"
+            python3 scripts/reconcile_existing_release.py hydrate \
+              --evidence-root "$evidence_root" --operation-id "$operation" \
+              --receipt "$receipt" > hydrated.json
+          fi
+
+          if test "$state" = RELEASE_COMPLETE; then
+            test "$(python3 -c 'import json; print(str(json.load(open("current-before.json"))["isDraft"]).lower())')" = false
+            verify_tag_state current-before.json
+            exit 0
+          fi
+
+          if test "$state" = QUALIFIED; then
+            test "$(python3 -c 'import json; print(str(json.load(open("current-before.json"))["isDraft"]).lower())')" = true
+            test "$(python3 -c 'import json; print(str(json.load(open("current-before.json"))["isImmutable"]).lower())')" = false
+            python3 scripts/reconcile_existing_release.py validate-publication \
+              --qualified "$evidence_root/operations/$operation.json" \
+              --publication validation-bundle/publication.json \
+              --original-run-id "$ORIGINAL_RUN_ID" --controller-source "$GITHUB_SHA" \
+              --reconciliation-run-id "$GITHUB_RUN_ID" \
+              --release-json current-before.json > new-publication-validated.json
+            verify_controller_runs new-publication-validated.json
+            python3 scripts/release_operation.py \
+              --mark-published --evidence-root "$evidence_root" --operation-id "$operation" \
+              --version "$VERSION" --policy-revision forge-bootstrap-release-cadence-v2 \
+              --source-revision "$PRODUCT_SOURCE_SHA" \
+              --wheel-digest "sha256:$WHEEL_SHA256" --sdist-digest "sha256:$SDIST_SHA256" \
+              --evidence-file validation-bundle/publication.json > published-operation.json
+            cp "$evidence_root/operations/$operation.json" "$published"
+            published_readback="$(mktemp -d "$RUNNER_TEMP/forge-published-readback-XXXXXX")"
+            if GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$published" --dir "$published_readback"; then
+              cmp "$published" "$published_readback/$published"
+            else
+              GH_TOKEN="$forge_gh_token" gh release upload "$tag" "$published" --repo "$GITHUB_REPOSITORY"
+              GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+                --pattern "$published" --dir "$published_readback"
+              cmp "$published" "$published_readback/$published"
+            fi
+            rm -rf -- "$published_readback"
+            test ! -e "$published_readback" && test ! -L "$published_readback"
+            state=PUBLISHED
+          fi
+
+          snapshot_release prepublish.json prepublish-assets
+          followup_args=(--published "prepublish-assets/$published")
+          test ! -f "prepublish-assets/$pending" || followup_args+=(--pending "prepublish-assets/$pending")
+          test ! -f "prepublish-assets/$complete" || followup_args+=(--complete "prepublish-assets/$complete")
+          python3 scripts/reconcile_existing_release.py validate-followup \
+            "${followup_args[@]}" --original-run-id "$ORIGINAL_RUN_ID" \
+            --release-json prepublish.json > prepublish-followup.json
+          verify_controller_runs prepublish-followup.json
+          prepublish_state="$(python3 -c 'import json; print(json.load(open("prepublish-followup.json"))["state"])')"
+          if test "$prepublish_state" = RELEASE_COMPLETE; then
+            test "$(python3 -c 'import json; print(str(json.load(open("prepublish.json"))["isDraft"]).lower())')" = false
+            verify_tag_state prepublish.json
+            exit 0
+          fi
+          if test "$prepublish_state" = CLEANUP_PENDING && test "$state" != CLEANUP_PENDING; then
+            python3 scripts/reconcile_existing_release.py hydrate \
+              --evidence-root "$evidence_root" --operation-id "$operation" \
+              --receipt "prepublish-assets/$pending" > hydrated.json
+          fi
+          state="$prepublish_state"
+          if test "$(python3 -c 'import json; print(str(json.load(open("prepublish.json"))["isDraft"]).lower())')" = true; then
+            test "$state" = PUBLISHED
+            test "$(python3 -c 'import json; print(str(json.load(open("prepublish.json"))["isImmutable"]).lower())')" = false
+            verify_tag_state prepublish.json
+            GH_TOKEN="$forge_gh_token" gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false
+          fi
+
+          snapshot_release verified-release.json published-assets
+          test "$(python3 -c 'import json; print(str(json.load(open("verified-release.json"))["isDraft"]).lower())')" = false
+          verify_tag_state verified-release.json
+          followup_args=(--published "published-assets/$published")
+          test ! -f "published-assets/$pending" || followup_args+=(--pending "published-assets/$pending")
+          test ! -f "published-assets/$complete" || followup_args+=(--complete "published-assets/$complete")
+          python3 scripts/reconcile_existing_release.py validate-followup \
+            "${followup_args[@]}" --original-run-id "$ORIGINAL_RUN_ID" \
+            --release-json verified-release.json > verified-followup.json
+          verify_controller_runs verified-followup.json
+          verified_state="$(python3 -c 'import json; print(json.load(open("verified-followup.json"))["state"])')"
+          if test "$verified_state" = RELEASE_COMPLETE; then
+            exit 0
+          fi
+          if test "$verified_state" = CLEANUP_PENDING && test "$state" != CLEANUP_PENDING; then
+            python3 scripts/reconcile_existing_release.py hydrate \
+              --evidence-root "$evidence_root" --operation-id "$operation" \
+              --receipt "published-assets/$pending" > hydrated.json
+          fi
+          state="$verified_state"
+          test "$(python3 -c 'import json; print(str(json.load(open("verified-release.json"))["isImmutable"]).lower())')" = false
+
+          read -r wheel_digest sdist_digest < <(python3 - "$evidence_root/operations/$operation.json" <<'PY'
+          import json
+          import sys
+          operation = json.load(open(sys.argv[1], encoding="utf-8"))
+          print(operation["artifacts"]["wheel"], operation["artifacts"]["sdist"])
+          PY
+          )
+          cleanup_targets=(
+            current-assets-before prepublish-assets published-assets validation-bundle/release-assets
+            validation-bundle/publication.json validation-bundle/release-inventory.json
+            current-controller.json current-before.json prepublish.json followup-state.json hydrated.json
+            new-publication-validated.json published-operation.json
+            prepublish-followup.json verified-followup.json "$published"
+          )
+          cleanup_failed=0
+          failed_targets=()
+          for target in "${cleanup_targets[@]}"; do
+            if test -e "$target" || test -L "$target"; then
+              if ! rm -rf -- "$target" || test -e "$target" || test -L "$target"; then
+                cleanup_failed=1
+                failed_targets+=("$target")
+              fi
+            fi
+          done
+          if test "$cleanup_failed" = 1; then
+            if test "$state" = CLEANUP_PENDING; then
+              echo 'Existing durable CLEANUP_PENDING receipt retained after repeat cleanup failure.' >&2
+              exit 1
+            fi
+            pending_args=()
+            for failed in "${failed_targets[@]}"; do pending_args+=(--failed-target "$failed"); done
+            python3 scripts/reconcile_existing_release.py cleanup-pending-evidence \
+              --version "$VERSION" --original-run-id "$ORIGINAL_RUN_ID" \
+              --controller-source "$GITHUB_SHA" --reconciliation-run-id "$GITHUB_RUN_ID" \
+              --source-revision "$PRODUCT_SOURCE_SHA" --release-json verified-release.json \
+              "${pending_args[@]}" > cleanup-pending.json
+            python3 scripts/release_operation.py \
+              --mark-cleanup-pending --evidence-root "$evidence_root" --operation-id "$operation" \
+              --version "$VERSION" --policy-revision forge-bootstrap-release-cadence-v2 \
+              --source-revision "$PRODUCT_SOURCE_SHA" --wheel-digest "$wheel_digest" \
+              --sdist-digest "$sdist_digest" --evidence-file cleanup-pending.json > /dev/null
+            cp "$evidence_root/operations/$operation.json" "$pending"
+            pending_readback="$(mktemp -d "$RUNNER_TEMP/forge-pending-readback-XXXXXX")"
+            if ! GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$pending" --dir "$pending_readback"; then
+              GH_TOKEN="$forge_gh_token" gh release upload "$tag" "$pending" --repo "$GITHUB_REPOSITORY"
+              GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+                --pattern "$pending" --dir "$pending_readback"
+            fi
+            cmp "$pending" "$pending_readback/$pending"
+            rm -rf -- "$pending_readback"
+            exit 1
+          fi
+
+          python3 scripts/reconcile_existing_release.py completion-evidence \
+            --version "$VERSION" --original-run-id "$ORIGINAL_RUN_ID" \
+            --controller-source "$GITHUB_SHA" --reconciliation-run-id "$GITHUB_RUN_ID" \
+            --source-revision "$PRODUCT_SOURCE_SHA" --release-json verified-release.json \
+            > completion.json
+          python3 scripts/release_operation.py \
+            --complete --evidence-root "$evidence_root" --operation-id "$operation" \
+            --version "$VERSION" --policy-revision forge-bootstrap-release-cadence-v2 \
+            --source-revision "$PRODUCT_SOURCE_SHA" --wheel-digest "$wheel_digest" \
+            --sdist-digest "$sdist_digest" --evidence-file completion.json > complete-operation.json
+          cp "$evidence_root/operations/$operation.json" "$complete"
+          complete_readback="$(mktemp -d "$RUNNER_TEMP/forge-complete-readback-XXXXXX")"
+          if ! GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$complete" --dir "$complete_readback"; then
+            GH_TOKEN="$forge_gh_token" gh release upload "$tag" "$complete" --repo "$GITHUB_REPOSITORY"
+            GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$complete" --dir "$complete_readback"
+          fi
+          cmp "$complete" "$complete_readback/$complete"
+          rm -rf -- "$complete_readback"
+
+          GH_TOKEN="$forge_gh_token" gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+            --json apiUrl,assets,createdAt,databaseId,id,isDraft,isImmutable,isPrerelease,tagName,targetCommitish,url \
+            > final-release.json
+          python3 scripts/reconcile_existing_release.py same-release \
+            --expected-release-json verified-release.json --current-release-json final-release.json \
+            --version "$VERSION" --source-revision "$PRODUCT_SOURCE_SHA" > /dev/null
+          final_assets="$(mktemp -d "$RUNNER_TEMP/forge-final-assets-XXXXXX")"
+          GH_TOKEN="$forge_gh_token" gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$final_assets"
+          python3 scripts/reconcile_existing_release.py validate-assets \
+            --release-json final-release.json --asset-root "$final_assets" \
+            --version "$VERSION" --source-revision "$PRODUCT_SOURCE_SHA" > /dev/null
+          final_followup_args=(--published "$final_assets/$published")
+          test ! -f "$final_assets/$pending" || final_followup_args+=(--pending "$final_assets/$pending")
+          final_followup_args+=(--complete "$final_assets/$complete")
+          python3 scripts/reconcile_existing_release.py validate-followup \
+            "${final_followup_args[@]}" --original-run-id "$ORIGINAL_RUN_ID" \
+            --release-json final-release.json > final-followup.json
+          verify_controller_runs final-followup.json
+          test "$(python3 -c 'import json; print(json.load(open("final-followup.json"))["state"])')" = RELEASE_COMPLETE
+          test "$(python3 -c 'import json; print(str(json.load(open("final-release.json"))["isDraft"]).lower())')" = false
+          verify_tag_state final-release.json
+          rm -rf -- "$final_assets"
+          test ! -e "$final_assets" && test ! -L "$final_assets"
