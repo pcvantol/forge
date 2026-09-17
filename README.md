@@ -106,6 +106,16 @@ The exact instance-ID comparison is consistency evidence, not a newly invented
 cryptographic peer identity; preflight reports the latter as `NOT_ASSERTED`.
 `CONFIGURED` is therefore never presented as `LIVE_READY`.
 
+## Bounded installed maintenance
+
+The product-owned external controller for the selected Forge 2.7.21 to 2.7.22
+installation transition is documented in the
+[installed update runbook](docs/operations/FORGE_INSTALLED_UPDATE_RUNBOOK.md).
+It stages an exact qualified wheel, backs up and migrates the selected runtime,
+and atomically activates a versioned slot. It is not packaged as a Forge
+Runtime command and does not replace Forge Platform's normal installer/update
+composition boundary.
+
 ## Operational-history reset
 
 Forge schema 38 provides a bounded, product-owned maintenance service under
