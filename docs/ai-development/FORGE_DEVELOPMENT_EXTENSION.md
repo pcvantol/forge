@@ -15,6 +15,13 @@ the [Bootstrap Roadmap](../../knowledge/bootstrap/10_ROADMAP.md), current
 handoffs and commits are retained as Forge historical evidence; they are not
 alternate generic contract authorities.
 
+For high-level scope and work-selection orientation, use the
+[roadmap overview and autonomy-first focus](../roadmap/ROADMAP_OVERVIEW_AND_AUTONOMY_FOCUS.md).
+It preserves the dated four-product analysis and its explicit counting limits;
+it is not a replacement roadmap, a current peer audit or permission to start
+work. Prefer the smallest qualified path toward Forge-owned governed execution
+without promoting the whole product horizon to a prerequisite.
+
 ## Forge product and governance authority
 
 Forge owns its architecture, Vision/Roadmap/Backlog and increment planning,

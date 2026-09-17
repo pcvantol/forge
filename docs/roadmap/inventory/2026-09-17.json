@@ -1,0 +1,253 @@
+{
+  "schema_version": "roadmap-inventory.compact/v1",
+  "document_kind": "ANALYTICAL_SNAPSHOT",
+  "execution_authority": false,
+  "representation_note": "Deduplicated representation of the supplied inventory, not a recount or new backlog. Expand group metadata per ID; original_order restores item ordering. Source URL = https://github.com/{repository}/blob/{source_pins[repository basename]}/{path}. Legacy chat citation refs are retained only for lossless provenance; pinned repository URLs are the usable sources.",
+  "source_artifact_sha256": {
+    "roadmap_inventory.md": "322b6fa36fd0d3a45dfd008578d45f8bf7dff758205e244b2d090bec8302f099",
+    "roadmap_inventory.json": "ede614667cbe919b5f447cfadf0f9a3c25913354095734ec257da424d1e6d8b2"
+  },
+  "title": "Roadmapinventaris — uitgewerkte Forge/EP/Workspace/Forge Platform-deellijnen",
+  "source_date": "2026-09-17",
+  "read_only": true,
+  "source_pins": {
+    "engineering-platform": "1cd72ff83b2da4d3fb8bec840975db326589c049",
+    "workspace": "5ecd418bc9cdc983791bf35c07457ffdb2ad1166",
+    "forge-platform": "88b256b274fb20487b7c0cce05ccd5a58a4516f1",
+    "forge": "b46aac196f64d018ae75f0d3492c841df9985ceb"
+  },
+  "summary": {
+    "raw_named_records_in_selected_scoped_inventory": 194,
+    "rollup_planning_units": 165,
+    "collapsed_overlap_records": 29,
+    "exclusive_units_by_repository": {
+      "forge": 66,
+      "engineering-platform": 40,
+      "workspace": 36,
+      "forge-platform": 16
+    },
+    "shared_unique_units": 7,
+    "units_by_participating_owner_not_additive": {
+      "forge": 73,
+      "engineering-platform": 47,
+      "workspace": 36,
+      "forge-platform": 17
+    },
+    "participating_owner_total_not_unique": 173,
+    "candidate_kickoff_families_by_repository": {
+      "engineering-platform": 9,
+      "workspace": 9,
+      "forge-platform": 4,
+      "forge": 12
+    },
+    "candidate_kickoff_families_total": 34
+  },
+  "counting_rules": [
+    "Dit is een read-only, brongebonden inventaris van expliciet uitgewerkte deelroadmaps, geen canoniek nieuw backlogbestand.",
+    "De rollup van 165 is een expliciet analytisch telmodel. Vooral Console- en installerlagen hebben geen volledig één-op-één uitwisselbare scope; 165 is daarom geen wiskundig minimum aan uitvoerbare Missions of prompts.",
+    "De 194 ruwe records zijn unieke benoemde werkpakket-/node-identiteiten binnen de geselecteerde scoped inventaris, niet alle koppen/bullets of alle repositoriesamenhangende labels.",
+    "Status is overgenomen uit de roadmap. Er is geen code-voor-code heraudit van werkelijk resterend werk uitgevoerd; PLANNED kan deels al geleverd werk bevatten.",
+    "Bredere strategische/post-MVP-doelen zonder vergelijkbare concrete decomposition vallen niet numeriek in deze telling: bijvoorbeeld general Agent/fleet-productisering, uitgebreid platform lifecycle-/OS-bereik en verdere Knowledge/learning-/forecastingproducten.",
+    "Historische release-/repairwaarnemingen, Foundation, afgesloten documentatiewerk, testscenario’s, bewijsvoorwaarden, dependency-only peerreferenties en herhaalde hoofd-mijlpalen zijn niet als nieuwe werkpakketten geteld.",
+    "Lopend niet-gemergd resetwerk, toekomstige reviewfixes, scopegroei en herstelpogingen zijn niet als afgerond of als nieuwe uitgewerkte hoofdroadmapnode toegevoegd.",
+    "De 34 families zijn een mogelijke bundelindeling, geen bewijs dat 34 prompts het werk kunnen afronden, geen werkelijk goedgekeurde Missions en geen minimum."
+  ],
+  "family_counts": {
+    "engineering-platform": {
+      "Subagent-efficiëntie en assurance": 9,
+      "Taak-/rol-/modelbeleid": 7,
+      "Adaptive execution envelope": 3,
+      "HTTP/ingressconformiteit": 3,
+      "Genesis/Managed-projectbootstrap": 7,
+      "Parallelle Actions": 6,
+      "Governed progression": 1,
+      "Policy en releasebeheer": 2,
+      "Projecthygiëne": 2
+    },
+    "workspace": {
+      "HTTP/API en CLI": 6,
+      "PyPI/distributie": 5,
+      "Business/Architect/UX-conversaties": 4,
+      "Adaptive Action Sizing": 2,
+      "Projectloop en roadmapbeheer": 6,
+      "Genesis/Managed-projectbootstrap": 6,
+      "Governed progression": 2,
+      "Policy en releasebeheer": 2,
+      "Projecthygiëne": 3
+    },
+    "forge-platform": {
+      "Installer: clean-install plus UX/release": 13,
+      "Governed progression": 1,
+      "Policy en releasebeheer": 1,
+      "Projecthygiëne": 1
+    },
+    "forge": {
+      "Console, hosting en data-administratie": 8,
+      "HTTP/API en CLI": 5,
+      "Inner-loop CI": 7,
+      "Outer-loop CI": 5,
+      "Adaptive Action Sizing": 6,
+      "Projectloop en roadmapbeheer": 9,
+      "Business/Architect/UX-conversaties": 5,
+      "Genesis/Managed-projectbootstrap": 9,
+      "Parallelle Actions": 7,
+      "Governed progression": 1,
+      "Policy en releasebeheer": 2,
+      "Projecthygiëne": 2
+    }
+  },
+  "defaults": {
+    "documentary_status": "PLANNED",
+    "counted_in_rollup": true,
+    "normalization_reason": null,
+    "rolled_up_into": []
+  },
+  "sources": {
+    "S01": {"repository": "pcvantol/forge", "path": "docs/roadmap/forge-operations-console-v1.json", "legacy_chat_citation_ref": "turn420file0"},
+    "S02": {"repository": "pcvantol/forge", "path": "docs/roadmap/forge-http-api-v1.json", "legacy_chat_citation_ref": "turn421file0"},
+    "S03": {"repository": "pcvantol/forge", "path": "docs/roadmap/forge-inner-loop-ci-v1.json", "legacy_chat_citation_ref": "turn422file0"},
+    "S04": {"repository": "pcvantol/forge", "path": "docs/roadmap/forge-outer-loop-ci-v1.json", "legacy_chat_citation_ref": "turn423file0"},
+    "S05": {"repository": "pcvantol/forge", "path": "docs/roadmap/adaptive-action-sizing-v1.json", "legacy_chat_citation_ref": "turn426file0"},
+    "S06": {"repository": "pcvantol/forge", "path": "docs/roadmap/live-project-roadmap-management-v1.json", "legacy_chat_citation_ref": "turn427file0"},
+    "S07": {"repository": "pcvantol/forge", "path": "docs/roadmap/role-aware-conversations-v1.json", "legacy_chat_citation_ref": "turn429file0"},
+    "S08": {"repository": "pcvantol/forge", "path": "docs/roadmap/project-bootstrap-v1.json", "legacy_chat_citation_ref": "turn453file0"},
+    "S09": {"repository": "pcvantol/forge", "path": "docs/roadmap/parallel-action-runtime-v1.json", "legacy_chat_citation_ref": "turn454file0"},
+    "S10": {"repository": "pcvantol/forge", "path": "docs/roadmap/governed-progression-v1.json", "legacy_chat_citation_ref": "turn424file0"},
+    "S11": {"repository": "pcvantol/forge", "path": "docs/roadmap/policy-governance-v1.json", "legacy_chat_citation_ref": "turn425file0"},
+    "S12": {"repository": "pcvantol/forge", "path": "docs/roadmap/project-hygiene-v1.json", "legacy_chat_citation_ref": "turn428file0"},
+    "S13": {"repository": "pcvantol/forge", "path": "docs/roadmap/forge-console-admin-parity-v1.json", "legacy_chat_citation_ref": "turn419file0"},
+    "S14": {"repository": "pcvantol/forge", "path": "docs/roadmap/forge-console-hosting-v1.json", "legacy_chat_citation_ref": "turn418file0"},
+    "S15": {"repository": "pcvantol/engineering-platform", "path": "docs/development/SUBAGENT_ORCHESTRATION_V1_DAG.json", "legacy_chat_citation_ref": "turn445file0"},
+    "S16": {"repository": "pcvantol/engineering-platform", "path": "docs/development/ROLE_TASK_MODEL_POLICY_V1_DAG.json", "legacy_chat_citation_ref": "turn446file0"},
+    "S17": {"repository": "pcvantol/engineering-platform", "path": "docs/development/action-execution-envelope-v1.json", "legacy_chat_citation_ref": "turn447file0"},
+    "S18": {"repository": "pcvantol/engineering-platform", "path": "docs/development/HTTP_TRANSPORT_BOUNDARIES_V1_DAG.json", "legacy_chat_citation_ref": "turn448file0"},
+    "S19": {"repository": "pcvantol/engineering-platform", "path": "docs/development/PROJECT_BOOTSTRAP_V1_DAG.json", "legacy_chat_citation_ref": "turn455file0"},
+    "S20": {"repository": "pcvantol/engineering-platform", "path": "docs/development/PARALLEL_ACTION_EXECUTION_V1_DAG.json", "legacy_chat_citation_ref": "turn456file0"},
+    "S21": {"repository": "pcvantol/engineering-platform", "path": "docs/development/GOVERNED_PROGRESSION_V1_ROADMAP.md", "legacy_chat_citation_ref": "turn451file0"},
+    "S22": {"repository": "pcvantol/engineering-platform", "path": "docs/development/POLICY_GOVERNANCE_V1_ROADMAP.md", "legacy_chat_citation_ref": "turn452file0"},
+    "S23": {"repository": "pcvantol/workspace", "path": "docs/WORKSPACE_HTTP_API_V1_DAG.json", "legacy_chat_citation_ref": "turn436file0"},
+    "S24": {"repository": "pcvantol/workspace", "path": "docs/WORKSPACE_PYPI_DISTRIBUTION_V1_DAG.json", "legacy_chat_citation_ref": "turn437file0"},
+    "S25": {"repository": "pcvantol/workspace", "path": "docs/ROLE_AWARE_CONVERSATIONS_V1_DAG.json", "legacy_chat_citation_ref": "turn438file0"},
+    "S26": {"repository": "pcvantol/workspace", "path": "docs/adaptive-action-sizing-v1.json", "legacy_chat_citation_ref": "turn439file0"},
+    "S27": {"repository": "pcvantol/workspace", "path": "docs/LIVE_PROJECT_ROADMAP_MANAGEMENT_V1_DAG.json", "legacy_chat_citation_ref": "turn435file0"},
+    "S28": {"repository": "pcvantol/workspace", "path": "docs/PROJECT_BOOTSTRAP_V1_DAG.json", "legacy_chat_citation_ref": "turn459file0"},
+    "S29": {"repository": "pcvantol/forge-platform", "path": "docs/roadmap/EP_SERVER_CLEAN_INSTALL_V1.md", "legacy_chat_citation_ref": "turn443file0"},
+    "S30": {"repository": "pcvantol/forge-platform", "path": "docs/roadmap/installer-ux-release-v1.json", "legacy_chat_citation_ref": "turn444file0"},
+    "S31": {"repository": "pcvantol/forge-platform", "path": "docs/roadmap/GOVERNED_PROGRESSION_V1.md", "legacy_chat_citation_ref": "turn458file0"}
+  },
+  "normalization_rules": {
+    "N01": {
+      "reason": "De bron koppelt deze configuration_work_packages via delivered_by aan de FOC-deliverynodes. In dit telmodel als inhoudelijke uitwerking meegenomen, niet nogmaals als extra onafhankelijke uitvoering geteld.",
+      "rolled_up_into": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-2",
+        "FOC-3",
+        "FOC-4",
+        "FOC-5",
+        "FOC-6",
+        "FOC-Q"
+      ]
+    },
+    "N02": {
+      "reason": "Werkpakketten met expliciete delivered_by-verwijzingen naar FOC; meegeteld in de bovenliggende Console-deliverylaag. Dit bewijst niet dat acht prompts de hele Console kunnen leveren.",
+      "rolled_up_into": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-2",
+        "FOC-3",
+        "FOC-4",
+        "FOC-5",
+        "FOC-6",
+        "FOC-Q"
+      ]
+    },
+    "N03": {
+      "reason": "Hostingwerkpakketten zijn via delivered_by aan FOC gekoppeld. Niet als extra onafhankelijke tel-eenheid toegevoegd. Server-only uitvoering kan wel als eigen praktische Mission worden gekozen.",
+      "rolled_up_into": [
+        "FOC-0",
+        "FOC-1",
+        "FOC-2",
+        "FOC-3",
+        "FOC-4",
+        "FOC-5",
+        "FOC-6",
+        "FOC-Q"
+      ]
+    },
+    "N04": {
+      "reason": "Expliciet gedecomponeerd door de zeven RMP-nodes; parent_node=SA-ROLE en completion_requires=RMP-Q. Parent niet extra boven de uitwerking geteld.",
+      "rolled_up_into": [
+        "RMP-CONTRACT",
+        "RMP-CATALOG",
+        "RMP-RESOLVE",
+        "RMP-DISPATCH",
+        "RMP-EVIDENCE",
+        "RMP-CONSOLE",
+        "RMP-Q"
+      ]
+    },
+    "N05": {
+      "reason": "Analytische bundeling: IUR noemt FP-EP-CI-6/7/Q als parent_lanes. In dit rollupmodel niet boven de IUR-uitwerking opgeteld. De bron geeft geen sluitende één-op-één equivalentiemapping; dit is dus een planningsconventie, geen bewezen uitwisselbaarheid of volledig onafhankelijke leaf count.",
+      "rolled_up_into": [
+        "IUR-CONTRACT",
+        "IUR-WIZARD",
+        "IUR-READONLY",
+        "IUR-UX-Q",
+        "IUR-COVERAGE",
+        "IUR-RUNNER",
+        "IUR-RELEASE",
+        "IUR-INSTALL-Q"
+      ]
+    }
+  },
+  "groups": [
+    {"owners": ["forge"], "family": "Console, hosting en data-administratie", "source": "S01", "ids": ["FOC-0", "FOC-1", "FOC-2", "FOC-3", "FOC-4", "FOC-5", "FOC-6", "FOC-Q"]},
+    {"owners": ["forge"], "family": "HTTP/API en CLI", "source": "S02", "ids": ["FH-CONTRACT", "FH-SERVICES", "FH-HTTP", "FH-CLI", "FH-Q"]},
+    {"owners": ["forge"], "family": "Inner-loop CI", "source": "S03", "ids": ["FCI-CONTRACT", "FCI-HARNESS", "FCI-EP", "FCI-FLOW", "FCI-RESTART", "FCI-NEGATIVE", "FCI-CI"]},
+    {"owners": ["forge"], "family": "Outer-loop CI", "source": "S04", "ids": ["FCO-CONTRACT", "FCO-FLOW", "FCO-RESTART", "FCO-NEGATIVE", "FCO-CI"]},
+    {"owners": ["forge"], "family": "Adaptive Action Sizing", "source": "S05", "ids": ["AS-F-CONTRACT", "AS-F-POLICY", "AS-F-PLAN", "AS-F-BIND", "AS-F-FEEDBACK", "AS-F-Q"]},
+    {"owners": ["forge"], "family": "Projectloop en roadmapbeheer", "source": "S06", "ids": ["PRM-F-CONTRACT", "PRM-F-PROJECTION", "PRM-F-ELIGIBILITY", "PRM-F-ACTIVATION", "PRM-F-CHANGES", "PRM-F-PRIORITY", "PRM-F-REPOSITORY", "PRM-F-DELEGATION", "PRM-F-Q"]},
+    {"owners": ["forge"], "family": "Business/Architect/UX-conversaties", "source": "S07", "ids": ["RC-FC", "RC-FS", "RC-FA", "RC-FP", "RC-FQ"]},
+    {"owners": ["forge"], "family": "Genesis/Managed-projectbootstrap", "source": "S08", "ids": ["PB-F0", "PB-F1", "PB-F2", "PB-F3", "PB-F4", "PB-F5", "PB-F6", "PB-F7", "PB-FQ"]},
+    {"owners": ["forge"], "family": "Parallelle Actions", "source": "S09", "ids": ["PA-F0", "PA-F1", "PA-F2", "PA-F3", "PA-F4", "PA-F5", "PA-FQ"]},
+    {"owners": ["forge"], "family": "Governed progression", "source": "S10", "ids": ["GP-F"]},
+    {"owners": ["forge"], "family": "Policy en releasebeheer", "source": "S11", "ids": ["POL-F", "VR-F"]},
+    {"owners": ["forge"], "family": "Projecthygiëne", "source": "S12", "ids": ["HY-F", "HY-S"]},
+    {"owners": ["forge"], "family": "Console-detailuitwerking", "source": "S01", "ids": ["FC-CODEX", "FC-PYTHON", "FC-STATE", "FC-EXPORT", "FC-IMPORT", "FC-RELOCATE", "FC-VACUUM", "FC-REFRESH", "FC-TIMEOUT"], "counted_in_rollup": false, "normalization_rule": "N01"},
+    {"owners": ["forge"], "family": "Console-detailuitwerking", "source": "S13", "ids": ["FCP-GITHUB", "FCP-DESIGN", "FCP-I18N", "FCP-LOG-CONTRACT", "FCP-LOG-UX", "FCP-PAIR-CONTRACT", "FCP-PAIR-UX", "FCP-CI", "FCP-Q"], "counted_in_rollup": false, "normalization_rule": "N02"},
+    {"owners": ["forge"], "family": "Console-detailuitwerking", "source": "S14", "ids": ["FSH-CENTRAL", "FSH-COMPONENTS", "FSH-SERVICES", "FSH-RELAY", "FSH-DETAILS", "FSH-RESTART", "FSH-Q"], "counted_in_rollup": false, "normalization_rule": "N03"},
+    {"owners": ["engineering-platform"], "family": "Subagent-efficiëntie en assurance", "source": "S15", "ids": ["SA-CTX", "SA-ISO", "SA-OBS", "SA-VAL", "SA-PUB", "SA-SEL", "SA-LOOP", "SA-PAR", "SA-Q"]},
+    {"owners": ["engineering-platform"], "family": "Taak-/rol-/modelbeleid", "source": "S16", "ids": ["RMP-CONTRACT", "RMP-CATALOG", "RMP-RESOLVE", "RMP-DISPATCH", "RMP-EVIDENCE", "RMP-CONSOLE", "RMP-Q"]},
+    {"owners": ["engineering-platform"], "family": "Subagent-detailuitwerking", "source": "S15", "ids": ["SA-ROLE"], "counted_in_rollup": false, "normalization_rule": "N04"},
+    {"owners": ["engineering-platform"], "family": "Adaptive execution envelope", "source": "S17", "ids": ["AS-E-OFFER", "AS-E-FIT", "AS-E-Q"]},
+    {"owners": ["engineering-platform"], "family": "HTTP/ingressconformiteit", "source": "S18", "ids": ["EH-CONTRACT", "EH-CONFORMANCE", "EH-Q"]},
+    {"owners": ["engineering-platform"], "family": "Genesis/Managed-projectbootstrap", "source": "S19", "ids": ["PB-E0", "PB-E1", "PB-E2", "PB-E3", "PB-E4", "PB-E5", "PB-EQ"]},
+    {"owners": ["engineering-platform"], "family": "Parallelle Actions", "source": "S20", "ids": ["PA-E0", "PA-E1", "PA-E2", "PA-E3", "PA-E4", "PA-EQ"]},
+    {"owners": ["engineering-platform"], "family": "Governed progression", "source": "S21", "ids": ["GP-E"]},
+    {"owners": ["engineering-platform"], "family": "Policy en releasebeheer", "source": "S22", "ids": ["POL-E", "VR-X"]},
+    {"owners": ["engineering-platform"], "family": "Projecthygiëne", "source": "S12", "ids": ["HY-E", "HY-C"]},
+    {"owners": ["workspace"], "family": "HTTP/API en CLI", "source": "S23", "ids": ["WH-CONTRACT", "WH-SERVICES", "WH-HTTP", "WH-CLI", "WH-PEERS", "WH-Q"]},
+    {"owners": ["workspace"], "family": "PyPI/distributie", "source": "S24", "ids": ["WPK-IDENTITY", "WPK-PACKAGE", "WPK-PUBLISH", "WPK-READBACK", "WPK-CONSUMER"]},
+    {"owners": ["workspace"], "family": "Business/Architect/UX-conversaties", "source": "S25", "ids": ["RC-WC", "RC-WS", "RC-WP", "RC-WQ"]},
+    {"owners": ["workspace"], "family": "Adaptive Action Sizing", "source": "S26", "ids": ["AS-W-POLICY", "AS-W-Q"]},
+    {"owners": ["workspace"], "family": "Projectloop en roadmapbeheer", "source": "S27", "ids": ["PRM-W-CONTRACT", "PRM-W-VIEW", "PRM-W-MANAGE", "PRM-W-DECISIONS", "PRM-W-SYNC", "PRM-W-Q"]},
+    {"owners": ["workspace"], "family": "Genesis/Managed-projectbootstrap", "source": "S28", "ids": ["PB-W0", "PB-W1", "PB-W2", "PB-W3", "PB-W4", "PB-WQ"]},
+    {"owners": ["workspace"], "family": "Governed progression", "source": "S10", "ids": ["GP-WC", "GP-W"]},
+    {"owners": ["workspace"], "family": "Policy en releasebeheer", "source": "S11", "ids": ["POL-WC", "POL-W"]},
+    {"owners": ["workspace"], "family": "Projecthygiëne", "source": "S12", "ids": ["HY-WC", "HY-WO", "HY-WM"]},
+    {"owners": ["forge-platform"], "family": "Installer: clean-install plus UX/release", "source": "S29", "ids": ["FP-EP-CI-1"], "documentary_status": "BLOCKED_PENDING_AUTHORITY_SELECTION / PARKED_LANE"},
+    {"owners": ["forge-platform"], "family": "Installer: clean-install plus UX/release", "source": "S29", "ids": ["FP-EP-CI-2", "FP-EP-CI-3", "FP-EP-CI-4", "FP-EP-CI-5"], "documentary_status": "PLANNED / PARKED_LANE"},
+    {"owners": ["forge-platform"], "family": "Installer: clean-install plus UX/release", "source": "S30", "ids": ["IUR-CONTRACT", "IUR-WIZARD", "IUR-READONLY", "IUR-UX-Q", "IUR-COVERAGE", "IUR-RUNNER", "IUR-RELEASE", "IUR-INSTALL-Q"]},
+    {"owners": ["forge-platform"], "family": "Installer-ouderlaag", "source": "S29", "ids": ["FP-EP-CI-6", "FP-EP-CI-Q"], "documentary_status": "PLANNED / PARKED_LANE", "counted_in_rollup": false, "normalization_rule": "N05"},
+    {"owners": ["forge-platform"], "family": "Installer-ouderlaag", "source": "S29", "ids": ["FP-EP-CI-7"], "documentary_status": "BLOCKED_PENDING_PROTECTED_RELEASE_AUTHORITY / PARKED_LANE", "counted_in_rollup": false, "normalization_rule": "N05"},
+    {"owners": ["forge-platform"], "family": "Governed progression", "source": "S31", "ids": ["GP-P"]},
+    {"owners": ["forge-platform"], "family": "Policy en releasebeheer", "source": "S11", "ids": ["POL-P"]},
+    {"owners": ["forge-platform"], "family": "Projecthygiëne", "source": "S12", "ids": ["HY-P"]},
+    {"owners": ["forge", "engineering-platform", "forge-platform"], "family": "Gedeeld: governed progression", "source": "S10", "ids": ["GP-DC"]},
+    {"owners": ["forge", "engineering-platform"], "family": "Gedeeld: governed progression", "source": "S10", "ids": ["GP-Q", "GP-X"]},
+    {"owners": ["forge", "engineering-platform"], "family": "Gedeeld: policy en release", "source": "S11", "ids": ["POL-B", "POL-Q", "VR-Q"]},
+    {"owners": ["forge", "engineering-platform"], "family": "Gedeeld: projecthygiëne", "source": "S12", "ids": ["HY-Q"]}
+  ],
+  "original_order": ["FOC-0", "FOC-1", "FOC-2", "FOC-3", "FOC-4", "FOC-5", "FOC-6", "FOC-Q", "FH-CONTRACT", "FH-SERVICES", "FH-HTTP", "FH-CLI", "FH-Q", "FCI-CONTRACT", "FCI-HARNESS", "FCI-EP", "FCI-FLOW", "FCI-RESTART", "FCI-NEGATIVE", "FCI-CI", "FCO-CONTRACT", "FCO-FLOW", "FCO-RESTART", "FCO-NEGATIVE", "FCO-CI", "AS-F-CONTRACT", "AS-F-POLICY", "AS-F-PLAN", "AS-F-BIND", "AS-F-FEEDBACK", "AS-F-Q", "PRM-F-CONTRACT", "PRM-F-PROJECTION", "PRM-F-ELIGIBILITY", "PRM-F-ACTIVATION", "PRM-F-CHANGES", "PRM-F-PRIORITY", "PRM-F-REPOSITORY", "PRM-F-DELEGATION", "PRM-F-Q", "RC-FC", "RC-FS", "RC-FA", "RC-FP", "RC-FQ", "PB-F0", "PB-F1", "PB-F2", "PB-F3", "PB-F4", "PB-F5", "PB-F6", "PB-F7", "PB-FQ", "PA-F0", "PA-F1", "PA-F2", "PA-F3", "PA-F4", "PA-F5", "PA-FQ", "GP-F", "POL-F", "VR-F", "HY-F", "HY-S", "FC-CODEX", "FC-PYTHON", "FC-STATE", "FC-EXPORT", "FC-IMPORT", "FC-RELOCATE", "FC-VACUUM", "FC-REFRESH", "FC-TIMEOUT", "FCP-GITHUB", "FCP-DESIGN", "FCP-I18N", "FCP-LOG-CONTRACT", "FCP-LOG-UX", "FCP-PAIR-CONTRACT", "FCP-PAIR-UX", "FCP-CI", "FCP-Q", "FSH-CENTRAL", "FSH-COMPONENTS", "FSH-SERVICES", "FSH-RELAY", "FSH-DETAILS", "FSH-RESTART", "FSH-Q", "SA-CTX", "SA-ISO", "SA-OBS", "SA-VAL", "SA-PUB", "SA-SEL", "SA-LOOP", "SA-PAR", "SA-Q", "RMP-CONTRACT", "RMP-CATALOG", "RMP-RESOLVE", "RMP-DISPATCH", "RMP-EVIDENCE", "RMP-CONSOLE", "RMP-Q", "SA-ROLE", "AS-E-OFFER", "AS-E-FIT", "AS-E-Q", "EH-CONTRACT", "EH-CONFORMANCE", "EH-Q", "PB-E0", "PB-E1", "PB-E2", "PB-E3", "PB-E4", "PB-E5", "PB-EQ", "PA-E0", "PA-E1", "PA-E2", "PA-E3", "PA-E4", "PA-EQ", "GP-E", "POL-E", "VR-X", "HY-E", "HY-C", "WH-CONTRACT", "WH-SERVICES", "WH-HTTP", "WH-CLI", "WH-PEERS", "WH-Q", "WPK-IDENTITY", "WPK-PACKAGE", "WPK-PUBLISH", "WPK-READBACK", "WPK-CONSUMER", "RC-WC", "RC-WS", "RC-WP", "RC-WQ", "AS-W-POLICY", "AS-W-Q", "PRM-W-CONTRACT", "PRM-W-VIEW", "PRM-W-MANAGE", "PRM-W-DECISIONS", "PRM-W-SYNC", "PRM-W-Q", "PB-W0", "PB-W1", "PB-W2", "PB-W3", "PB-W4", "PB-WQ", "GP-WC", "GP-W", "POL-WC", "POL-W", "HY-WC", "HY-WO", "HY-WM", "FP-EP-CI-1", "FP-EP-CI-2", "FP-EP-CI-3", "FP-EP-CI-4", "FP-EP-CI-5", "IUR-CONTRACT", "IUR-WIZARD", "IUR-READONLY", "IUR-UX-Q", "IUR-COVERAGE", "IUR-RUNNER", "IUR-RELEASE", "IUR-INSTALL-Q", "FP-EP-CI-6", "FP-EP-CI-7", "FP-EP-CI-Q", "GP-P", "POL-P", "HY-P", "GP-DC", "GP-Q", "GP-X", "POL-B", "POL-Q", "VR-Q", "HY-Q"]
+}
