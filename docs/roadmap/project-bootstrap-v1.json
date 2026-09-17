@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "increment": "PROJECT_BOOTSTRAP_AND_ARTIFACT_MANIFEST_V1",
+  "owner": "forge",
+  "authority": "DOCUMENTARY_DERIVED",
+  "executable": false,
+  "version_decision": "NO_BUMP",
+  "parent_lanes": ["L1", "L1-R", "F2"],
+  "architecture": "docs/architecture/PROJECT_BOOTSTRAP_AND_ARTIFACT_MANIFEST_V1.md",
+  "qualification": "docs/architecture/PROJECT_BOOTSTRAP_QUALIFICATION_V1.md",
+  "current_mission_3_dependency": false,
+  "nodes": [
+    {"id":"PB-F0","status":"PLANNED","depends_on":[],"deliverable":"Versioned identity, manifest and operation contract mapping"},
+    {"id":"PB-F1","status":"PLANNED","depends_on":["PB-F0"],"deliverable":"Installed baseline bundle, deterministic renderer and project contract"},
+    {"id":"PB-F2","status":"PLANNED","depends_on":["PB-F0","PB-F1"],"deliverable":"Immutable preview, adoption mapping and governed plan"},
+    {"id":"PB-F3","status":"PLANNED","depends_on":["PB-F2"],"external_evidence":["engineering-platform:PB-E1"],"deliverable":"Existing-runtime HTTP coordinator and recovery"},
+    {"id":"PB-F4","status":"PLANNED","depends_on":["PB-F3"],"external_evidence":["engineering-platform:PB-E2"],"deliverable":"Genesis readiness and reconciliation"},
+    {"id":"PB-F5","status":"PLANNED","depends_on":["PB-F3"],"external_evidence":["engineering-platform:PB-E3"],"deliverable":"Managed adoption and governance readiness"},
+    {"id":"PB-F6","status":"PLANNED","depends_on":["PB-F4","PB-F5"],"external_evidence":["engineering-platform:PB-E4"],"deliverable":"History-preserving Managed promotion"},
+    {"id":"PB-F7","status":"PLANNED","depends_on":["PB-F3"],"external_evidence":["forge:FH-SERVICES","forge:FH-HTTP","forge:FH-CLI"],"deliverable":"Qualified shared-service CLI and HTTP adapters"},
+    {"id":"PB-FQ","status":"PLANNED","depends_on":["PB-F1","PB-F2","PB-F3","PB-F4","PB-F5","PB-F6","PB-F7"],"external_evidence":["engineering-platform:PB-EQ"],"deliverable":"Installed Genesis, Managed and promotion qualification"}
+  ]
+}

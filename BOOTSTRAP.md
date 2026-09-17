@@ -1,5 +1,19 @@
 # Forge bootstrap
 
+## Project bootstrap design — Genesis and Managed
+
+For new-project initialization or adoption, read the canonical target
+[Project bootstrap and artifact manifest V1](docs/architecture/PROJECT_BOOTSTRAP_AND_ARTIFACT_MANIFEST_V1.md),
+its [exact conditional artifact inventory](docs/architecture/project-bootstrap-artifact-manifest-v1.json),
+[scoped L1/L1-R roadmap](docs/roadmap/PROJECT_BOOTSTRAP_V1.md),
+[documentary DAG](docs/roadmap/project-bootstrap-v1.json) and
+[qualification catalogue](docs/architecture/PROJECT_BOOTSTRAP_QUALIFICATION_V1.md).
+They specify complete Genesis-local and Managed-remote creation/adoption,
+plus history-preserving promotion; implementation remains PLANNED.
+`forge server init` is still installation storage initialization, not a project
+scaffolder. This design neither starts a Mission nor changes Mission 3, live
+policies, credentials, runtime schemas or package versions.
+
 ## Current pickup checkpoint — 17 September 2026
 
 Implementation PR #128 merged the deterministic aggregate-health timeout-boundary
