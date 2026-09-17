@@ -1,18 +1,19 @@
 # Forge bootstrap
 
-## Current pickup checkpoint — 16 September 2026
+## Current pickup checkpoint — 17 September 2026
 
-Implementation PR #125 merged the deterministic, read-only aggregate-health
-evaluator at `9208cc8ff0f6582a936a861a8c8bfa67f320989b`. The evaluated candidate
-`1d6a6faef5efb0a4aa57aea6bdf251a1a722a872` passed the focused health and
-architecture regressions, the full canonical validation suite, and distinct
-Quality and Security reviews. Start health work with
+Implementation PR #128 merged the deterministic aggregate-health timeout-boundary
+correction at `1726f774cb42894d3d3386e80adee9444c7a7914`. The evaluated candidate
+`dcf1e7a14f54e9c0eac0e0f0f95550b561232987` passed all 16 focused health
+regressions, the 667-test canonical validation suite, and distinct Quality and
+Security reviews. An observation whose age exactly equals its timeout is now
+stale and cannot yield a passing aggregate; the evaluator remains read-only.
+Start health work with
 [`forge/runtime/health.py`](forge/runtime/health.py), its
 [`focused regressions`](tests/test_runtime_health.py), and the
 [`aggregate-health contract`](docs/architecture/FORGE_AGGREGATE_HEALTH_V1.md).
-The separate, non-empty finalization PR #126 is merged at
-`406b1d8cc409916bc7fe321eb705f25bdab39586`; this rolling checkpoint is
-reconciled to that protected delivery.
+The separate, non-empty draft Finalization PR #129 reconciles this rolling
+checkpoint without changing runtime semantics.
 
 This delivery is the local evaluation boundary only. It does not complete the
 planned HTTP/CLI routes, installed Forge Server, OpenAPI/Postman drift gates, or
