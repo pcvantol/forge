@@ -106,6 +106,23 @@ The exact instance-ID comparison is consistency evidence, not a newly invented
 cryptographic peer identity; preflight reports the latter as `NOT_ASSERTED`.
 `CONFIGURED` is therefore never presented as `LIVE_READY`.
 
+## Operational-history reset
+
+Forge schema 38 provides a bounded, product-owned maintenance service under
+`forge server reset`. Start with the strictly read-only installed preview:
+
+```text
+forge --data-root "/path/to/Forge Server" server reset preview
+forge --data-root "/path/to/Forge Server" server reset status
+```
+
+The mutating `prepare`, `apply`, `resume`, `verify`, and `finish` commands are
+documented in the [operator runbook](docs/operations/FORGE_OPERATIONAL_RESET_RUNBOOK.md).
+They preserve instance/peer/provider/security/allocator bindings, use a verified
+SQLite-consistent private backup, fence owning writers durably and reject
+unknown tables/files/symlinks. They do not reset EP, create a Mission, rotate or
+print credentials, or provide arbitrary SQL/table deletion.
+
 ## Deterministic runtime health evaluation
 
 Forge now provides a library-only, read-only health evaluator in

@@ -8,6 +8,14 @@ explicit, guarded data operations; it does not authorize their execution now.
 The [scoped roadmap](../roadmap/FORGE_OPERATIONS_CONSOLE_V1.md) and
 [documentary DAG](../roadmap/forge-operations-console-v1.json) track this work.
 
+> **Bounded delivered slice:** the separate
+> [Forge operational-history reset V1](FORGE_OPERATIONAL_RESET_V1.md) now
+> implements and qualifies the owning local application service/CLI needed for
+> clean-state preparation. This does not implement FC-EXPORT, FC-IMPORT,
+> FC-RELOCATE, FC-VACUUM, the Console/API/daemon or full FC-STATE/FOC-Q. Its
+> protected delivery, release, installation and live preview remain evidence
+> dimensions separate from source implementation.
+
 ## 1. Locality and ownership
 
 ```text

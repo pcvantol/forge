@@ -118,6 +118,15 @@ FOC-Q must qualify all packages, including restart and interrupted data operatio
 stale snapshots, non-portable credentials, unchanged cumulative budgets,
 EP-absent/upgraded two-host layouts, refresh load and truthful timeout enforcement.
 
+### Bounded operational-reset slice
+
+`FORGE_OPERATIONAL_RESET_V1` is implemented as an owning application service
+and thin `forge server reset` CLI, with schema-owned preserve/purge rules,
+durable writer fencing, verified recovery backup and interrupted-operation
+reconciliation. It advances only the reset-specific clean-state preparation
+slice. FC-STATE, FOC-5, FOC-Q and every Console node remain PLANNED until their
+broader evidence is delivered; the reset adds no Console/API prerequisite.
+
 ## EP parity, logging, five languages and discovery/pairing
 
 The [admin-parity contract](../architecture/FORGE_CONSOLE_EP_PARITY_AND_PAIRING_V1.md)
