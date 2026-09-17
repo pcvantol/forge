@@ -77,7 +77,7 @@ service programme:
 | Evidence | Classification | Reconciled meaning |
 | --- | --- | --- |
 | PR #128 merge `1726f774cb42894d3d3386e80adee9444c7a7914` | `MERGED_CANONICAL` | Forge's deterministic, identity-bound, scoped liveness/readiness evaluation now treats the exact timeout boundary as stale and fail-closed. |
-| Draft Finalization PR #129 | `PENDING_PR` | The separate, non-empty Finalization delivery reconciles the aggregate-health handoff and rolling current-state navigation without changing runtime semantics. |
+| Finalization PR #129 merge `49596812cefb41250fab184f35dc2c28571e05e0` | `MERGED_CANONICAL` | The separate, non-empty Finalization delivery reconciles the aggregate-health handoff and rolling current-state navigation without changing runtime semantics. |
 | Candidate `dcf1e7a14f54e9c0eac0e0f0f95550b561232987` validation and distinct Quality/Security review receipts | `FORENSIC` | Candidate-bound execution evidence covers 16 focused health regressions and the 667-test canonical suite; Engineering Platform Prompt History remains immutable and does not become Forge architecture authority. |
 | `FORGE_AGGREGATE_HEALTH_V1` HTTP/CLI, installed-service and full FH qualification nodes | `MERGED_CANONICAL` | Still documented as `PLANNED`; the library evaluator alone does not complete or activate them. |
 | Security review observation about same-zone daylight-saving-fold arithmetic | `FORENSIC` | Non-blocking follow-up evidence. Normalize collector timestamps to UTC and add a fold regression before installed health relies on local-zone timestamps; this observation grants no new work authority. |

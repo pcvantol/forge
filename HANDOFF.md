@@ -12,8 +12,9 @@ an observation at the exact timeout boundary is stale rather than fresh. The
 exact reviewed candidate `dcf1e7a14f54e9c0eac0e0f0f95550b561232987`
 passed all 16 focused health regressions and the 667-test canonical validation,
 with distinct passing Quality and Security reviews. The separate, non-empty
-draft Finalization PR #129 records this mission-related handoff without
-changing runtime or execution semantics.
+Finalization PR #129 is merged at
+`49596812cefb41250fab184f35dc2c28571e05e0`; its documentation delivery records
+this mission-related handoff without changing runtime or execution semantics.
 
 The delivery covers scoped liveness/readiness aggregation, required/optional/
 disabled applicability, fail-closed freshness, identity and check-scope
