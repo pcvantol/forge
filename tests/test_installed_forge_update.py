@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -33,7 +36,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.data_root = self.root / "Forge Server"
         self.runtime_root = self.root / "Forge Server Runtime"
         self.runtime_root.mkdir()
@@ -43,17 +46,63 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.resolver.chmod(0o755)
         self.wheel = self.root / "forge_autonomy-2.7.22-py3-none-any.whl"
         metadata = b"Metadata-Version: 2.4\nName: forge-autonomy\nVersion: 2.7.22\n\n"
+        wheel_metadata = b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n\n"
+        members = {
+            "forge/__init__.py": b"__version__ = '2.7.22'\n",
+            "forge_autonomy-2.7.22.dist-info/METADATA": metadata,
+            "forge_autonomy-2.7.22.dist-info/WHEEL": wheel_metadata,
+        }
+        record_name = "forge_autonomy-2.7.22.dist-info/RECORD"
+        record = "".join(
+            f"{name},sha256={base64.urlsafe_b64encode(sha256(payload).digest()).rstrip(b'=').decode()},{len(payload)}\n"
+            for name, payload in members.items()
+        ) + f"{record_name},,\n"
         with zipfile.ZipFile(self.wheel, "w") as archive:
-            archive.writestr("forge_autonomy-2.7.22.dist-info/METADATA", metadata)
+            for name, payload in members.items():
+                archive.writestr(name, payload)
+            archive.writestr(record_name, record)
         self.wheel_digest = update.file_digest(self.wheel)
+        self.sdist_digest = "sha256:" + "d" * 64
         self.receipt = self.root / "release-complete.json"
         self.receipt.write_text(json.dumps({
             "state": "RELEASE_COMPLETE", "product": "forge", "component": "forge-autonomy",
-            "version": "2.7.22", "source_revision": "a" * 40, "operation_id": "release-1",
-            "artifacts": {"wheel": self.wheel_digest, "sdist": "sha256:" + "d" * 64},
+            "version": "2.7.22", "source_revision": "a" * 40,
+            "operation_id": "forge-release-2.7.22-" + "a" * 40,
+            "policy_revision": "forge-bootstrap-release-cadence-v2",
+            "artifacts": {"wheel": self.wheel_digest, "sdist": self.sdist_digest},
             "qualification": {
                 "exact_main_sha": "a" * 40,
                 "qualification": "forge-production-distribution",
+                "artifact_digests": {
+                    "dist/forge_autonomy-2.7.22-py3-none-any.whl": self.wheel_digest,
+                    "dist/forge_autonomy-2.7.22.tar.gz": self.sdist_digest,
+                },
+            },
+            "publication_receipt": {
+                "product_source_revision": "a" * 40, "readback": "PASS", "registry": "pypi",
+                "original_release_run_conclusion": "failure", "original_release_run_id": "100",
+                "reconciliation_contract": "forge-existing-release-reconciliation/v1",
+                "reconciliation_run_id": "101", "release_controller_source": "b" * 40,
+                "observed_artifact_digests": {
+                    "forge_autonomy-2.7.22-py3-none-any.whl": self.wheel_digest,
+                    "forge_autonomy-2.7.22.tar.gz": self.sdist_digest,
+                },
+                "github_release": {
+                    "api_url": "https://api.github.com/repos/pcvantol/forge/releases/123",
+                    "database_id": 123, "node_id": "release-node", "tag": "forge-v2.7.22",
+                    "target_commitish": "a" * 40,
+                },
+            },
+            "cleanup": {
+                "result": "COMPLETE", "operation_local_cleanup": "COMPLETE",
+                "original_release_run_id": "100", "reconciliation_run_id": "101",
+                "reconciliation_contract": "forge-existing-release-reconciliation/v1",
+                "release_controller_source": "b" * 40,
+                "github_release": {
+                    "api_url": "https://api.github.com/repos/pcvantol/forge/releases/123",
+                    "database_id": 123, "node_id": "release-node", "draft": False,
+                    "target_commitish": "a" * 40, "tag_commit": "a" * 40, "tag": "forge-v2.7.22",
+                },
             },
         }, sort_keys=True), encoding="utf-8")
         self.request = update.UpdateRequest(
@@ -150,11 +199,24 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             self.request, process_reader=lambda: (),
         )
 
+    def _qualified_schema38_copy(self, controller: object, before: dict[str, object]) -> None:
+        copy_root = controller.operation_root / "qualification-copy"
+        (copy_root / "instance").mkdir(parents=True)
+        (copy_root / "instance" / "runtime-instance.json").write_text(
+            self.runtime_id + "\n", encoding="utf-8"
+        )
+        update._copy_sqlite_backup(self.data_root / "forge.db", copy_root / "forge.db")
+        migrated = RuntimeBootstrap(data_root=copy_root, forge_version="2.7.22").open()
+        migrated.close()
+        update.verify_preservation(
+            before, update.database_snapshot(copy_root / "forge.db"), self.request,
+        )
+
     def test_exact_release_complete_artifact_is_accepted_and_mismatch_rejected(self) -> None:
         evidence = update.validate_qualified_artifact(self.request)
         self.assertEqual(evidence["wheel_sha256"], self.wheel_digest)
         changed = update.UpdateRequest(**{**self.request.__dict__, "product_source": "f" * 40})
-        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "does not bind"):
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "noncanonical"):
             update.validate_qualified_artifact(changed)
         self.wheel.write_bytes(b"changed")
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "wheel digest"):
@@ -210,6 +272,81 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 with update.exclusive_lock(lock):
                     pass
 
+    def test_global_update_lock_precedes_operation_state_and_staging(self) -> None:
+        self._installed_schema37()
+        controller = self._controller()
+        lock = self.runtime_root / "locks" / "installation-update.lock"
+        with update.exclusive_lock(lock):
+            with self.assertRaisesRegex(update.InstalledForgeUpdateError, "concurrent maintenance"):
+                controller.run()
+        self.assertFalse(controller.state_path.exists())
+        self.assertFalse(controller.slot.exists())
+
+    def test_candidate_venv_is_created_at_its_final_non_relocated_slot(self) -> None:
+        controller = self._controller()
+        state = controller._state()
+
+        def identity(_interpreter: Path, *, cwd: Path) -> dict[str, str]:
+            del cwd
+            root = controller.slot.resolve()
+            return {
+                "version": "2.7.22", "distribution_version": "2.7.22",
+                "module": str(root / "lib" / "python" / "site-packages" / "forge" / "__init__.py"),
+                "prefix": str(root), "sys_executable": str(root / "bin" / "python"),
+            }
+
+        with (
+            patch.object(update, "installed_identity", side_effect=identity),
+            patch.object(update, "_install_validated_wheel"),
+            patch.object(update, "_verify_candidate_files", return_value={
+                "wheel_manifest_digest": update._digest_bytes(update._json_bytes({})),
+                "installed_file_count": 0, "entrypoint_sha256": "sha256:" + "0" * 64,
+            }),
+            patch.object(update, "_run", return_value=SimpleNamespace(stdout="", stderr="")),
+        ):
+            staged = controller._stage(state)
+        self.assertEqual(staged["phase"], "STAGED")
+        self.assertTrue(controller.slot_receipt.is_file())
+        self.assertTrue((controller.slot / "forge-installation-staging.json").is_file())
+        self.assertFalse((controller.slot.parent / f".stage-{self.request.operation_id}").exists())
+
+    def test_process_scan_does_not_hide_a_sibling_with_the_same_parent(self) -> None:
+        controller = self._controller()
+        output = (
+            f"{os.getpid()} {os.getppid()} self\n"
+            f"99999 {os.getppid()} selected-forge-runtime\n"
+        )
+        with patch.object(update, "_run", return_value=SimpleNamespace(stdout=output, stderr="")):
+            self.assertEqual(controller._processes(), ["selected-forge-runtime"])
+
+    def test_atomic_backup_is_adopted_after_state_write_interruption(self) -> None:
+        self._installed_schema37()
+        controller = self._controller()
+        state = controller._state()
+        before = update.database_snapshot(self.data_root / "forge.db")
+        update._copy_sqlite_backup(self.data_root / "forge.db", controller.backup_path)
+        recovered = controller._backup(state, before)
+        self.assertTrue(recovered["backup"]["recovered_after_atomic_backup_write"])
+        self.assertEqual(
+            update.database_snapshot(controller.backup_path)["content_digest"],
+            before["content_digest"],
+        )
+
+    def test_complete_fast_path_revalidates_durable_receipt_bytes(self) -> None:
+        controller = self._controller()
+        state = controller._state()
+        update._atomic_json(controller.receipt_path, {
+            "request_digest": self.request.digest, "state": "COMPLETE",
+        })
+        controller._advance(
+            state, "COMPLETE", receipt_sha256=update.file_digest(controller.receipt_path),
+        )
+        update._atomic_json(controller.receipt_path, {
+            "request_digest": self.request.digest, "state": "COMPLETE", "tampered": True,
+        })
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "receipt changed"):
+            controller.run()
+
     def test_resolver_adoption_fences_without_editing_the_legacy_environment(self) -> None:
         controller = self._controller()
         state = controller._state()
@@ -227,8 +364,11 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         state = controller._state()
         with patch.object(update, "installed_identity", return_value={"version": "2.7.21"}):
             state = controller._adopt_resolver(state)
+        state = controller._advance(state, "BACKED_UP", before={"content_digest": "sha256:before"})
         state = controller._fence(state)
-        with patch.object(update, "database_snapshot", return_value={"user_version": 37}):
+        with patch.object(update, "database_snapshot", return_value={
+            "user_version": 37, "content_digest": "sha256:before",
+        }):
             controller._secure_failure(state, RuntimeError("interrupted"))
         self.assertEqual(self.resolver.resolve(), controller.legacy_entrypoint.resolve())
         durable = update._read_json(controller.state_path)
@@ -259,7 +399,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         )
         with patch.object(update, "database_snapshot", return_value={"user_version": 38}):
             controller._secure_failure(state, RuntimeError("interrupted"))
-        self.assertEqual(self.resolver.resolve(), candidate.resolve())
+        self.assertEqual(self.resolver.resolve(), controller.fenced_resolver.resolve())
 
     def test_preservation_rejects_domain_loss_and_unexpected_schema_objects(self) -> None:
         self._installed_schema37()
@@ -277,6 +417,113 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         ]
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "historical table"):
             update.verify_preservation(before, after, self.request)
+
+    def test_noncanonical_receipt_and_unsafe_operation_ids_are_rejected(self) -> None:
+        receipt = json.loads(self.receipt.read_text(encoding="utf-8"))
+        receipt["publication_receipt"]["unexpected"] = "not-allowed"
+        self.receipt.write_text(json.dumps(receipt, sort_keys=True), encoding="utf-8")
+        changed = update.UpdateRequest(**{
+            **self.request.__dict__,
+            "qualification_receipt_sha256": update.file_digest(self.receipt),
+        })
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "noncanonical"):
+            update.validate_qualified_artifact(changed)
+        for operation_id in (".", "..", "unsafe/name"):
+            with self.assertRaises(update.InstalledForgeUpdateError):
+                update.UpdateRequest(**{**self.request.__dict__, "operation_id": operation_id}).validate()
+
+    def test_quiescence_uses_explicit_safe_state_allowlists(self) -> None:
+        self._installed_schema37()
+        connection = sqlite3.connect(self.data_root / "forge.db")
+        connection.execute(
+            "INSERT INTO planning_provider_generation_permits VALUES (?,?,?,?,?,?,?,?)",
+            ("permit-1", "provider", 1, "sha256:" + "1" * 64, "sha256:" + "2" * 64,
+             "INVALIDATED", "now", "now"),
+        )
+        connection.commit()
+        connection.close()
+        update.assert_quiescent(update.database_snapshot(self.data_root / "forge.db"))
+        connection = sqlite3.connect(self.data_root / "forge.db")
+        connection.execute(
+            "UPDATE planning_provider_generation_permits SET state='PENDING' WHERE permit_id='permit-1'"
+        )
+        connection.execute("UPDATE mission_state SET status='CREATED' WHERE mission_id='MISSION-0001'")
+        connection.commit()
+        connection.close()
+        with self.assertRaises(update.InstalledForgeUpdateError):
+            update.assert_quiescent(update.database_snapshot(self.data_root / "forge.db"))
+
+    def test_atomic_product_migrated_copy_rejects_late_live_mutation(self) -> None:
+        self._installed_schema37()
+        controller = self._controller()
+        before = update.database_snapshot(self.data_root / "forge.db")
+        self._qualified_schema38_copy(controller, before)
+        connection = sqlite3.connect(self.data_root / "forge.db")
+        connection.execute("INSERT INTO mission_id_allocations VALUES (?,?,?)", ("late", "now", "late"))
+        connection.commit()
+        connection.close()
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "changed after"):
+            controller._install_qualified_database(before)
+
+    def test_database_swap_is_crash_safe_before_atomic_replace(self) -> None:
+        self._installed_schema37()
+        controller = update.InstalledForgeUpdateController(
+            self.request, process_reader=lambda: (), interrupt_after="database_swap_prepared",
+        )
+        before = update.database_snapshot(self.data_root / "forge.db")
+        self._qualified_schema38_copy(controller, before)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "database_swap_prepared"):
+            controller._install_qualified_database(before)
+        self.assertEqual(update.database_snapshot(self.data_root / "forge.db")["user_version"], 37)
+        self.assertFalse((self.data_root / "forge.db-wal").exists())
+        self.assertFalse((self.data_root / "forge.db-shm").exists())
+
+    def test_database_swap_is_crash_safe_after_atomic_replace(self) -> None:
+        self._installed_schema37()
+        controller = update.InstalledForgeUpdateController(
+            self.request, process_reader=lambda: (), interrupt_after="database_swap",
+        )
+        before = update.database_snapshot(self.data_root / "forge.db")
+        self._qualified_schema38_copy(controller, before)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "database_swap"):
+            controller._install_qualified_database(before)
+        after = update.database_snapshot(self.data_root / "forge.db")
+        self.assertEqual(after["user_version"], 38)
+        update.verify_preservation(before, after, self.request)
+        self.assertEqual((self.data_root / "forge.db").stat().st_mode & 0o777, 0o400)
+        self.assertFalse((self.data_root / "forge.db-wal").exists())
+        self.assertFalse((self.data_root / "forge.db-shm").exists())
+
+    def test_exact_published_wheel_end_to_end_when_requested(self) -> None:
+        wheel_value = os.environ.get("FORGE_EXACT_WHEEL")
+        receipt_value = os.environ.get("FORGE_EXACT_RELEASE_RECEIPT")
+        if not wheel_value or not receipt_value:
+            self.skipTest("exact published wheel paths were not supplied")
+        self._installed_schema37()
+        wheel = Path(wheel_value).resolve()
+        receipt = Path(receipt_value).resolve()
+        release = json.loads(receipt.read_text(encoding="utf-8"))
+        legacy_interpreter = Path(os.environ.get("FORGE_LEGACY_INTERPRETER", sys.executable))
+        try:
+            legacy_identity = update.installed_identity(legacy_interpreter, cwd=self.root)
+        except update.InstalledForgeUpdateError as error:
+            self.skipTest(f"legacy Forge interpreter was not supplied: {error}")
+        request = update.UpdateRequest(**{
+            **self.request.__dict__,
+            "product_source": release["source_revision"],
+            "wheel": str(wheel), "wheel_sha256": update.file_digest(wheel),
+            "qualification_receipt": str(receipt),
+            "qualification_receipt_sha256": update.file_digest(receipt),
+            "controller_sha256": update.file_digest(SCRIPT),
+            "existing_interpreter": str(legacy_interpreter),
+            "existing_version": legacy_identity["version"],
+        })
+        controller = update.InstalledForgeUpdateController(request, process_reader=lambda: ())
+        completed = controller.run()
+        self.assertEqual(completed["state"], "COMPLETE")
+        self.assertEqual(update.database_snapshot(self.data_root / "forge.db")["user_version"], 38)
+        self.assertEqual(controller.run(), completed)
+        self.assertEqual((self.data_root / "forge.db").stat().st_mode & 0o777, 0o600)
 
 
 if __name__ == "__main__":

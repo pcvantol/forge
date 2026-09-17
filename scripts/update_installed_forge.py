@@ -15,18 +15,26 @@ It never starts a service, Mission, planner, provider, reset, or EP submission.
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack, contextmanager
+import base64
+from contextlib import contextmanager
+import csv
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from email.parser import BytesParser
 from hashlib import sha256
+from io import BytesIO, StringIO
 import json
 import os
 from pathlib import Path
+import re
+import secrets
+import shlex
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
+import tempfile
 from typing import Any, Callable, Iterator, Mapping, Sequence
 import zipfile
 
@@ -39,6 +47,12 @@ except ImportError:  # pragma: no cover - supported installation target is POSIX
 CONTRACT_VERSION = "forge-installed-update/v1"
 SCHEMA_BEFORE = 37
 SCHEMA_AFTER = 38
+PHASE_ORDER = {
+    phase: index for index, phase in enumerate((
+        "PREPARED", "STAGED", "ADOPTED", "BACKED_UP", "MIGRATION_QUALIFIED",
+        "FENCED", "MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE",
+    ))
+}
 NEW_SCHEMA_38_TABLES = frozenset({
     "operational_reset_state",
     "operational_reset_operations",
@@ -50,14 +64,11 @@ VOLATILE_METADATA_KEYS = frozenset({
     "schema_version", "migration_version", "last_migration", "forge_version",
     "database_version", "last_access_at", "integrity_status",
 })
-ACTIVE_MISSION_STATES = frozenset({
-    "READY", "ACTIVE", "WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE",
-    "READY_TO_CONTINUE", "INTEGRATION_RUNNING",
+SAFE_MISSION_STATES = frozenset({
+    "BLOCKED", "FAILED", "COMPLETED", "ARCHIVED", "INTEGRATION_BLOCKED", "INTEGRATION_COMPLETE",
 })
-ACTIVE_SUBMISSION_STATES = frozenset({
-    "CREATED", "SUBMITTED", "ACCEPTED", "EXECUTING", "RECEIPT_AVAILABLE",
-})
-TERMINAL_PERMIT_STATES = frozenset({"CONSUMED", "CANCELLED", "EXPIRED", "FAILED", "REVOKED"})
+SAFE_SUBMISSION_STATES = frozenset({"RECONCILED", "BLOCKED", "FAILED", "SUPERSEDED"})
+TERMINAL_PERMIT_STATES = frozenset({"INVALIDATED", "INVALIDATED_BY_OPERATIONAL_RESET"})
 
 
 class InstalledForgeUpdateError(RuntimeError):
@@ -76,32 +87,79 @@ def _digest_bytes(value: bytes) -> str:
     return "sha256:" + sha256(value).hexdigest()
 
 
+def _assert_no_symlink_components(path: Path) -> None:
+    if not path.is_absolute():
+        raise InstalledForgeUpdateError(f"path must be absolute: {path}")
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current /= part
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError:
+            break
+        if stat.S_ISLNK(mode):
+            raise InstalledForgeUpdateError(f"path contains a symbolic-link component: {current}")
+
+
+def _read_regular_bytes(path: Path) -> bytes:
+    _assert_no_symlink_components(path)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise InstalledForgeUpdateError(f"required regular file is unavailable: {path}") from error
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise InstalledForgeUpdateError(f"required regular file is unavailable: {path}")
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
 def file_digest(path: Path) -> str:
-    if path.is_symlink() or not path.is_file():
-        raise InstalledForgeUpdateError(f"required regular file is unavailable: {path}")
+    _assert_no_symlink_components(path)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise InstalledForgeUpdateError(f"required regular file is unavailable: {path}") from error
     digest = sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise InstalledForgeUpdateError(f"required regular file is unavailable: {path}")
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
             digest.update(chunk)
+    finally:
+        os.close(descriptor)
     return "sha256:" + digest.hexdigest()
 
 
 def _safe_directory(path: Path, *, create: bool = False) -> Path:
     if not path.is_absolute():
         raise InstalledForgeUpdateError(f"path must be absolute: {path}")
+    _assert_no_symlink_components(path)
     if create:
         path.mkdir(parents=True, exist_ok=True)
-    if path.is_symlink() or not path.is_dir():
+    _assert_no_symlink_components(path)
+    if not path.is_dir():
         raise InstalledForgeUpdateError(f"directory is unavailable or unsafe: {path}")
     return path
 
 
 def _atomic_json(path: Path, value: object) -> None:
     _safe_directory(path.parent, create=True)
-    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
-    if temporary.exists() or temporary.is_symlink():
-        temporary.unlink()
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.tmp-", dir=path.parent)
+    temporary = Path(name)
+    os.chmod(temporary, 0o600)
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(_json_bytes(value))
@@ -115,11 +173,9 @@ def _atomic_json(path: Path, value: object) -> None:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    if path.is_symlink() or not path.is_file():
-        raise InstalledForgeUpdateError(f"durable JSON evidence is unavailable or unsafe: {path}")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+        value = json.loads(_read_regular_bytes(path))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise InstalledForgeUpdateError(f"durable JSON evidence is unreadable: {path}") from error
     if not isinstance(value, dict):
         raise InstalledForgeUpdateError(f"durable JSON evidence is not an object: {path}")
@@ -128,11 +184,13 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _replace_symlink(path: Path, target: str) -> None:
     _safe_directory(path.parent, create=True)
-    temporary = path.with_name(f".{path.name}.link-{os.getpid()}")
-    if temporary.exists() or temporary.is_symlink():
-        temporary.unlink()
+    temporary = path.with_name(f".{path.name}.link-{secrets.token_hex(16)}")
     temporary.symlink_to(target)
-    os.replace(temporary, path)
+    try:
+        os.replace(temporary, path)
+    finally:
+        if temporary.is_symlink():
+            temporary.unlink()
 
 
 def _resolved_link(path: Path) -> Path:
@@ -147,6 +205,7 @@ def _environment() -> dict[str, str]:
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
         "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
     }
     if os.environ.get("HOME"):
         environment["HOME"] = os.environ["HOME"]
@@ -177,11 +236,12 @@ print(json.dumps({
     "version": canonical_version(),
     "distribution_version": importlib.metadata.version("forge-autonomy"),
     "module": str(pathlib.Path(forge.__file__).resolve()),
-    "sys_executable": str(pathlib.Path(sys.executable).resolve()),
+    "sys_executable": sys.executable,
+    "resolved_sys_executable": str(pathlib.Path(sys.executable).resolve()),
     "prefix": str(pathlib.Path(sys.prefix).resolve()),
 }, sort_keys=True))
 """
-    result = _run((str(interpreter), "-I", "-c", program), cwd=cwd)
+    result = _run((str(interpreter), "-B", "-I", "-c", program), cwd=cwd)
     try:
         identity = json.loads(result.stdout)
     except json.JSONDecodeError as error:
@@ -215,8 +275,11 @@ class UpdateRequest:
 
     def validate(self) -> None:
         identifiers = (self.operation_id, self.runtime_id, self.installation_id)
-        if any(not value or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for character in value)
-               for value in identifiers):
+        if any(
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value) is None
+            or value in {".", ".."}
+            for value in identifiers
+        ):
             raise InstalledForgeUpdateError("operation and installation identities must be filesystem-safe")
         if self.version != "2.7.22" or self.existing_version != "2.7.21":
             raise InstalledForgeUpdateError("this bounded controller supports only the selected 2.7.21 to 2.7.22 update")
@@ -241,51 +304,174 @@ class UpdateRequest:
         return _digest_bytes(_json_bytes(asdict(self)))
 
 
-def validate_qualified_artifact(request: UpdateRequest) -> dict[str, Any]:
+def _validated_wheel(request: UpdateRequest) -> tuple[bytes, dict[str, str]]:
     wheel = Path(request.wheel)
-    if file_digest(wheel) != request.wheel_sha256:
-        raise InstalledForgeUpdateError("wheel digest does not match the selected qualified artifact")
     expected_name = f"forge_autonomy-{request.version}-py3-none-any.whl"
     if wheel.name != expected_name:
         raise InstalledForgeUpdateError("wheel filename does not match the selected product and version")
+    wheel_bytes = _read_regular_bytes(wheel)
+    if _digest_bytes(wheel_bytes) != request.wheel_sha256:
+        raise InstalledForgeUpdateError("wheel digest does not match the selected qualified artifact")
+    dist_info = f"forge_autonomy-{request.version}.dist-info"
     try:
-        with zipfile.ZipFile(wheel) as archive:
-            names = archive.namelist()
-            if any(name.startswith("/") or ".." in Path(name).parts for name in names):
-                raise InstalledForgeUpdateError("wheel contains an unsafe member path")
-            metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
-            if len(metadata_names) != 1:
+        with zipfile.ZipFile(BytesIO(wheel_bytes)) as archive:
+            infos = archive.infolist()
+            names = [info.filename for info in infos]
+            if len(names) != len(set(names)):
+                raise InstalledForgeUpdateError("wheel contains duplicate member paths")
+            for info in infos:
+                parts = Path(info.filename).parts
+                mode = info.external_attr >> 16
+                if (
+                    info.filename.startswith("/") or "\\" in info.filename or ".." in parts
+                    or not parts or parts[0] not in {"forge", dist_info}
+                    or stat.S_ISLNK(mode)
+                ):
+                    raise InstalledForgeUpdateError("wheel contains an unsafe or unexpected member path")
+            metadata_name = f"{dist_info}/METADATA"
+            wheel_metadata_name = f"{dist_info}/WHEEL"
+            record_name = f"{dist_info}/RECORD"
+            if any(name not in names for name in (metadata_name, wheel_metadata_name, record_name)):
                 raise InstalledForgeUpdateError("wheel metadata is missing or ambiguous")
-            metadata = BytesParser().parsebytes(archive.read(metadata_names[0]))
-    except zipfile.BadZipFile as error:
-        raise InstalledForgeUpdateError("wheel is not a valid ZIP artifact") from error
-    if metadata.get("Name") != "forge-autonomy" or metadata.get("Version") != request.version:
-        raise InstalledForgeUpdateError("wheel package metadata does not match Forge 2.7.22")
+            metadata = BytesParser().parsebytes(archive.read(metadata_name))
+            wheel_metadata = BytesParser().parsebytes(archive.read(wheel_metadata_name))
+            if (
+                metadata.get("Name") != "forge-autonomy"
+                or metadata.get("Version") != request.version
+                or wheel_metadata.get("Root-Is-Purelib") != "true"
+                or "py3-none-any" not in wheel_metadata.get_all("Tag", [])
+            ):
+                raise InstalledForgeUpdateError("wheel package metadata does not match the supported Forge artifact")
+            rows = list(csv.reader(StringIO(archive.read(record_name).decode("utf-8"))))
+            if any(len(row) != 3 for row in rows):
+                raise InstalledForgeUpdateError("wheel RECORD is malformed")
+            records = {row[0]: (row[1], row[2]) for row in rows}
+            files = [info for info in infos if not info.is_dir()]
+            if len(records) != len(rows) or set(records) != {info.filename for info in files}:
+                raise InstalledForgeUpdateError("wheel RECORD does not exactly enumerate the artifact")
+            manifest: dict[str, str] = {}
+            for info in files:
+                payload = archive.read(info.filename)
+                manifest[info.filename] = _digest_bytes(payload)
+                recorded_hash, recorded_size = records[info.filename]
+                if info.filename == record_name:
+                    if recorded_hash or recorded_size:
+                        raise InstalledForgeUpdateError("wheel RECORD self-entry is not canonical")
+                    continue
+                encoded = base64.urlsafe_b64encode(sha256(payload).digest()).rstrip(b"=").decode("ascii")
+                if recorded_hash != f"sha256={encoded}" or recorded_size != str(len(payload)):
+                    raise InstalledForgeUpdateError("wheel RECORD does not bind an artifact member")
+    except (UnicodeDecodeError, zipfile.BadZipFile) as error:
+        raise InstalledForgeUpdateError("wheel is not a valid canonical ZIP artifact") from error
+    return wheel_bytes, manifest
 
+
+def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, dict[str, str]]:
+    wheel_bytes, manifest = _validated_wheel(request)
+    expected_name = f"forge_autonomy-{request.version}-py3-none-any.whl"
+    sdist_name = f"forge_autonomy-{request.version}.tar.gz"
     receipt_path = Path(request.qualification_receipt)
-    if file_digest(receipt_path) != request.qualification_receipt_sha256:
+    receipt_bytes = _read_regular_bytes(receipt_path)
+    if _digest_bytes(receipt_bytes) != request.qualification_receipt_sha256:
         raise InstalledForgeUpdateError("qualification receipt digest changed")
-    receipt = _read_json(receipt_path)
+    try:
+        receipt = json.loads(receipt_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise InstalledForgeUpdateError("qualification receipt is malformed") from error
+    if not isinstance(receipt, dict):
+        raise InstalledForgeUpdateError("qualification receipt is malformed")
     qualification = receipt.get("qualification")
     artifacts = receipt.get("artifacts")
+    publication = receipt.get("publication_receipt")
+    cleanup = receipt.get("cleanup")
+    release = publication.get("github_release") if isinstance(publication, dict) else None
+    cleanup_release = cleanup.get("github_release") if isinstance(cleanup, dict) else None
+    expected_top = {
+        "product", "component", "version", "source_revision", "operation_id", "policy_revision",
+        "artifacts", "state", "qualification", "publication_receipt", "cleanup",
+    }
+    expected_publication = {
+        "github_release", "observed_artifact_digests", "original_release_run_conclusion",
+        "original_release_run_id", "product_source_revision", "readback", "reconciliation_contract",
+        "reconciliation_run_id", "registry", "release_controller_source",
+    }
+    expected_cleanup = {
+        "github_release", "operation_local_cleanup", "original_release_run_id",
+        "reconciliation_contract", "reconciliation_run_id", "release_controller_source", "result",
+    }
+    expected_public_release = {"api_url", "database_id", "node_id", "tag", "target_commitish"}
+    expected_cleanup_release = {
+        "api_url", "database_id", "draft", "node_id", "tag", "tag_commit", "target_commitish",
+    }
+    sdist_digest = artifacts.get("sdist") if isinstance(artifacts, dict) else None
+    release_controller = publication.get("release_controller_source") if isinstance(publication, dict) else None
+    original_run = publication.get("original_release_run_id") if isinstance(publication, dict) else None
+    reconciliation_run = publication.get("reconciliation_run_id") if isinstance(publication, dict) else None
+    database_id = release.get("database_id") if isinstance(release, dict) else None
+    expected_api = f"https://api.github.com/repos/pcvantol/forge/releases/{database_id}"
+    exact_artifacts = {"wheel": request.wheel_sha256, "sdist": sdist_digest}
+    exact_qualified = {f"dist/{expected_name}": request.wheel_sha256, f"dist/{sdist_name}": sdist_digest}
+    exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
     if (
-        receipt.get("state") != "RELEASE_COMPLETE"
-        or receipt.get("product") != "forge"
-        or receipt.get("component") != "forge-autonomy"
-        or receipt.get("version") != request.version
-        or receipt.get("source_revision") != request.product_source
-        or not isinstance(qualification, dict)
+        set(receipt) != expected_top
+        or receipt.get("state") != "RELEASE_COMPLETE"
+        or receipt.get("product") != "forge" or receipt.get("component") != "forge-autonomy"
+        or receipt.get("version") != request.version or receipt.get("source_revision") != request.product_source
+        or receipt.get("operation_id") != f"forge-release-{request.version}-{request.product_source}"
+        or receipt.get("policy_revision") != "forge-bootstrap-release-cadence-v2"
+        or not isinstance(artifacts, dict) or set(artifacts) != {"wheel", "sdist"}
+        or artifacts != exact_artifacts or not isinstance(sdist_digest, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", sdist_digest) is None
+        or not isinstance(qualification, dict) or set(qualification) != {
+            "artifact_digests", "exact_main_sha", "qualification"
+        }
         or qualification.get("exact_main_sha") != request.product_source
         or qualification.get("qualification") != "forge-production-distribution"
-        or not isinstance(artifacts, dict)
-        or artifacts.get("wheel") != request.wheel_sha256
+        or qualification.get("artifact_digests") != exact_qualified
+        or not isinstance(publication, dict) or set(publication) != expected_publication
+        or publication.get("product_source_revision") != request.product_source
+        or publication.get("readback") != "PASS" or publication.get("registry") != "pypi"
+        or publication.get("original_release_run_conclusion") != "failure"
+        or publication.get("reconciliation_contract") != "forge-existing-release-reconciliation/v1"
+        or publication.get("observed_artifact_digests") != exact_observed
+        or not isinstance(original_run, str) or not original_run.isdigit()
+        or not isinstance(reconciliation_run, str) or not reconciliation_run.isdigit()
+        or not isinstance(release_controller, str) or re.fullmatch(r"[0-9a-f]{40}", release_controller) is None
+        or not isinstance(release, dict) or set(release) != expected_public_release
+        or release.get("api_url") != expected_api or not isinstance(database_id, int) or database_id <= 0
+        or not isinstance(release.get("node_id"), str) or not release.get("node_id")
+        or release.get("tag") != f"forge-v{request.version}"
+        or release.get("target_commitish") != request.product_source
+        or not isinstance(cleanup, dict) or set(cleanup) != expected_cleanup
+        or cleanup.get("result") != "COMPLETE" or cleanup.get("operation_local_cleanup") != "COMPLETE"
+        or cleanup.get("original_release_run_id") != original_run
+        or cleanup.get("reconciliation_run_id") != reconciliation_run
+        or cleanup.get("release_controller_source") != release_controller
+        or cleanup.get("reconciliation_contract") != "forge-existing-release-reconciliation/v1"
+        or not isinstance(cleanup_release, dict) or set(cleanup_release) != expected_cleanup_release
+        or cleanup_release.get("api_url") != release.get("api_url")
+        or cleanup_release.get("database_id") != database_id
+        or cleanup_release.get("node_id") != release.get("node_id")
+        or cleanup_release.get("draft") is not False
+        or cleanup_release.get("tag") != release.get("tag")
+        or cleanup_release.get("target_commitish") != request.product_source
+        or cleanup_release.get("tag_commit") != request.product_source
     ):
-        raise InstalledForgeUpdateError("release-complete qualification does not bind the exact wheel and source")
-    return {
-        "wheel": str(wheel), "wheel_sha256": request.wheel_sha256,
+        raise InstalledForgeUpdateError("release-complete publication, policy, or cleanup lineage is noncanonical")
+    evidence = {
+        "wheel": str(Path(request.wheel)), "wheel_sha256": request.wheel_sha256,
+        "wheel_manifest_digest": _digest_bytes(_json_bytes(manifest)),
         "receipt": str(receipt_path), "receipt_sha256": request.qualification_receipt_sha256,
         "release_operation_id": receipt.get("operation_id"),
+        "release_controller_source": release_controller,
+        "original_release_run_id": original_run, "reconciliation_run_id": reconciliation_run,
     }
+    return evidence, wheel_bytes, manifest
+
+
+def validate_qualified_artifact(request: UpdateRequest) -> dict[str, Any]:
+    evidence, _, _ = _qualified_artifact(request)
+    return evidence
 
 
 def _sqlite_value(value: object) -> object:
@@ -304,13 +490,15 @@ def _table_digest(connection: sqlite3.Connection, table: str) -> tuple[int, str]
     return len(rows), _digest_bytes(_json_bytes(rows))
 
 
-def database_snapshot(path: Path) -> dict[str, Any]:
+def database_snapshot(path: Path, *, existing_connection: sqlite3.Connection | None = None) -> dict[str, Any]:
     if path.is_symlink() or not path.is_file():
         raise InstalledForgeUpdateError(f"runtime database is unavailable or unsafe: {path}")
+    owns_connection = existing_connection is None
     try:
-        connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+        connection = existing_connection or sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA query_only=ON")
+        if owns_connection:
+            connection.execute("PRAGMA query_only=ON")
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
         foreign_keys = [tuple(row) for row in connection.execute("PRAGMA foreign_key_check")]
         user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
@@ -355,7 +543,7 @@ def database_snapshot(path: Path) -> dict[str, Any]:
     except sqlite3.Error as error:
         raise InstalledForgeUpdateError("runtime database readback failed") from error
     finally:
-        if "connection" in locals():
+        if owns_connection and "connection" in locals():
             connection.close()
     snapshot = {
         "database": str(path), "integrity_check": integrity,
@@ -402,12 +590,11 @@ def assert_quiescent(snapshot: Mapping[str, Any]) -> None:
     ):
         raise InstalledForgeUpdateError("Forge dispatcher is not durably idle")
     missions = writer.get("missions") or []
-    active_missions = [row for row in missions if isinstance(row, Mapping) and row.get("status") in ACTIVE_MISSION_STATES]
-    if active_missions:
-        raise InstalledForgeUpdateError("Forge has active or automatically resumable Mission state")
+    if any(not isinstance(row, Mapping) or row.get("status") not in SAFE_MISSION_STATES for row in missions):
+        raise InstalledForgeUpdateError("Forge has non-terminal or non-paused Mission state")
     submissions = writer.get("submissions") or []
-    if any(isinstance(row, Mapping) and row.get("state") in ACTIVE_SUBMISSION_STATES for row in submissions):
-        raise InstalledForgeUpdateError("Forge has an active scheduler submission")
+    if any(not isinstance(row, Mapping) or row.get("state") not in SAFE_SUBMISSION_STATES for row in submissions):
+        raise InstalledForgeUpdateError("Forge has a non-terminal scheduler submission")
     permits = writer.get("generation_permits") or []
     if any(isinstance(row, Mapping) and row.get("state") not in TERMINAL_PERMIT_STATES for row in permits):
         raise InstalledForgeUpdateError("Forge has an active provider-generation permit")
@@ -493,9 +680,9 @@ def _copy_sqlite_backup(source: Path, destination: Path) -> dict[str, Any]:
     _safe_directory(destination.parent, create=True)
     if destination.exists() or destination.is_symlink():
         raise InstalledForgeUpdateError("installation backup already exists without matching durable evidence")
-    temporary = destination.with_name(f".{destination.name}.tmp-{os.getpid()}")
-    if temporary.exists():
-        temporary.unlink()
+    descriptor, name = tempfile.mkstemp(prefix=f".{destination.name}.tmp-", dir=destination.parent)
+    os.close(descriptor)
+    temporary = Path(name)
     try:
         source_connection = sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)
         destination_connection = sqlite3.connect(temporary)
@@ -541,6 +728,87 @@ def _candidate_migrate(executable: Path, data_root: Path, *, cwd: Path) -> dict[
     return output
 
 
+def _candidate_site_packages(slot: Path) -> Path:
+    candidates = [path for path in (slot / "lib").glob("python*/site-packages") if path.is_dir()]
+    if len(candidates) != 1:
+        raise InstalledForgeUpdateError("candidate virtual environment has ambiguous site-packages")
+    return _safe_directory(candidates[0])
+
+
+def _entrypoint_bytes(slot: Path) -> bytes:
+    return (
+        "#!/bin/sh\n"
+        f"exec {shlex.quote(str(slot / 'bin' / 'python'))} -B -m forge \"$@\"\n"
+    ).encode("utf-8")
+
+
+def _install_validated_wheel(slot: Path, wheel_bytes: bytes, manifest: Mapping[str, str]) -> None:
+    site_packages = _candidate_site_packages(slot)
+    if any(site_packages.iterdir()):
+        raise InstalledForgeUpdateError("fresh candidate site-packages is not empty")
+    with zipfile.ZipFile(BytesIO(wheel_bytes)) as archive:
+        for info in archive.infolist():
+            target = site_packages.joinpath(*Path(info.filename).parts)
+            if info.is_dir():
+                _safe_directory(target, create=True)
+                continue
+            _safe_directory(target.parent, create=True)
+            descriptor = os.open(
+                target,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(archive.read(info.filename))
+                handle.flush()
+                os.fsync(handle.fileno())
+    entrypoint = slot / "bin" / "forge"
+    descriptor = os.open(
+        entrypoint,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        0o700,
+    )
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(_entrypoint_bytes(slot))
+        handle.flush()
+        os.fsync(handle.fileno())
+    _verify_candidate_files(slot, manifest)
+
+
+def _verify_candidate_files(slot: Path, manifest: Mapping[str, str]) -> dict[str, Any]:
+    site_packages = _candidate_site_packages(slot)
+    for cache in list(site_packages.rglob("__pycache__")):
+        _assert_no_symlink_components(cache)
+        if not cache.is_dir():
+            raise InstalledForgeUpdateError("candidate bytecode cache path is unsafe")
+        for child in cache.rglob("*"):
+            _assert_no_symlink_components(child)
+        shutil.rmtree(cache)
+    actual: dict[str, str] = {}
+    for path in site_packages.rglob("*"):
+        _assert_no_symlink_components(path)
+        if path.is_file():
+            relative = path.relative_to(site_packages).as_posix()
+            actual[relative] = file_digest(path)
+    if actual != dict(manifest):
+        expected = dict(manifest)
+        missing = sorted(set(expected) - set(actual))
+        unexpected = sorted(set(actual) - set(expected))
+        changed = sorted(name for name in set(actual) & set(expected) if actual[name] != expected[name])
+        raise InstalledForgeUpdateError(
+            "candidate installed files do not match the exact wheel manifest: "
+            f"missing={missing[:5]}, unexpected={unexpected[:5]}, changed={changed[:5]}"
+        )
+    entrypoint = slot / "bin" / "forge"
+    if _read_regular_bytes(entrypoint) != _entrypoint_bytes(slot):
+        raise InstalledForgeUpdateError("candidate command entry point changed")
+    return {
+        "wheel_manifest_digest": _digest_bytes(_json_bytes(dict(manifest))),
+        "installed_file_count": len(actual),
+        "entrypoint_sha256": file_digest(entrypoint),
+    }
+
+
 class InstalledForgeUpdateController:
     def __init__(
         self,
@@ -561,6 +829,7 @@ class InstalledForgeUpdateController:
         self.backup_path = self.backup_root / "forge-schema37.sqlite3"
         self.slot = self.runtime_root / "slots" / f"{request.version}-{request.wheel_sha256.removeprefix('sha256:')[:12]}"
         self.slot_receipt = self.slot / "forge-installation-slot.json"
+        self.slot_claim = self.slot.parent / f".{self.slot.name}.{request.operation_id}.owner.json"
         self.current = self.runtime_root / "current"
         self.stable_resolver = self.runtime_root / "bin" / "forge"
         self.fenced_resolver = self.runtime_root / "fenced" / "forge"
@@ -586,9 +855,14 @@ class InstalledForgeUpdateController:
         return state
 
     def _advance(self, state: dict[str, Any], phase: str, **evidence: object) -> dict[str, Any]:
-        updated = {**state, **evidence, "phase": phase, "updated_at": _now()}
+        current_phase = str(state.get("phase", "PREPARED"))
+        effective_phase = phase
+        if PHASE_ORDER.get(current_phase, -1) > PHASE_ORDER.get(phase, -1):
+            effective_phase = current_phase
+        updated = {**state, **evidence, "phase": effective_phase, "updated_at": _now()}
         history = list(state.get("history", []))
-        history.append({"phase": phase, "at": updated["updated_at"]})
+        if effective_phase != current_phase or phase == current_phase:
+            history.append({"phase": effective_phase, "at": updated["updated_at"]})
         updated["history"] = history
         _atomic_json(self.state_path, updated)
         return updated
@@ -609,7 +883,7 @@ class InstalledForgeUpdateController:
                 pid, parent = int(fields[0]), int(fields[1])
             except ValueError:
                 continue
-            if pid in own or parent in own:
+            if pid in own:
                 continue
             processes.append(fields[2])
         return processes
@@ -624,58 +898,79 @@ class InstalledForgeUpdateController:
             raise InstalledForgeUpdateError("a selected Forge runtime process is still active")
 
     def _stage(self, state: dict[str, Any]) -> dict[str, Any]:
-        qualification = validate_qualified_artifact(self.request)
+        qualification, wheel_bytes, manifest = _qualified_artifact(self.request)
         if file_digest(Path(__file__)) != self.request.controller_sha256:
             raise InstalledForgeUpdateError("installation controller bytes do not match the protected candidate")
         if self.slot_receipt.exists():
             receipt = _read_json(self.slot_receipt)
-            if receipt.get("request_digest") != self.request.digest:
-                raise InstalledForgeUpdateError("immutable candidate slot belongs to a different request")
-        elif self.slot.exists() and not self.slot.is_symlink():
-            identity = installed_identity(self.slot / "bin" / "python", cwd=self.runtime_root)
             if (
-                identity.get("version") != self.request.version
-                or identity.get("distribution_version") != self.request.version
-                or not str(identity.get("module", "")).startswith(str(self.slot.resolve()) + os.sep)
+                receipt.get("request_digest") != self.request.digest
+                or receipt.get("wheel_manifest_digest") != qualification["wheel_manifest_digest"]
             ):
-                raise InstalledForgeUpdateError("unreceipted candidate slot cannot be safely adopted")
-            _atomic_json(self.slot_receipt, {
-                "contract_version": CONTRACT_VERSION, "request_digest": self.request.digest,
-                "wheel_sha256": self.request.wheel_sha256, "product_source": self.request.product_source,
-                "version": self.request.version, "identity": identity, "staged_at": _now(),
-                "recovered_after_atomic_slot_move": True,
-            })
+                raise InstalledForgeUpdateError("immutable candidate slot belongs to a different request")
+            file_evidence = _verify_candidate_files(self.slot, manifest)
+            if receipt.get("installed_files") != file_evidence:
+                raise InstalledForgeUpdateError("immutable candidate slot evidence changed")
         else:
-            stage = self.runtime_root / "slots" / f".stage-{self.request.operation_id}"
-            _safe_directory(stage.parent, create=True)
-            if stage.is_symlink():
+            # Venv entry points embed their creation path.  Claim the final
+            # path first; an interrupted, unreceipted slot is quarantined and
+            # rebuilt from the pinned bytes rather than trusted or relocated.
+            _safe_directory(self.slot.parent, create=True)
+            if self.slot.is_symlink():
                 raise InstalledForgeUpdateError("candidate staging path is unsafe")
-            _run((self.request.base_python, "-m", "venv", str(stage)), cwd=self.runtime_root)
-            candidate_python = stage / "bin" / "python"
-            _run((str(candidate_python), "-m", "pip", "install", "--no-index", "--no-deps", self.request.wheel),
-                 cwd=self.runtime_root)
+            claim = {
+                "contract_version": CONTRACT_VERSION,
+                "request_digest": self.request.digest,
+                "operation_id": self.request.operation_id,
+            }
+            claim_preexisting = self.slot_claim.exists()
+            if claim_preexisting:
+                observed_claim = _read_json(self.slot_claim)
+                if any(observed_claim.get(key) != value for key, value in claim.items()):
+                    raise InstalledForgeUpdateError("candidate slot claim belongs to a different request")
+            else:
+                _atomic_json(self.slot_claim, {**claim, "created_at": _now()})
+            staging_owner = self.slot / "forge-installation-staging.json"
+            if self.slot.exists():
+                if not self.slot.is_dir():
+                    raise InstalledForgeUpdateError("unreceipted candidate slot is unsafe")
+                if staging_owner.is_file():
+                    owner = _read_json(staging_owner)
+                    if any(owner.get(key) != value for key, value in claim.items()):
+                        raise InstalledForgeUpdateError("unreceipted candidate slot belongs to a different request")
+                elif not claim_preexisting or any(self.slot.iterdir()):
+                    raise InstalledForgeUpdateError("unreceipted candidate slot has no matching operation owner")
+                abandoned = self.slot.parent / f".{self.slot.name}.abandoned-{secrets.token_hex(16)}"
+                os.replace(self.slot, abandoned)
+            self.slot.mkdir(mode=0o700)
+            _atomic_json(staging_owner, {**claim, "created_at": _now()})
+            _run((self.request.base_python, "-m", "venv", "--without-pip", str(self.slot)), cwd=self.runtime_root)
+            candidate_python = self.slot / "bin" / "python"
+            _install_validated_wheel(self.slot, wheel_bytes, manifest)
+            file_evidence = _verify_candidate_files(self.slot, manifest)
             identity = installed_identity(candidate_python, cwd=self.runtime_root)
             if (
                 identity.get("version") != self.request.version
                 or identity.get("distribution_version") != self.request.version
-                or not str(identity.get("module", "")).startswith(str(stage.resolve()) + os.sep)
-                or Path(str(identity.get("prefix"))).resolve() != stage.resolve()
+                or not str(identity.get("module", "")).startswith(str(self.slot.resolve()) + os.sep)
+                or Path(str(identity.get("prefix"))).resolve() != self.slot.resolve()
             ):
                 raise InstalledForgeUpdateError("candidate slot identity is inconsistent")
-            if self.slot.exists() or self.slot.is_symlink():
-                raise InstalledForgeUpdateError("candidate slot appeared concurrently")
-            os.replace(stage, self.slot)
-        identity = installed_identity(self.slot / "bin" / "python", cwd=self.runtime_root)
-        if identity.get("version") != self.request.version or not str(identity.get("module", "")).startswith(str(self.slot) + os.sep):
-            raise InstalledForgeUpdateError("staged candidate readback changed")
-        if not self.slot_receipt.exists():
             _atomic_json(self.slot_receipt, {
                 "contract_version": CONTRACT_VERSION, "request_digest": self.request.digest,
                 "wheel_sha256": self.request.wheel_sha256, "product_source": self.request.product_source,
-                "version": self.request.version, "identity": identity, "staged_at": _now(),
+                "version": self.request.version, "identity": identity,
+                "wheel_manifest_digest": qualification["wheel_manifest_digest"],
+                "installed_files": file_evidence, "staged_at": _now(),
             })
+            if self.slot_claim.is_file():
+                self.slot_claim.unlink()
+        file_evidence = _verify_candidate_files(self.slot, manifest)
+        identity = installed_identity(self.slot / "bin" / "python", cwd=self.runtime_root)
+        if identity.get("version") != self.request.version or not str(identity.get("module", "")).startswith(str(self.slot.resolve()) + os.sep):
+            raise InstalledForgeUpdateError("staged candidate readback changed")
         return self._advance(state, "STAGED", artifact_qualification=qualification, candidate=identity,
-                             candidate_slot=str(self.slot))
+                             candidate_slot=str(self.slot), installed_files=file_evidence)
 
     def _adopt_resolver(self, state: dict[str, Any]) -> dict[str, Any]:
         resolver = Path(self.request.resolver)
@@ -683,13 +978,23 @@ class InstalledForgeUpdateController:
         _safe_directory(self.runtime_root / "bin", create=True)
         _safe_directory(self.runtime_root / "fenced", create=True)
         if not self.legacy_entrypoint.exists():
-            if resolver.is_symlink() or not resolver.is_file() or file_digest(resolver) != self.request.resolver_sha256:
+            legacy_bytes = _read_regular_bytes(resolver)
+            if _digest_bytes(legacy_bytes) != self.request.resolver_sha256:
                 raise InstalledForgeUpdateError("legacy command resolver changed before adoption")
             identity = installed_identity(Path(self.request.existing_interpreter), cwd=self.runtime_root)
             if identity.get("version") != self.request.existing_version:
                 raise InstalledForgeUpdateError("legacy interpreter no longer provides the selected Forge version")
-            shutil.copy2(resolver, self.legacy_entrypoint)
-            os.chmod(self.legacy_entrypoint, resolver.stat().st_mode & 0o777)
+            descriptor = os.open(
+                self.legacy_entrypoint,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                0o700,
+            )
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(legacy_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if file_digest(self.legacy_entrypoint) != self.request.resolver_sha256:
+                raise InstalledForgeUpdateError("retained legacy entrypoint does not match the pinned resolver bytes")
         elif file_digest(self.legacy_entrypoint) != self.request.resolver_sha256:
             raise InstalledForgeUpdateError("retained legacy entrypoint changed")
         fence = (
@@ -731,6 +1036,27 @@ class InstalledForgeUpdateController:
             if existing.get("path") != str(self.backup_path) or file_digest(self.backup_path) != existing.get("sha256"):
                 raise InstalledForgeUpdateError("durable installation backup changed")
             backup = dict(existing)
+            recovered = database_snapshot(self.backup_path)
+            if recovered.get("content_digest") != before.get("content_digest"):
+                raise InstalledForgeUpdateError("durable installation backup no longer matches the pre-migration snapshot")
+        elif self.backup_path.exists() and not self.backup_path.is_symlink():
+            recovered = database_snapshot(self.backup_path)
+            if (
+                recovered.get("user_version") != SCHEMA_BEFORE
+                or recovered.get("integrity_check") != "ok"
+                or recovered.get("foreign_key_check") != []
+                or recovered.get("content_digest") != before.get("content_digest")
+            ):
+                raise InstalledForgeUpdateError("unreceipted installation backup cannot be safely adopted")
+            backup = {
+                "path": str(self.backup_path), "sha256": file_digest(self.backup_path),
+                "size": self.backup_path.stat().st_size,
+                "integrity_check": recovered["integrity_check"],
+                "foreign_key_check": recovered["foreign_key_check"],
+                "snapshot_digest": recovered["snapshot_digest"],
+                "created_at": _now(), "recovered_after_atomic_backup_write": True,
+                "source_wal_present": None, "source_shm_present": None,
+            }
         else:
             backup = _copy_sqlite_backup(self.database, self.backup_path)
             backup["created_at"] = _now()
@@ -741,29 +1067,50 @@ class InstalledForgeUpdateController:
     def _qualify_copy(self, state: dict[str, Any], before: Mapping[str, Any]) -> dict[str, Any]:
         existing = state.get("migration_qualification")
         if isinstance(existing, Mapping) and existing.get("status") == "PASS":
+            database = self.operation_root / "qualification-copy" / "forge.db"
+            qualified = database_snapshot(database)
+            verify_preservation(before, qualified, self.request)
+            if existing.get("after_snapshot_digest") != qualified.get("snapshot_digest"):
+                raise InstalledForgeUpdateError("durable migration qualification copy changed")
             return state
         root = self.operation_root / "qualification-copy"
         _safe_directory(root, create=True)
         database = root / "forge.db"
-        temporary = root / f".forge.db.tmp-{os.getpid()}"
-        shutil.copy2(self.backup_path, temporary)
+        descriptor, name = tempfile.mkstemp(prefix=".forge.db.tmp-", dir=root)
+        os.close(descriptor)
+        temporary = Path(name)
+        shutil.copyfile(self.backup_path, temporary)
+        os.chmod(temporary, 0o600)
         os.replace(temporary, database)
         for suffix in ("-wal", "-shm"):
             sidecar = root / ("forge.db" + suffix)
+            if sidecar.is_symlink():
+                raise InstalledForgeUpdateError("qualification copy contains an unsafe SQLite sidecar")
             if sidecar.exists() and not sidecar.is_symlink():
                 sidecar.unlink()
         instance = _safe_directory(root / "instance", create=True)
         marker = instance / "runtime-instance.json"
-        marker.write_text(self.request.runtime_id + "\n", encoding="utf-8")
-        os.chmod(marker, 0o600)
+        marker_payload = (self.request.runtime_id + "\n").encode("utf-8")
+        if marker.exists() or marker.is_symlink():
+            if _read_regular_bytes(marker) != marker_payload:
+                raise InstalledForgeUpdateError("qualification-copy runtime marker changed")
+        else:
+            descriptor = os.open(
+                marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600,
+            )
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(marker_payload)
+                handle.flush()
+                os.fsync(handle.fileno())
         copy_before = database_snapshot(database)
         if copy_before.get("content_digest") != before.get("content_digest"):
             raise InstalledForgeUpdateError("isolated qualification copy does not match the consistent backup")
-        _candidate_migrate(self.slot / "bin" / "forge", root, cwd=self.runtime_root)
+        candidate_output = _candidate_migrate(self.slot / "bin" / "forge", root, cwd=self.runtime_root)
         copy_after = database_snapshot(database)
         qualification = verify_preservation(copy_before, copy_after, self.request)
         qualification.update({
             "qualified_at": _now(), "copy_root": str(root),
+            "candidate_output": candidate_output,
             "before_snapshot_digest": copy_before["snapshot_digest"],
             "after_snapshot_digest": copy_after["snapshot_digest"],
         })
@@ -782,17 +1129,84 @@ class InstalledForgeUpdateController:
             safety_disposition="LEGACY_RESTORED_BEFORE_MIGRATION", last_error=str(error),
         )
 
+    def _install_qualified_database(self, before: Mapping[str, Any]) -> dict[str, Any]:
+        source = self.operation_root / "qualification-copy" / "forge.db"
+        qualified = database_snapshot(source)
+        verify_preservation(before, qualified, self.request)
+        descriptor, name = tempfile.mkstemp(prefix=".forge.db.install-", dir=self.data_root)
+        os.close(descriptor)
+        temporary = Path(name)
+        live_connection: sqlite3.Connection | None = None
+        source_connection: sqlite3.Connection | None = None
+        destination_connection: sqlite3.Connection | None = None
+        try:
+            live_connection = sqlite3.connect(self.database)
+            live_connection.row_factory = sqlite3.Row
+            live_connection.execute("PRAGMA busy_timeout=0")
+            journal_mode = live_connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+            if str(journal_mode).lower() != "delete":
+                raise InstalledForgeUpdateError("live runtime journal could not enter crash-safe swap mode")
+            live_connection.execute("BEGIN EXCLUSIVE")
+            locked_live = database_snapshot(self.database, existing_connection=live_connection)
+            if (
+                locked_live.get("user_version") != SCHEMA_BEFORE
+                or locked_live.get("content_digest") != before.get("content_digest")
+            ):
+                raise InstalledForgeUpdateError("live runtime changed after the qualified backup")
+            source_connection = sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)
+            destination_connection = sqlite3.connect(temporary)
+            source_connection.backup(destination_connection)
+            destination_connection.commit()
+            destination_mode = destination_connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+            if str(destination_mode).lower() != "delete":
+                raise InstalledForgeUpdateError("migrated database copy has an unsafe journal mode")
+            destination_connection.close()
+            destination_connection = None
+            source_connection.close()
+            source_connection = None
+            installed_copy = database_snapshot(temporary)
+            verify_preservation(before, installed_copy, self.request)
+            os.chmod(temporary, 0o400)
+            for suffix in ("-wal", "-shm"):
+                sidecar = self.database.with_name(self.database.name + suffix)
+                if sidecar.is_symlink():
+                    raise InstalledForgeUpdateError("live database has an unsafe SQLite sidecar")
+                if sidecar.exists():
+                    sidecar.unlink()
+            self._interrupt("database_swap_prepared")
+            os.replace(temporary, self.database)
+            self._interrupt("database_swap")
+            directory = os.open(self.data_root, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except sqlite3.Error as error:
+            raise InstalledForgeUpdateError("exclusive atomic installation of the migrated database failed") from error
+        finally:
+            for connection in (destination_connection, source_connection, live_connection):
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except sqlite3.Error:
+                        pass
+            if temporary.exists() and not temporary.is_symlink():
+                temporary.unlink()
+        installed = database_snapshot(self.database)
+        verify_preservation(before, installed, self.request)
+        return installed
+
     def _migrate_live(self, state: dict[str, Any], before: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         current = database_snapshot(self.database)
         if current.get("user_version") == SCHEMA_BEFORE:
             state = self._fence(state)
             self._interrupt("fence")
-            output = _candidate_migrate(self.slot / "bin" / "forge", self.data_root, cwd=self.runtime_root)
-            after = database_snapshot(self.database)
+            after = self._install_qualified_database(before)
             preservation = verify_preservation(before, after, self.request)
             state = self._advance(
                 state, "MIGRATED", live_migration={
-                    **preservation, "migrated_at": _now(), "candidate_output": output,
+                    **preservation, "migrated_at": _now(),
+                    "application_mode": "ATOMIC_PRODUCT_MIGRATED_COPY",
                     "before_snapshot_digest": before["snapshot_digest"],
                     "after_snapshot_digest": after["snapshot_digest"],
                 }, safety_disposition="CANDIDATE_REQUIRED_SCHEMA_38",
@@ -801,6 +1215,7 @@ class InstalledForgeUpdateController:
             return state, after
         if current.get("user_version") == SCHEMA_AFTER:
             preservation = verify_preservation(before, current, self.request)
+            os.chmod(self.database, 0o400)
             if state.get("phase") not in {"MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE"}:
                 state = self._advance(
                     state, "MIGRATED", live_migration={
@@ -832,10 +1247,10 @@ class InstalledForgeUpdateController:
         if (
             identity.get("version") != self.request.version
             or version != self.request.version
-            or identity.get("sys_executable") != str((self.slot / "bin" / "python").resolve())
-            or not str(identity.get("module", "")).startswith(str(self.slot) + os.sep)
+            or Path(str(identity.get("sys_executable", ""))).resolve() != (self.slot / "bin" / "python").resolve()
+            or not str(identity.get("module", "")).startswith(str(self.slot.resolve()) + os.sep)
             or status.get("product_version") != self.request.version
-            or status.get("data_root") != self.request.data_root
+            or Path(str(status.get("data_root", ""))).resolve() != self.data_root.resolve()
             or status.get("instance_id") != self.request.runtime_id
             or status.get("storage_schema") != str(SCHEMA_AFTER)
         ):
@@ -853,92 +1268,181 @@ class InstalledForgeUpdateController:
 
     def _secure_failure(self, state: dict[str, Any], error: Exception) -> None:
         """Leave a pre-migration legacy route or a schema-38-safe candidate/fence."""
-        current = database_snapshot(self.database)
-        if current.get("user_version") == SCHEMA_BEFORE and self.legacy_entrypoint.exists():
+        try:
+            state = self._state()
+        except Exception:
+            pass
+        try:
+            current = database_snapshot(self.database)
+        except Exception:
+            current = {}
+        before = state.get("before")
+        if (
+            current.get("user_version") == SCHEMA_BEFORE
+            and isinstance(before, Mapping)
+            and current.get("content_digest") == before.get("content_digest")
+            and self.legacy_entrypoint.exists()
+        ):
             self._restore_legacy_before_migration(state, error)
             return
-        candidate = (self.slot / "bin" / "forge").resolve()
-        if not self.current.is_symlink() or _resolved_link(self.current) != candidate:
-            _replace_symlink(self.current, os.path.relpath(self.fenced_resolver, self.runtime_root))
+        _replace_symlink(self.current, os.path.relpath(self.fenced_resolver, self.runtime_root))
         self._advance(
             state, state.get("phase", "RECOVERY_PENDING"),
-            safety_disposition="SCHEMA_38_OLD_BINARY_FENCED", last_error=str(error),
+            safety_disposition="UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED", last_error=str(error),
         )
+
+    def _verify_complete(self, state: Mapping[str, Any], receipt: Mapping[str, Any]) -> None:
+        if state.get("phase") != "COMPLETE" or state.get("request_digest") != self.request.digest:
+            raise InstalledForgeUpdateError("completed operation state conflicts with this request")
+        if state.get("receipt_sha256") != file_digest(self.receipt_path):
+            raise InstalledForgeUpdateError("completed operation receipt changed")
+        qualification, _, manifest = _qualified_artifact(self.request)
+        if file_digest(Path(__file__)) != self.request.controller_sha256:
+            raise InstalledForgeUpdateError("completed operation controller bytes changed")
+        if receipt.get("request_digest") != self.request.digest or receipt.get("state") != "COMPLETE":
+            raise InstalledForgeUpdateError("completed update receipt conflicts with this request")
+        backup = receipt.get("backup")
+        if (
+            not isinstance(backup, Mapping)
+            or backup.get("path") != str(self.backup_path)
+            or backup.get("sha256") != file_digest(self.backup_path)
+        ):
+            raise InstalledForgeUpdateError("completed operation backup changed")
+        slot_receipt = _read_json(self.slot_receipt)
+        file_evidence = _verify_candidate_files(self.slot, manifest)
+        if (
+            slot_receipt.get("request_digest") != self.request.digest
+            or slot_receipt.get("wheel_manifest_digest") != qualification["wheel_manifest_digest"]
+            or slot_receipt.get("installed_files") != file_evidence
+        ):
+            raise InstalledForgeUpdateError("completed operation candidate slot changed")
+        candidate = self.slot / "bin" / "forge"
+        if _resolved_link(Path(self.request.resolver)) != candidate.resolve():
+            raise InstalledForgeUpdateError("completed operation resolver no longer selects the candidate")
+        identity = installed_identity(self.slot / "bin" / "python", cwd=self.runtime_root)
+        version = _run((self.request.resolver, "--version"), cwd=self.runtime_root).stdout.strip()
+        status_result = _run(
+            (self.request.resolver, "--data-root", self.request.data_root, "server", "status"),
+            cwd=self.runtime_root,
+        )
+        try:
+            status = json.loads(status_result.stdout)
+        except json.JSONDecodeError as error:
+            raise InstalledForgeUpdateError("completed installed CLI readback is malformed") from error
+        if (
+            identity.get("version") != self.request.version
+            or identity.get("distribution_version") != self.request.version
+            or not str(identity.get("module", "")).startswith(str(self.slot.resolve()) + os.sep)
+            or version != self.request.version
+            or status.get("product_version") != self.request.version
+            or status.get("instance_id") != self.request.runtime_id
+            or status.get("storage_schema") != str(SCHEMA_AFTER)
+            or Path(str(status.get("data_root", ""))).resolve() != self.data_root.resolve()
+        ):
+            raise InstalledForgeUpdateError("completed installed CLI identity changed")
+        final_snapshot = database_snapshot(self.database)
+        assert_selected_installation(self.request, final_snapshot)
+        if final_snapshot.get("integrity_check") != "ok" or final_snapshot.get("foreign_key_check") != []:
+            raise InstalledForgeUpdateError("completed runtime database integrity changed")
+        before = state.get("before")
+        if not isinstance(before, Mapping):
+            raise InstalledForgeUpdateError("completed operation lacks its pre-migration snapshot")
+        backup_snapshot = database_snapshot(self.backup_path)
+        if backup_snapshot.get("content_digest") != before.get("content_digest"):
+            raise InstalledForgeUpdateError("completed operation backup no longer matches its source snapshot")
+        for key in ("migration_qualification", "live_migration"):
+            evidence = receipt.get(key)
+            if not isinstance(evidence, Mapping) or evidence.get("status") != "PASS":
+                raise InstalledForgeUpdateError("completed operation lacks successful migration evidence")
+        installed_readback = receipt.get("installed_readback")
+        if (
+            not isinstance(installed_readback, Mapping)
+            or not isinstance(installed_readback.get("preservation"), Mapping)
+            or installed_readback["preservation"].get("status") != "PASS"
+        ):
+            raise InstalledForgeUpdateError("completed operation lacks successful installation readback")
+
+    def _restore_database_writable(self) -> None:
+        _assert_no_symlink_components(self.database)
+        if not self.database.is_file():
+            raise InstalledForgeUpdateError("installed database is unavailable after activation")
+        os.chmod(self.database, 0o600)
 
     def run(self) -> dict[str, Any]:
         _safe_directory(self.data_root)
         _safe_directory(self.runtime_root)
-        _safe_directory(self.operation_root, create=True)
-        os.chmod(self.operation_root, 0o700)
-        state = self._state()
-        if state.get("phase") == "COMPLETE":
-            receipt = _read_json(self.receipt_path)
-            if receipt.get("request_digest") != self.request.digest:
-                raise InstalledForgeUpdateError("completed update receipt conflicts with this request")
-            return receipt
-
-        state = self._stage(state)
-        self._interrupt("stage")
         update_lock = self.runtime_root / "locks" / "installation-update.lock"
         runtime_lock = self.data_root / "forge-runtime-mutation.lock"
-        with ExitStack() as locks:
-            locks.enter_context(exclusive_lock(update_lock))
-            locks.enter_context(exclusive_lock(runtime_lock))
-            self._assert_no_runtime_process()
-            live = database_snapshot(self.database)
-            assert_selected_installation(self.request, live)
-            assert_quiescent(live)
-            try:
-                state = self._adopt_resolver(state)
-                self._interrupt("adoption")
-                before = state.get("before")
-                if not isinstance(before, Mapping):
-                    if live.get("user_version") != SCHEMA_BEFORE:
-                        raise InstalledForgeUpdateError("schema 38 lacks this operation's pre-migration snapshot")
-                    before = live
-                assert_selected_installation(self.request, before)
-                if before.get("user_version") != SCHEMA_BEFORE:
-                    raise InstalledForgeUpdateError("durable pre-migration snapshot is not schema 37")
-                state = self._backup(state, before)
-                self._interrupt("backup")
-                state = self._qualify_copy(state, before)
-                self._interrupt("qualification")
-                state, after = self._migrate_live(state, before)
-                state = self._activate(state, after)
-                receipt = {
-                    "contract_version": CONTRACT_VERSION,
-                    "operation_id": self.request.operation_id,
-                    "request_digest": self.request.digest,
-                    "state": "COMPLETE",
-                    "product": "forge",
-                    "version": self.request.version,
-                    "product_source": self.request.product_source,
-                    "wheel_sha256": self.request.wheel_sha256,
-                    "controller_source": self.request.controller_source,
-                    "controller_sha256": self.request.controller_sha256,
-                    "runtime_id": self.request.runtime_id,
-                    "installation_id": self.request.installation_id,
-                    "data_root": self.request.data_root,
-                    "backup": state["backup"],
-                    "migration_qualification": state["migration_qualification"],
-                    "live_migration": state["live_migration"],
-                    "installed_readback": state["installed_readback"],
-                    "credential_disposition": "PRESERVED_UNCHANGED",
-                    "service_disposition": "NOT_STARTED",
-                    "mission_disposition": "NOT_STARTED_OR_RESUMED",
-                    "reset_disposition": "NOT_EXECUTED",
-                    "completed_at": _now(),
-                }
-                _atomic_json(self.receipt_path, receipt)
-                self._advance(state, "COMPLETE", receipt_sha256=file_digest(self.receipt_path),
-                              safety_disposition="CANDIDATE_ACTIVE")
+        bootstrap_lock = self.data_root / "locks" / "runtime.lock"
+        with exclusive_lock(update_lock):
+            _safe_directory(self.operation_root, create=True)
+            os.chmod(self.operation_root, 0o700)
+            state = self._state()
+            if state.get("phase") == "COMPLETE":
+                receipt = _read_json(self.receipt_path)
+                self._verify_complete(state, receipt)
+                self._restore_database_writable()
                 return receipt
-            except Exception as error:
+
+            state = self._stage(state)
+            self._interrupt("stage")
+            with exclusive_lock(runtime_lock), exclusive_lock(bootstrap_lock):
+                self._assert_no_runtime_process()
+                live = database_snapshot(self.database)
+                assert_selected_installation(self.request, live)
+                assert_quiescent(live)
                 try:
-                    self._secure_failure(state, error)
-                except Exception:
-                    pass
-                raise
+                    state = self._adopt_resolver(state)
+                    self._interrupt("adoption")
+                    before = state.get("before")
+                    if not isinstance(before, Mapping):
+                        if live.get("user_version") != SCHEMA_BEFORE:
+                            raise InstalledForgeUpdateError("schema 38 lacks this operation's pre-migration snapshot")
+                        before = live
+                    assert_selected_installation(self.request, before)
+                    if before.get("user_version") != SCHEMA_BEFORE:
+                        raise InstalledForgeUpdateError("durable pre-migration snapshot is not schema 37")
+                    state = self._backup(state, before)
+                    self._interrupt("backup")
+                    state = self._qualify_copy(state, before)
+                    self._interrupt("qualification")
+                    state, after = self._migrate_live(state, before)
+                    state = self._activate(state, after)
+                    receipt = {
+                        "contract_version": CONTRACT_VERSION,
+                        "operation_id": self.request.operation_id,
+                        "request_digest": self.request.digest,
+                        "state": "COMPLETE",
+                        "product": "forge",
+                        "version": self.request.version,
+                        "product_source": self.request.product_source,
+                        "wheel_sha256": self.request.wheel_sha256,
+                        "controller_source": self.request.controller_source,
+                        "controller_sha256": self.request.controller_sha256,
+                        "runtime_id": self.request.runtime_id,
+                        "installation_id": self.request.installation_id,
+                        "data_root": self.request.data_root,
+                        "backup": state["backup"],
+                        "migration_qualification": state["migration_qualification"],
+                        "live_migration": state["live_migration"],
+                        "installed_readback": state["installed_readback"],
+                        "credential_disposition": "PRESERVED_UNCHANGED",
+                        "service_disposition": "NOT_STARTED",
+                        "mission_disposition": "NOT_STARTED_OR_RESUMED",
+                        "reset_disposition": "NOT_EXECUTED",
+                        "completed_at": _now(),
+                    }
+                    _atomic_json(self.receipt_path, receipt)
+                    self._advance(state, "COMPLETE", receipt_sha256=file_digest(self.receipt_path),
+                                  safety_disposition="CANDIDATE_ACTIVE")
+                    self._restore_database_writable()
+                    return receipt
+                except Exception as error:
+                    try:
+                        self._secure_failure(state, error)
+                    except Exception:
+                        pass
+                    raise
 
 
 def _request_from_args(args: argparse.Namespace) -> UpdateRequest:

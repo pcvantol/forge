@@ -35,17 +35,21 @@ interpreter, version, and bytes.
 
 ## Safety sequence
 
-1. Validate the terminal release receipt and wheel without importing the
-   wheel.
+1. Read the wheel once through a no-follow descriptor; validate its digest,
+   canonical RECORD, purelib tag, package metadata, member allowlist, and the
+   exact terminal release/reconciliation receipt without importing it.
 2. Create an isolated versioned runtime slot outside the source checkout with
-   the explicit Python interpreter and install only the local wheel using
-   `--no-index --no-deps`.
+   the explicit Python interpreter. Extract only the already validated bytes
+   into a pip-free virtual environment, then verify every installed file and
+   the generated command wrapper. An interrupted unreceipted slot is
+   quarantined and rebuilt, never trusted in place.
 3. Read the candidate's version, distribution, module, prefix, and interpreter
    from an isolated process.
-4. Acquire the installation-operation lock and the canonical
-   `forge-runtime-mutation.lock`; reject an active runtime process, dispatcher,
-   Mission, scheduler submission, provider-generation permit, planning queue,
-   reset, or conflicting operation.
+4. Acquire the installation-operation lock, canonical
+   `forge-runtime-mutation.lock`, and bootstrap `locks/runtime.lock`; reject an
+   active runtime process, dispatcher, non-terminal Mission or scheduler
+   submission, active provider-generation permit, planning queue, reset, or
+   conflicting operation.
 5. Adopt the selected legacy command entry point behind a stable product-owned
    resolver. Before migration it still resolves to the byte-equal retained
    legacy entry point.
@@ -56,9 +60,11 @@ interpreter, version, and bytes.
    normal `forge ... server init` path. Require schema 38, the exact new reset
    table set, an idle reset control row, and byte-logical preservation of every
    pre-existing domain table and protected metadata/binding.
-8. Atomically point the stable resolver at a maintenance fence, apply the same
-   Forge-owned migration to the live selected data root, and repeat the full
-   preservation check.
+8. Point the stable resolver at a maintenance fence. Take an exclusive SQLite
+   writer boundary, prove the live database is still byte-logically identical
+   to the backed-up snapshot, and atomically install the already Forge-migrated
+   database copy. The replacement remains read-only until activation and final
+   receipt persistence; full preservation and sidecar checks run again.
 9. Atomically select the candidate slot and read back the exact installed CLI,
    module, interpreter, version, runtime identity, data root, schema, and peer
    binding. No service or historical Mission is started.
@@ -77,14 +83,18 @@ authorized read-only Forge-to-EP check.
 Re-run the same exact operation ID and arguments. A conflicting request is
 rejected.
 
-- Before live migration, failure restores the retained 2.7.21 command route.
+- Before atomic database replacement, failure restores the retained 2.7.21
+  command route only when the complete live snapshot still equals `before`.
   A hard interruption may leave the explicit maintenance fence; resuming the
   same operation reconciles it from durable evidence.
-- From the first schema-38 readback onward, the old binary is never selected.
-  The resolver remains fenced until the 2.7.22 candidate is verified, or it
-  already resolves to that candidate after an atomic activation interruption.
-- A completed receipt is idempotently returned only when its request digest
-  matches exactly.
+- From the first schema-38 readback or any ambiguous partial state onward, the
+  old binary is never selected. Any caught activation/readback failure selects
+  the maintenance fence; replay reconciles the exact protected candidate.
+- A completed receipt is idempotently returned only after revalidating its
+  bytes, backup, release receipt, controller, wheel manifest, slot, resolver,
+  installed identity, target binding, schema, and database integrity. Later
+  legitimate runtime history does not invalidate the historical update
+  receipt.
 
 The backup is recovery evidence, not permission for an automatic database
 rollback. Restoring it after later security, budget, or external effects needs
@@ -96,7 +106,11 @@ separate authority and compatibility proof.
 writer rejection, the real Forge schema-37 to schema-38 migrator, preservation
 of Missions, allocations, reviews, execution receipts, governance grants,
 configuration and identity, concurrent-operation exclusion, resolver adoption,
-and interruption before migration, after migration, and during activation.
+canonical receipt shape, path safety, exact slot contents, exclusive atomic
+database replacement, late-writer rejection, and interruption before
+migration, after migration, and during activation. An opt-in test runs the
+entire route and replay against the exact published wheel and terminal release
+receipt.
 
 Production use additionally requires protected merge/check evidence for the
 exact controller source, a terminal release-complete receipt, and live
