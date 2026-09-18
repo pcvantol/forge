@@ -45,8 +45,10 @@ except ImportError:  # pragma: no cover - supported installation target is POSIX
 
 
 CONTRACT_VERSION = "forge-installed-update/v1"
-SCHEMA_BEFORE = 37
-SCHEMA_AFTER = 38
+SUPPORTED_TRANSITIONS = {
+    ("2.7.21", "2.7.22"): (37, 38),
+    ("2.7.22", "2.7.23"): (38, 38),
+}
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
         "PREPARED", "STAGED", "ADOPTED", "BACKED_UP", "MIGRATION_QUALIFIED",
@@ -73,6 +75,15 @@ TERMINAL_PERMIT_STATES = frozenset({"INVALIDATED", "INVALIDATED_BY_OPERATIONAL_R
 
 class InstalledForgeUpdateError(RuntimeError):
     """The selected installation cannot be updated without weakening a gate."""
+
+
+def transition_schemas(request: "UpdateRequest") -> tuple[int, int]:
+    try:
+        return SUPPORTED_TRANSITIONS[(request.existing_version, request.version)]
+    except KeyError as error:
+        raise InstalledForgeUpdateError(
+            "this bounded controller does not support the selected Forge version transition"
+        ) from error
 
 
 def _now() -> str:
@@ -281,8 +292,7 @@ class UpdateRequest:
             for value in identifiers
         ):
             raise InstalledForgeUpdateError("operation and installation identities must be filesystem-safe")
-        if self.version != "2.7.22" or self.existing_version != "2.7.21":
-            raise InstalledForgeUpdateError("this bounded controller supports only the selected 2.7.21 to 2.7.22 update")
+        transition_schemas(self)
         for label, digest in (
             ("wheel", self.wheel_sha256), ("qualification receipt", self.qualification_receipt_sha256),
             ("controller", self.controller_sha256), ("resolver", self.resolver_sha256),
@@ -366,6 +376,75 @@ def _validated_wheel(request: UpdateRequest) -> tuple[bytes, dict[str, str]]:
     return wheel_bytes, manifest
 
 
+def _normal_release_evidence(
+    request: UpdateRequest, receipt: Mapping[str, Any], manifest: Mapping[str, str],
+    receipt_path: Path,
+) -> dict[str, Any]:
+    """Validate the normal 2.7.23 release route without weakening 2.7.22 recovery."""
+    expected_name = f"forge_autonomy-{request.version}-py3-none-any.whl"
+    sdist_name = f"forge_autonomy-{request.version}.tar.gz"
+    qualification = receipt.get("qualification")
+    artifacts = receipt.get("artifacts")
+    publication = receipt.get("publication_receipt")
+    cleanup = receipt.get("cleanup")
+    expected_top = {
+        "product", "component", "version", "source_revision", "operation_id", "policy_revision",
+        "artifacts", "state", "qualification", "publication_receipt", "cleanup",
+    }
+    sdist_digest = artifacts.get("sdist") if isinstance(artifacts, Mapping) else None
+    exact_artifacts = {"wheel": request.wheel_sha256, "sdist": sdist_digest}
+    exact_qualified = {
+        f"dist/{expected_name}": request.wheel_sha256,
+        f"dist/{sdist_name}": sdist_digest,
+    }
+    exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
+    if (
+        (request.existing_version, request.version) != ("2.7.22", "2.7.23")
+        or set(receipt) != expected_top
+        or receipt.get("state") != "RELEASE_COMPLETE"
+        or receipt.get("product") != "forge"
+        or receipt.get("component") != "forge-autonomy"
+        or receipt.get("version") != request.version
+        or receipt.get("source_revision") != request.product_source
+        or receipt.get("operation_id") != f"forge-release-{request.version}-{request.product_source}"
+        or receipt.get("policy_revision") != "forge-bootstrap-release-cadence-v2"
+        or not isinstance(artifacts, Mapping)
+        or set(artifacts) != {"wheel", "sdist"}
+        or dict(artifacts) != exact_artifacts
+        or not isinstance(sdist_digest, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", sdist_digest) is None
+        or not isinstance(qualification, Mapping)
+        or set(qualification) != {"artifact_digests", "exact_main_sha", "qualification"}
+        or qualification.get("exact_main_sha") != request.product_source
+        or qualification.get("qualification") != "forge-production-distribution"
+        or qualification.get("artifact_digests") != exact_qualified
+        or not isinstance(publication, Mapping)
+        or set(publication) != {"observed_artifact_digests", "readback", "registry"}
+        or publication.get("observed_artifact_digests") != exact_observed
+        or publication.get("readback") != "PASS"
+        or publication.get("registry") != "pypi"
+        or not isinstance(cleanup, Mapping)
+        or set(cleanup) != {"github_release", "result", "temporary_paths"}
+        or cleanup.get("result") != "COMPLETE"
+        or cleanup.get("temporary_paths") != [
+            "published-readback", "published-input/dist", "pending-readback",
+        ]
+        or cleanup.get("github_release") != {"draft": False}
+    ):
+        raise InstalledForgeUpdateError(
+            "normal release-complete publication, policy, or cleanup lineage is noncanonical"
+        )
+    return {
+        "wheel": str(Path(request.wheel)),
+        "wheel_sha256": request.wheel_sha256,
+        "wheel_manifest_digest": _digest_bytes(_json_bytes(dict(manifest))),
+        "receipt": str(receipt_path),
+        "receipt_sha256": request.qualification_receipt_sha256,
+        "release_operation_id": receipt.get("operation_id"),
+        "release_route": "NORMAL",
+    }
+
+
 def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, dict[str, str]]:
     wheel_bytes, manifest = _validated_wheel(request)
     expected_name = f"forge_autonomy-{request.version}-py3-none-any.whl"
@@ -380,6 +459,12 @@ def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, 
         raise InstalledForgeUpdateError("qualification receipt is malformed") from error
     if not isinstance(receipt, dict):
         raise InstalledForgeUpdateError("qualification receipt is malformed")
+    if (request.existing_version, request.version) == ("2.7.22", "2.7.23"):
+        return (
+            _normal_release_evidence(request, receipt, manifest, receipt_path),
+            wheel_bytes,
+            manifest,
+        )
     qualification = receipt.get("qualification")
     artifacts = receipt.get("artifacts")
     publication = receipt.get("publication_receipt")
@@ -575,7 +660,8 @@ def assert_selected_installation(request: UpdateRequest, snapshot: Mapping[str, 
         raise InstalledForgeUpdateError("selected data root belongs to a different runtime")
     if metadata.get("installation_id") != request.installation_id:
         raise InstalledForgeUpdateError("selected data root belongs to a different installation")
-    if snapshot.get("user_version") not in {SCHEMA_BEFORE, SCHEMA_AFTER}:
+    schema_before, schema_after = transition_schemas(request)
+    if snapshot.get("user_version") not in {schema_before, schema_after}:
         raise InstalledForgeUpdateError("selected runtime schema is outside the bounded update path")
     if not isinstance(peer, Mapping) or peer.get("configuration_digest") != request.peer_configuration_digest:
         raise InstalledForgeUpdateError("selected peer configuration changed")
@@ -619,11 +705,14 @@ def assert_quiescent(snapshot: Mapping[str, Any]) -> None:
         raise InstalledForgeUpdateError("Forge operational reset maintenance is active")
 
 
-def assert_completed_schema(snapshot: Mapping[str, Any], installed_readback: Mapping[str, Any]) -> None:
+def assert_completed_schema(
+    snapshot: Mapping[str, Any], installed_readback: Mapping[str, Any], request: UpdateRequest,
+) -> None:
     tables = snapshot.get("tables")
     expected_digest = installed_readback.get("database_schema_digest")
+    _schema_before, schema_after = transition_schemas(request)
     if (
-        snapshot.get("user_version") != SCHEMA_AFTER
+        snapshot.get("user_version") != schema_after
         or not isinstance(tables, Mapping)
         or not NEW_SCHEMA_38_TABLES.issubset(tables)
         or not isinstance(expected_digest, str)
@@ -633,10 +722,13 @@ def assert_completed_schema(snapshot: Mapping[str, Any], installed_readback: Map
 
 
 def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], request: UpdateRequest) -> dict[str, Any]:
+    schema_before, schema_after = transition_schemas(request)
+    if before.get("user_version") != schema_before:
+        raise InstalledForgeUpdateError("source runtime schema is outside the selected update path")
     if after.get("integrity_check") != "ok" or after.get("foreign_key_check") != []:
         raise InstalledForgeUpdateError("migrated runtime failed SQLite integrity validation")
-    if after.get("user_version") != SCHEMA_AFTER:
-        raise InstalledForgeUpdateError("Forge owning migration did not reach schema 38")
+    if after.get("user_version") != schema_after:
+        raise InstalledForgeUpdateError("Forge owning migration did not reach the selected target schema")
     before_metadata, after_metadata = before.get("metadata"), after.get("metadata")
     if not isinstance(before_metadata, Mapping) or not isinstance(after_metadata, Mapping):
         raise InstalledForgeUpdateError("migration metadata readback is incomplete")
@@ -658,17 +750,21 @@ def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], req
         if after_tables.get(table) != metric:
             raise InstalledForgeUpdateError(f"migration changed historical table contents: {table}")
     new_tables = set(after_tables) - set(before_tables)
-    if new_tables != set(NEW_SCHEMA_38_TABLES):
-        raise InstalledForgeUpdateError("migration produced an unexpected schema-38 table set")
-    expected_counts = {table: 0 for table in NEW_SCHEMA_38_TABLES}
-    expected_counts["operational_reset_state"] = 1
-    if any(after_tables[table]["count"] != count for table, count in expected_counts.items()):
-        raise InstalledForgeUpdateError("migration initialized unexpected operational-reset data")
+    expected_new_tables = set(NEW_SCHEMA_38_TABLES) if schema_before == 37 else set()
+    if new_tables != expected_new_tables:
+        raise InstalledForgeUpdateError("migration produced an unexpected target-schema table set")
     reset = after.get("writer_state", {}).get("operational_reset", [])
-    if reset != [{"dataset_generation": 0, "active_operation_id": None, "state": "IDLE"}]:
-        raise InstalledForgeUpdateError("schema-38 reset state is not an idle, fresh control record")
+    if schema_before == 37:
+        expected_counts = {table: 0 for table in NEW_SCHEMA_38_TABLES}
+        expected_counts["operational_reset_state"] = 1
+        if any(after_tables[table]["count"] != count for table, count in expected_counts.items()):
+            raise InstalledForgeUpdateError("migration initialized unexpected operational-reset data")
+        if reset != [{"dataset_generation": 0, "active_operation_id": None, "state": "IDLE"}]:
+            raise InstalledForgeUpdateError("schema-38 reset state is not an idle, fresh control record")
+    elif reset != before.get("writer_state", {}).get("operational_reset", []):
+        raise InstalledForgeUpdateError("same-schema update changed operational-reset state")
     return {
-        "status": "PASS", "from_schema": SCHEMA_BEFORE, "to_schema": SCHEMA_AFTER,
+        "status": "PASS", "from_schema": schema_before, "to_schema": schema_after,
         "preserved_table_count": len(before_tables) - 1,
         "added_tables": sorted(new_tables),
         "protected_metadata_digest": after.get("protected_metadata_digest"),
@@ -735,14 +831,16 @@ def _copy_sqlite_backup(source: Path, destination: Path) -> dict[str, Any]:
     }
 
 
-def _candidate_migrate(executable: Path, data_root: Path, *, cwd: Path) -> dict[str, Any]:
+def _candidate_migrate(
+    executable: Path, data_root: Path, *, cwd: Path, target_schema: int,
+) -> dict[str, Any]:
     result = _run((str(executable), "--data-root", str(data_root), "server", "init"), cwd=cwd)
     try:
         output = json.loads(result.stdout)
     except json.JSONDecodeError as error:
         raise InstalledForgeUpdateError("candidate migration readback is malformed") from error
-    if output.get("storage_schema") != str(SCHEMA_AFTER) or output.get("initialized") is not True:
-        raise InstalledForgeUpdateError("candidate migration did not return schema-38 installed readback")
+    if output.get("storage_schema") != str(target_schema) or output.get("initialized") is not True:
+        raise InstalledForgeUpdateError("candidate migration did not return the target-schema installed readback")
     return output
 
 
@@ -1049,6 +1147,7 @@ class InstalledForgeUpdateController:
         })
 
     def _backup(self, state: dict[str, Any], before: Mapping[str, Any]) -> dict[str, Any]:
+        schema_before, _schema_after = transition_schemas(self.request)
         existing = state.get("backup")
         if isinstance(existing, Mapping):
             if existing.get("path") != str(self.backup_path) or file_digest(self.backup_path) != existing.get("sha256"):
@@ -1060,7 +1159,7 @@ class InstalledForgeUpdateController:
         elif self.backup_path.exists() and not self.backup_path.is_symlink():
             recovered = database_snapshot(self.backup_path)
             if (
-                recovered.get("user_version") != SCHEMA_BEFORE
+                recovered.get("user_version") != schema_before
                 or recovered.get("integrity_check") != "ok"
                 or recovered.get("foreign_key_check") != []
                 or recovered.get("content_digest") != before.get("content_digest")
@@ -1123,7 +1222,11 @@ class InstalledForgeUpdateController:
         copy_before = database_snapshot(database)
         if copy_before.get("content_digest") != before.get("content_digest"):
             raise InstalledForgeUpdateError("isolated qualification copy does not match the consistent backup")
-        candidate_output = _candidate_migrate(self.slot / "bin" / "forge", root, cwd=self.runtime_root)
+        _schema_before, schema_after = transition_schemas(self.request)
+        candidate_output = _candidate_migrate(
+            self.slot / "bin" / "forge", root, cwd=self.runtime_root,
+            target_schema=schema_after,
+        )
         copy_after = database_snapshot(database)
         qualification = verify_preservation(copy_before, copy_after, self.request)
         qualification.update({
@@ -1148,6 +1251,7 @@ class InstalledForgeUpdateController:
         )
 
     def _install_qualified_database(self, before: Mapping[str, Any]) -> dict[str, Any]:
+        schema_before, _schema_after = transition_schemas(self.request)
         source = self.operation_root / "qualification-copy" / "forge.db"
         qualified = database_snapshot(source)
         verify_preservation(before, qualified, self.request)
@@ -1167,7 +1271,7 @@ class InstalledForgeUpdateController:
             live_connection.execute("BEGIN EXCLUSIVE")
             locked_live = database_snapshot(self.database, existing_connection=live_connection)
             if (
-                locked_live.get("user_version") != SCHEMA_BEFORE
+                locked_live.get("user_version") != schema_before
                 or locked_live.get("content_digest") != before.get("content_digest")
             ):
                 raise InstalledForgeUpdateError("live runtime changed after the qualified backup")
@@ -1215,8 +1319,15 @@ class InstalledForgeUpdateController:
         return installed
 
     def _migrate_live(self, state: dict[str, Any], before: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        schema_before, schema_after = transition_schemas(self.request)
         current = database_snapshot(self.database)
-        if current.get("user_version") == SCHEMA_BEFORE:
+        if (
+            current.get("user_version") == schema_before
+            and (
+                schema_before != schema_after
+                or current.get("content_digest") == before.get("content_digest")
+            )
+        ):
             state = self._fence(state)
             self._interrupt("fence")
             after = self._install_qualified_database(before)
@@ -1227,11 +1338,11 @@ class InstalledForgeUpdateController:
                     "application_mode": "ATOMIC_PRODUCT_MIGRATED_COPY",
                     "before_snapshot_digest": before["snapshot_digest"],
                     "after_snapshot_digest": after["snapshot_digest"],
-                }, safety_disposition="CANDIDATE_REQUIRED_SCHEMA_38",
+                }, safety_disposition=f"CANDIDATE_REQUIRED_SCHEMA_{schema_after}",
             )
             self._interrupt("migration")
             return state, after
-        if current.get("user_version") == SCHEMA_AFTER:
+        if current.get("user_version") == schema_after:
             preservation = verify_preservation(before, current, self.request)
             os.chmod(self.database, 0o400)
             if state.get("phase") not in {"MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE"}:
@@ -1240,12 +1351,13 @@ class InstalledForgeUpdateController:
                         **preservation, "reconciled_at": _now(),
                         "before_snapshot_digest": before["snapshot_digest"],
                         "after_snapshot_digest": current["snapshot_digest"],
-                    }, safety_disposition="CANDIDATE_REQUIRED_SCHEMA_38",
+                    }, safety_disposition=f"CANDIDATE_REQUIRED_SCHEMA_{schema_after}",
                 )
             return state, current
         raise InstalledForgeUpdateError("live runtime schema changed outside the bounded operation")
 
     def _activate(self, state: dict[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
+        _schema_before, schema_after = transition_schemas(self.request)
         state = self._advance(state, "ACTIVATING", safety_disposition="CANDIDATE_ACTIVATION_IN_PROGRESS")
         candidate = self.slot / "bin" / "forge"
         _replace_symlink(self.current, os.path.relpath(candidate, self.runtime_root))
@@ -1270,7 +1382,7 @@ class InstalledForgeUpdateController:
             or status.get("product_version") != self.request.version
             or Path(str(status.get("data_root", ""))).resolve() != self.data_root.resolve()
             or status.get("instance_id") != self.request.runtime_id
-            or status.get("storage_schema") != str(SCHEMA_AFTER)
+            or status.get("storage_schema") != str(schema_after)
         ):
             raise InstalledForgeUpdateError("activated Forge CLI readback does not match the selected installation")
         final_snapshot = database_snapshot(self.database)
@@ -1296,8 +1408,9 @@ class InstalledForgeUpdateController:
         except Exception:
             current = {}
         before = state.get("before")
+        schema_before, _schema_after = transition_schemas(self.request)
         if (
-            current.get("user_version") == SCHEMA_BEFORE
+            current.get("user_version") == schema_before
             and isinstance(before, Mapping)
             and current.get("content_digest") == before.get("content_digest")
             and self.legacy_entrypoint.exists()
@@ -1311,6 +1424,7 @@ class InstalledForgeUpdateController:
         )
 
     def _verify_complete(self, state: Mapping[str, Any], receipt: Mapping[str, Any]) -> None:
+        _schema_before, schema_after = transition_schemas(self.request)
         if state.get("phase") != "COMPLETE" or state.get("request_digest") != self.request.digest:
             raise InstalledForgeUpdateError("completed operation state conflicts with this request")
         if state.get("receipt_sha256") != file_digest(self.receipt_path):
@@ -1355,7 +1469,7 @@ class InstalledForgeUpdateController:
             or version != self.request.version
             or status.get("product_version") != self.request.version
             or status.get("instance_id") != self.request.runtime_id
-            or status.get("storage_schema") != str(SCHEMA_AFTER)
+            or status.get("storage_schema") != str(schema_after)
             or Path(str(status.get("data_root", ""))).resolve() != self.data_root.resolve()
         ):
             raise InstalledForgeUpdateError("completed installed CLI identity changed")
@@ -1380,7 +1494,7 @@ class InstalledForgeUpdateController:
             or installed_readback["preservation"].get("status") != "PASS"
         ):
             raise InstalledForgeUpdateError("completed operation lacks successful installation readback")
-        assert_completed_schema(final_snapshot, installed_readback)
+        assert_completed_schema(final_snapshot, installed_readback, self.request)
 
     def _restore_database_writable(self) -> None:
         _assert_no_symlink_components(self.database)
@@ -1412,16 +1526,21 @@ class InstalledForgeUpdateController:
                 assert_selected_installation(self.request, live)
                 assert_quiescent(live)
                 try:
+                    schema_before, _schema_after = transition_schemas(self.request)
                     state = self._adopt_resolver(state)
                     self._interrupt("adoption")
                     before = state.get("before")
                     if not isinstance(before, Mapping):
-                        if live.get("user_version") != SCHEMA_BEFORE:
-                            raise InstalledForgeUpdateError("schema 38 lacks this operation's pre-migration snapshot")
+                        if live.get("user_version") != schema_before:
+                            raise InstalledForgeUpdateError(
+                                "selected schema lacks this operation's pre-migration snapshot"
+                            )
                         before = live
                     assert_selected_installation(self.request, before)
-                    if before.get("user_version") != SCHEMA_BEFORE:
-                        raise InstalledForgeUpdateError("durable pre-migration snapshot is not schema 37")
+                    if before.get("user_version") != schema_before:
+                        raise InstalledForgeUpdateError(
+                            "durable pre-migration snapshot has the wrong source schema"
+                        )
                     state = self._backup(state, before)
                     self._interrupt("backup")
                     state = self._qualify_copy(state, before)

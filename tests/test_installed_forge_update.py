@@ -199,6 +199,14 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             self.request, process_reader=lambda: (),
         )
 
+    def _same_schema_request(self) -> object:
+        return update.UpdateRequest(**{
+            **self.request.__dict__,
+            "operation_id": "forge-update-2723-test-001",
+            "version": "2.7.23",
+            "existing_version": "2.7.22",
+        })
+
     def _qualified_schema38_copy(self, controller: object, before: dict[str, object]) -> None:
         copy_root = controller.operation_root / "qualification-copy"
         (copy_root / "instance").mkdir(parents=True)
@@ -221,6 +229,85 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.wheel.write_bytes(b"changed")
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "wheel digest"):
             update.validate_qualified_artifact(self.request)
+
+    def test_normal_2723_release_receipt_is_accepted_only_for_the_new_transition(self) -> None:
+        version = "2.7.23"
+        wheel = self.root / f"forge_autonomy-{version}-py3-none-any.whl"
+        dist_info = f"forge_autonomy-{version}.dist-info"
+        members = {
+            "forge/__init__.py": f"__version__ = '{version}'\n".encode(),
+            f"{dist_info}/METADATA": (
+                f"Metadata-Version: 2.4\nName: forge-autonomy\nVersion: {version}\n\n"
+            ).encode(),
+            f"{dist_info}/WHEEL": (
+                b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n\n"
+            ),
+        }
+        record_name = f"{dist_info}/RECORD"
+        record = "".join(
+            f"{name},sha256={base64.urlsafe_b64encode(sha256(payload).digest()).rstrip(b'=').decode()},{len(payload)}\n"
+            for name, payload in members.items()
+        ) + f"{record_name},,\n"
+        with zipfile.ZipFile(wheel, "w") as archive:
+            for name, payload in members.items():
+                archive.writestr(name, payload)
+            archive.writestr(record_name, record)
+        wheel_digest = update.file_digest(wheel)
+        source = "e" * 40
+        receipt = self.root / "normal-release-complete.json"
+        receipt.write_text(json.dumps({
+            "state": "RELEASE_COMPLETE",
+            "product": "forge",
+            "component": "forge-autonomy",
+            "version": version,
+            "source_revision": source,
+            "operation_id": f"forge-release-{version}-{source}",
+            "policy_revision": "forge-bootstrap-release-cadence-v2",
+            "artifacts": {"wheel": wheel_digest, "sdist": self.sdist_digest},
+            "qualification": {
+                "exact_main_sha": source,
+                "qualification": "forge-production-distribution",
+                "artifact_digests": {
+                    f"dist/forge_autonomy-{version}-py3-none-any.whl": wheel_digest,
+                    f"dist/forge_autonomy-{version}.tar.gz": self.sdist_digest,
+                },
+            },
+            "publication_receipt": {
+                "registry": "pypi",
+                "readback": "PASS",
+                "observed_artifact_digests": {
+                    f"forge_autonomy-{version}-py3-none-any.whl": wheel_digest,
+                    f"forge_autonomy-{version}.tar.gz": self.sdist_digest,
+                },
+            },
+            "cleanup": {
+                "result": "COMPLETE",
+                "temporary_paths": [
+                    "published-readback", "published-input/dist", "pending-readback",
+                ],
+                "github_release": {"draft": False},
+            },
+        }, sort_keys=True), encoding="utf-8")
+        request = update.UpdateRequest(**{
+            **self.request.__dict__,
+            "operation_id": "forge-update-2723-test-002",
+            "version": version,
+            "product_source": source,
+            "wheel": str(wheel),
+            "wheel_sha256": wheel_digest,
+            "qualification_receipt": str(receipt),
+            "qualification_receipt_sha256": update.file_digest(receipt),
+            "existing_version": "2.7.22",
+        })
+
+        evidence = update.validate_qualified_artifact(request)
+
+        self.assertEqual(evidence["release_route"], "NORMAL")
+        wrong_transition = update.UpdateRequest(**{
+            **request.__dict__, "existing_version": "2.7.21",
+        })
+        with self.assertRaises(update.InstalledForgeUpdateError):
+            update.validate_qualified_artifact(wrong_transition)
 
     def test_real_schema37_to_38_migration_preserves_history_and_bindings(self) -> None:
         self._installed_schema37()
@@ -460,13 +547,34 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             "schema_digest": "sha256:" + "1" * 64,
         }
         readback = {"database_schema_digest": snapshot["schema_digest"]}
-        update.assert_completed_schema(snapshot, readback)
-        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
-            update.assert_completed_schema({**snapshot, "user_version": 37}, readback)
+        update.assert_completed_schema(snapshot, readback, self.request)
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
             update.assert_completed_schema(
-                {**snapshot, "schema_digest": "sha256:" + "2" * 64}, readback,
+                {**snapshot, "user_version": 37}, readback, self.request,
             )
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
+            update.assert_completed_schema(
+                {**snapshot, "schema_digest": "sha256:" + "2" * 64},
+                readback,
+                self.request,
+            )
+
+    def test_schema38_to_38_transition_preserves_all_runtime_content(self) -> None:
+        self._installed_schema37()
+        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.22").open()
+        database.close()
+        before = update.database_snapshot(self.data_root / "forge.db")
+        request = self._same_schema_request()
+
+        preservation = update.verify_preservation(before, before, request)
+
+        self.assertEqual(preservation["from_schema"], 38)
+        self.assertEqual(preservation["to_schema"], 38)
+        self.assertEqual(preservation["added_tables"], [])
+        changed = json.loads(json.dumps(before))
+        changed["tables"]["operational_reset_audit"]["digest"] = "sha256:" + "9" * 64
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "historical table"):
+            update.verify_preservation(before, changed, request)
 
     def test_atomic_product_migrated_copy_rejects_late_live_mutation(self) -> None:
         self._installed_schema37()
