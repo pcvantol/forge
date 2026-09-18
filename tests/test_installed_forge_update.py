@@ -545,6 +545,214 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         ):
             controller._adopt_resolver(controller._state())
 
+    def _managed_successor_controller(self, *, fenced: bool = False):
+        first = self._controller()
+        with patch.object(update, "installed_identity", return_value={"version": "2.7.21"}):
+            first._adopt_resolver(first._state())
+        previous_bin = self.root / "previous-slot" / "bin"
+        previous_bin.mkdir(parents=True)
+        previous_python = previous_bin / "python"
+        previous_python.write_bytes(b"previous-python")
+        previous_forge = previous_bin / "forge"
+        previous_forge.write_bytes(b"#!/bin/sh\nexec previous-python -m forge \"$@\"\n")
+        previous_forge.chmod(0o700)
+        request = update.UpdateRequest(**{
+            **self._same_schema_request().__dict__,
+            "operation_id": "forge-update-2723-managed-successor-001",
+            "resolver_sha256": update.file_digest(previous_forge),
+            "existing_interpreter": str(previous_python),
+        })
+        controller = update.InstalledForgeUpdateController(request, process_reader=lambda: ())
+        update._replace_symlink(first.current, os.path.relpath(previous_forge, self.runtime_root))
+        state = controller._state()
+        if fenced:
+            controller.fenced_resolver.parent.mkdir(parents=True, exist_ok=True)
+            update._atomic_regular_file(
+                controller.fenced_resolver,
+                b"#!/bin/sh\necho 'Forge installation maintenance is active' >&2\nexit 75\n",
+                mode=0o755,
+            )
+            update._replace_symlink(
+                controller.current, os.path.relpath(controller.fenced_resolver, self.runtime_root),
+            )
+            state = controller._advance(
+                state, "STAGED",
+                safety_disposition="UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED",
+                last_error=f"path contains a symbolic-link component: {request.resolver}",
+            )
+        return controller, state, previous_forge
+
+    def test_resolver_adoption_uses_the_selected_entrypoint_for_a_managed_successor(self) -> None:
+        controller, state, previous_forge = self._managed_successor_controller()
+        with patch.object(update, "installed_identity", return_value={"version": "2.7.22"}):
+            adopted = controller._adopt_resolver(state)
+        self.assertEqual(adopted["phase"], "ADOPTED")
+        self.assertEqual(controller.legacy_entrypoint.read_bytes(), previous_forge.read_bytes())
+        self.assertEqual(self.resolver.resolve(), previous_forge.resolve())
+
+    def test_resolver_adoption_recovers_the_recognized_pre_adoption_fence(self) -> None:
+        controller, state, previous_forge = self._managed_successor_controller(fenced=True)
+        with patch.object(update, "installed_identity", return_value={"version": "2.7.22"}):
+            adopted = controller._adopt_resolver(state)
+        self.assertEqual(adopted["phase"], "ADOPTED")
+        self.assertEqual(controller.legacy_entrypoint.read_bytes(), previous_forge.read_bytes())
+        self.assertEqual(self.resolver.resolve(), controller.fenced_resolver.resolve())
+
+    def test_resolver_adoption_rejects_an_unrecognized_managed_current_target(self) -> None:
+        controller, state, _previous_forge = self._managed_successor_controller()
+        unexpected = self.root / "unexpected-forge"
+        unexpected.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        update._replace_symlink(controller.current, os.path.relpath(unexpected, self.runtime_root))
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "unrecognized target"):
+            controller._adopt_resolver(state)
+
+    def test_staged_controller_reconciliation_preserves_the_operation_and_audits_rebind(self) -> None:
+        controller, state, _previous_forge = self._managed_successor_controller(fenced=True)
+        evidence = {
+            "wheel_manifest_digest": "sha256:" + "1" * 64,
+            "installed_file_count": 7,
+            "entrypoint_sha256": "sha256:" + "2" * 64,
+        }
+        identity = {
+            "version": controller.request.version,
+            "module": str(controller.slot / "lib/python/site-packages/forge/__init__.py"),
+        }
+        state = controller._advance(state, "STAGED", candidate=identity, installed_files=evidence)
+        controller.slot.mkdir(parents=True)
+        update._atomic_json(controller.slot_receipt, {
+            "request_digest": controller.request.digest,
+            "wheel_manifest_digest": evidence["wheel_manifest_digest"],
+            "installed_files": evidence,
+        })
+        replacement = update.UpdateRequest(**{
+            **controller.request.__dict__, "controller_source": "c" * 40,
+        })
+        recovered = update.InstalledForgeUpdateController(
+            replacement, process_reader=lambda: (), reconcile_staged_controller=True,
+        )
+        with (
+            patch.object(update, "assert_selected_installation"),
+            patch.object(update, "assert_quiescent"),
+            patch.object(update, "_qualified_artifact", return_value=(
+                {"wheel_manifest_digest": evidence["wheel_manifest_digest"]}, b"wheel", {},
+            )),
+            patch.object(update, "_verify_candidate_files", return_value=evidence),
+            patch.object(update, "installed_identity", return_value=identity),
+        ):
+            rebound = recovered._reconcile_staged_controller(
+                recovered._state(allow_request_mismatch=True),
+                {"user_version": update.transition_schemas(replacement)[0]},
+            )
+        self.assertEqual(rebound["operation_id"], controller.request.operation_id)
+        self.assertEqual(rebound["request_digest"], replacement.digest)
+        self.assertEqual(rebound["history"][-1]["event"], "CONTROLLER_RECONCILED")
+        slot = update._read_json(recovered.slot_receipt)
+        self.assertEqual(slot["request_digest"], replacement.digest)
+        self.assertEqual(len(slot["controller_reconciliations"]), 1)
+
+    def test_staged_controller_reconciliation_rejects_a_product_change(self) -> None:
+        controller, _state, _previous_forge = self._managed_successor_controller(fenced=True)
+        changed = update.UpdateRequest(**{
+            **controller.request.__dict__, "controller_source": "c" * 40,
+            "product_source": "d" * 40,
+        })
+        recovered = update.InstalledForgeUpdateController(
+            changed, process_reader=lambda: (), reconcile_staged_controller=True,
+        )
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "conflicts"):
+            recovered._reconcile_staged_controller(
+                recovered._state(allow_request_mismatch=True), {"user_version": 37},
+            )
+
+    def test_run_reuses_a_controller_reconciliation_interrupted_between_audit_writes(self) -> None:
+        controller, state, _previous_forge = self._managed_successor_controller(fenced=True)
+        evidence = {
+            "wheel_manifest_digest": "sha256:" + "1" * 64,
+            "installed_file_count": 7,
+            "entrypoint_sha256": "sha256:" + "2" * 64,
+        }
+        identity = {
+            "version": controller.request.version,
+            "module": str(controller.slot / "lib/python/site-packages/forge/__init__.py"),
+        }
+        controller._advance(state, "STAGED", candidate=identity, installed_files=evidence)
+        controller.slot.mkdir(parents=True)
+        update._atomic_json(controller.slot_receipt, {
+            "request_digest": controller.request.digest,
+            "wheel_manifest_digest": evidence["wheel_manifest_digest"],
+            "installed_files": evidence,
+        })
+        replacement = update.UpdateRequest(**{
+            **controller.request.__dict__, "controller_source": "c" * 40,
+        })
+        schema_before = update.transition_schemas(replacement)[0]
+        common_patches = (
+            patch.object(update, "database_snapshot", return_value={"user_version": schema_before}),
+            patch.object(update, "assert_selected_installation"),
+            patch.object(update, "assert_quiescent"),
+            patch.object(update, "_qualified_artifact", return_value=(
+                {"wheel_manifest_digest": evidence["wheel_manifest_digest"]}, b"wheel", {},
+            )),
+            patch.object(update, "_verify_candidate_files", return_value=evidence),
+            patch.object(update, "installed_identity", return_value=identity),
+        )
+        interrupted = update.InstalledForgeUpdateController(
+            replacement, process_reader=lambda: (),
+            reconcile_staged_controller=True,
+            interrupt_after="controller_reconciliation_slot",
+        )
+        with (
+            common_patches[0], common_patches[1], common_patches[2],
+            common_patches[3], common_patches[4], common_patches[5],
+            self.assertRaisesRegex(
+                update.InstalledForgeUpdateError, "controller_reconciliation_slot",
+            ),
+        ):
+            interrupted.run()
+        slot_after_interrupt = update._read_json(interrupted.slot_receipt)
+        state_after_interrupt = update._read_json(interrupted.state_path)
+        self.assertEqual(len(slot_after_interrupt["controller_reconciliations"]), 1)
+        self.assertNotIn("controller_reconciliations", state_after_interrupt)
+
+        resumed = update.InstalledForgeUpdateController(
+            replacement, process_reader=lambda: (),
+            reconcile_staged_controller=True, interrupt_after="stage",
+        )
+        common_patches = (
+            patch.object(update, "database_snapshot", return_value={"user_version": schema_before}),
+            patch.object(update, "assert_selected_installation"),
+            patch.object(update, "assert_quiescent"),
+            patch.object(update, "_qualified_artifact", return_value=(
+                {"wheel_manifest_digest": evidence["wheel_manifest_digest"]}, b"wheel", {},
+            )),
+            patch.object(update, "_verify_candidate_files", return_value=evidence),
+            patch.object(update, "installed_identity", return_value=identity),
+        )
+        with (
+            common_patches[0], common_patches[1], common_patches[2],
+            common_patches[3], common_patches[4], common_patches[5],
+            self.assertRaisesRegex(
+                update.InstalledForgeUpdateError, "^simulated interruption after stage$",
+            ),
+        ):
+            resumed.run()
+        slot_after_resume = update._read_json(resumed.slot_receipt)
+        state_after_resume = update._read_json(resumed.state_path)
+        self.assertEqual(
+            slot_after_resume["controller_reconciliations"],
+            state_after_resume["controller_reconciliations"],
+        )
+        self.assertEqual(len(state_after_resume["controller_reconciliations"]), 1)
+        reconciliation_events = [
+            event for event in state_after_resume["history"]
+            if event.get("event") == "CONTROLLER_RECONCILED"
+        ]
+        self.assertEqual(len(reconciliation_events), 1)
+        self.assertEqual(
+            reconciliation_events[0]["at"],
+            state_after_resume["controller_reconciliations"][0]["reconciled_at"],
+        )
+
     def test_crash_before_migration_restores_the_legacy_route(self) -> None:
         controller = self._controller()
         state = controller._state()
