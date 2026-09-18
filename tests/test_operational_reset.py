@@ -296,6 +296,144 @@ class OperationalResetTests(unittest.TestCase):
             )
         self.service().finish(operation_id="forge-reset-test-0001", cancel_before_apply=True)
 
+    def test_prepared_operation_revalidates_without_redefining_the_plan(self) -> None:
+        self.seed_operational_state(external=False)
+        service = self.service()
+        receipt = self.prepare(service)
+        before = service.status(operation_id="forge-reset-test-0001")
+
+        generic_preview = service.preview()
+        self.assertEqual(generic_preview["status"], "BLOCKED")
+        self.assertEqual(
+            [{"code": "MAINTENANCE_ALREADY_ACTIVE", "operation_id": "forge-reset-test-0001"}],
+            generic_preview["blockers"],
+        )
+        self.assertEqual(receipt["plan_digest"], generic_preview["plan_digest"])
+        self.assertEqual(
+            "forge-reset-test-0001",
+            generic_preview["maintenance_observation"]["active_operation_id"],
+        )
+
+        revalidated = service.revalidate(
+            operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+            request_digest=str(receipt["request_digest"]),
+            backup_digest=str(receipt["backup_digest"]),
+        )
+
+        self.assertEqual(receipt["plan_digest"], revalidated["plan_digest"])
+        self.assertEqual("forge-reset-test-0001", revalidated["revalidation"]["writer_fence_owner"])
+        self.assertEqual(
+            revalidated["revalidation"]["relevant_revision_digest"],
+            generic_preview["relevant_revision"],
+        )
+        self.assertRegex(revalidated["revalidation"]["revalidation_digest"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(before, service.status(operation_id="forge-reset-test-0001"))
+        service.finish(operation_id="forge-reset-test-0001", cancel_before_apply=True)
+
+    def test_operation_revalidation_rejects_same_count_drift_and_tampered_backup(self) -> None:
+        service = self.service()
+        receipt = self.prepare(service)
+        privileged = sqlite3.connect(self.root / "forge.db")
+        privileged.create_function("forge_maintenance_write_permitted", 0, lambda: 1)
+        privileged.execute(
+            "UPDATE operational_reset_state SET active_operation_id=NULL WHERE singleton=1"
+        )
+        privileged.execute(
+            "UPDATE runtime_metadata SET value='changed-with-same-row-count' WHERE key='status'"
+        )
+        privileged.execute(
+            "UPDATE operational_reset_state SET active_operation_id='forge-reset-test-0001' WHERE singleton=1"
+        )
+        privileged.commit()
+        privileged.close()
+        with self.assertRaisesRegex(OperationalResetError, "meaningful source data changed"):
+            service.revalidate(
+                operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+                request_digest=str(receipt["request_digest"]),
+                backup_digest=str(receipt["backup_digest"]),
+            )
+
+        # A separate prepared operation proves backup binding independently.
+        other_root = self.root / "backup-revalidation"
+        other_database = RuntimeBootstrap(data_root=other_root, forge_version="2.7.21").open()
+        self.addCleanup(other_database.close)
+        InstallationOperatorService(other_database, lambda: IDENTITY).first_bind()
+        other = ForgeOperationalResetService(other_root, identity_resolver=lambda: IDENTITY)
+        other_plan = other.preview()
+        other_receipt = other.prepare(
+            operation_id="forge-reset-test-0002",
+            expected_plan_digest=str(other_plan["plan_digest"]),
+        )
+        (other_root / str(other_receipt["backup_reference"]) / "runtime-instance.json").write_text(
+            "tampered\n", encoding="utf-8",
+        )
+        with self.assertRaisesRegex(OperationalResetError, "backup digest"):
+            other.revalidate(
+                operation_id="forge-reset-test-0002",
+                plan_digest=str(other_receipt["plan_digest"]),
+                request_digest=str(other_receipt["request_digest"]),
+                backup_digest=str(other_receipt["backup_digest"]),
+            )
+
+    def test_apply_rechecks_authority_and_fence_after_successful_revalidation(self) -> None:
+        service = self.service()
+        receipt = self.prepare(service)
+        service.revalidate(
+            operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+            request_digest=str(receipt["request_digest"]),
+            backup_digest=str(receipt["backup_digest"]),
+        )
+        privileged = sqlite3.connect(self.root / "forge.db")
+        privileged.create_function("forge_maintenance_write_permitted", 0, lambda: 1)
+        privileged.create_function("forge_governance_write_permitted", 0, lambda: 1)
+        privileged.execute(
+            "UPDATE operational_reset_state SET active_operation_id=NULL WHERE singleton=1"
+        )
+        privileged.execute("DROP TRIGGER governance_authority_immutable_delete")
+        privileged.execute(
+            "DELETE FROM governance_authority WHERE capability='SECURITY_APPROVAL'"
+        )
+        privileged.execute(
+            "UPDATE operational_reset_state SET active_operation_id='forge-reset-test-0001' WHERE singleton=1"
+        )
+        privileged.commit()
+        privileged.close()
+        with self.assertRaisesRegex(OperationalResetError, "requires current Security"):
+            service.apply(
+                operation_id="forge-reset-test-0001", plan_digest=str(receipt["plan_digest"]),
+                request_digest=str(receipt["request_digest"]),
+                backup_digest=str(receipt["backup_digest"]),
+            )
+
+        other_root = self.root / "fence-revalidation"
+        other_database = RuntimeBootstrap(data_root=other_root, forge_version="2.7.21").open()
+        self.addCleanup(other_database.close)
+        InstallationOperatorService(other_database, lambda: IDENTITY).first_bind()
+        other = ForgeOperationalResetService(other_root, identity_resolver=lambda: IDENTITY)
+        other_plan = other.preview()
+        other_receipt = other.prepare(
+            operation_id="forge-reset-test-0002",
+            expected_plan_digest=str(other_plan["plan_digest"]),
+        )
+        other.revalidate(
+            operation_id="forge-reset-test-0002", plan_digest=str(other_receipt["plan_digest"]),
+            request_digest=str(other_receipt["request_digest"]),
+            backup_digest=str(other_receipt["backup_digest"]),
+        )
+        fence = sqlite3.connect(other_root / "forge.db")
+        fence.create_function("forge_maintenance_write_permitted", 0, lambda: 1)
+        fence.execute(
+            "UPDATE operational_reset_state SET active_operation_id=NULL,state='IDLE' WHERE singleton=1"
+        )
+        fence.commit()
+        fence.close()
+        with self.assertRaisesRegex(OperationalResetError, "does not own durable maintenance"):
+            other.apply(
+                operation_id="forge-reset-test-0002", plan_digest=str(other_receipt["plan_digest"]),
+                request_digest=str(other_receipt["request_digest"]),
+                backup_digest=str(other_receipt["backup_digest"]),
+            )
+
     def test_insufficient_disk_leaves_durable_safe_maintenance_and_can_cancel(self) -> None:
         service = self.service(disk_usage=lambda _path: Disk(1, 1, 0))
         plan = service.preview()
@@ -575,6 +713,17 @@ class OperationalResetTests(unittest.TestCase):
         self.assertEqual(set(envelope["target"]), {"instance_id", "database_path", "database_identity", "schema_version"})
         self.assertIn("preserved_bindings_digest", envelope)
 
+    def test_operator_envelope_reports_the_observed_post_apply_generation(self) -> None:
+        plan = self.service().preview()
+        payload = {
+            **plan,
+            "state": "VERIFIED",
+            "operation_id": "forge-reset-generation-fixture-001",
+            "generation_after": 1,
+        }
+        envelope = self.service().operator_envelope("verify", payload)
+        self.assertEqual(envelope["dataset_generation"], 1)
+
     def test_cli_error_retains_stable_cross_product_envelope(self) -> None:
         result = subprocess.run(
             (
@@ -610,7 +759,7 @@ class OperationalResetTests(unittest.TestCase):
             text=True, capture_output=True, check=False,
         )
         self.assertEqual(help_result.returncode, 0)
-        for command in ("preview", "prepare", "apply", "status", "resume", "verify", "finish"):
+        for command in ("preview", "prepare", "revalidate", "apply", "status", "resume", "verify", "finish"):
             self.assertIn(command, help_result.stdout)
 
     def marker_id(self) -> str:

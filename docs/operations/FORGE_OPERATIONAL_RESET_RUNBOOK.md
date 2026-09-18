@@ -44,7 +44,25 @@ consistent backup and returns `request_digest` plus verified `backup.digest`.
 If backup creation fails, leave the instance in maintenance and use `status`;
 do not start another operation.
 
-## 3. Apply the reset — DESTRUCTIVE
+## 3. Revalidate this prepared operation — READ-ONLY
+
+Do not repeat the general preview as the same-operation gate. It correctly
+blocks any new reset while maintenance is active. Instead, bind the exact
+prepared receipt:
+
+```text
+forge --data-root "/absolute/Forge Server" server reset revalidate \
+  --operation-id "forge-reset-<approved-reference>" \
+  --plan-digest "sha256:<preview-plan>" \
+  --request-digest "sha256:<prepared-request>" \
+  --backup-digest "sha256:<verified-backup>"
+```
+
+Require `allowed=true`, no blockers, the unchanged plan/relevant-source and
+preserved-bindings digests, the exact fence owner and a revalidation digest.
+This command must not change owning status, data, authority or backup bytes.
+
+## 4. Apply the reset — DESTRUCTIVE
 
 ```text
 forge --data-root "/absolute/Forge Server" server reset apply \
@@ -54,7 +72,7 @@ forge --data-root "/absolute/Forge Server" server reset apply \
   --backup-digest "sha256:<verified-backup>"
 ```
 
-## 4. Verify — MAINTENANCE REMAINS ACTIVE
+## 5. Verify — MAINTENANCE REMAINS ACTIVE
 
 ```text
 forge --data-root "/absolute/Forge Server" server reset verify \
@@ -67,7 +85,7 @@ forge --data-root "/absolute/Forge Server" server reset verify \
 Require `state=VERIFIED`, all operational counts zero, all integrity checks
 green, unchanged target/bindings and a non-empty `verification_digest`.
 
-## 5. Interrupted operation
+## 6. Interrupted operation
 
 ```text
 forge --data-root "/absolute/Forge Server" server reset status \
@@ -85,7 +103,7 @@ before a backup digest exists, omit `--backup-digest`; the same PREPARED operati
 finishes its backup first. Do not automatically restore or create a replacement
 operation.
 
-## 6. Release maintenance — MUTATING
+## 7. Release maintenance — MUTATING
 
 ```text
 forge --data-root "/absolute/Forge Server" server reset finish \
@@ -113,7 +131,8 @@ HTTP authentication/preflight; it must not create a Mission or submission.
    if the normal allocator cannot produce the desired display label.
 3. Prepare both owning operations; confirm both durable maintenance states and
    both verified backups.
-4. Recheck both exact plans under their writer fences.
+4. Invoke both owning operation-bound `revalidate` commands under their writer
+   fences. Do not substitute general preview.
 5. Apply each owning reset sequentially. If either fails, keep both products in
    maintenance and resume the same owning operation; never auto-resume the first.
 6. Verify both empty operational generations, preserved identities/peer binding,
