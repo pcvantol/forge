@@ -403,6 +403,73 @@ def _validated_wheel(request: UpdateRequest) -> tuple[bytes, dict[str, str]]:
     return wheel_bytes, manifest
 
 
+def _validate_criterion_qualification(report: object, request: UpdateRequest) -> None:
+    """Require the exact installed composition evidence added by release 2.7.25."""
+    expected = {
+        "partial": ("COMPLETED", 2), "single": ("COMPLETED", 1),
+        "misleading": ("COMPLETED", 2), "invalid": ("BLOCKED", 1),
+        "missing": ("BLOCKED", 1), "no-progress": ("BLOCKED", 1),
+        "limit": ("BLOCKED", 1), "regression": ("BLOCKED", 2),
+    }
+    row_keys = {"scenario", "status", "waiting_reason", "criteria", "actions", "assessments",
+                "planner_invocations", "submissions", "original_observations_preserved",
+                "same_mission_and_approval", "separate_process_reopen"}
+    if (
+        not isinstance(report, Mapping)
+        or set(report) != {"qualification", "artifact", "scenarios", "limitations"}
+        or report.get("qualification") != "INSTALLED_COMPOSITION_WITH_EXTERNAL_FIXTURES"
+        or report.get("artifact") != {
+            "version": request.version,
+            "wheel_sha256": request.wheel_sha256.removeprefix("sha256:"),
+        }
+        or not isinstance(report.get("scenarios"), list)
+        or len(report["scenarios"]) != len(expected)
+        or not isinstance(report.get("limitations"), list)
+        or not report["limitations"]
+        or any(not isinstance(item, str) or not item for item in report["limitations"])
+    ):
+        raise InstalledForgeUpdateError("installed criterion qualification is noncanonical")
+    seen = set()
+    for row in report["scenarios"]:
+        if (not isinstance(row, Mapping) or set(row) != row_keys
+                or not isinstance(row.get("scenario"), str)):
+            raise InstalledForgeUpdateError("installed criterion scenario is noncanonical")
+        name = row["scenario"]
+        if name not in expected or name in seen:
+            raise InstalledForgeUpdateError("installed criterion scenarios are missing or duplicated")
+        seen.add(name)
+        status, count = expected[name]
+        expected_proven = ({"SYNTHETIC-K1", "SYNTHETIC-K2"} if status == "COMPLETED" else
+                           {"SYNTHETIC-K1"} if name == "limit" else
+                           {"SYNTHETIC-K2"} if name == "regression" else set())
+        expected_reason = (None if status == "COMPLETED" else
+                           "MISSION_ACTION_LIMIT_REACHED" if name in {"limit", "regression"} else
+                           "MISSION_NO_PROGRESS_LIMIT_REACHED")
+        criteria = row.get("criteria")
+        if (
+            row.get("status") != status
+            or any(type(row.get(key)) is not int or row[key] != count
+                   for key in ("actions", "assessments", "planner_invocations", "submissions"))
+            or any(row.get(key) is not True for key in (
+                "original_observations_preserved", "same_mission_and_approval", "separate_process_reopen",
+            ))
+            or not isinstance(criteria, list) or len(criteria) != 2
+            or any(not isinstance(item, Mapping) or set(item) != {"criterion", "status", "reason"}
+                   for item in criteria)
+            or any(not isinstance(item.get("criterion"), str)
+                   or not isinstance(item.get("status"), str) for item in criteria)
+            or {item.get("criterion") for item in criteria} != {"SYNTHETIC-K1", "SYNTHETIC-K2"}
+            or any(item.get("status") not in {"PROVEN", "UNSATISFIED"} for item in criteria)
+            or {item["criterion"] for item in criteria if item["status"] == "PROVEN"} != expected_proven
+            or row.get("waiting_reason") != expected_reason
+            or any(item.get("reason") != (
+                "ALL_APPROVED_REQUIREMENTS_PROVEN" if item["status"] == "PROVEN"
+                else "REQUIRED_OBSERVATIONS_UNPROVEN"
+            ) for item in criteria)
+        ):
+            raise InstalledForgeUpdateError("installed criterion outcome does not qualify the release")
+
+
 def _normal_release_evidence(
     request: UpdateRequest, receipt: Mapping[str, Any], manifest: Mapping[str, str],
     receipt_path: Path,
@@ -425,6 +492,7 @@ def _normal_release_evidence(
         f"dist/{sdist_name}": sdist_digest,
     }
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
+    composition_keys = {"criterion_completion"} if request.version == "2.7.25" else set()
     if (
         (request.existing_version, request.version) not in NORMAL_RELEASE_TRANSITIONS
         or set(receipt) != expected_top
@@ -441,12 +509,12 @@ def _normal_release_evidence(
         or not isinstance(sdist_digest, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", sdist_digest) is None
         or not isinstance(qualification, Mapping)
-        or set(qualification) != {"artifact_digests", "exact_main_sha", "qualification"}
+        or set(qualification) != {"artifact_digests", "exact_main_sha", "qualification"} | composition_keys
         or qualification.get("exact_main_sha") != request.product_source
         or qualification.get("qualification") != "forge-production-distribution"
         or qualification.get("artifact_digests") != exact_qualified
         or not isinstance(publication, Mapping)
-        or set(publication) != {"observed_artifact_digests", "readback", "registry"}
+        or set(publication) != {"observed_artifact_digests", "readback", "registry"} | composition_keys
         or publication.get("observed_artifact_digests") != exact_observed
         or publication.get("readback") != "PASS"
         or publication.get("registry") != "pypi"
@@ -461,6 +529,9 @@ def _normal_release_evidence(
         raise InstalledForgeUpdateError(
             "normal release-complete publication, policy, or cleanup lineage is noncanonical"
         )
+    if composition_keys:
+        _validate_criterion_qualification(qualification["criterion_completion"], request)
+        _validate_criterion_qualification(publication["criterion_completion"], request)
     return {
         "wheel": str(Path(request.wheel)),
         "wheel_sha256": request.wheel_sha256,
