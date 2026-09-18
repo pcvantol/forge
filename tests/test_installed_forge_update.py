@@ -325,7 +325,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         original = json.loads(receipt.read_text())
         for section in ("qualification", "publication_receipt"):
             for mutation in ("missing", "wrong-wheel", "source-only", "missing-case", "duplicate-case",
-                             "wrong-count", "false-completion", "lost-history", "malformed-criterion"):
+                             "wrong-count", "false-completion", "lost-history", "malformed-criterion",
+                             "wrong-regression-criterion", "wrong-block-reason", "extra-field"):
                 with self.subTest(section=section, mutation=mutation):
                     document = json.loads(json.dumps(original))
                     report = document[section]["criterion_completion"]
@@ -345,8 +346,16 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                         report["scenarios"][-1]["status"] = "COMPLETED"
                     elif mutation == "lost-history":
                         report["scenarios"][0]["original_observations_preserved"] = False
-                    else:
+                    elif mutation == "malformed-criterion":
                         report["scenarios"][0]["criteria"][0]["criterion"] = []
+                    elif mutation == "wrong-regression-criterion":
+                        criteria = report["scenarios"][-1]["criteria"]
+                        criteria[0]["criterion"], criteria[1]["criterion"] = (
+                            criteria[1]["criterion"], criteria[0]["criterion"])
+                    elif mutation == "wrong-block-reason":
+                        report["scenarios"][-1]["waiting_reason"] = "completion_assessment_failed:VALUEERROR"
+                    else:
+                        report["scenarios"][-1]["unchecked_claim"] = "PASS"
                     receipt.write_text(json.dumps(document))
                     changed = update.UpdateRequest(**{**request.__dict__,
                         "qualification_receipt_sha256": update.file_digest(receipt)})

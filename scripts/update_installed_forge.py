@@ -411,6 +411,9 @@ def _validate_criterion_qualification(report: object, request: UpdateRequest) ->
         "missing": ("BLOCKED", 1), "no-progress": ("BLOCKED", 1),
         "limit": ("BLOCKED", 1), "regression": ("BLOCKED", 2),
     }
+    row_keys = {"scenario", "status", "waiting_reason", "criteria", "actions", "assessments",
+                "planner_invocations", "submissions", "original_observations_preserved",
+                "same_mission_and_approval", "separate_process_reopen"}
     if (
         not isinstance(report, Mapping)
         or set(report) != {"qualification", "artifact", "scenarios", "limitations"}
@@ -428,13 +431,20 @@ def _validate_criterion_qualification(report: object, request: UpdateRequest) ->
         raise InstalledForgeUpdateError("installed criterion qualification is noncanonical")
     seen = set()
     for row in report["scenarios"]:
-        if not isinstance(row, Mapping) or not isinstance(row.get("scenario"), str):
+        if (not isinstance(row, Mapping) or set(row) != row_keys
+                or not isinstance(row.get("scenario"), str)):
             raise InstalledForgeUpdateError("installed criterion scenario is noncanonical")
         name = row["scenario"]
         if name not in expected or name in seen:
             raise InstalledForgeUpdateError("installed criterion scenarios are missing or duplicated")
         seen.add(name)
         status, count = expected[name]
+        expected_proven = ({"SYNTHETIC-K1", "SYNTHETIC-K2"} if status == "COMPLETED" else
+                           {"SYNTHETIC-K1"} if name == "limit" else
+                           {"SYNTHETIC-K2"} if name == "regression" else set())
+        expected_reason = (None if status == "COMPLETED" else
+                           "MISSION_ACTION_LIMIT_REACHED" if name in {"limit", "regression"} else
+                           "MISSION_NO_PROGRESS_LIMIT_REACHED")
         criteria = row.get("criteria")
         if (
             row.get("status") != status
@@ -444,19 +454,18 @@ def _validate_criterion_qualification(report: object, request: UpdateRequest) ->
                 "original_observations_preserved", "same_mission_and_approval", "separate_process_reopen",
             ))
             or not isinstance(criteria, list) or len(criteria) != 2
-            or any(not isinstance(item, Mapping) for item in criteria)
+            or any(not isinstance(item, Mapping) or set(item) != {"criterion", "status", "reason"}
+                   for item in criteria)
             or any(not isinstance(item.get("criterion"), str)
                    or not isinstance(item.get("status"), str) for item in criteria)
             or {item.get("criterion") for item in criteria} != {"SYNTHETIC-K1", "SYNTHETIC-K2"}
             or any(item.get("status") not in {"PROVEN", "UNSATISFIED"} for item in criteria)
-            or (status == "COMPLETED" and (
-                row.get("waiting_reason") is not None
-                or any(item.get("status") != "PROVEN" for item in criteria)
-            ))
-            or (status == "BLOCKED" and (
-                not isinstance(row.get("waiting_reason"), str) or not row["waiting_reason"]
-                or all(item.get("status") == "PROVEN" for item in criteria)
-            ))
+            or {item["criterion"] for item in criteria if item["status"] == "PROVEN"} != expected_proven
+            or row.get("waiting_reason") != expected_reason
+            or any(item.get("reason") != (
+                "ALL_APPROVED_REQUIREMENTS_PROVEN" if item["status"] == "PROVEN"
+                else "REQUIRED_OBSERVATIONS_UNPROVEN"
+            ) for item in criteria)
         ):
             raise InstalledForgeUpdateError("installed criterion outcome does not qualify the release")
 
