@@ -15,10 +15,11 @@ import json
 from typing import Any
 
 from .mission_completion import MissionCriterionEvaluationStatus, mission_criterion_id
-from .mission_planner import MissionPlannerInput, PlanningEvidence
+from .mission_planner import MissionContinuationContext, MissionPlannerInput, PlanningEvidence
 
 
 ACTION_DERIVATION_SCHEMA_VERSION = "1.1"
+MAX_PLANNING_SNAPSHOT_BYTES = 262_144
 
 
 def _digest(value: object) -> str:
@@ -91,11 +92,13 @@ class PlanningSnapshot:
     criteria: tuple[MissionCriterionSnapshot, ...]
     digest: str
     schema_version: str = ACTION_DERIVATION_SCHEMA_VERSION
+    approved_mission_json: str | None = None
+    continuation_context: MissionContinuationContext | None = None
 
     @classmethod
     def from_planner_input(cls, planning_input: MissionPlannerInput) -> "PlanningSnapshot":
         mission_digest = _digest(planning_input.mission.to_dict())
-        state_digest = _digest(asdict(planning_input.mission_state))
+        state_digest = _digest(planning_input.mission_state.to_dict())
         explicit_states = {item.criterion_id: item.status for item in planning_input.mission_state.criterion_states}
         criteria = tuple(MissionCriterionSnapshot(
             mission_criterion_id(planning_input.mission.id, criterion), criterion,
@@ -113,20 +116,39 @@ class PlanningSnapshot:
             "evidence": [item.to_dict() for item in planning_input.evidence],
             "criteria": [item.to_dict() for item in criteria],
         }
+        approved_mission_json = None
+        continuation_context = planning_input.mission_state.continuation_context
+        if planning_input.mission.criterion_assessment_contracts:
+            approved_mission = planning_input.mission.to_dict()
+            approved_mission_json = json.dumps(approved_mission, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            document["approved_mission"] = approved_mission
+        if continuation_context is not None:
+            document["continuation_context"] = continuation_context.to_dict()
         digest = _digest(document)
-        return cls(f"planning-snapshot-{digest[7:23]}", planning_input.mission.id,
-                   planning_input.mission_state.revision, mission_digest, state_digest,
-                   planning_input.evidence, criteria, digest)
+        snapshot = cls(f"planning-snapshot-{digest[7:23]}", planning_input.mission.id,
+                       planning_input.mission_state.revision, mission_digest, state_digest,
+                       planning_input.evidence, criteria, digest,
+                       approved_mission_json=approved_mission_json, continuation_context=continuation_context)
+        if (continuation_context is not None and len(json.dumps(
+                snapshot.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                allow_nan=False).encode("utf-8")) > MAX_PLANNING_SNAPSHOT_BYTES):
+            raise ValueError("Mission planning snapshot exceeds its byte bound")
+        return snapshot
 
     def is_current_for(self, planning_input: MissionPlannerInput) -> bool:
         return self == self.from_planner_input(planning_input)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema_version": self.schema_version, "id": self.id, "mission_id": self.mission_id,
+        document = {"schema_version": self.schema_version, "id": self.id, "mission_id": self.mission_id,
                 "mission_revision": self.mission_revision, "mission_digest": self.mission_digest,
                 "mission_state_digest": self.mission_state_digest,
                 "evidence": [item.to_dict() for item in self.evidence],
                 "criteria": [item.to_dict() for item in self.criteria], "digest": self.digest}
+        if self.approved_mission_json is not None:
+            document["approved_mission"] = json.loads(self.approved_mission_json)
+        if self.continuation_context is not None:
+            document["continuation_context"] = self.continuation_context.to_dict()
+        return document
 
 
 @dataclass(frozen=True)

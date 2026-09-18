@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from enum import Enum
+from hashlib import sha256
+import json
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from forge.models.action import EngineeringAction, EngineeringActionStatus
@@ -14,6 +16,7 @@ from forge.models.execution_host import (
     ExecutionEvidenceOutcome,
     ExecutionHost,
     ExecutionHostEvidence,
+    ExecutionRepositoryEvidence,
     ExecutionRequest,
     ExecutionHostTemporaryUnavailable,
 )
@@ -101,6 +104,12 @@ def _failure_code(error: Exception) -> str:
     ):
         return candidate
     return type(error).__name__.upper()
+
+
+def _continuation_digest(value: object) -> str:
+    return "sha256:" + sha256(json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode("utf-8")).hexdigest()
 
 
 def _action(document: Mapping[str, Any]) -> EngineeringAction:
@@ -411,6 +420,8 @@ class BootstrapMissionRunner:
         if state.status is MissionExecutionStatus.READY:
             return self._store.transition(state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(), reason="mission_running")
         if state.status is MissionExecutionStatus.ACTIVE:
+            if "terminal_continuation" in state.resume:
+                return self._continue_after_evidence(state)
             return self._release_action(state)
         if state.status is MissionExecutionStatus.WAITING_FOR_EXECUTION:
             return self._dispatch_or_recover(state)
@@ -572,18 +583,81 @@ class BootstrapMissionRunner:
             return self._store.transition(state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(),
                                           reason="execution_completed", actions=actions, execution_evidence=evidence_document)
 
-        repository_truth, completion = self._completion_context(state, evidence)
-        if not isinstance(completion, MissionCompletionEvaluation):
-            raise MissionRunnerError("Mission completion context must be a Forge-owned evaluation")
+        try:
+            repository_truth, completion = self._completion_context(state, evidence)
+            if not isinstance(completion, MissionCompletionEvaluation):
+                raise MissionRunnerError("INVALID_COMPLETION_ASSESSMENT_TYPE")
+        except Exception as error:
+            # The Host's accepted execution outcome remains immutable even if
+            # Forge cannot assess it. Preserve it and block further planning;
+            # provider text, private paths and exception payloads stay out of
+            # the durable public reason.
+            return self._store.transition(
+                state.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._now(),
+                reason="completion_assessment_failed:" + _failure_code(error),
+                actions=actions, execution_evidence=evidence_document,
+            )
         mission_complete = actions_complete and completion.all_required_criteria_proven
         reconciled = self._store.transition(
             state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(),
             reason="terminal_evidence_reconciled", actions=actions, execution_evidence=evidence_document,
             repository_truth=repository_truth, completion=completion.to_dict(),
+            resume={**state.resume, "terminal_continuation": {
+                "schema_version": "1.0", "phase": "ASSESSED",
+                "receipt_id": evidence.receipt_id,
+                "action_id": evidence.repository_evidence.action_id,
+                "execution_digest": _continuation_digest(evidence_document),
+                "assessment_digest": _continuation_digest(completion.to_dict()),
+                "repository_truth_digest": _continuation_digest(repository_truth),
+                "mission_digest": _continuation_digest(dict(state.mission)),
+                "mission_complete": mission_complete,
+            }},
         )
-        if not mission_complete:
+        return self._continue_after_evidence(reconciled)
+
+    def _continue_after_evidence(self, state: MissionExecutionState) -> MissionExecutionState:
+        """Resume the persisted assessment decision without rereading the Host.
+
+        The terminal evidence, assessment and continuation marker were committed
+        together. A successor materialization advances the marker in that same
+        transaction; a restart must never allocate a second logical successor.
+        """
+        marker = state.resume.get("terminal_continuation")
+        if (not isinstance(marker, Mapping) or set(marker) != {
+                "schema_version", "phase", "receipt_id", "action_id", "execution_digest",
+                "assessment_digest", "repository_truth_digest", "mission_digest", "mission_complete",
+            } or marker.get("schema_version") != "1.0"
+                or marker.get("phase") not in {"ASSESSED", "SUCCESSOR_READY"}
+                or not isinstance(marker.get("mission_complete"), bool)
+                or not isinstance(state.execution_evidence, Mapping)
+                or not isinstance(state.completion, Mapping)
+                or not isinstance(state.repository_truth, Mapping)
+                or marker.get("execution_digest") != _continuation_digest(state.execution_evidence)
+                or marker.get("assessment_digest") != _continuation_digest(state.completion)
+                or marker.get("repository_truth_digest") != _continuation_digest(state.repository_truth)
+                or marker.get("mission_digest") != _continuation_digest(dict(state.mission))):
+            raise MissionRunnerError("persisted terminal continuation is malformed or stale")
+        document = dict(state.execution_evidence)
+        try:
+            document["repository_evidence"] = ExecutionRepositoryEvidence(**document["repository_evidence"])
+            document["outcome"] = ExecutionEvidenceOutcome(document["outcome"])
+            evidence = ExecutionHostEvidence(**document)
+        except (KeyError, TypeError, ValueError) as error:
+            raise MissionRunnerError("persisted continuation lacks typed terminal evidence") from error
+        if (evidence.outcome is not ExecutionEvidenceOutcome.COMPLETE
+                or marker["receipt_id"] != evidence.receipt_id
+                or marker["action_id"] != evidence.repository_evidence.action_id
+                or not any(item["id"] == marker["action_id"] and item["status"] == "COMPLETE"
+                           for item in state.actions)):
+            raise MissionRunnerError("persisted continuation does not bind its completed Action")
+        mission_complete = marker["mission_complete"]
+        if mission_complete != (self._scheduler.progress(self._actions(state)).is_complete
+                                and state.completion.get("all_required_criteria_proven") is True):
+            raise MissionRunnerError("persisted continuation conflicts with its completion assessment")
+        reconciled = state
+        if not mission_complete and marker["phase"] == "ASSESSED":
             if self._replan_after_evidence is None:
-                if actions_complete:
+                if self._scheduler.progress(self._actions(state)).is_complete:
                     return self._store.transition(
                         reconciled.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._now(),
                         reason="mission_criteria_unmet_no_valid_successor",
@@ -591,22 +665,38 @@ class BootstrapMissionRunner:
             else:
                 try:
                     reconciled = self._replan_after_evidence(reconciled, evidence)
-                except Exception:
+                except Exception as error:
+                    code = _failure_code(error)
                     return self._store.transition(
                         reconciled.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._now(),
-                        reason="mission_criteria_unmet_no_valid_successor",
+                        reason=(code if str(error) == code else "mission_criteria_unmet_no_valid_successor"),
                     )
+        # Static remaining-work validation may return the same state. Dynamic
+        # materialization already persists this phase atomically with its plan.
+        if reconciled.resume["terminal_continuation"]["phase"] != "SUCCESSOR_READY":
+            reconciled = self._store.transition(
+                reconciled.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(),
+                reason="terminal_successor_ready",
+                resume={**reconciled.resume, "terminal_continuation": {
+                    **reconciled.resume["terminal_continuation"], "phase": "SUCCESSOR_READY",
+                }},
+            )
         current_actions = self._actions(reconciled)
         if self._evidence_progression_gate is not None:
             paused = self._evidence_progression_gate(reconciled, current_actions, evidence, mission_complete)
             if paused is not None:
                 return paused
+        resume = {key: value for key, value in reconciled.resume.items() if key != "terminal_continuation"}
         if mission_complete:
             return self._store.transition(
                 reconciled.mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self._now(),
                 reason="mission_criteria_proven",
+                resume=resume,
             )
-        return reconciled
+        return self._store.transition(
+            reconciled.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(),
+            reason="terminal_continuation_completed", resume=resume,
+        )
 
     def _host_failure(self, state: MissionExecutionState, reference: str, error: Exception) -> MissionExecutionState:
         return self._store.transition(

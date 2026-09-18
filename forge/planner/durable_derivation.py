@@ -105,13 +105,16 @@ def _replay_boundary_digest(snapshot: PlanningSnapshot) -> str:
     attempt impossible.  Repository truth, approvals/capabilities, criteria,
     execution evidence and the approved Mission remain in this binding.
     """
-    return _digest({
+    document = {
         "mission_id": snapshot.mission_id,
         "mission_digest": snapshot.mission_digest,
         "criteria": [item.to_dict() for item in snapshot.criteria],
         "evidence": [item.to_dict() for item in snapshot.evidence
                      if item.kind.value != "mission_state"],
-    })
+    }
+    if snapshot.continuation_context is not None:
+        document["continuation_context"] = snapshot.continuation_context.to_dict()
+    return _digest(document)
 
 
 def _evidence_document(value: ProviderInvocationEvidence) -> dict[str, object]:

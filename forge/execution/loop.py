@@ -215,9 +215,17 @@ class ExecutionLoop:
             if authorization is not None:
                 raise ExecutionLoopError("recovery authorization is not valid for a governance-paused Mission")
             boundary = str((state.pause_reason or {}).get("boundary"))
-            target = MissionExecutionStatus.COMPLETED if boundary == PauseBoundary.MISSION.value else MissionExecutionStatus.ACTIVE
+            continuation = state.resume.get("terminal_continuation")
+            completing = (isinstance(continuation, Mapping)
+                          and continuation.get("phase") == "SUCCESSOR_READY"
+                          and continuation.get("mission_complete") is True)
+            target = (MissionExecutionStatus.COMPLETED
+                      if boundary == PauseBoundary.MISSION.value or completing
+                      else MissionExecutionStatus.ACTIVE)
             state = self._states.transition(mission_id, target, occurred_at=self._clock(), reason="governance_approval_recorded",
-                                            approval_record=approval.to_dict())
+                                            approval_record=approval.to_dict(),
+                                            resume={key: value for key, value in state.resume.items()
+                                                    if key != "terminal_continuation"})
             if target is MissionExecutionStatus.COMPLETED:
                 self._dispatcher.complete(mission_id)
                 return state
@@ -334,6 +342,16 @@ class ExecutionLoop:
             candidate = getattr(self._ai_planner, "current_derivation_id", None)
             durable_id = candidate if isinstance(candidate, str) and candidate else None
         try:
+            mission = ArchitectureMission.from_dict(dict(state.mission))
+            if mission.maximum_actions is not None and len(actions) > mission.maximum_actions:
+                error = ExecutionLoopError("APPROVED_ACTION_LIMIT_REACHED")
+                recorder = getattr(self._ai_planner, "record_materialization_failure", None)
+                if durable_id is not None and callable(recorder):
+                    recorder(durable_id, error)
+                return self._states.transition(
+                    state.mission_id, MissionExecutionStatus.BLOCKED, occurred_at=self._clock(),
+                    reason="APPROVED_ACTION_LIMIT_REACHED",
+                )
             return self._states.transition(
                 state.mission_id, MissionExecutionStatus.READY, occurred_at=self._clock(),
                 reason="dynamic_derivation_materialized" if derivation is not None else "deterministic_plan_persisted",
@@ -359,8 +377,21 @@ class ExecutionLoop:
         criterion_states = tuple(MissionCriterionPlanningState(
             str(item["criterion_id"]), MissionCriterionEvaluationStatus(str(item["status"])),
         ) for item in completion_criteria if isinstance(item, Mapping))
+        continuation = None
+        if source.mission.criterion_assessment_contracts:
+            from forge.models.mission_planner import MissionContinuationContext
+            admission = state.admission_contract
+            if (not isinstance(admission, Mapping) or not isinstance(admission.get("planning"), Mapping)
+                    or not isinstance(state.repository_truth, Mapping)):
+                raise ExecutionLoopError("criterion planning requires canonical authority and Repository Truth")
+            continuation = MissionContinuationContext.from_runtime(
+                source.mission, planning=admission["planning"], actions=state.actions,
+                execution_history=state.execution_history, completion=state.completion,
+                delegations=state.delegations,
+                repository_truth=state.repository_truth,
+            )
         return replace(source, mission_state=MissionPlanningState(
-            state.mission_id, state.revision, completed, blocked, criterion_states,
+            state.mission_id, state.revision, completed, blocked, criterion_states, continuation,
         ))
 
     @staticmethod
@@ -393,6 +424,7 @@ class ExecutionLoop:
         proposal_documents = tuple({
             "logical_action_id": proposal.logical_action_id,
             "semantic_digest": proposal.semantic_digest(),
+            "work_fingerprint": self._work_fingerprint(proposal),
             "provenance": asdict(proposal.provenance),
             "mission_gap": None if proposal.mission_gap is None else proposal.mission_gap.to_dict(),
         } for proposal in proposals)
@@ -564,12 +596,22 @@ class ExecutionLoop:
             return state
 
         self._assert_current_replan_evidence(state, replanning, evidence)
+        self._assert_successor_bounds(state, replanning.mission)
         plan, derivation = self._select_plan(replanning, state)
         assert derivation is not None
+        previous_fingerprints = {
+            item["work_fingerprint"] for record in state.planning_history
+            for item in record.get("proposals", ())
+            if isinstance(item, Mapping) and isinstance(item.get("work_fingerprint"), str)
+        }
+        if any(item["work_fingerprint"] in previous_fingerprints for item in derivation["proposals"]):
+            raise ExecutionLoopError("DUPLICATE_SUCCESSOR_WORK")
         existing_ids = {action.id for action in actions}
         proposed = tuple(action for intent in plan.intents for action in intent.actions)
         if not proposed:
             raise ExecutionLoopError("Mission criteria remain unmet and derivation produced no successor")
+        if len(actions) + len(proposed) > replanning.mission.maximum_actions:
+            raise ExecutionLoopError("MISSION_ACTION_LIMIT_REACHED")
         if existing_ids & {action.id for action in proposed}:
             raise ExecutionLoopError("derived successor cannot reuse a materialized Engineering Action identity")
         next_order = max((action.order for action in actions), default=0) + 1
@@ -582,11 +624,76 @@ class ExecutionLoop:
             renumbered[(intent.id, intent.revision)] = tuple(current)
         new_intents = tuple(replace(intent, actions=renumbered[(intent.id, intent.revision)]) for intent in plan.intents)
         new_actions = tuple(action for intent in new_intents for action in intent.actions)
-        return self._states.transition(
-            state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._clock(),
-            reason="dynamic_successor_materialized", intents=(*state.intents, *new_intents),
-            actions=(*actions, *new_actions), planning_history=(*state.planning_history, derivation),
-        )
+        candidate = getattr(self._ai_planner, "current_derivation_id", None)
+        durable_id = candidate if isinstance(candidate, str) and candidate else None
+        resume = dict(state.resume)
+        continuation = resume.get("terminal_continuation")
+        if isinstance(continuation, Mapping):
+            resume["terminal_continuation"] = {**continuation, "phase": "SUCCESSOR_READY"}
+        try:
+            return self._states.transition(
+                state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._clock(),
+                reason="dynamic_successor_materialized", intents=(*state.intents, *new_intents),
+                actions=(*actions, *new_actions), planning_history=(*state.planning_history, derivation),
+                resume=resume, durable_materialization_derivation_id=durable_id,
+            )
+        except Exception as error:
+            recorder = getattr(self._ai_planner, "record_materialization_failure", None)
+            if durable_id is not None and callable(recorder):
+                recorder(durable_id, error)
+            raise
+
+    @staticmethod
+    def _work_fingerprint(proposal: object) -> str:
+        """Detect renamed identical work without receipt or logical-ID churn.
+
+        This conservative fingerprint is not a semantic equivalence oracle;
+        approved finite Action and no-progress ceilings also bound paraphrases.
+        """
+        def normalized(value: str) -> str:
+            return " ".join(value.split()).casefold()
+        value = {
+            "scope": normalized(proposal.scope),
+            "objective": normalized(proposal.objective),
+            "write_scopes": sorted(proposal.write_scopes),
+            "expected_evidence": sorted(normalized(item) for item in proposal.expected_evidence),
+            "validation_strategy": sorted(normalized(item) for item in proposal.validation_strategy),
+        }
+        return "sha256:" + sha256(json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        ).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _assert_successor_bounds(state: MissionExecutionState, mission: ArchitectureMission) -> None:
+        """Use only approved ceilings and observed requirement progress."""
+        if not mission.criterion_assessment_contracts:
+            raise ExecutionLoopError("LEGACY_ASSESSMENT_CONTRACT_MISSING")
+        if len(state.actions) >= mission.maximum_actions:
+            raise ExecutionLoopError("MISSION_ACTION_LIMIT_REACHED")
+        current_requirements = [
+            item for criterion in (state.completion or {}).get("criteria", ())
+            for item in criterion.get("requirement_results", ())
+        ]
+        missing = [item for item in current_requirements if item.get("status") != "PROVEN"]
+        if missing and all(item.get("reason") == "UNSUPPORTED_AUTHORITATIVE_EVIDENCE_SOURCE" for item in missing):
+            raise ExecutionLoopError("UNSUPPORTED_AUTHORITATIVE_EVIDENCE_SOURCE")
+        history = list(state.completion_history)
+        if state.completion is not None and (not history or history[-1] != state.completion):
+            history.append(state.completion)
+        previous: set[tuple[str, str, str, str]] = set()
+        consecutive_without_progress = 0
+        for assessment in history:
+            fulfilled = {
+                (criterion["criterion_id"], criterion["contract_digest"],
+                 item["requirement_id"], item["requirement_digest"])
+                for criterion in assessment.get("criteria", ())
+                for item in criterion.get("requirement_results", ())
+                if item.get("status") == "PROVEN"
+            }
+            consecutive_without_progress = (0 if fulfilled - previous else consecutive_without_progress + 1)
+            previous = fulfilled
+        if consecutive_without_progress >= mission.maximum_consecutive_no_progress_actions:
+            raise ExecutionLoopError("MISSION_NO_PROGRESS_LIMIT_REACHED")
 
     @staticmethod
     def _assert_current_replan_evidence(state: MissionExecutionState,

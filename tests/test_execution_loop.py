@@ -1,4 +1,7 @@
-"""Regression coverage for Forge's autonomous single-Mission execution loop."""
+"""Generic execution-loop source tests with explicit repository-byte fixtures.
+
+These injected assembly helpers are not normal installed composition proof.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ from forge.models import (
 from forge.planner import MissionPlanner
 from forge.state import MissionExecutionStatus, MissionStateStore
 from forge.runtime import RuntimeDatabase
+from tests.criterion_fixture import seed_pending, approved_contract_mission, terminal_completion, planning_state
 
 
 def digest(letter: str) -> str:
@@ -32,12 +36,12 @@ def digest(letter: str) -> str:
 
 
 def mission() -> ArchitectureMission:
-    return ArchitectureMission(
+    return approved_contract_mission(ArchitectureMission(
         "mission-loop", "candidate-loop", "Loop", "Run work.", "Complete bounded work.", "Evidence.",
         "review-source", "recommendation-source", ("contract", "docs"), ("bounded",), ("complete",),
         ("local",), ("none",), ("capability-contract", "capability-docs"),
         (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("none",), ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
-    )
+    ))
 
 
 def planning(state: object) -> MissionPlannerInput:
@@ -48,7 +52,7 @@ def planning(state: object) -> MissionPlannerInput:
     ))
     reference = IntentReference("architecture", "1", "local://architecture")
     return MissionPlannerInput(
-        mission(), MissionPlanningState("mission-loop", revision), evidence,
+        mission(), planning_state(state, mission(), state.repository_truth or {"source_id": "repository", "revision": "revision", "locator": "repository://forge/revision", "content_digest": digest("d")}), evidence,
         (ApprovedScope("contract", "capability-contract", (reference,), (
             PlannedActionDefinition("contract-action", "Implement contract.", ("contract evidence",), ("contract test",), 10),
         )), ApprovedScope("docs", "capability-docs", (reference,), (
@@ -94,19 +98,19 @@ class Host:
         request = dispatch.request
         repository = ExecutionRepositoryEvidence(request.mission_id, request.intent_id, request.intent_revision,
             request.action_id, request.runtime_prompt.id, request.correlation_id, dispatch.host_run_id,
-            request.repository_id, "revision", f"report-{request.action_id}", digest("c"))
+            request.repository_id, f"revision-{request.action_id}-{request.correlation_id}", f"report-{request.action_id}", digest("c"))
         return ExecutionHostEvidence(request.host_id, request.correlation_id, dispatch.host_run_id,
                                      f"report-{request.action_id}", outcome, repository,
                                      retry_of_correlation_id=request.retry_of_correlation_id,
                                      original_correlation_id=request.original_correlation_id,
                                      execution_started_at="2026-08-04T10:00:00Z", execution_completed_at="2026-08-04T10:01:00Z",
-                                     receipt_id=f"receipt-{request.action_id}", execution_duration_ms=60_000)
+                                     receipt_id=f"receipt-{request.action_id}-{request.correlation_id}", execution_duration_ms=60_000)
 
 
 class ExecutionLoopTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = TemporaryDirectory(); self.root = Path(self.directory.name); self.runtime = RuntimeDatabase(self.root)
-        self.store = MissionStateStore(self.runtime); self.store.create_pending(mission(), occurred_at="2026-08-04T10:00:00Z")
+        self.store = MissionStateStore(self.runtime); seed_pending(self.store, mission(), {"source_id": "repository", "revision": "revision", "locator": "repository://forge/revision", "content_digest": digest("d")}, occurred_at="2026-08-04T10:00:00Z")
         self.dispatcher, self.counter, self.planning_calls = Dispatcher(), 0, 0
 
     def tearDown(self) -> None:
@@ -119,24 +123,15 @@ class ExecutionLoopTests(unittest.TestCase):
         def planning_input(state: object) -> MissionPlannerInput:
             self.planning_calls += 1
             return planning(state)
-        def repository_truth(_state: object, _evidence: object):
-            return {"source_id": "repository", "revision": "revision", "locator": "repository://forge/revision",
+        def repository_truth(_state: object, evidence: object):
+            revision = "revision" if evidence is None else evidence.repository_evidence.repository_revision
+            return {"source_id": "repository", "revision": revision, "locator": f"repository://forge/{revision}",
                     "content_digest": digest("d")}
         def completion_evidence(state, evidence, truth):
             completed = {item["id"] for item in state.actions if item["status"] == "COMPLETE"} | {evidence.repository_evidence.action_id}
-            if completed != {item["id"] for item in state.actions}:
-                return None
-            reference = CanonicalExecutionEvidenceReference(
-                evidence.receipt_id, evidence.repository_evidence.action_id, evidence.report_id,
-                evidence.repository_evidence.repository_revision, evidence.repository_evidence.content_digest,
-            )
-            truth_reference = RepositoryTruthReference(truth["source_id"], truth["revision"], truth["locator"], truth["content_digest"])
-            return MissionCompletionEvidence(
-                mission().id, "sha256:" + sha256(json.dumps(
-                    mission().to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-                ).encode()).hexdigest(),
-                (MissionCriterionEvidenceBinding(mission_criterion_id(mission().id, "complete"), (reference,), truth_reference),),
-            )
+            return terminal_completion(mission(), evidence, truth,
+                {"complete"} if completed == {item["id"] for item in state.actions} else set())
+
         return ExecutionLoop(self.dispatcher, self.store, MissionPlanner(), host, planning_input, prompt,
                              repository_truth,
                              host_id="host", workspace_id="workspace", repository_id="forge",
@@ -202,7 +197,7 @@ class ExecutionLoopTests(unittest.TestCase):
                 self.runtime.close()
                 self.runtime = RuntimeDatabase(self.root / f"policy-{index}")
                 self.store = MissionStateStore(self.runtime)
-                self.store.create_pending(mission(), occurred_at="2026-08-04T10:00:00Z")
+                seed_pending(self.store, mission(), {"source_id": "repository", "revision": "revision", "locator": "repository://forge/revision", "content_digest": digest("d")}, occurred_at="2026-08-04T10:00:00Z")
                 paused = self.loop(Host(outcomes), ExecutionPolicy(policy_kind)).run(); assert paused is not None
                 self.assertEqual(paused.status, MissionExecutionStatus.AWAITING_APPROVAL)
                 self.assertEqual(paused.pause_reason["boundary"], boundary)  # type: ignore[index]

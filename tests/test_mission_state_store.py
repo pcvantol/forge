@@ -160,6 +160,26 @@ class MissionStateStoreTests(unittest.TestCase):
         self.assertEqual([(item.sequence, item.reason) for item in history], [(1, "created"), (2, "planned")])
         self.assertFalse(hasattr(self.store, "_connection"))
 
+    def test_callback_replay_deduplicates_receipts_and_preserves_assessment_history(self) -> None:
+        self.advance_to_waiting_evidence()
+        evidence = {"receipt_id": "receipt-1", "outcome": "complete"}
+        first = {"schema_version": "2.0", "criteria": [{"status": "UNSATISFIED"}]}
+        second = {"schema_version": "2.0", "criteria": [{"status": "PROVEN"}]}
+        for assessment in (first, first, second):
+            self.store.transition(
+                "mission-1", MissionExecutionStatus.ACTIVE, occurred_at="2026-08-01T20:05:00Z",
+                reason="terminal_evidence_reconciled", execution_evidence=evidence, completion=assessment,
+            )
+        state = self.store.get("mission-1")
+        self.assertEqual(state.execution_history, (evidence,))
+        self.assertEqual(state.completion_history, (first, second))
+        with self.assertRaisesRegex(MissionStateStoreError, "receipt identity conflicts"):
+            self.store.transition(
+                "mission-1", MissionExecutionStatus.ACTIVE, occurred_at="2026-08-01T20:06:00Z",
+                reason="conflicting_callback", execution_evidence={**evidence, "outcome": "failed"},
+            )
+        self.assertEqual(self.store.get("mission-1"), state)
+
 
 if __name__ == "__main__":
     unittest.main()

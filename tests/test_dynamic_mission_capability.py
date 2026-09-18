@@ -1,4 +1,7 @@
-"""Deterministic first-canary capability harness; no network or real provider."""
+"""Generic dynamic-loop source tests with explicit external byte/provider fixtures.
+
+Injected evidence assembly here does not qualify the normal installed factory.
+"""
 
 from __future__ import annotations
 
@@ -44,6 +47,7 @@ from forge.models import (
 from forge.planner import AIMissionPlanner, MissionPlanner, ProposalValidationError
 from forge.runtime import RuntimeDatabase
 from forge.state import MissionExecutionStatus, MissionStateStore
+from tests.criterion_fixture import seed_pending, approved_contract_mission, terminal_completion, planning_state
 
 
 def digest(value: object) -> str:
@@ -53,7 +57,7 @@ def digest(value: object) -> str:
 
 
 def mission() -> ArchitectureMission:
-    return ArchitectureMission(
+    return approved_contract_mission(ArchitectureMission(
         "mission-dynamic", "candidate-dynamic", "Dynamic mission", "Derive bounded work.",
         "Prove A and its evidence-derived successor B.", "Autonomous bounded delivery.",
         "architecture-review", "mission-recommendation", ("forge-runtime",),
@@ -61,7 +65,7 @@ def mission() -> ArchitectureMission:
         ("Canonical Host evidence is available.",), ("none",), ("dynamic-runtime",),
         (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("scope drift",),
         ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
-    )
+    ))
 
 
 def prompt(_intent: object, action: object) -> RuntimePrompt:
@@ -184,7 +188,7 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
         self.runtime = RuntimeDatabase(self.root)
         self.runtime_identity = self.runtime.runtime_identity
         self.store = MissionStateStore(self.runtime)
-        self.store.create_pending(mission(), occurred_at="2026-09-10T09:59:00Z")
+        seed_pending(self.store, mission(), self.truth(None, None), occurred_at="2026-09-10T09:59:00Z")
         self.host, self.dispatcher, self.counter = Host(), Dispatcher(), 0
 
     def tearDown(self) -> None:
@@ -219,7 +223,7 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
                 f"runtime://execution/{current['receipt_id']}", str(current["repository_evidence"]["content_digest"]),
             ))
         return MissionPlannerInput(
-            mission(), MissionPlanningState(mission().id, state.revision), tuple(items),
+            mission(), planning_state(state, mission(), truth), tuple(items),
             (ApprovedScope("forge-runtime", "dynamic-runtime", (IntentReference(
                 "living-mission-graph", "1", "docs/architecture/LIVING_MISSION_GRAPH_AND_CROSS_REPOSITORY_ACTION_DAG.md"
             ),), (), allow_provider_derivation=True),),
@@ -227,30 +231,12 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
 
     @staticmethod
     def completion_evidence(state, current, truth):
-        documents = (*state.execution_history, {
-            "receipt_id": current.receipt_id, "report_id": current.report_id, "outcome": current.outcome.value,
-            "correlation_id": current.correlation_id, "host_run_id": current.host_run_id,
-            "repository_evidence": {
-                "mission_id": current.repository_evidence.mission_id,
-                "action_id": current.repository_evidence.action_id,
-                "repository_revision": current.repository_evidence.repository_revision,
-                "content_digest": current.repository_evidence.content_digest,
-            },
-        })
-        references = {
-            item["repository_evidence"]["action_id"]: CanonicalExecutionEvidenceReference(
-                item["receipt_id"], item["repository_evidence"]["action_id"], item["report_id"],
-                item["repository_evidence"]["repository_revision"], item["repository_evidence"]["content_digest"],
-            ) for item in documents if item.get("outcome") == "complete"
-        }
-        truth_reference = RepositoryTruthReference(truth["source_id"], truth["revision"], truth["locator"], truth["content_digest"])
-        bindings = []
-        for action_id, criterion in (("action-a", "A evidence reconciled"), ("action-b", "B evidence reconciled")):
-            if action_id in references:
-                bindings.append(MissionCriterionEvidenceBinding(
-                    mission_criterion_id(mission().id, criterion), (references[action_id],), truth_reference,
-                ))
-        return MissionCompletionEvidence(mission().id, digest(mission().to_dict()), tuple(bindings))
+        # Actual JSON bytes at the current receipt revision determine the facts.
+        # A's artifact has only A; B's newer artifact retains A and adds B.
+        realized = {"A evidence reconciled"}
+        if current.repository_evidence.action_id == "action-b":
+            realized.add("B evidence reconciled")
+        return terminal_completion(mission(), current, truth, realized)
 
     def loop(self, provider: DerivationProvider, *, planning=None) -> ExecutionLoop:
         def correlation():
@@ -326,7 +312,7 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
                 scoped_root = self.root / mode
                 self.runtime = RuntimeDatabase(scoped_root)
                 self.store = MissionStateStore(self.runtime)
-                self.store.create_pending(mission(), occurred_at="2026-09-10T09:59:00Z")
+                seed_pending(self.store, mission(), self.truth(None, None), occurred_at="2026-09-10T09:59:00Z")
                 blocked = self.loop(DerivationProvider(mode)).run()
                 assert blocked is not None
                 self.assertEqual(blocked.status, MissionExecutionStatus.BLOCKED)
@@ -344,7 +330,7 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
                 scoped_root = self.root / mode
                 self.runtime = RuntimeDatabase(scoped_root)
                 self.store = MissionStateStore(self.runtime)
-                self.store.create_pending(mission(), occurred_at="2026-09-10T09:59:00Z")
+                seed_pending(self.store, mission(), self.truth(None, None), occurred_at="2026-09-10T09:59:00Z")
                 blocked = self.loop(DerivationProvider(mode)).run()
                 assert blocked is not None
                 self.assertEqual(blocked.status, MissionExecutionStatus.BLOCKED)

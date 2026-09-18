@@ -17,6 +17,12 @@ Dit is een tijdelijke operatorwerkindeling, geen nieuwe product-DAG of scheduler
 
 Doel van de eigenaar: het hoogoverbeeld terug kunnen vinden en focus houden op zo snel mogelijk werkpakketten door Forge zelf laten plannen, via EP uitvoeren en opvolgen. Niet eerst het hele platform met de hand afbouwen voordat het eigen werk kan overnemen.
 
+De criteriumgebonden hersteluitwerking staat in
+[Mission completion v2](../architecture/criterion-completion-v2.md), met de
+[begrensde installed update-route](../operations/FORGE_INSTALLED_UPDATE_RUNBOOK.md).
+Dit is navigatie naar de owning contracten; het wijzigt geen roadmapstatus en
+claimt geen release, activatie of geslaagde productie-Mission.
+
 Deze pagina bewaart de eerdere roadmapanalyse in een repository-first vorm. De [gedateerde volledige ID-inventaris](inventory/2026-09-17.json) bevat alle 194 records, bronrevisies, statussen, telregels en samenvoegingen; de [formaat- en leesinstructie](inventory/README.md) verklaart de compacte representatie. De inhoudelijke productroadmaps en hun eigenaren blijven leidend. Dit document is geen nieuwe Mission, toestemming, releaseplan, scheduler of peer-statusautoriteit.
 
 ## Het hoogoverbeeld

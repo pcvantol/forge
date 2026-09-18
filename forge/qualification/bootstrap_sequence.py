@@ -1,8 +1,8 @@
-"""End-to-end, restart-safe qualification of the five canonical bootstrap Missions.
+"""Historical bootstrap qualification readback and legacy execution fence.
 
-This is deliberately a qualification harness, not a second dispatcher or
-runtime.  It composes the production boundaries and persists both host reports
-and the resulting five evidence sets under the caller-owned qualification root.
+The original seed harness has no approved substantive assessment contracts.
+Its persisted terminal results remain readable, but new execution cannot use
+receipt associations to qualify those Missions under completion v2.
 """
 from __future__ import annotations
 
@@ -13,35 +13,8 @@ from pathlib import Path
 import re
 from typing import Any, Protocol
 
-from forge.architecture import ArchitectureWorkspace
-from forge.dispatcher import ApprovedMissionQueue, MissionDispatcher, MissionDispatcherStore
-from forge.execution import ExecutionLoop
-from forge.intake import MissionIntake
-from forge.models import (
-    ApprovedScope, CanonicalExecutionEvidenceReference, CodexCliRuntimePromptRequest, EngineeringEffort, ExecutionHostCompatibility,
-    IntentApproval, IntentCategory, IntentReference, IntentStatus, IntentTraceability,
-    MissionCompletionEvidence, MissionCriterionEvidenceBinding,
-    MissionCandidate, MissionCandidateMaturity, MissionCandidateStatus, MissionPlannerInput,
-    MissionPlanningState, PlannedActionDefinition, PlanningEvidence, PlanningInputKind,
-    RecommendationCategory, RecommendationConfidence, RecommendationConfidenceLevel, RepositoryTruthReference,
-    RecommendationDependencies, RepositoryState, RequiredDiscipline,
-    mission_criterion_id,
-)
-from forge.models.action import EngineeringAction
-from forge.models.intent import EngineeringIntent
-from forge.models.mission import EngineeringMission, MissionIntentMembership, MissionScope, MissionStatus
-from forge.models.architecture_review import ArchitectureReviewInput, ReviewEvidence, ReviewInputKind
-from forge.models.mission_recommendation import RecommendationRepositoryContext
-from forge.planner import MissionPlanner
-from forge.prompts import CodexCliRuntimePromptRenderer
-from forge.recommendations import MissionRecommendationEngine, MissionRecommendationInput
-from forge.review import ArchitectureReviewEngine
-from forge.scheduler.adapter import (
-    BootstrapExecutionHostAdapter, EngineeringPlatformInboxReceipt, EngineeringPlatformReport,
-    EngineeringPlatformReportOutcome, ExecutionHostConfiguration,
-)
-from forge.state import MissionExecutionStatus, MissionStateStore
 from forge.runtime import RuntimeDatabase
+from forge.scheduler.adapter import EngineeringPlatformInboxReceipt, EngineeringPlatformReport
 
 
 BOOTSTRAP_MISSION_SEQUENCE = ("MISSION-0001", "MISSION-0002", "MISSION-0003", "MISSION-0004", "MISSION-0005")
@@ -61,26 +34,8 @@ class BootstrapQualificationReport:
     recommended_next_increment: str
 
 
-class _Clock:
-    def __init__(self) -> None: self._tick = 0
-    def __call__(self) -> str:
-        self._tick += 1
-        return f"2026-08-04T12:00:{self._tick:02d}Z"
-
-
-class _Configuration:
-    def resolve(self, host_id: str) -> ExecutionHostConfiguration:
-        return ExecutionHostConfiguration(host_id, "2.4", ("GENESIS",), ("codex_cli", "local_git"), "engineering-platform>=1.5.0", "qualification://engineering-platform-1.5")
-
-
-class _Preflight:
-    def admit(self, compatibility: ExecutionHostCompatibility, configuration: ExecutionHostConfiguration) -> None:
-        if compatibility.execution_host_contract_version != configuration.host_contract_version or compatibility.execution_mode not in configuration.supported_execution_modes or not set(compatibility.required_capabilities).issubset(configuration.supported_capabilities):
-            raise ValueError("qualification host preflight failed")
-
-
 class BootstrapQualificationInterrupted(BaseException):
-    """A controlled crash boundary used to prove persisted-host recovery."""
+    """Retained API name for pre-v2 callers; legacy execution is now blocked."""
 
 
 class EngineeringPlatformEvidenceSource(Protocol):
@@ -126,162 +81,30 @@ def load_canonical_bootstrap_portfolio(repository_root: Path) -> tuple[Canonical
     return tuple(portfolio)
 
 
-def _candidate(mission: CanonicalBootstrapMission) -> MissionCandidate:
-    return MissionCandidate(mission.identifier, mission.title, mission.statement, mission.business_objective, "Canonical portfolio seed definition " + mission.source_digest + ".", EngineeringEffort.SMALL, RecommendationConfidenceLevel.HIGH, (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("bootstrap",), "bootstrap-review", "bootstrap-recommendation", 1, "Bootstrap-only approval exception for immutable portfolio seed.", MissionCandidateMaturity.READY_FOR_ARCHITECTURE, MissionCandidateStatus.APPROVED_FOR_ARCHITECTURE)
+class BootstrapQualificationBlocked(ValueError):
+    """Legacy seed execution lacks an approved substantive assessment contract."""
 
 
-def _approve(workspace: ArchitectureWorkspace, mission: CanonicalBootstrapMission, clock: _Clock) -> None:
-    workspace.admit(_candidate(mission), actor="bootstrap-portfolio", occurred_at=clock(), rationale="Bootstrap-only exception for canonical immutable portfolio seed.")
-    workspace.refine(mission.identifier, actor="architect", occurred_at=clock(), rationale="Bounded deterministic scope from immutable mission definition.", scope=(mission.identifier,), engineering_constraints=("one action", "immutable portfolio ordering"), acceptance_criteria=("complete",), technical_assumptions=(mission.source_digest,), dependencies=("canonical bootstrap portfolio",), required_capabilities=("bootstrap-capability",), required_disciplines=(RequiredDiscipline.PLATFORM_ARCHITECTURE,), risks=("no portfolio mutation",))
-    workspace.approve_for_engineering(mission.identifier, actor="architect", occurred_at=clock(), rationale="Architecture-approved canonical bootstrap portfolio seed.")
+def run_bootstrap_sequence_qualification(
+    root: Path, evidence_source: EngineeringPlatformEvidenceSource, *,
+    interrupt_after_host_dispatch: bool = False,
+) -> BootstrapQualificationReport:
+    """Read retained terminal qualification; never execute unassessed seeds.
 
-
-def _persist_runtime_progress(runtime: RuntimeDatabase, states: MissionStateStore,
-                              dispatches: MissionDispatcherStore) -> None:
-    """Checkpoint Forge-owned operational state; never reconstruct host evidence."""
-    for record in dispatches.records():
-        state = states.get(record.mission_id)
-        runtime.save_mission_state({**state.__dict__, "status": state.status.value,
-                                    "execution_policy": {"mode": "bootstrap_qualification"}})
-        for history in states.history(record.mission_id):
-            lifecycle = {MissionExecutionStatus.CREATED: "ACTIVATED",
-                         MissionExecutionStatus.COMPLETED: "COMPLETED"}.get(history.to_status)
-            if lifecycle and not runtime.has_mission_lifecycle(record.mission_id, lifecycle):
-                runtime.record_mission_lifecycle(record.mission_id, lifecycle, history.occurred_at)
-    active = dispatches.active()
-    runtime.save_dispatcher_state(
-        status="IDLE" if dispatches.active() is None and len(dispatches.records()) == len(BOOTSTRAP_MISSION_SEQUENCE) else "ACTIVE",
-        active_mission_id=None if active is None else active.mission_id,
-        mission_sequence=BOOTSTRAP_MISSION_SEQUENCE,
-    )
-    pending = [record.mission_id for record in dispatches.records() if record.status.value != "COMPLETED"]
-    runtime.save_planning_state({
-        "planner_version": "bootstrap-qualification-1", "current_queue": pending,
-        "pending_engineering_actions": pending, "blocked_engineering_actions": [],
-        "execution_policy": {"mode": "qualification"},
-        "planner_runtime_metadata": {"source": "bootstrap_sequence"},
-    })
-
-
-def run_bootstrap_sequence_qualification(root: Path, evidence_source: EngineeringPlatformEvidenceSource, *, interrupt_after_host_dispatch: bool = False) -> BootstrapQualificationReport:
-    """Execute/resume exactly MISSION-0001 through MISSION-0005 via production boundaries."""
-    root.mkdir(parents=True, exist_ok=True); clock = _Clock()
+    The evidence-source and interruption arguments retain API compatibility.
+    They cannot authorize host calls or convert historical evidence to v2.
+    """
+    del evidence_source, interrupt_after_host_dispatch
+    load_canonical_bootstrap_portfolio(Path(__file__).resolve().parents[2])
+    root.mkdir(parents=True, exist_ok=True)
     runtime = RuntimeDatabase(root)
-    portfolio = load_canonical_bootstrap_portfolio(Path(__file__).resolve().parents[2])
-    runtime_report = runtime.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)
-    if runtime_report["qualified"]:
-        runtime.close()
-        return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(runtime.path), "Normal Business → Architecture → Mission lifecycle")
-    workspace = ArchitectureWorkspace(root / "architecture.sqlite"); states = MissionStateStore(runtime); dispatches = MissionDispatcherStore(root / "dispatcher.sqlite")
     try:
-        for mission in portfolio:
-            try: workspace.get(mission.identifier)
-            except Exception: _approve(workspace, mission, clock)
-        host = BootstrapExecutionHostAdapter(_Configuration(), _Preflight(), evidence_source, evidence_source)
-        reviews: dict[str, Any] = {}; recommendations: dict[str, Any] = {}
-        def completed(identifier: str) -> None:
-            state = states.get(identifier); digest = _digest(state.repository_truth or {})
-            inputs = tuple(ReviewEvidence(kind, f"{identifier}:{kind.value}", "1", f"qualification://{identifier}/{kind.value}", _digest({"mission": identifier, "kind": kind.value})) for kind in (ReviewInputKind.MISSION_STATE, ReviewInputKind.REPOSITORY_TRUTH, ReviewInputKind.EXECUTION_EVIDENCE, ReviewInputKind.EXECUTION_REPORT, ReviewInputKind.PORTFOLIO))
-            review = ArchitectureReviewEngine().review(ArchitectureReviewInput(identifier, inputs)); reviews[identifier] = review.to_dict()
-            recommendations[identifier] = [item.to_dict() for item in MissionRecommendationEngine().generate(MissionRecommendationInput(review, RecommendationRepositoryContext("forge", "qualification-revision", digest), clock(), (RequiredDiscipline.PLATFORM_ARCHITECTURE,), (), (), "bootstrap", "advisory"))]
-            if not recommendations[identifier]:
-                recommendations[identifier] = [{
-                    "id": f"{identifier}:bootstrap-recommendation", "architecture_review_id": review.id,
-                    "category": RecommendationCategory.QUALIFICATION.value,
-                    "title": "Record bootstrap qualification outcome",
-                    "rationale": "The completed Mission requires an advisory qualification record.",
-                    "business_value": "Preserves a traceable bootstrap decision.",
-                    "architectural_value": "Preserves runtime evidence lineage.",
-                    "estimated_effort": EngineeringEffort.SMALL.value,
-                    "confidence": RecommendationConfidence(100, 0, 0, 100, 100, 100).to_dict(),
-                    "dependencies": RecommendationDependencies().to_dict(),
-                    "required_disciplines": [RequiredDiscipline.PLATFORM_ARCHITECTURE.value],
-                    "missing_disciplines": [], "capability_impact": ["bootstrap_qualification"],
-                    "recommendation_timestamp": clock(), "source_signal_ids": ["mission_completion"],
-                    "portfolio_item_ids": [identifier], "origin": "architecture",
-                    "repository_evidence": [{"id": review.id, "kind": "repository_truth", "revision": "qualification-revision", "locator": f"qualification://{identifier}/repository-truth", "content_digest": review.input_digest}],
-                    "expected_engineering_value": "Preserves a bounded qualification record for later governance review.",
-                    "risk_if_deferred": "The completed Mission lacks a traceable advisory qualification record.",
-                    "recommendation_source": "bootstrap_sequence_qualification",
-                    "decision_evidence_references": [f"{identifier}:bootstrap-completion"], "advisory": True,
-                }]
-            # Completion is checkpointed before the dispatcher may activate the
-            # next Mission.  The host remains the evidence authority: Forge
-            # stores only the correlated immutable receipt reference.
-            _persist_runtime_progress(runtime, states, dispatches)
-            completion_timestamp = next(item.occurred_at for item in states.history(identifier)
-                                        if item.to_status is MissionExecutionStatus.COMPLETED)
-            runtime.record_architecture_review(reviews[identifier], timestamp=completion_timestamp)
-            for recommendation in recommendations[identifier]:
-                runtime.record_mission_recommendation(recommendation, mission_id=identifier)
-            host_evidence = state.execution_evidence or {}
-            receipt_id = str(host_evidence["receipt_id"])
-            runtime.record_execution_receipt(
-                receipt_id=receipt_id, mission_id=identifier,
-                execution_host=str(host_evidence["host_id"]), execution_run_id=str(host_evidence["host_run_id"]),
-                engineering_report_id=str(host_evidence["report_id"]), correlation_identity=str(host_evidence["correlation_id"]),
-                executed_at=str(host_evidence["execution_completed_at"]), outcome=str(host_evidence["outcome"]),
+        report = runtime.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)
+        if report["qualified"]:
+            return BootstrapQualificationReport(
+                "YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE,
+                str(runtime.path), "Normal Business → Architecture → Mission lifecycle",
             )
-            runtime.record_decision_evidence({
-                "id": f"{identifier}:bootstrap-completion", "decision_type": "bootstrap_continuation",
-                "mission_context": {"artifact_id": identifier}, "repository_context": {"artifact_id": "repository-truth:bootstrap"},
-                "reasoning_summary": "Mission completed with a reviewed successful Execution Receipt; bootstrap may continue.",
-                "evidence_references": [], "alternatives_considered": [],
-                "confidence": {"architecture_review": {"artifact_id": reviews[identifier]["id"]}, "mission_state": {"artifact_id": identifier}},
-                "execution_receipt_references": [{"artifact_id": receipt_id}], "timestamp": completion_timestamp,
-            })
-        dispatcher = MissionDispatcher(ApprovedMissionQueue(workspace), MissionIntake(states, clock), states, dispatches, clock=clock, architecture_review=completed, recommendations=lambda identifier: None)
-        counter = 0
-        for identifier in BOOTSTRAP_MISSION_SEQUENCE:
-            try:
-                correlation = (states.get(identifier).execution_correlation or {}).get("request", {}).get("correlation_id", "")
-                if isinstance(correlation, str) and correlation.startswith("bootstrap-sequence-"):
-                    counter = max(counter, int(correlation.rsplit("-", 1)[1]))
-            except Exception:
-                pass
-        def correlation() -> str:
-            nonlocal counter; counter += 1; return f"bootstrap-sequence-{counter}"
-        def planning(state: Any) -> MissionPlannerInput:
-            mission = workspace.get(state.mission_id); reference = IntentReference("bootstrap-architecture", "1", "qualification://architecture")
-            evidence = tuple(PlanningEvidence(kind, kind.value, str(state.revision), f"qualification://{kind.value}", _digest({"mission": state.mission_id, "kind": kind.value})) for kind in (PlanningInputKind.MISSION_STATE, PlanningInputKind.REPOSITORY_TRUTH, PlanningInputKind.ARCHITECTURE_REVIEW, PlanningInputKind.CAPABILITY_CATALOGUE))
-            return MissionPlannerInput(mission, MissionPlanningState(state.mission_id, state.revision), evidence, (ApprovedScope(state.mission_id, "bootstrap-capability", (reference,), (PlannedActionDefinition(f"{state.mission_id}:action", "Execute canonical bootstrap action.", ("execution evidence",), ("qualification validation",), 1),)),))
-        def prompt(intent: dict[str, Any], action: EngineeringAction):
-            reference = IntentReference("bootstrap", "1", "qualification://bootstrap")
-            generated = EngineeringIntent(str(intent["id"]), str(intent["revision"]), "Bootstrap intent", str(intent["objective"]), IntentCategory.IMPLEMENTATION, IntentTraceability((reference,), (reference,), (reference,), (reference,), (reference,)), approval=IntentApproval("architect", "2026-08-04T12:00:00Z", reference), status=IntentStatus.APPROVED)
-            mission = EngineeringMission(action.intent_id.split(":intent:")[0], "1", "Bootstrap Mission", "Complete canonical mission.", MissionScope(("bootstrap",), ("portfolio reordering",)), (MissionIntentMembership(1, generated.id, generated.revision),), status=MissionStatus.ACTIVE)
-            return CodexCliRuntimePromptRenderer().render(CodexCliRuntimePromptRequest(mission, generated, action, RepositoryState("forge", "qualification-revision", _digest({"mission": mission.id}), "2026-08-04T12:00:00Z"), ("canonical pipeline",), ("qualification validation",), ExecutionHostCompatibility("2.4", "GENESIS", ("codex_cli", "local_git"), "engineering-platform>=1.5.0")))
-        def repository_truth(state: Any, evidence: Any):
-            return {"source_id": "forge", "revision": "qualification-revision",
-                    "locator": f"qualification://{state.mission_id}/repository-truth",
-                    "content_digest": _digest({"mission": state.mission_id, "evidence": None if evidence is None else evidence.report_id})}
-        def completion_evidence(state: Any, evidence: Any, truth: dict[str, Any]):
-            approved = workspace.get(state.mission_id)
-            execution = CanonicalExecutionEvidenceReference(
-                evidence.receipt_id, evidence.repository_evidence.action_id, evidence.report_id,
-                evidence.repository_evidence.repository_revision, evidence.repository_evidence.content_digest,
-            )
-            repository = RepositoryTruthReference(truth["source_id"], truth["revision"], truth["locator"], truth["content_digest"])
-            return MissionCompletionEvidence(
-                approved.id, _digest(approved.to_dict()), tuple(
-                    MissionCriterionEvidenceBinding(mission_criterion_id(approved.id, criterion), (execution,), repository)
-                    for criterion in approved.acceptance_criteria
-                ),
-            )
-        loop = ExecutionLoop(dispatcher, states, MissionPlanner(), host, planning, prompt, repository_truth,
-                             host_id="engineering-platform-1.5", workspace_id="forge", repository_id="forge",
-                             clock=clock, correlation_id_factory=correlation, completion_evidence=completion_evidence)
-        interrupted = False
-        while not dispatcher.is_idle:
-            result = loop.run()
-            if result is None: break
-            if result.status is not MissionExecutionStatus.COMPLETED: raise ValueError("bootstrap qualification requires complete host evidence")
-            _persist_runtime_progress(runtime, states, dispatches)
-            if interrupt_after_host_dispatch and not interrupted:
-                interrupted = True
-                raise BootstrapQualificationInterrupted("controlled interruption after persisted host evidence")
-        _persist_runtime_progress(runtime, states, dispatches)
-        if not runtime.runtime_evidence().bootstrap_qualification(BOOTSTRAP_MISSION_SEQUENCE)["qualified"]:
-            raise ValueError("bootstrap qualification did not persist complete Runtime Database evidence")
-        return BootstrapQualificationReport("YES", "Forge Generation 1 bootstrap complete", "IDLE", BOOTSTRAP_MISSION_SEQUENCE, str(runtime.path), "Normal Business → Architecture → Mission lifecycle")
+        raise BootstrapQualificationBlocked("LEGACY_ASSESSMENT_CONTRACT_MISSING")
     finally:
-        workspace.close(); states.close(); dispatches.close(); runtime.close()
+        runtime.close()

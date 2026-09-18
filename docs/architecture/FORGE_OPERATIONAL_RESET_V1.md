@@ -48,7 +48,11 @@ installed implementation.
 
 ## Schema-owned data classification
 
-Schema version 38 owns this complete table mapping. Any additional application
+Schema versions 38 and 39 share this complete table mapping. Version 39 adds a
+completion-reader compatibility fence without adding application tables.
+Criterion observations, `completion_history` and terminal continuation markers
+inside `mission_state` remain `OPERATIONAL_HISTORY`; they introduce no separate
+purge, schema migration reset or changes to preserved authority. Any additional application
 table blocks reset until this contract is updated. SQLite indexes, triggers and
 system objects are validated separately and are not purge candidates.
 

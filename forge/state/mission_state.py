@@ -101,6 +101,7 @@ class MissionExecutionState:
     delegations: tuple[Mapping[str, Any], ...] = ()
     integration: Mapping[str, Any] | None = None
     planning_history: tuple[Mapping[str, Any], ...] = ()
+    completion_history: tuple[Mapping[str, Any], ...] = ()
     schema_version: str = MISSION_STATE_SCHEMA_VERSION
 
 
@@ -361,7 +362,32 @@ class MissionStateStore:
         document = self._as_document(current)
         history = list(document["execution_history"])
         if execution_evidence is not None:
-            history.append(_document(execution_evidence, "execution evidence"))
+            incoming = _document(execution_evidence, "execution evidence")
+            receipt = incoming.get("receipt_id")
+            previous = next((item for item in history if receipt and item.get("receipt_id") == receipt), None)
+            if previous is not None and previous != incoming:
+                timing = {"execution_started_at", "execution_completed_at", "execution_duration_ms"}
+                timing_enrichment = (
+                    current.status is MissionExecutionStatus.ACTIVE
+                    and status is MissionExecutionStatus.COMPLETED
+                    and reason == "completed_terminal_evidence_reconciled"
+                    and previous == current.execution_evidence
+                    and all(previous.get(key) is None for key in timing)
+                    and all(incoming.get(key) for key in timing)
+                    and {key: value for key, value in previous.items() if key not in timing}
+                    == {key: value for key, value in incoming.items() if key not in timing}
+                )
+                if not timing_enrichment:
+                    raise MissionStateStoreError("execution receipt identity conflicts with immutable history")
+                # Keep the original observation in immutable history. The
+                # explicitly bounded recovery only enriches current readback.
+            if previous is None:
+                history.append(incoming)
+        assessments = list(current.completion_history)
+        if completion is not None:
+            incoming_assessment = _document(completion, "completion")
+            if not assessments or assessments[-1] != incoming_assessment:
+                assessments.append(incoming_assessment)
         document.update({
             "status": status.value,
             "actions": list(next_actions),
@@ -373,6 +399,7 @@ class MissionStateStore:
             "current_engineering_intent": current_intent,
             "current_engineering_action": current_action,
             "execution_history": history,
+            "completion_history": assessments,
             "waiting_reason": reason if status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.WAITING_FOR_EVIDENCE} else None,
             "repository_truth": _document(repository_truth, "repository truth") if repository_truth is not None else document["repository_truth"],
             "completion": _document(completion, "completion") if completion is not None else document["completion"],
@@ -404,55 +431,23 @@ class MissionStateStore:
                 raise MissionStateStoreError("completed mission state requires every action to be complete")
             mission = document["mission"]
             if mission.get("status") == "approved_for_engineering":
-                completion_evaluation = document.get("completion")
-                criteria = completion_evaluation.get("criteria") if isinstance(completion_evaluation, dict) else None
-                from forge.models.mission_completion import mission_criterion_id
-                expected_criteria = {
-                    mission_criterion_id(str(mission_id), str(criterion)): str(criterion)
-                    for criterion in mission.get("acceptance_criteria", ())
-                }
-                criteria_are_documents = (isinstance(criteria, list) and bool(criteria)
-                                           and all(isinstance(item, dict) for item in criteria))
-                actual_criteria = ({item.get("criterion_id"): item.get("criterion") for item in criteria}
-                                   if criteria_are_documents else {})
-                canonical_references: dict[str, dict[str, Any]] = {}
-                for historical in document["execution_history"]:
-                    historical_repository = historical.get("repository_evidence")
-                    if (historical.get("outcome") != "complete"
-                            or not isinstance(historical_repository, dict)
-                            or historical_repository.get("mission_id") != mission_id
-                            or any(historical.get(key) != historical_repository.get(key)
-                                   for key in ("correlation_id", "host_run_id", "report_id"))):
-                        continue
-                    reference = {
-                        "receipt_id": historical.get("receipt_id"),
-                        "action_id": historical_repository.get("action_id"),
-                        "report_id": historical.get("report_id"),
-                        "repository_revision": historical_repository.get("repository_revision"),
-                        "repository_evidence_digest": historical_repository.get("content_digest"),
-                    }
-                    if all(reference.values()):
-                        canonical_references[str(reference["receipt_id"])] = reference
-                criteria_bind_current_evidence = criteria_are_documents and all(
-                    item.get("repository_truth") == document.get("repository_truth")
-                    and isinstance(item.get("execution_evidence"), list)
-                    and bool(item["execution_evidence"])
-                    and all(isinstance(reference, dict)
-                            and canonical_references.get(str(reference.get("receipt_id"))) == reference
-                            for reference in item["execution_evidence"])
-                    for item in criteria
-                )
-                if (not isinstance(completion_evaluation, dict)
-                        or completion_evaluation.get("schema_version") != "1.0"
-                        or completion_evaluation.get("mission_id") != mission_id
-                        or completion_evaluation.get("mission_digest") != _digest(mission)
-                        or not _is_digest(completion_evaluation.get("evidence_digest"))
-                        or completion_evaluation.get("all_required_criteria_proven") is not True
-                        or not criteria_are_documents
-                        or actual_criteria != expected_criteria
-                        or not criteria_bind_current_evidence
-                        or any(item.get("status") != "PROVEN" for item in criteria)):
-                    raise MissionStateStoreError("completed approved Mission requires every criterion to be proven")
+                from forge.models.architecture_mission import ArchitectureMission
+                from forge.models.mission_completion import MissionCompletionEvidence
+                from forge.completion import MissionCompletionEvaluator
+                evaluation = document.get("completion")
+                try:
+                    if not isinstance(evaluation, dict) or evaluation.get("schema_version") != "2.0":
+                        raise ValueError("legacy association evidence cannot authorize new completion")
+                    proposed = evaluation.get("evidence")
+                    evidence_contract = None if proposed is None else MissionCompletionEvidence.from_dict(proposed)
+                    checked = MissionCompletionEvaluator().evaluate(
+                        ArchitectureMission.from_dict(mission), document.get("repository_truth"),
+                        document["execution_history"], evidence_contract,
+                    )
+                    if not checked.all_required_criteria_proven or checked.to_dict() != evaluation:
+                        raise ValueError("criterion assessment is incomplete or inconsistent")
+                except (ValueError, TypeError, KeyError) as error:
+                    raise MissionStateStoreError("completed approved Mission requires every criterion to be proven") from error
         document["lifecycle"] = status.value
         document.setdefault("state_history", []).append({"sequence": document["revision"], "from_status": current.status.value, "to_status": status.value, "occurred_at": occurred_at, "reason": reason})
         if durable_materialization_derivation_id is None:
@@ -509,6 +504,7 @@ class MissionStateStore:
             "waiting_reason": state.waiting_reason,
             "repository_truth": None if state.repository_truth is None else dict(state.repository_truth),
             "completion": None if state.completion is None else dict(state.completion), "revision": state.revision,
+            "completion_history": [dict(item) for item in state.completion_history],
             "execution_policy": None if state.execution_policy is None else dict(state.execution_policy),
             "pause_reason": None if state.pause_reason is None else dict(state.pause_reason),
             "approval_record": None if state.approval_record is None else dict(state.approval_record),
@@ -533,6 +529,7 @@ class MissionStateStore:
             execution_history=tuple(document.get("execution_history", ())), waiting_reason=document.get("waiting_reason"),
             state_history=tuple(document.get("state_history", ())),
             repository_truth=document.get("repository_truth"), completion=document.get("completion"),
+            completion_history=tuple(document.get("completion_history", ())),
             execution_policy=document.get("execution_policy"), pause_reason=document.get("pause_reason"),
             approval_record=document.get("approval_record"),
             delegations=tuple(document.get("delegations", ())),
