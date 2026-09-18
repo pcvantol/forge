@@ -110,7 +110,8 @@ cryptographic peer identity; preflight reports the latter as `NOT_ASSERTED`.
 
 The product-owned external controller for the selected Forge 2.7.21 to 2.7.22
 installation transition is documented in the
-[installed update runbook](docs/operations/FORGE_INSTALLED_UPDATE_RUNBOOK.md).
+[installed update runbook](docs/operations/FORGE_INSTALLED_UPDATE_RUNBOOK.md) and
+[sanitized Forge 2.7.22 release/installation completion record](docs/operations/FORGE_2_7_22_RELEASE_INSTALLATION_COMPLETION.md).
 It stages an exact qualified wheel, backs up and migrates the selected runtime,
 and atomically activates a versioned slot. It is not packaged as a Forge
 Runtime command and does not replace Forge Platform's normal installer/update
