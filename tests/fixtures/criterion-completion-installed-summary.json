@@ -1,0 +1,206 @@
+{
+  "artifact": {
+    "version": "2.7.25",
+    "wheel_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "limitations": [
+    "JSON artifact properties only; no application behavior claim.",
+    "Codex process, ExecutionHost and immutable repository transport are external fixtures.",
+    "This is not provider-backed planning or live EP autonomy acceptance."
+  ],
+  "qualification": "INSTALLED_COMPOSITION_WITH_EXTERNAL_FIXTURES",
+  "scenarios": [
+    {
+      "actions": 2,
+      "assessments": 2,
+      "criteria": [
+        {
+          "criterion": "SYNTHETIC-K2",
+          "reason": "ALL_APPROVED_REQUIREMENTS_PROVEN",
+          "status": "PROVEN"
+        },
+        {
+          "criterion": "SYNTHETIC-K1",
+          "reason": "ALL_APPROVED_REQUIREMENTS_PROVEN",
+          "status": "PROVEN"
+        }
+      ],
+      "original_observations_preserved": true,
+      "planner_invocations": 2,
+      "same_mission_and_approval": true,
+      "scenario": "partial",
+      "separate_process_reopen": true,
+      "status": "COMPLETED",
+      "submissions": 2,
+      "waiting_reason": null
+    },
+    {
+      "actions": 1,
+      "assessments": 1,
+      "criteria": [
+        {
+          "criterion": "SYNTHETIC-K2",
+          "reason": "ALL_APPROVED_REQUIREMENTS_PROVEN",
+          "status": "PROVEN"
+        },
+        {
+          "criterion": "SYNTHETIC-K1",
+          "reason": "ALL_APPROVED_REQUIREMENTS_PROVEN",
+          "status": "PROVEN"
+        }
+      ],
+      "original_observations_preserved": true,
+      "planner_invocations": 1,
+      "same_mission_and_approval": true,
+      "scenario": "single",
+      "separate_process_reopen": true,
+      "status": "COMPLETED",
+      "submissions": 1,
+      "waiting_reason": null
+    },
+    {
+      "actions": 2,
+      "assessments": 2,
+      "criteria": [
+        {
+          "criterion": "SYNTHETIC-K2",
+          "reason": "ALL_APPROVED_REQUIREMENTS_PROVEN",
+          "status": "PROVEN"
+        },
+        {
+          "criterion": "SYNTHETIC-K1",
+          "reason": "ALL_APPROVED_REQUIREMENTS_PROVEN",
+          "status": "PROVEN"
+        }
+      ],
+      "original_observations_preserved": true,
+      "planner_invocations": 2,
+      "same_mission_and_approval": true,
+      "scenario": "misleading",
+      "separate_process_reopen": true,
+      "status": "COMPLETED",
+      "submissions": 2,
+      "waiting_reason": null
+    },
+    {
+      "actions": 1,
+      "assessments": 1,
+      "criteria": [
+        {
+          "criterion": "SYNTHETIC-K2",
+          "reason": "REQUIRED_OBSERVATIONS_UNPROVEN",
+          "status": "UNSATISFIED"
+        },
+        {
+          "criterion": "SYNTHETIC-K1",
+          "reason": "REQUIRED_OBSERVATIONS_UNPROVEN",
+          "status": "UNSATISFIED"
+        }
+      ],
+      "original_observations_preserved": true,
+      "planner_invocations": 1,
+      "same_mission_and_approval": true,
+      "scenario": "invalid",
+      "separate_process_reopen": true,
+      "status": "BLOCKED",
+      "submissions": 1,
+      "waiting_reason": "MISSION_NO_PROGRESS_LIMIT_REACHED"
+    },
+    {
+      "actions": 1,
+      "assessments": 1,
+      "criteria": [
+        {
+          "criterion": "SYNTHETIC-K2",
+          "reason": "REQUIRED_OBSERVATIONS_UNPROVEN",
+          "status": "UNSATISFIED"
+        },
+        {
+          "criterion": "SYNTHETIC-K1",
+          "reason": "REQUIRED_OBSERVATIONS_UNPROVEN",
+          "status": "UNSATISFIED"
+        }
+      ],
+      "original_observations_preserved": true,
+      "planner_invocations": 1,
+      "same_mission_and_approval": true,
+      "scenario": "missing",
+      "separate_process_reopen": true,
+      "status": "BLOCKED",
+      "submissions": 1,
+      "waiting_reason": "MISSION_NO_PROGRESS_LIMIT_REACHED"
+    },
+    {
+      "actions": 1,
+      "assessments": 1,
+      "criteria": [
+        {
+          "criterion": "SYNTHETIC-K2",
+          "reason": "REQUIRED_OBSERVATIONS_UNPROVEN",
+          "status": "UNSATISFIED"
+        },
+        {
+          "criterion": "SYNTHETIC-K1",
+          "reason": "REQUIRED_OBSERVATIONS_UNPROVEN",
+          "status": "UNSATISFIED"
+        }
+      ],
+      "original_observations_preserved": true,
+      "planner_invocations": 1,
+      "same_mission_and_approval": true,
+      "scenario": "no-progress",
+      "separate_process_reopen": true,
+      "status": "BLOCKED",
+      "submissions": 1,
+      "waiting_reason": "MISSION_NO_PROGRESS_LIMIT_REACHED"
+    },
+    {
+      "actions": 1,
+      "assessments": 1,
+      "criteria": [
+        {
+          "criterion": "SYNTHETIC-K2",
+          "reason": "REQUIRED_OBSERVATIONS_UNPROVEN",
+          "status": "UNSATISFIED"
+        },
+        {
+          "criterion": "SYNTHETIC-K1",
+          "reason": "ALL_APPROVED_REQUIREMENTS_PROVEN",
+          "status": "PROVEN"
+        }
+      ],
+      "original_observations_preserved": true,
+      "planner_invocations": 1,
+      "same_mission_and_approval": true,
+      "scenario": "limit",
+      "separate_process_reopen": true,
+      "status": "BLOCKED",
+      "submissions": 1,
+      "waiting_reason": "MISSION_ACTION_LIMIT_REACHED"
+    },
+    {
+      "actions": 2,
+      "assessments": 2,
+      "criteria": [
+        {
+          "criterion": "SYNTHETIC-K2",
+          "reason": "ALL_APPROVED_REQUIREMENTS_PROVEN",
+          "status": "PROVEN"
+        },
+        {
+          "criterion": "SYNTHETIC-K1",
+          "reason": "REQUIRED_OBSERVATIONS_UNPROVEN",
+          "status": "UNSATISFIED"
+        }
+      ],
+      "original_observations_preserved": true,
+      "planner_invocations": 2,
+      "same_mission_and_approval": true,
+      "scenario": "regression",
+      "separate_process_reopen": true,
+      "status": "BLOCKED",
+      "submissions": 2,
+      "waiting_reason": "MISSION_ACTION_LIMIT_REACHED"
+    }
+  ]
+}

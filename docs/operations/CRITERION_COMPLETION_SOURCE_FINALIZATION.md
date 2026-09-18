@@ -43,6 +43,16 @@ record. None represents a production Mission run.
 
 ## Delivered behavior and remaining delivery gates
 
+Finalization review caught a producer/consumer mismatch before publication:
+the release workflow now retains installed-composition summaries, while the
+updater's original strict receipt shape rejected those additional fields.
+This finalization binds both qualification and registry-readback summaries
+to the exact 2.7.25 wheel and requires all eight expected outcomes, counts and
+history/reopen guarantees. Captured summary-shape tests reject missing,
+malformed, mismatched or incomplete evidence. Older release receipt shapes
+remain unchanged. This is a bounded release-to-updater correction within the
+same version and assignment; no published receipt is rewritten.
+
 The [criterion assessment contract](../architecture/criterion-completion-v2.md)
 binds substantive evidence to approved criterion semantics and preserves
 original observations. Partial completion enters the durable successor route;

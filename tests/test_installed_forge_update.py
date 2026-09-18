@@ -295,6 +295,16 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 "github_release": {"draft": False},
             },
         }, sort_keys=True), encoding="utf-8")
+        if version == "2.7.25":
+            # Captured from the actual installed-composition command used by
+            # both workflow stages; only the synthetic wheel binding changes.
+            summary = json.loads((Path(__file__).parent / "fixtures" /
+                "criterion-completion-installed-summary.json").read_text())
+            summary["artifact"]["wheel_sha256"] = wheel_digest.removeprefix("sha256:")
+            document = json.loads(receipt.read_text())
+            document["qualification"]["criterion_completion"] = summary
+            document["publication_receipt"]["criterion_completion"] = summary
+            receipt.write_text(json.dumps(document, sort_keys=True))
         request = update.UpdateRequest(**{
             **self.request.__dict__,
             "operation_id": "forge-update-2724-test-002",
@@ -307,6 +317,41 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             "existing_version": existing_version,
         })
         return request
+
+    def test_2725_requires_exact_qualifying_and_published_installed_composition(self):
+        request = self._normal_release_request("2.7.25", "2.7.24")
+        self.assertEqual(update.validate_qualified_artifact(request)["release_route"], "NORMAL")
+        receipt = Path(request.qualification_receipt)
+        original = json.loads(receipt.read_text())
+        for section in ("qualification", "publication_receipt"):
+            for mutation in ("missing", "wrong-wheel", "source-only", "missing-case", "duplicate-case",
+                             "wrong-count", "false-completion", "lost-history", "malformed-criterion"):
+                with self.subTest(section=section, mutation=mutation):
+                    document = json.loads(json.dumps(original))
+                    report = document[section]["criterion_completion"]
+                    if mutation == "missing":
+                        del document[section]["criterion_completion"]
+                    elif mutation == "wrong-wheel":
+                        report["artifact"]["wheel_sha256"] = "f" * 64
+                    elif mutation == "source-only":
+                        report["qualification"] = "SOURCE_COMPOSITION_WITH_EXTERNAL_FIXTURES"
+                    elif mutation == "missing-case":
+                        report["scenarios"].pop()
+                    elif mutation == "duplicate-case":
+                        report["scenarios"][-1] = report["scenarios"][0]
+                    elif mutation == "wrong-count":
+                        report["scenarios"][0]["planner_invocations"] = 1
+                    elif mutation == "false-completion":
+                        report["scenarios"][-1]["status"] = "COMPLETED"
+                    elif mutation == "lost-history":
+                        report["scenarios"][0]["original_observations_preserved"] = False
+                    else:
+                        report["scenarios"][0]["criteria"][0]["criterion"] = []
+                    receipt.write_text(json.dumps(document))
+                    changed = update.UpdateRequest(**{**request.__dict__,
+                        "qualification_receipt_sha256": update.file_digest(receipt)})
+                    with self.assertRaises(update.InstalledForgeUpdateError):
+                        update.validate_qualified_artifact(changed)
 
     def test_normal_release_receipt_is_accepted_only_for_supported_normal_transitions(self) -> None:
         request = self._normal_release_request()
