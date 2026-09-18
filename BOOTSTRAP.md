@@ -46,16 +46,17 @@ plus history-preserving promotion; implementation remains PLANNED.
 scaffolder. This design neither starts a Mission nor changes Mission 3, live
 policies, credentials, runtime schemas or package versions.
 
-## Criterion completion source checkpoint — 18 September 2026
+## Criterion completion remediation — 18 September 2026
 
 [Implementation PR #149](https://github.com/pcvantol/forge/pull/149) is
 protected-merged at `6199a7645c15f078aa69d6246023b078069a9742`.
 Read the [separate source finalization](docs/operations/CRITERION_COMPLETION_SOURCE_FINALIZATION.md)
 and [qualification boundaries](docs/operations/CRITERION_COMPLETION_QUALIFICATION.md)
-for criterion-bound assessment, durable successor planning and the distinct
-source, provider, peer and installed-composition evidence. Publication and
-installed activation remain required under the same repair assignment;
-this checkpoint does not authorize a reset or Mission 3.
+for criterion-bound assessment and durable successor planning. The
+[completion record](docs/operations/CRITERION_COMPLETION_REMEDIATION_2026_09_18.md)
+binds the protected implementation and updater deliveries, exact published
+Forge 2.7.25 artifacts, safe schema 38→39 activation, preservation and normal
+installed readback. It does not authorize a reset or Mission 3.
 
 ## Previous pickup checkpoint — 17 September 2026
 
