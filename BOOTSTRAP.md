@@ -8,11 +8,18 @@ For the owner's two concurrent Codex architect sessions, read
 [LANE_2](docs/roadmap/lanes/LANE_2.md), and both linked live coordination issues.
 The [allocation index](docs/roadmap/dual-lane-development-v1.json) covers the
 existing 34 families without changing their owning dependency graphs or the
-historical count. Select independent ready subsets; do not issue a duplicate
-prompt or mutate another lane's repository/runtime. The next suitable scope
-moves to a qualified Forge Mission route as soon as it can, not after the full
-portfolio. This is operator planning/navigation, not a new runtime scheduler,
-authorization, maintenance operation or change to Mission-3 acceptance.
+historical count. Every assignment must follow
+[vertical-slice delivery](docs/roadmap/VERTICAL_SLICE_DELIVERY_V1.md): one kickoff
+covers implementation, required tests/refactoring, review fixes, supported owner
+authorization, PR, protected main merge and declared artifact/installed delivery.
+The owner has delegated those ordinary lifecycle steps within the selected
+released scope; do not ask for routine reapproval or issue separate test/DoD/
+merge prompts. Real permissions, independent assurance and material effect
+boundaries remain mandatory. This is not a fabricated runtime grant.
+Select independent complete outcomes; do not issue duplicates or mutate another
+lane's repository/runtime. Move supported scope to qualified Forge Missions as
+soon as possible, not after the whole portfolio. Reading this planning does not
+start a scheduler, reset, release or Mission, or change Mission-3 acceptance.
 
 ## Roadmap overview and autonomy-first focus
 
