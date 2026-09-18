@@ -1,8 +1,8 @@
 # Forge installed update controller
 
 Status: bounded product-owned maintenance provisioner for the selected Forge
-2.7.21 to 2.7.22 schema-37-to-38 transition and the selected 2.7.22 to 2.7.23
-same-schema corrective transition.
+2.7.21 to 2.7.22 schema-37-to-38 transition and the selected 2.7.22/2.7.23 to
+2.7.23/2.7.24 same-schema corrective transitions.
 
 This controller closes one concrete product provisioning gap. It is not the
 universal Forge Platform installer, an installer UI, a new service supervisor,
@@ -19,7 +19,7 @@ cannot be called by the installed runtime as a second self-installer.
 ## Supported operation
 
 The controller accepts only one explicitly bound existing installation and an
-exact `forge-autonomy` wheel for one of those two transitions. Every invocation
+exact `forge-autonomy` wheel for one of those bounded transitions. Every invocation
 binds:
 
 - operation, runtime, installation, and peer-configuration identities;
@@ -40,9 +40,10 @@ interpreter, version, and bytes.
 1. Read the wheel once through a no-follow descriptor; validate its digest,
    canonical RECORD, purelib tag, package metadata, member allowlist, and the
    exact terminal release receipt without importing it. The historical
-   2.7.22 reconciliation receipt retains its dedicated validation; 2.7.23 must
-   have the normal protected release-complete publication/readback/cleanup
-   shape and cannot be presented to the older transition.
+   2.7.22 reconciliation receipt retains its dedicated validation; 2.7.23 and
+   2.7.24 must have the normal protected release-complete
+   publication/readback/cleanup shape and cannot be presented to an
+   unsupported transition.
 2. Create an isolated versioned runtime slot outside the source checkout with
    the explicit Python interpreter. Extract only the already validated bytes
    into a pip-free virtual environment, then verify every installed file and
@@ -66,7 +67,9 @@ interpreter, version, and bytes.
    reset-table additions and a fresh idle control row. The 38-to-38 route
    permits no table additions and requires the complete reset state and every
    domain/security/configuration row to remain byte-logically unchanged.
-8. Point the stable resolver at a maintenance fence. Take an exclusive SQLite
+8. Normalize the product-owned maintenance launcher to operation-independent
+   canonical bytes, accepting only the exact older operation-labelled shape,
+   then point the stable resolver at that fence. Take an exclusive SQLite
    writer boundary, prove the live database is still byte-logically identical
    to the backed-up snapshot, and atomically install the already Forge-migrated
    database copy. The replacement remains read-only until activation and final
@@ -112,7 +115,8 @@ separate authority and compatibility proof.
 writer rejection, both bounded schema transitions, preservation
 of Missions, allocations, reviews, execution receipts, governance grants,
 configuration and identity, concurrent-operation exclusion, resolver adoption,
-canonical receipt shape, path safety, exact slot contents, exclusive atomic
+prior-operation fence normalization and tamper rejection, canonical receipt
+shape, path safety, exact slot contents, exclusive atomic
 database replacement, late-writer rejection, and interruption before
 migration, after migration, and during activation. An opt-in test runs the
 entire route and replay against the exact published wheel and terminal release

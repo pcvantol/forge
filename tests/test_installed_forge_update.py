@@ -230,8 +230,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "wheel digest"):
             update.validate_qualified_artifact(self.request)
 
-    def test_normal_2723_release_receipt_is_accepted_only_for_the_new_transition(self) -> None:
-        version = "2.7.23"
+    def test_normal_release_receipt_is_accepted_only_for_supported_normal_transitions(self) -> None:
+        version = "2.7.24"
         wheel = self.root / f"forge_autonomy-{version}-py3-none-any.whl"
         dist_info = f"forge_autonomy-{version}.dist-info"
         members = {
@@ -290,7 +290,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         }, sort_keys=True), encoding="utf-8")
         request = update.UpdateRequest(**{
             **self.request.__dict__,
-            "operation_id": "forge-update-2723-test-002",
+            "operation_id": "forge-update-2724-test-002",
             "version": version,
             "product_source": source,
             "wheel": str(wheel),
@@ -303,6 +303,10 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         evidence = update.validate_qualified_artifact(request)
 
         self.assertEqual(evidence["release_route"], "NORMAL")
+        from_2723 = update.UpdateRequest(**{
+            **request.__dict__, "existing_version": "2.7.23",
+        })
+        self.assertEqual(update.validate_qualified_artifact(from_2723)["release_route"], "NORMAL")
         wrong_transition = update.UpdateRequest(**{
             **request.__dict__, "existing_version": "2.7.21",
         })
@@ -445,6 +449,37 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         state = controller._fence(state)
         self.assertEqual(self.resolver.resolve(), controller.fenced_resolver.resolve())
         self.assertEqual(controller.legacy_entrypoint.read_bytes(), legacy_bytes)
+
+    def test_resolver_adoption_normalizes_a_prior_operation_fence(self) -> None:
+        controller = self._controller()
+        controller.fenced_resolver.parent.mkdir(parents=True)
+        controller.fenced_resolver.write_text(
+            "#!/bin/sh\n"
+            "echo 'Forge installation maintenance is active: forge-update-older-001' >&2\n"
+            "exit 75\n",
+            encoding="utf-8",
+        )
+        controller.fenced_resolver.chmod(0o755)
+
+        with patch.object(update, "installed_identity", return_value={"version": "2.7.21"}):
+            controller._adopt_resolver(controller._state())
+
+        self.assertEqual(
+            controller.fenced_resolver.read_bytes(),
+            b"#!/bin/sh\necho 'Forge installation maintenance is active' >&2\nexit 75\n",
+        )
+        self.assertEqual(controller.fenced_resolver.stat().st_mode & 0o777, 0o755)
+
+    def test_resolver_adoption_rejects_an_unrecognized_existing_fence(self) -> None:
+        controller = self._controller()
+        controller.fenced_resolver.parent.mkdir(parents=True)
+        controller.fenced_resolver.write_text("#!/bin/sh\necho compromised\n", encoding="utf-8")
+
+        with (
+            patch.object(update, "installed_identity", return_value={"version": "2.7.21"}),
+            self.assertRaisesRegex(update.InstalledForgeUpdateError, "fence launcher changed"),
+        ):
+            controller._adopt_resolver(controller._state())
 
     def test_crash_before_migration_restores_the_legacy_route(self) -> None:
         controller = self._controller()

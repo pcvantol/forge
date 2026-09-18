@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.23",
+  "classification_rationale": "installed-updater-repeatability-remediation",
+  "component": "product",
+  "event_lineage": "installed-updater-repeatability-remediation",
+  "expected_head": "6cd60f983d0cb8a9d68ad377d34fbe4c7a8a7a44",
+  "operation_id": "repeat-update-fence-2.7.24",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.24"
+}

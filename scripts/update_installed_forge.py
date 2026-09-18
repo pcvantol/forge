@@ -48,7 +48,14 @@ CONTRACT_VERSION = "forge-installed-update/v1"
 SUPPORTED_TRANSITIONS = {
     ("2.7.21", "2.7.22"): (37, 38),
     ("2.7.22", "2.7.23"): (38, 38),
+    ("2.7.22", "2.7.24"): (38, 38),
+    ("2.7.23", "2.7.24"): (38, 38),
 }
+NORMAL_RELEASE_TRANSITIONS = frozenset({
+    ("2.7.22", "2.7.23"),
+    ("2.7.22", "2.7.24"),
+    ("2.7.23", "2.7.24"),
+})
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
         "PREPARED", "STAGED", "ADOPTED", "BACKED_UP", "MIGRATION_QUALIFIED",
@@ -178,6 +185,24 @@ def _atomic_json(path: Path, value: object) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         os.chmod(path, 0o600)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _atomic_regular_file(path: Path, payload: bytes, *, mode: int) -> None:
+    """Replace one managed regular file without exposing partial bytes."""
+    _safe_directory(path.parent, create=True)
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.tmp-", dir=path.parent)
+    temporary = Path(name)
+    try:
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, mode)
     finally:
         if temporary.exists():
             temporary.unlink()
@@ -380,7 +405,7 @@ def _normal_release_evidence(
     request: UpdateRequest, receipt: Mapping[str, Any], manifest: Mapping[str, str],
     receipt_path: Path,
 ) -> dict[str, Any]:
-    """Validate the normal 2.7.23 release route without weakening 2.7.22 recovery."""
+    """Validate current normal-release transitions without weakening 2.7.22 recovery."""
     expected_name = f"forge_autonomy-{request.version}-py3-none-any.whl"
     sdist_name = f"forge_autonomy-{request.version}.tar.gz"
     qualification = receipt.get("qualification")
@@ -399,7 +424,7 @@ def _normal_release_evidence(
     }
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
     if (
-        (request.existing_version, request.version) != ("2.7.22", "2.7.23")
+        (request.existing_version, request.version) not in NORMAL_RELEASE_TRANSITIONS
         or set(receipt) != expected_top
         or receipt.get("state") != "RELEASE_COMPLETE"
         or receipt.get("product") != "forge"
@@ -459,7 +484,7 @@ def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, 
         raise InstalledForgeUpdateError("qualification receipt is malformed") from error
     if not isinstance(receipt, dict):
         raise InstalledForgeUpdateError("qualification receipt is malformed")
-    if (request.existing_version, request.version) == ("2.7.22", "2.7.23"):
+    if (request.existing_version, request.version) in NORMAL_RELEASE_TRANSITIONS:
         return (
             _normal_release_evidence(request, receipt, manifest, receipt_path),
             wheel_bytes,
@@ -1113,17 +1138,25 @@ class InstalledForgeUpdateController:
                 raise InstalledForgeUpdateError("retained legacy entrypoint does not match the pinned resolver bytes")
         elif file_digest(self.legacy_entrypoint) != self.request.resolver_sha256:
             raise InstalledForgeUpdateError("retained legacy entrypoint changed")
-        fence = (
-            "#!/bin/sh\n"
-            f"echo 'Forge installation maintenance is active: {self.request.operation_id}' >&2\n"
-            "exit 75\n"
+        # The fence is shared by every update operation. Its bytes therefore
+        # must be operation-independent. Releases before 2.7.24 embedded the
+        # first operation id and made every later update fail closed while
+        # trying to reuse the same managed launcher. Accept only that exact
+        # legacy shape and atomically normalize it; arbitrary launcher changes
+        # remain a hard failure.
+        fence = b"#!/bin/sh\necho 'Forge installation maintenance is active' >&2\nexit 75\n"
+        legacy_fence = re.compile(
+            rb"\A#!/bin/sh\necho 'Forge installation maintenance is active: "
+            rb"[A-Za-z0-9][A-Za-z0-9._-]{0,127}' >&2\nexit 75\n\Z"
         )
         if not self.fenced_resolver.exists():
-            descriptor = os.open(self.fenced_resolver, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o755)
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.write(fence)
-        elif self.fenced_resolver.read_text(encoding="utf-8") != fence:
-            raise InstalledForgeUpdateError("maintenance fence launcher changed")
+            _atomic_regular_file(self.fenced_resolver, fence, mode=0o755)
+        else:
+            observed_fence = _read_regular_bytes(self.fenced_resolver)
+            if observed_fence != fence:
+                if legacy_fence.fullmatch(observed_fence) is None:
+                    raise InstalledForgeUpdateError("maintenance fence launcher changed")
+                _atomic_regular_file(self.fenced_resolver, fence, mode=0o755)
         if not self.current.exists() and not self.current.is_symlink():
             _replace_symlink(self.current, os.path.relpath(self.legacy_entrypoint, self.runtime_root))
         if not self.stable_resolver.exists() and not self.stable_resolver.is_symlink():
