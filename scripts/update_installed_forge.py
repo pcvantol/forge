@@ -1030,6 +1030,7 @@ class InstalledForgeUpdateController:
         *,
         process_reader: Callable[[], Sequence[str]] | None = None,
         interrupt_after: str | None = None,
+        reconcile_staged_controller: bool = False,
     ) -> None:
         request.validate()
         self.request = request
@@ -1055,11 +1056,14 @@ class InstalledForgeUpdateController:
         )
         self.process_reader = process_reader or self._processes
         self.interrupt_after = interrupt_after
+        self.reconcile_staged_controller = reconcile_staged_controller
 
-    def _state(self) -> dict[str, Any]:
+    def _state(self, *, allow_request_mismatch: bool = False) -> dict[str, Any]:
         if self.state_path.exists():
             state = _read_json(self.state_path)
-            if state.get("contract_version") != CONTRACT_VERSION or state.get("request") != asdict(self.request):
+            if state.get("contract_version") != CONTRACT_VERSION:
+                raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
+            if state.get("request") != asdict(self.request) and not allow_request_mismatch:
                 raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
             return state
         state = {
@@ -1070,6 +1074,110 @@ class InstalledForgeUpdateController:
         }
         _atomic_json(self.state_path, state)
         return state
+
+    def _reconcile_staged_controller(
+        self, state: dict[str, Any], live: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rebind only a source-corrected controller before any live effect."""
+        previous = state.get("request")
+        requested = asdict(self.request)
+        if not isinstance(previous, Mapping) or set(previous) != set(requested):
+            raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
+        changed = {key for key in requested if previous.get(key) != requested[key]}
+        if not changed or not changed.issubset({"controller_source", "controller_sha256"}):
+            raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
+        previous_request = UpdateRequest(**dict(previous))
+        if (
+            state.get("request_digest") != previous_request.digest
+            or state.get("phase") != "STAGED"
+            or state.get("safety_disposition") != "UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED"
+            or state.get("last_error")
+            != f"path contains a symbolic-link component: {self.request.resolver}"
+            or any(
+                key in state
+                for key in (
+                    "before", "backup", "migration_qualification", "live_migration",
+                    "installed_readback", "receipt_sha256",
+                )
+            )
+            or self.receipt_path.exists()
+            or self.backup_path.exists()
+        ):
+            raise InstalledForgeUpdateError("controller reconciliation is not a pre-migration staged recovery")
+        schema_before, _schema_after = transition_schemas(self.request)
+        assert_selected_installation(self.request, live)
+        assert_quiescent(live)
+        if live.get("user_version") != schema_before:
+            raise InstalledForgeUpdateError("controller reconciliation source schema changed")
+        if file_digest(Path(__file__)) != self.request.controller_sha256:
+            raise InstalledForgeUpdateError("replacement controller bytes do not match the protected candidate")
+        qualification, _, manifest = _qualified_artifact(self.request)
+        slot_receipt = _read_json(self.slot_receipt)
+        if slot_receipt.get("request_digest") not in {previous_request.digest, self.request.digest}:
+            raise InstalledForgeUpdateError("staged candidate belongs to a different operation request")
+        if slot_receipt.get("wheel_manifest_digest") != qualification["wheel_manifest_digest"]:
+            raise InstalledForgeUpdateError("staged candidate artifact changed during controller reconciliation")
+        file_evidence = _verify_candidate_files(self.slot, manifest)
+        if slot_receipt.get("installed_files") != file_evidence or state.get("installed_files") != file_evidence:
+            raise InstalledForgeUpdateError("staged candidate evidence changed during controller reconciliation")
+        identity = installed_identity(self.slot / "bin" / "python", cwd=self.runtime_root)
+        if state.get("candidate") != identity or identity.get("version") != self.request.version:
+            raise InstalledForgeUpdateError("staged candidate identity changed during controller reconciliation")
+        if (
+            not Path(self.request.resolver).is_symlink()
+            or os.readlink(self.request.resolver) != str(self.stable_resolver)
+            or not self.stable_resolver.is_symlink()
+            or os.readlink(self.stable_resolver) != "../current"
+            or not self.current.is_symlink()
+            or self.current.resolve(strict=True) != self.fenced_resolver.resolve(strict=True)
+        ):
+            raise InstalledForgeUpdateError("controller reconciliation requires the recorded maintenance fence")
+        reconciliation_identity = {
+            "reason": "PROTECTED_CONTROLLER_CORRECTION_AFTER_MANAGED_RESOLVER_PRE_ADOPTION_FAILURE",
+            "previous_controller_source": previous_request.controller_source,
+            "previous_controller_sha256": previous_request.controller_sha256,
+            "previous_request_digest": previous_request.digest,
+            "replacement_controller_source": self.request.controller_source,
+            "replacement_controller_sha256": self.request.controller_sha256,
+            "replacement_request_digest": self.request.digest,
+        }
+        state_reconciliations = state.get("controller_reconciliations", [])
+        slot_reconciliations = slot_receipt.get("controller_reconciliations", [])
+        if not isinstance(state_reconciliations, list) or not isinstance(slot_reconciliations, list):
+            raise InstalledForgeUpdateError("controller reconciliation audit history is malformed")
+        if slot_reconciliations == state_reconciliations:
+            reconciliation = {**reconciliation_identity, "reconciled_at": _now()}
+            slot_reconciliations = [*state_reconciliations, reconciliation]
+            _atomic_json(self.slot_receipt, {
+                **slot_receipt,
+                "request_digest": self.request.digest,
+                "controller_reconciliations": slot_reconciliations,
+            })
+            self._interrupt("controller_reconciliation_slot")
+        elif (
+            len(slot_reconciliations) == len(state_reconciliations) + 1
+            and slot_reconciliations[:-1] == state_reconciliations
+            and isinstance(slot_reconciliations[-1], Mapping)
+            and {
+                key: slot_reconciliations[-1].get(key) for key in reconciliation_identity
+            } == reconciliation_identity
+            and isinstance(slot_reconciliations[-1].get("reconciled_at"), str)
+        ):
+            reconciliation = dict(slot_reconciliations[-1])
+        else:
+            raise InstalledForgeUpdateError("controller reconciliation audit history conflicts")
+        history = list(state.get("history", []))
+        history.append({"phase": "STAGED", "event": "CONTROLLER_RECONCILED", "at": reconciliation["reconciled_at"]})
+        updated = {
+            **state,
+            "request": requested,
+            "request_digest": self.request.digest,
+            "controller_reconciliations": slot_reconciliations,
+            "history": history,
+            "updated_at": reconciliation["reconciled_at"],
+        }
+        _atomic_json(self.state_path, updated)
+        return updated
 
     def _advance(self, state: dict[str, Any], phase: str, **evidence: object) -> dict[str, Any]:
         current_phase = str(state.get("phase", "PREPARED"))
@@ -1189,13 +1297,38 @@ class InstalledForgeUpdateController:
         return self._advance(state, "STAGED", artifact_qualification=qualification, candidate=identity,
                              candidate_slot=str(self.slot), installed_files=file_evidence)
 
+    def _managed_resolver_source(self, resolver: Path, state: Mapping[str, Any]) -> Path | None:
+        if not resolver.is_symlink():
+            return None
+        _assert_no_symlink_components(resolver.parent)
+        if os.readlink(resolver) != str(self.stable_resolver):
+            raise InstalledForgeUpdateError("external Forge resolver has an unrecognized managed target")
+        if not self.stable_resolver.is_symlink() or os.readlink(self.stable_resolver) != "../current":
+            raise InstalledForgeUpdateError("stable Forge resolver changed")
+        if not self.current.is_symlink():
+            raise InstalledForgeUpdateError("managed Forge current resolver changed")
+        existing_entrypoint = Path(self.request.existing_interpreter).parent / "forge"
+        current_target = self.current.resolve(strict=True)
+        allowed_targets = {existing_entrypoint.resolve(strict=True)}
+        if (
+            state.get("phase") == "STAGED"
+            and state.get("safety_disposition") == "UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED"
+            and state.get("last_error")
+            == f"path contains a symbolic-link component: {self.request.resolver}"
+        ):
+            allowed_targets.add(self.fenced_resolver.resolve(strict=True))
+        if current_target not in allowed_targets:
+            raise InstalledForgeUpdateError("managed Forge current resolver has an unrecognized target")
+        return existing_entrypoint
+
     def _adopt_resolver(self, state: dict[str, Any]) -> dict[str, Any]:
         resolver = Path(self.request.resolver)
         _safe_directory(self.runtime_root / "legacy", create=True)
         _safe_directory(self.runtime_root / "bin", create=True)
         _safe_directory(self.runtime_root / "fenced", create=True)
         if not self.legacy_entrypoint.exists():
-            legacy_bytes = _read_regular_bytes(resolver)
+            managed_source = self._managed_resolver_source(resolver, state)
+            legacy_bytes = _read_regular_bytes(managed_source or resolver)
             if _digest_bytes(legacy_bytes) != self.request.resolver_sha256:
                 raise InstalledForgeUpdateError("legacy command resolver changed before adoption")
             identity = installed_identity(Path(self.request.existing_interpreter), cwd=self.runtime_root)
@@ -1620,7 +1753,12 @@ class InstalledForgeUpdateController:
         with exclusive_lock(update_lock):
             _safe_directory(self.operation_root, create=True)
             os.chmod(self.operation_root, 0o700)
-            state = self._state()
+            state = self._state(allow_request_mismatch=self.reconcile_staged_controller)
+            if state.get("request") != asdict(self.request):
+                with exclusive_lock(runtime_lock), exclusive_lock(bootstrap_lock):
+                    self._assert_no_runtime_process()
+                    live = database_snapshot(self.database)
+                    state = self._reconcile_staged_controller(state, live)
             if state.get("phase") == "COMPLETE":
                 receipt = _read_json(self.receipt_path)
                 self._verify_complete(state, receipt)
@@ -1730,9 +1868,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--existing-interpreter", required=True, type=Path)
     parser.add_argument("--existing-version", required=True)
     parser.add_argument("--base-python", required=True, type=Path)
+    parser.add_argument(
+        "--reconcile-staged-controller", action="store_true",
+        help="rebind a protected controller only after the recognized pre-adoption staged failure",
+    )
     args = parser.parse_args(argv)
     try:
-        receipt = InstalledForgeUpdateController(_request_from_args(args)).run()
+        receipt = InstalledForgeUpdateController(
+            _request_from_args(args),
+            reconcile_staged_controller=args.reconcile_staged_controller,
+        ).run()
     except (InstalledForgeUpdateError, OSError, sqlite3.Error, ValueError) as error:
         print(json.dumps({"status": "ERROR", "error": str(error)}, sort_keys=True))
         return 1
