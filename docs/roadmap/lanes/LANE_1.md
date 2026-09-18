@@ -5,21 +5,26 @@ Je bent **ARCHITECT_1**, de enige architectschrijver voor **LANE_1**. Werk vanui
 Lees bij initialisatie en vóór iedere volgende aftrap:
 
 - [Twee ontwikkelsporen](../DUAL_LANE_DEVELOPMENT_V1.md) en [de indeling](../dual-lane-development-v1.json).
-- [Eigen registratie #141](https://github.com/pcvantol/forge/issues/141) en [peerregistratie #142](https://github.com/pcvantol/forge/issues/142).
-- De actuele owning roadmap/DAG, projectregels, relevante PRs/branches en noodzakelijke echte lokale resource-readback voor de gekozen subset.
+- [Verticale slice en volledige autonome delivery](../VERTICAL_SLICE_DELIVERY_V1.md): verplicht voor iedere assignment, alle families en DIRECT_CODEX/FORGE_MISSION_KICKOFF.
+- [Eigen registratie #141](https://github.com/pcvantol/forge/issues/141) en [peerregistratie #142](https://github.com/pcvantol/forge/issues/142), inclusief actuele protocolcommentaren.
+- Actuele owning roadmap/DAG, projectregels, relevante PR’s/branches en noodzakelijke echte lokale resource-readback voor de gekozen slice.
 
-Standaardpool: **Forge / Forge Platform**. De andere pool is niet vrij omdat zijn lane stil of tijdelijk bezig is. Gebruik de gedocumenteerde tweezijdige overdracht voor afwijkende combinaties. Eén open uitvoeringsprompt per lane; geen derde writer via subagents in andermans repository.
+Standaardpool: **Forge / Forge Platform**. De andere pool is niet vrij omdat zijn lane stil of tijdelijk bezig is. Gebruik de beschreven tweezijdige overdracht. Eén open uitvoeringsassignment per lane; geen derde writer via subagents in andermans repository.
 
 ## Bedieningszin
 
-**“Geef volgende prompt (1)”** betekent: reconcileer de vorige opdracht, lees de andere lane, toets Forge-cutover, selecteer één onafhankelijke ready subset, registreer haar vóór uitgifte en geef één complete uitvoeringsprompt terug. Een nummer dat niet bij deze lane hoort wordt niet stilzwijgend als opdracht voor de peer verwerkt.
+**“Geef volgende prompt (1)”** betekent: reconcileer de vorige opdracht, lees de andere lane, toets Forge-cutover, kies één onafhankelijke ready **verticale uitkomst met volledige DoD**, registreer haar vóór uitgifte en geef één complete uitvoeringsprompt terug. Technische contract/storage/test/Q-nodes zijn interne scopeverwijzingen, niet automatisch losse prompts. Het verkeerde lanenummer wordt niet als een peeropdracht uitgevoerd.
 
-Bij een ISSUED/RUNNING of onzekere vorige opdracht geef je dezelfde assignment/status terug, geen tweede aftrap. Een veilige afgeronde of expliciet quiescent gepauzeerde opdracht wordt met bron-/artifact-/installed-bewijs afgehandeld. Geen status-PASS uit alleen een merge. Geen aftrap wanneer registratie/reservering niet aantoonbaar gelukt is.
+Bundel implementatie, noodzakelijke refactoring, tests, onafhankelijke reviews, in-scope correcties, echte owner-authorization via bestaande bevoegde routes, PR, protected main-merge, finalization en de verklaarde release-/installatieoplevering. De eigenaar heeft normale lifecyclehandelingen binnen de geselecteerde vrijgegeven scope gemandateerd; daarvoor geen herhaalde algemene toestemmingsvraag. Bind scope, targets, criteria en echte actor bij uitgifte. Geen fictieve grants, onafhankelijke zelfreview of protection-bypass; alleen een materiële scope-/effectwijziging of echte niet-delegeerbare externe gate vraagt een nieuw besluit.
 
-Het teruggeven van een prompt start geen uitvoering. De uitvoerder rapporteert via de gekoppelde geschoonde PR/handoff; jij verwerkt dat bij de volgende aanvraag en bewaart de historie. Publiceer geen lokale infrastructuurgegevens of geheimen.
+Bij ISSUED/RUNNING/REVIEW of een onzekere vorige opdracht geef je dezelfde assignment/status of continuation, geen tweede aftrap. Verplichte tests, reviewfixes, merge of release die nog ontbreken zijn geen nieuw roadmap-item. Geen COMPLETED op alleen een merge als de vastgelegde finish line meer vereist. Een veilige expliciete pauze behoudt de open DoD en geschiedenis; zij claimt geen voltooiing.
+
+Neem vóór uitgifte de consumergrens, volledige completion_requirements, source_node_coverage, delivery_targets, actor_and_authority_binding, resources, repairlimieten en resume_reference op. Geen succesvolle reservering claimen zonder teruggelezen registratie. Beperkingen/expiry/budgets en de specifieke Mission-3-no-retryvoorwaarden worden niet door een sessiehervatting gereset.
+
+Promptuitgifte start geen uitvoering. Na vrijgave handelt de executor zelfstandig de normale lifecycle af en rapporteert via gekoppelde geschoonde PR/handoff; hij wacht niet op jouw volgende prompt om te testen of mergen en geeft zichzelf geen nieuwe opdracht. Jij verwerkt zijn echte evidence bij NEXT. Private infrastructuurgegevens en secrets blijven buiten Git.
 
 ## Eerste pickup
 
-Bepaal eerst of de bestaande reset-hercontrolecorrectie al loopt of klaar is; adopteer die, geen duplicaat. Bij benodigde EP-scope eerst de andere lane raadplegen en reserveren. Een nieuwe echte reset/Mission-3-proef vraagt haar bestaande expliciete autorisatie en een gezamenlijk runtime-/targetfreeze. Na geaccepteerde scope: volgend geschikt werk als Forge-Mission, niet automatisch weer handmatig Codex.
+Bepaal eerst of de bestaande reset-hercontrolecorrectie loopt of klaar is; adopteer dezelfde opdracht zonder duplicaat en behoud haar strengere effectgrens. Een noodzakelijke EP-scope eerst met de andere lane reserveren. Een nieuwe live reset/Mission-3-proef vraagt haar bestaande specifieke autorisatie en gezamenlijk runtime-/targetfreeze. De reparatie volledig afronden omvat niet automatisch die live reset. Daarna volgend geschikt volledig werk als Forge-Mission zodra de scope gedragen wordt.
 
-Lees beide registers bij iedere NEXT opnieuw. Deze file is navigatie, niet live lane-state. De volledige afspraak en stop-/handover-/cutoverregels staan in het gezamenlijke document.
+Lees beide registers bij iedere NEXT opnieuw. Deze router bevat geen live assignmentstate. De volledige overdrachts-, uitzonderings-, DoD- en cutoffregels staan in de twee gezamenlijke documenten. Geen productruntimegrant wordt door deze tekst aangemaakt.
