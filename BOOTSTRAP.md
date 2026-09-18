@@ -58,6 +58,11 @@ binds the protected implementation and updater deliveries, exact published
 Forge 2.7.25 artifacts, safe schema 38→39 activation, preservation and normal
 installed readback. It does not authorize a reset or Mission 3.
 
+The separately authorized Forge 2.7.25 Mission-3 acceptance preflight is
+recorded in [Mission 3 on Forge 2.7.25 — blocked before T0](docs/operations/MISSION_3_FORGE_2_7_25_PREFLIGHT_ACCEPTANCE_2026_09_18.md).
+It preserves PR #148, performs no reset or Mission allocation, and records the
+failed functional-evidence-fit and autonomous installed-ingress conditions.
+
 ## Previous pickup checkpoint — 17 September 2026
 
 Implementation PR #128 merged the deterministic aggregate-health timeout-boundary
