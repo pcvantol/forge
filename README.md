@@ -117,6 +117,16 @@ and atomically activates a versioned slot. It is not packaged as a Forge
 Runtime command and does not replace Forge Platform's normal installer/update
 composition boundary.
 
+## Mission 3 acceptance preflight
+
+The [18 September 2026 Mission 3 preflight report](docs/operations/MISSION_3_PREFLIGHT_ACCEPTANCE_2026_09_18.md)
+records `AUTONOMY_E2E_ACCEPTANCE = NIET_GEHAALD` and
+`MISSION_EXECUTION_STATE = NIET_GESTART`. Installed artifact and authenticated
+peer checks passed, but the installed criterion-to-evidence composition cannot
+prove the required dynamic successor Action. No production reset or Mission was
+started. The report includes the unchanged C01–C20 and preserves historical
+failures; it does not authorize a repair or replacement attempt.
+
 ## Operational-history reset
 
 Forge schema 38 provides a bounded, product-owned maintenance service under
