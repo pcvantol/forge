@@ -15,7 +15,7 @@ AUTONOMY_LOOP_ACCEPTANCE = NIET_GEHAALD
 TELEMETRY_ACCEPTANCE = NIET_GEHAALD
 REPORTING_ACCEPTANCE = NIET_GEHAALD
 EXPORT_ACCEPTANCE = NIET_GEHAALD
-PUBLIC_HANDOFF_DELIVERY = PENDING_PROTECTED_MERGE
+PUBLIC_HANDOFF_DELIVERY = GEHAALD
 SUPPORTED_CRITERION_SOURCE = repository_json
 AUTHORITATIVE_HOST_CONTROL_SUPPORT = UNSUPPORTED
 E2E_EXECUTION_AND_REVIEW_EVIDENCE = SEPARATE_EP_EVIDENCE_LINE_NOT_EXERCISED
@@ -231,6 +231,11 @@ There are no Mission/Action/provider/EP subprocesses, submissions, runs,
 mutating reset operations, service changes, credentials changes, backups or
 runtime reservations to hand off. The documentation branch/PR is administrative
 and is not an Engineering Action or evidence repair.
+
+The sanitized result and BOOTSTRAP navigation were protected-merged through
+PR #153 at `3531c3603b25309d5ee83d7f5d65cde27f02cc4b`. All hosted checks,
+including the non-blocking TDE observation, completed successfully. This closes
+only public handoff delivery; it changes none of the negative C01–C20 results.
 
 Exact local paths, runtime/instance/consumer identities, Keychain references,
 plan/database/backup digests and raw receipts remain outside Git. Public
