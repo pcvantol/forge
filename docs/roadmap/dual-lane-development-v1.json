@@ -1,0 +1,166 @@
+{
+  "schema_version": "dual-lane-planning/v1",
+  "document_kind": "TEMPORARY_PLANNING_OVERLAY",
+  "date": "2026-09-18",
+  "executable": false,
+  "execution_authority": false,
+  "automatic_dispatch": false,
+  "version_decision": "NO_BUMP",
+  "protocol": "docs/roadmap/DUAL_LANE_DEVELOPMENT_V1.md",
+  "inventory": "docs/roadmap/inventory/2026-09-17.json",
+  "counts": {
+    "inventory_records": 194,
+    "rollup_units": 165,
+    "families": 34,
+    "joint_nodes": 7,
+    "lane_1_exclusive_units": 82,
+    "lane_2_exclusive_units": 76,
+    "lane_1_families": 16,
+    "lane_2_families": 18
+  },
+  "source_readback_pins": {
+    "forge": "0da4ffae94f1834b957a04ea31d7ff2010fd072a",
+    "engineering-platform": "aa73aa46322230aaf8afce4223fd497879d800d6",
+    "workspace": "5ecd418bc9cdc983791bf35c07457ffdb2ad1166",
+    "forge-platform": "88b256b274fb20487b7c0cce05ccd5a58a4516f1"
+  },
+  "max_concurrent_prompts": 2,
+  "max_open_prompt_per_lane": 1,
+  "initial_epoch": 1,
+  "default_repository_holders": {
+    "forge": "LANE_1",
+    "forge-platform": "LANE_1",
+    "engineering-platform": "LANE_2",
+    "workspace": "LANE_2"
+  },
+  "lane_registers": {
+    "LANE_1": "https://github.com/pcvantol/forge/issues/141",
+    "LANE_2": "https://github.com/pcvantol/forge/issues/142"
+  },
+  "selection_policy": "ROLLING_READY_FRONTIER_NO_WAVE_BARRIER",
+  "rank_scope": "WITHIN_REPOSITORY_FALLBACK_HORIZON_NOT_FULL_FAMILY_COMPLETION_ORDER",
+  "early_subset_rule": "Take Server-only FSH/FH, missing CI and ready parallel/project-loop subsets first; unfinished Console, SA or installer umbrella never blocks the next eligible critical subset.",
+  "dependency_rule": "Ranks are preferences, not edges. Resolve each node in the dated inventory, then refresh its owning dependency graph and exact required evidence before prompt issuance.",
+  "initial_state": "UNASSIGNED_NEEDS_RECONCILIATION",
+  "initial_lane_1": "Adopt existing reset-revalidation assignment; no duplicate or automatic reset/Mission.",
+  "initial_lane_2": "Workspace contract/fixture subset when EP scope is reserved or unclear; otherwise ready missing EP context/isolation subset.",
+  "cutover_rule": "Next suitable authorized scope uses qualified installed Forge Mission route; no wait for complete portfolio; unsupported scopes remain explicit direct-Codex exceptions.",
+  "families": [
+    {"repository":"forge","lane":"LANE_1","rank":10,"family":"HTTP/API en CLI","nodes":["FH-CONTRACT","FH-SERVICES","FH-HTTP","FH-CLI","FH-Q"]},
+    {"repository":"forge","lane":"LANE_1","rank":11,"family":"Console, hosting en data-administratie","nodes":["FOC-0","FOC-1","FOC-2","FOC-3","FOC-4","FOC-5","FOC-6","FOC-Q"]},
+    {"repository":"forge","lane":"LANE_1","rank":12,"family":"Inner-loop CI","nodes":["FCI-CONTRACT","FCI-HARNESS","FCI-EP","FCI-FLOW","FCI-RESTART","FCI-NEGATIVE","FCI-CI"]},
+    {"repository":"forge","lane":"LANE_1","rank":20,"family":"Parallelle Actions","nodes":["PA-F0","PA-F1","PA-F2","PA-F3","PA-F4","PA-F5","PA-FQ"]},
+    {"repository":"forge","lane":"LANE_1","rank":21,"family":"Projectloop en roadmapbeheer","nodes":["PRM-F-CONTRACT","PRM-F-PROJECTION","PRM-F-ELIGIBILITY","PRM-F-ACTIVATION","PRM-F-CHANGES","PRM-F-PRIORITY","PRM-F-REPOSITORY","PRM-F-DELEGATION","PRM-F-Q"]},
+    {"repository":"forge","lane":"LANE_1","rank":22,"family":"Outer-loop CI","nodes":["FCO-CONTRACT","FCO-FLOW","FCO-RESTART","FCO-NEGATIVE","FCO-CI"]},
+    {"repository":"forge","lane":"LANE_1","rank":23,"family":"Governed progression","nodes":["GP-F"]},
+    {"repository":"forge","lane":"LANE_1","rank":24,"family":"Policy en releasebeheer","nodes":["POL-F","VR-F"]},
+    {"repository":"forge","lane":"LANE_1","rank":30,"family":"Adaptive Action Sizing","nodes":["AS-F-CONTRACT","AS-F-POLICY","AS-F-PLAN","AS-F-BIND","AS-F-FEEDBACK","AS-F-Q"]},
+    {"repository":"forge","lane":"LANE_1","rank":40,"family":"Projecthygiëne","nodes":["HY-F","HY-S"]},
+    {"repository":"forge","lane":"LANE_1","rank":50,"family":"Genesis/Managed-projectbootstrap","nodes":["PB-F0","PB-F1","PB-F2","PB-F3","PB-F4","PB-F5","PB-F6","PB-F7","PB-FQ"]},
+    {"repository":"forge","lane":"LANE_1","rank":60,"family":"Business/Architect/UX-conversaties","nodes":["RC-FC","RC-FS","RC-FA","RC-FP","RC-FQ"]},
+    {"repository":"forge-platform","lane":"LANE_1","rank":10,"family":"Installer: clean-install plus UX/release","nodes":["FP-EP-CI-1","FP-EP-CI-2","FP-EP-CI-3","FP-EP-CI-4","FP-EP-CI-5","IUR-CONTRACT","IUR-WIZARD","IUR-READONLY","IUR-UX-Q","IUR-COVERAGE","IUR-RUNNER","IUR-RELEASE","IUR-INSTALL-Q"]},
+    {"repository":"forge-platform","lane":"LANE_1","rank":20,"family":"Policy en releasebeheer","nodes":["POL-P"]},
+    {"repository":"forge-platform","lane":"LANE_1","rank":21,"family":"Governed progression","nodes":["GP-P"]},
+    {"repository":"forge-platform","lane":"LANE_1","rank":30,"family":"Projecthygiëne","nodes":["HY-P"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":10,"family":"Subagent-efficiëntie en assurance","nodes":["SA-CTX","SA-ISO","SA-OBS","SA-VAL","SA-PUB","SA-SEL","SA-LOOP","SA-PAR","SA-Q"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":11,"family":"Parallelle Actions","nodes":["PA-E0","PA-E1","PA-E2","PA-E3","PA-E4","PA-EQ"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":12,"family":"HTTP/ingressconformiteit","nodes":["EH-CONTRACT","EH-CONFORMANCE","EH-Q"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":20,"family":"Governed progression","nodes":["GP-E"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":21,"family":"Policy en releasebeheer","nodes":["POL-E","VR-X"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":30,"family":"Adaptive execution envelope","nodes":["AS-E-OFFER","AS-E-FIT","AS-E-Q"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":31,"family":"Taak-/rol-/modelbeleid","nodes":["RMP-CONTRACT","RMP-CATALOG","RMP-RESOLVE","RMP-DISPATCH","RMP-EVIDENCE","RMP-CONSOLE","RMP-Q"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":40,"family":"Projecthygiëne","nodes":["HY-E","HY-C"]},
+    {"repository":"engineering-platform","lane":"LANE_2","rank":50,"family":"Genesis/Managed-projectbootstrap","nodes":["PB-E0","PB-E1","PB-E2","PB-E3","PB-E4","PB-E5","PB-EQ"]},
+    {"repository":"workspace","lane":"LANE_2","rank":10,"family":"HTTP/API en CLI","nodes":["WH-CONTRACT","WH-SERVICES","WH-HTTP","WH-CLI","WH-PEERS","WH-Q"]},
+    {"repository":"workspace","lane":"LANE_2","rank":11,"family":"PyPI/distributie","nodes":["WPK-IDENTITY","WPK-PACKAGE","WPK-PUBLISH","WPK-READBACK","WPK-CONSUMER"]},
+    {"repository":"workspace","lane":"LANE_2","rank":20,"family":"Projectloop en roadmapbeheer","nodes":["PRM-W-CONTRACT","PRM-W-VIEW","PRM-W-MANAGE","PRM-W-DECISIONS","PRM-W-SYNC","PRM-W-Q"]},
+    {"repository":"workspace","lane":"LANE_2","rank":21,"family":"Governed progression","nodes":["GP-WC","GP-W"]},
+    {"repository":"workspace","lane":"LANE_2","rank":22,"family":"Policy en releasebeheer","nodes":["POL-WC","POL-W"]},
+    {"repository":"workspace","lane":"LANE_2","rank":30,"family":"Projecthygiëne","nodes":["HY-WC","HY-WO","HY-WM"]},
+    {"repository":"workspace","lane":"LANE_2","rank":31,"family":"Adaptive Action Sizing","nodes":["AS-W-POLICY","AS-W-Q"]},
+    {"repository":"workspace","lane":"LANE_2","rank":40,"family":"Business/Architect/UX-conversaties","nodes":["RC-WC","RC-WS","RC-WP","RC-WQ"]},
+    {"repository":"workspace","lane":"LANE_2","rank":50,"family":"Genesis/Managed-projectbootstrap","nodes":["PB-W0","PB-W1","PB-W2","PB-W3","PB-W4","PB-WQ"]}
+  ],
+  "shared_nodes": [
+    {
+      "id": "GP-DC",
+      "owners": [
+        "forge",
+        "engineering-platform",
+        "forge-platform"
+      ],
+      "coordination_lane": "LANE_1"
+    },
+    {
+      "id": "GP-Q",
+      "owners": [
+        "forge",
+        "engineering-platform"
+      ],
+      "coordination_lane": "LANE_1"
+    },
+    {
+      "id": "GP-X",
+      "owners": [
+        "forge",
+        "engineering-platform"
+      ],
+      "coordination_lane": "LANE_1"
+    },
+    {
+      "id": "POL-B",
+      "owners": [
+        "forge",
+        "engineering-platform"
+      ],
+      "coordination_lane": "LANE_1"
+    },
+    {
+      "id": "POL-Q",
+      "owners": [
+        "forge",
+        "engineering-platform"
+      ],
+      "coordination_lane": "LANE_1"
+    },
+    {
+      "id": "VR-Q",
+      "owners": [
+        "forge",
+        "engineering-platform"
+      ],
+      "coordination_lane": "LANE_1"
+    },
+    {
+      "id": "HY-Q",
+      "owners": [
+        "forge",
+        "engineering-platform"
+      ],
+      "coordination_lane": "LANE_1"
+    }
+  ],
+  "invariants": {
+    "one_repository_mutator": true,
+    "separate_worktree_is_sufficient": false,
+    "issues_are_atomic_leases": false,
+    "one_architect_writer_per_lane": true,
+    "repository_transfer_needs_quiescence_and_two_sided_epoch": true,
+    "idle_or_timeout_releases_reservation": false,
+    "reserve_before_prompt_return": true,
+    "production_update_reset_e2e_needs_joint_window": true,
+    "live_canary_target_main_and_runtime_are_frozen": true,
+    "fallback_can_ignore_dependency": false,
+    "read_or_next_starts_execution": false,
+    "new_findings_change_approved_scope": false,
+    "roadmap_inventory_counts_changed": false,
+    "runtime_qualifications_claimed": false
+  },
+  "scope_notes": [
+    "All global product-DAG and role/authority boundaries preserved.",
+    "Old reset/release observations remain historical; no independent current installation audit.",
+    "EP #175 parked unless separately authorized.",
+    "Private local evidence stays outside public Git/issue records.",
+    "No requirement to fill both lanes if no safe authorized ready work exists."
+  ]
+}

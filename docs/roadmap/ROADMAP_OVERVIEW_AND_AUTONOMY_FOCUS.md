@@ -2,6 +2,19 @@
 
 **Vastgelegd:** 17 september 2026. **Classificatie:** brongebonden analyse en focusnotitie, geen uitvoerbare backlog. **NO_BUMP.**
 
+## Tijdelijke uitvoering met twee architectsessies — 18 september 2026
+
+De eigenaar kiest vóór Forge-cutover voor twee onafhankelijke Codex-sporen.
+De [tweesporenplanning](DUAL_LANE_DEVELOPMENT_V1.md) en
+[machineleesbare lane-indeling](dual-lane-development-v1.json) rangschikken
+alle onderstaande families zonder deze historische telling te wijzigen.
+Initialiseer [LANE_1](lanes/LANE_1.md) en [LANE_2](lanes/LANE_2.md); daarna
+selecteert “geef volgende prompt (1/2)” één ready subset na actuele controle
+van beide gedeelde registraties. Geen vaste rondebarrière, dubbele repositorywriter
+of automatische Mission-/resetstart. Zodra Forge een geschikte geautoriseerde
+scope gekwalificeerd kan dragen, wordt de volgende aftrap een Forge-Mission.
+Dit is een tijdelijke operatorwerkindeling, geen nieuwe product-DAG of scheduler.
+
 Doel van de eigenaar: het hoogoverbeeld terug kunnen vinden en focus houden op zo snel mogelijk werkpakketten door Forge zelf laten plannen, via EP uitvoeren en opvolgen. Niet eerst het hele platform met de hand afbouwen voordat het eigen werk kan overnemen.
 
 Deze pagina bewaart de eerdere roadmapanalyse in een repository-first vorm. De [gedateerde volledige ID-inventaris](inventory/2026-09-17.json) bevat alle 194 records, bronrevisies, statussen, telregels en samenvoegingen; de [formaat- en leesinstructie](inventory/README.md) verklaart de compacte representatie. De inhoudelijke productroadmaps en hun eigenaren blijven leidend. Dit document is geen nieuwe Mission, toestemming, releaseplan, scheduler of peer-statusautoriteit.
