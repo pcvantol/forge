@@ -53,6 +53,16 @@ class MissionIntake:
         self.validate_approved_evidence(envelope, repository)
         if mission.status is not ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING:
             raise MissionIntakeError("Mission Intake requires an engineering-approved Architecture Mission")
+        planning = envelope.planning
+        if mission.criterion_assessment_contracts or planning.criterion_assessment_contracts:
+            if (mission.candidate_id != envelope.subject_id
+                    or tuple(sorted(mission.scope)) != tuple(sorted(planning.scope))
+                    or mission.architecture_review_reference != envelope.architecture_decision_id
+                    or mission.criterion_assessment_contracts != planning.criterion_assessment_contracts
+                    or mission.maximum_actions != planning.maximum_actions
+                    or mission.maximum_consecutive_no_progress_actions != planning.maximum_consecutive_no_progress_actions
+                    or mission.repository_evidence_source != planning.repository_evidence_source):
+                raise MissionIntakeError("Mission Intake criterion contract differs from canonical Architecture approval")
         source = "canonical-governance-envelope:" + envelope.digest
         allocation = repository.database._connection.execute(
             "SELECT mission_id FROM mission_id_allocations WHERE source = ?", (source,)
@@ -133,4 +143,6 @@ class MissionIntake:
         """Admit the architecture-approved Mission without performing planning."""
         if mission.status is not ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING:
             raise MissionIntakeError("Mission Intake requires an engineering-approved Architecture Mission")
+        if mission.criterion_assessment_contracts:
+            raise MissionIntakeError("criterion contracts require canonical approval evidence at Mission Intake")
         return self.store.create_pending(mission, occurred_at=self.clock(), resume={"intake": "approved-mission-dispatcher-v1"})

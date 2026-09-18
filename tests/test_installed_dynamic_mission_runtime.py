@@ -1,4 +1,8 @@
-"""Installed public composition coverage for the real dynamic Mission path."""
+"""Source-level public runtime tests with external Host/provider/byte fixtures.
+
+This module exercises runtime methods and canonical governance, but constructs
+the runtime directly; installed normal-factory qualification is separate.
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -38,6 +42,10 @@ from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state.mission_state import MissionExecutionStatus
 from forge._version import canonical_version
+from forge.models.criterion_assessment import (
+    ApprovedRepositoryEvidenceSource, CriterionAssessmentContract, CriterionEvidenceRequirement,
+)
+from tests.criterion_fixture import ExactRepositoryBytes
 
 
 def _digest(value: object) -> str:
@@ -112,7 +120,8 @@ class _Host:
         return {"contract_version": "1.0", "producer": {"id": "engineering-platform", "version": "fixture"}}
 
     def dispatch(self, request):
-        dispatch = ExecutionDispatch(request, "ep-run-status-projection")
+        run_id = "ep-run-status-projection" + (f"-retry-{len(self.requests)}" if self.requests else "")
+        dispatch = ExecutionDispatch(request, run_id)
         self.requests.append(request)
         self.dispatches[request.correlation_id] = dispatch
         return dispatch
@@ -125,18 +134,20 @@ class _Host:
         if not self.return_evidence:
             return None
         request = dispatch.request
+        suffix = "" if dispatch.host_run_id == "ep-run-status-projection" else "-" + dispatch.host_run_id
+        report_id = "ep-report-status-projection" + suffix
         repository = ExecutionRepositoryEvidence(
             request.mission_id, request.intent_id, request.intent_revision, request.action_id,
             request.runtime_prompt.id, request.correlation_id, dispatch.host_run_id, request.repository_id,
-            "fixture-protected-revision", "ep-report-status-projection", "sha256:" + "a" * 64,
+            "c" * 40, report_id, "sha256:" + "a" * 64,
         )
         return ExecutionHostEvidence(
-            request.host_id, request.correlation_id, dispatch.host_run_id, "ep-report-status-projection",
+            request.host_id, request.correlation_id, dispatch.host_run_id, report_id,
             self.outcome, repository, validation_references=("focused-status-validation",),
             retry_of_correlation_id=request.retry_of_correlation_id,
             original_correlation_id=request.original_correlation_id,
             execution_started_at="2026-09-11T16:00:00Z", execution_completed_at="2026-09-11T16:01:00Z",
-            receipt_id="ep-receipt-status-projection", execution_duration_ms=60_000,
+            receipt_id="ep-receipt-status-projection" + suffix, execution_duration_ms=60_000,
         )
 
 
@@ -160,16 +171,28 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         except PermissionError:
             operators.first_bind()
         repository = CanonicalGovernanceRepository.for_runtime(database, lambda: self.identity, data_root=self.root)
-        return InstalledDynamicMissionRuntime(
+        runtime = InstalledDynamicMissionRuntime(
             database, repository, data_root=str(self.root), provider=self.provider, host=self.host,
             clock=lambda: "2026-09-11T16:00:00Z",
         )
+        runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"durable-state"}'},
+        )
+        return runtime
 
     def _mission_and_envelope(self):
         repository, context = self.runtime.repository, self.runtime.repository.operators.context()
+        contracts = (CriterionAssessmentContract(
+            "status contract declares durable-state provenance", (CriterionEvidenceRequirement(
+                "durable-status-source", kind="repository_json", artifact_path="contract.json",
+                json_pointer="/source", expected_json='"durable-state"',
+            ),)),)
+        source = ApprovedRepositoryEvidenceSource("forge", "synthetic/forge")
         planning = ArchitecturePlanningEvidence(
             ("durable-status-projection",), ("forge/__main__.py",), ("no unrelated runtime work",),
             ("scope-drift",), ("protected-delivery",), ("ep-v1.2",), 16_000, 4_000, "1",
+            criterion_assessment_contracts=contracts, maximum_actions=4,
+            maximum_consecutive_no_progress_actions=2, repository_evidence_source=source,
         )
         business = BusinessWorkspace.for_runtime(self.runtime.database, repository, context)
         architecture = ArchitectureWorkspace.for_runtime(self.runtime.database, repository, context)
@@ -193,9 +216,11 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             mission_id, "candidate-status-projection", "Durable status projection", "Expose durable dispatcher posture.",
             "Expose a safe status projection.", "Operators can inspect durable state.", "architecture-status-projection",
             "candidate-status-projection", ("durable-status-projection",), ("no unrelated runtime work",),
-            ("status is derived from durable state",), ("configured EP v1.2",), ("ep-v1.2",),
+            ("status contract declares durable-state provenance",), ("configured EP v1.2",), ("ep-v1.2",),
             ("status-projection",), (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("scope-drift",),
             ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
+            criterion_assessment_contracts=contracts, maximum_actions=4,
+            maximum_consecutive_no_progress_actions=2, repository_evidence_source=source,
         )
         return mission, envelope
 
@@ -454,6 +479,15 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(retry.producer_contract.producer.identity.version, canonical_version())
         state = self.runtime.states.get(mission.id)
         self.assertIn("authorized_recovery", [item["reason"] for item in state.state_history])
+        # A future partial-completion planning boundary must retain the old
+        # blocker without mistaking it for successful execution evidence.
+        planning = self.runtime._planning_input(state)
+        context = planning.mission_state.continuation_context.to_dict()
+        self.assertEqual([item["outcome"] for item in context["terminal_evidence"]], ["blocked", "complete"])
+        from forge.models.mission_planner import PlanningInputKind
+        references = [item.source_id for item in planning.evidence
+                      if item.kind is PlanningInputKind.EXECUTION_EVIDENCE]
+        self.assertEqual(references, [state.execution_history[-1]["receipt_id"]])
 
     def test_public_successor_reservation_is_explicit_and_does_not_dispatch(self) -> None:
         mission, envelope = self._mission_and_envelope()

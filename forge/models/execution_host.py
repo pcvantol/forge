@@ -245,6 +245,7 @@ class ExecutionRepositoryEvidence:
     repository_revision: str | None
     report_id: str
     content_digest: str
+    candidate_revision: str | None = None
 
     def __post_init__(self) -> None:
         if not all((self.mission_id, self.intent_id, self.intent_revision, self.action_id,
@@ -257,6 +258,12 @@ class ExecutionRepositoryEvidence:
             raise ValueError("repository evidence digest must be sha256")
         if self.repository_revision is not None and not self.repository_revision:
             raise ValueError("repository evidence revision cannot be empty")
+        if self.candidate_revision is not None and (
+            not isinstance(self.candidate_revision, str)
+            or len(self.candidate_revision) != 40
+            or any(character not in "0123456789abcdef" for character in self.candidate_revision)
+        ):
+            raise ValueError("repository candidate revision must be a full commit SHA")
 
 
 @dataclass(frozen=True)

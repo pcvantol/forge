@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.24",
+  "classification_rationale": "L1-CRITERION-PLANNING-REPAIR-20260918",
+  "component": "product",
+  "event_lineage": "L1-CRITERION-PLANNING-REPAIR-20260918",
+  "expected_head": "646a643d305a9697aea4e42c511056d8ceef99b1",
+  "operation_id": "forge-criterion-completion-20260918",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.25"
+}

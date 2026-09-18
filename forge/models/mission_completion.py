@@ -14,8 +14,10 @@ from hashlib import sha256
 import json
 from typing import Any
 
+from .criterion_observation import CriterionObservation
 
-MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION = "1.0"
+
+MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION = "2.0"
 
 
 def _digest(value: object) -> str:
@@ -46,11 +48,15 @@ class CanonicalExecutionEvidenceReference:
     report_id: str
     repository_revision: str
     repository_evidence_digest: str
+    candidate_revision: str | None = None
 
     def __post_init__(self) -> None:
         if not all((self.receipt_id, self.action_id, self.report_id, self.repository_revision)):
             raise ValueError("canonical execution evidence reference requires complete lineage")
         _require_digest(self.repository_evidence_digest, "repository evidence digest")
+        if self.candidate_revision is not None and (len(self.candidate_revision) != 40
+                or any(c not in '0123456789abcdef' for c in self.candidate_revision)):
+            raise ValueError('canonical execution candidate revision is invalid')
 
     def to_dict(self) -> dict[str, str]:
         return asdict(self)
@@ -81,6 +87,8 @@ class MissionCriterionEvidenceBinding:
     criterion_id: str
     execution_evidence: tuple[CanonicalExecutionEvidenceReference, ...]
     repository_truth: RepositoryTruthReference
+    observations: tuple[CriterionObservation, ...] = ()
+    contract_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not self.criterion_id or not self.execution_evidence:
@@ -88,12 +96,18 @@ class MissionCriterionEvidenceBinding:
         if len(self.execution_evidence) != len(set(self.execution_evidence)):
             raise ValueError("criterion execution evidence references must be unique")
         object.__setattr__(self, "execution_evidence", tuple(sorted(self.execution_evidence)))
+        if self.contract_digest is not None:
+            _require_digest(self.contract_digest, 'criterion assessment contract digest')
+        if len({item.id for item in self.observations}) != len(self.observations):
+            raise ValueError('criterion observations must be unique')
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "criterion_id": self.criterion_id,
             "execution_evidence": [item.to_dict() for item in self.execution_evidence],
             "repository_truth": self.repository_truth.to_dict(),
+            "contract_digest": self.contract_digest,
+            "observations": [item.to_dict() for item in self.observations],
         }
 
 
@@ -107,7 +121,7 @@ class MissionCompletionEvidence:
     schema_version: str = MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if self.schema_version != MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION or not self.mission_id:
+        if self.schema_version not in {'1.0', MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION} or not self.mission_id:
             raise ValueError("mission completion evidence identity or schema is invalid")
         _require_digest(self.mission_digest, "mission digest")
         criterion_ids = tuple(item.criterion_id for item in self.bindings)
@@ -127,6 +141,16 @@ class MissionCompletionEvidence:
             "bindings": [item.to_dict() for item in self.bindings],
         }
 
+    @classmethod
+    def from_dict(cls, document: dict[str, Any]) -> MissionCompletionEvidence:
+        return cls(document['mission_id'], document['mission_digest'], tuple(
+            MissionCriterionEvidenceBinding(
+                item['criterion_id'], tuple(CanonicalExecutionEvidenceReference(**ref) for ref in item['execution_evidence']),
+                RepositoryTruthReference(**item['repository_truth']),
+                tuple(CriterionObservation.from_dict(obs) for obs in item.get('observations', ())),
+                item.get('contract_digest'),
+            ) for item in document['bindings']), document['schema_version'])
+
 
 class MissionCriterionEvaluationStatus(str, Enum):
     PROVEN = "PROVEN"
@@ -141,6 +165,9 @@ class MissionCriterionEvaluation:
     reason: str
     execution_evidence: tuple[CanonicalExecutionEvidenceReference, ...] = ()
     repository_truth: RepositoryTruthReference | None = None
+    contract_digest: str | None = None
+    requirement_results: tuple[dict[str, Any], ...] = ()
+    observations: tuple[CriterionObservation, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -150,6 +177,9 @@ class MissionCriterionEvaluation:
             "reason": self.reason,
             "execution_evidence": [item.to_dict() for item in self.execution_evidence],
             "repository_truth": None if self.repository_truth is None else self.repository_truth.to_dict(),
+            "contract_digest": self.contract_digest,
+            "requirement_results": list(self.requirement_results),
+            "observations": [item.to_dict() for item in self.observations],
         }
 
 
@@ -162,6 +192,7 @@ class MissionCompletionEvaluation:
     criteria: tuple[MissionCriterionEvaluation, ...]
     evidence_digest: str | None
     schema_version: str = MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION
+    evidence: MissionCompletionEvidence | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != MISSION_COMPLETION_EVIDENCE_SCHEMA_VERSION or not self.mission_id or not self.criteria:
@@ -192,4 +223,6 @@ class MissionCompletionEvaluation:
             "criteria": [item.to_dict() for item in self.criteria],
             "evidence_digest": self.evidence_digest,
             "all_required_criteria_proven": self.all_required_criteria_proven,
+            "evaluator_version": 'forge-criterion-assessment/2.0',
+            "evidence": None if self.evidence is None else self.evidence.to_dict(),
         }

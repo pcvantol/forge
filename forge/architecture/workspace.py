@@ -107,7 +107,8 @@ class ArchitectureWorkspace:
         mission, revision = self._current(mission_id)
         if mission.status is not ArchitectureMissionStatus.ARCHITECTURE_REVIEW:
             raise ArchitectureWorkspaceError("only Missions in architecture_review may be refined")
-        allowed = {"scope", "engineering_constraints", "acceptance_criteria", "technical_assumptions", "dependencies", "required_capabilities", "required_disciplines", "risks"}
+        allowed = {"scope", "engineering_constraints", "acceptance_criteria", "technical_assumptions", "dependencies", "required_capabilities", "required_disciplines", "risks", "criterion_assessment_contracts", "maximum_actions",
+                   "maximum_consecutive_no_progress_actions", "repository_evidence_source"}
         if not changes or set(changes) - allowed:
             raise ArchitectureWorkspaceError("architecture refinement may update only engineering governance fields")
         refined = replace(mission, **changes)

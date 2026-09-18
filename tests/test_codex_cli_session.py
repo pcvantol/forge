@@ -63,12 +63,15 @@ def complete_document():
 
 class Runner:
     def __init__(self, output=None, *, version="0.153.4", login="Logged in using ChatGPT", exec_error=None,
-                 exec_result=None, events=""):
+                 exec_result=None, events=None):
         self.output = output if output is not None else document()
         self.version, self.login, self.exec_error = version, login, exec_error
-        self.exec_result, self.events = exec_result or Result(), events
+        self.exec_result = exec_result or Result()
+        self.events = ('{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}'
+                       if events is None and exec_result is None else events)
         self.calls = []
         self.schemas = []
+        self.instructions = []
 
     def __call__(self, command, **kwargs):
         self.calls.append((tuple(command), kwargs))
@@ -80,6 +83,8 @@ class Runner:
             raise self.exec_error
         schema_path = Path(command[command.index("--output-schema") + 1])
         self.schemas.append(json.loads(schema_path.read_text(encoding="utf-8")))
+        instruction_arg = next(item for item in command if item.startswith("model_instructions_file="))
+        self.instructions.append(Path(json.loads(instruction_arg.split("=", 1)[1])).read_text())
         output_path = Path(command[command.index("--output-last-message") + 1])
         output_path.write_text(json.dumps(self.output), encoding="utf-8")
         return Result(self.exec_result.returncode, self.events or self.exec_result.stdout, self.exec_result.stderr)
@@ -215,7 +220,7 @@ class CodexCliSessionTests(unittest.TestCase):
 
     def test_read_only_exec_uses_schema_and_bounded_executor_contract(self):
         self.configure()
-        runner = Runner(events='{"type":"turn.completed","message":"private model output"}')
+        runner = Runner(events='{"type":"turn.completed","message":"private model output","usage":{"input_tokens":100,"output_tokens":50}}')
         provider = self.provider(runner)
         response = BoundedActionDerivationProvider(provider).invoke(
             self.request(), approved_scopes=("planner-contract", "planner-docs"), derivation_policy=self.policy,
@@ -229,6 +234,14 @@ class CodexCliSessionTests(unittest.TestCase):
         self.assertIn("--output-schema", command)
         self.assertIn("--json", command)
         self.assertIn("--skip-git-repo-check", command)
+        self.assertIn('web_search="disabled"', command)
+        for feature in ("shell_tool", "apps", "multi_agent"):
+            self.assertEqual(command[command.index(feature) - 1], "--disable")
+        self.assertIn("never approve a Mission", runner.instructions[0])
+        self.assertIn("character for character", runner.instructions[0])
+        self.assertEqual(response.evidence.input_tokens, 100)
+        self.assertEqual(response.evidence.output_tokens, 50)
+        self.assertNotIn("--model", command)
         self.assertNotEqual(Path(kwargs["cwd"]), Path.cwd())
         self.assertNotIn("OPENAI_API_KEY", kwargs["env"])
         self.assertNotIn("CODEX_ACCESS_TOKEN", kwargs["env"])
@@ -244,6 +257,33 @@ class CodexCliSessionTests(unittest.TestCase):
         self.assertEqual(evidence[-1]["diagnostic"]["returncode"], 0)
         self.assertEqual(evidence[-1]["diagnostic"]["terminal_events"], ["turn.completed"])
         self.assertNotIn("private model output", json.dumps(evidence[-1]["diagnostic"]))
+        self.assertEqual(evidence[-1]["observed_token_usage"], {"input_tokens": 100, "output_tokens": 50})
+
+    def test_missing_invalid_or_exceeded_usage_never_materializes_proposals(self):
+        self.configure()
+        cases = [({}, "CODEX_TOKEN_USAGE_UNAVAILABLE"),
+                 ({"input_tokens": True, "output_tokens": 10}, "CODEX_TOKEN_USAGE_UNAVAILABLE"),
+                 ({"input_tokens": 64001, "output_tokens": 10, "cached_input_tokens": 64000}, "CODEX_TOKEN_BOUND_EXCEEDED"),
+                 ({"input_tokens": 100, "output_tokens": 16001}, "CODEX_TOKEN_BOUND_EXCEEDED")]
+        for usage, expected in cases:
+            with self.subTest(usage=usage):
+                runner = Runner(events=json.dumps({"type": "turn.completed", "usage": usage}))
+                response = self.provider(runner).invoke(self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy)
+                self.assertIsNone(response.proposals)
+                self.assertEqual(response.evidence.status, expected)
+                self.assertEqual(response.evidence.side_effect_state, ProviderSideEffectState.HAPPENED_AND_CONFIRMED)
+                self.assertEqual(sum("exec" in call for call, _ in runner.calls), 1)
+
+    def test_usage_counts_are_not_double_counted_and_multiple_completed_turns_fail_closed(self):
+        self.configure()
+        usage = {"input_tokens": 64000, "cached_input_tokens": 60000, "output_tokens": 16000,
+                 "reasoning_output_tokens": 15000}
+        event = json.dumps({"type": "turn.completed", "usage": usage})
+        response = self.provider(Runner(events=event)).invoke(self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy)
+        self.assertIsNotNone(response.proposals)
+        multiple = self.provider(Runner(events=event + '\n' + event)).invoke(self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy)
+        self.assertIsNone(multiple.proposals)
+        self.assertEqual(multiple.evidence.status, "CODEX_TOKEN_USAGE_UNAVAILABLE")
 
     def test_durable_prepared_policy_change_fails_before_exec(self):
         configured = self.configure()

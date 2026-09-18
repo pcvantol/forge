@@ -11,6 +11,8 @@ from enum import Enum
 from hashlib import sha256
 import json
 from pathlib import Path
+from forge.models.criterion_assessment import (ApprovedRepositoryEvidenceSource, CriterionAssessmentContract,
+                                              validate_criterion_contracts)
 from forge.operator_identity import InstallationOperatorService, OperatorContext
 from forge.runtime.bootstrap import RuntimeBootstrap, RuntimeResolutionError, RuntimeResolver
 from forge.runtime.database import RuntimeDatabase, _timestamp
@@ -195,18 +197,52 @@ class ArchitecturePlanningEvidence:
     context_input_bound: int
     context_output_bound: int
     provenance_revision: str
+    criterion_assessment_contracts: tuple[CriterionAssessmentContract, ...] = ()
+    maximum_actions: int | None = None
+    maximum_consecutive_no_progress_actions: int | None = None
+    repository_evidence_source: ApprovedRepositoryEvidenceSource | None = None
 
     def __post_init__(self) -> None:
         if not all((self.scope, self.write_scopes, self.non_goals, self.risk_inputs, self.human_gates,
                     self.dependencies, self.provenance_revision, self.context_input_bound > 0,
                     self.context_output_bound > 0)):
             raise ValueError("planning evidence requires complete typed bounds and provenance")
+        object.__setattr__(self, "criterion_assessment_contracts", validate_criterion_contracts(
+            self.criterion_assessment_contracts, self.maximum_actions,
+            self.maximum_consecutive_no_progress_actions, self.repository_evidence_source,
+        ))
 
     def to_dict(self) -> dict[str, object]:
         value = asdict(self)
         for key in ("scope", "write_scopes", "non_goals", "risk_inputs", "human_gates", "dependencies"):
             value[key] = list(sorted(value[key]))
+        if self.criterion_assessment_contracts:
+            value["criterion_assessment_contracts"] = [item.to_dict() for item in self.criterion_assessment_contracts]
+        else:
+            value.pop("criterion_assessment_contracts")
+        if self.maximum_actions is None:
+            value.pop("maximum_actions")
+            value.pop("maximum_consecutive_no_progress_actions")
+        if self.repository_evidence_source is None:
+            value.pop("repository_evidence_source")
+        else:
+            value["repository_evidence_source"] = self.repository_evidence_source.to_dict()
         return value
+
+    @property
+    def digest(self) -> str:
+        return _digest(self.to_dict())
+
+    @classmethod
+    def from_dict(cls, document: dict[str, object]) -> "ArchitecturePlanningEvidence":
+        fields = dict(document)
+        for key in ("scope", "write_scopes", "non_goals", "risk_inputs", "human_gates", "dependencies"):
+            fields[key] = tuple(fields[key])
+        fields["criterion_assessment_contracts"] = tuple(CriterionAssessmentContract.from_dict(item)
+                                                        for item in fields.get("criterion_assessment_contracts", ()))
+        source = fields.get("repository_evidence_source")
+        fields["repository_evidence_source"] = None if source is None else ApprovedRepositoryEvidenceSource.from_dict(source)
+        return cls(**fields)
 
 
 @dataclass(frozen=True)
@@ -235,6 +271,11 @@ class MissionPlanningEvidenceEnvelope:
                 raise ValueError("approval envelope has invalid, stale, conflicting, or cross-installation lineage")
         if planning.provenance_revision != subject_revision:
             raise ValueError("planning evidence revision is stale")
+        evidence = architecture.get("evidence")
+        approved_digest = evidence.get("planning_digest") if isinstance(evidence, dict) else None
+        if (planning.criterion_assessment_contracts and approved_digest is None
+                or approved_digest is not None and approved_digest != planning.digest):
+            raise ValueError("planning evidence differs from the exact Architecture approval")
         value = {"installation_id": installation_id, "subject_id": subject_id, "subject_revision": subject_revision,
                  "business_decision_id": business_decision_id, "architecture_decision_id": architecture_decision_id,
                  "planning": planning.to_dict()}
@@ -274,4 +315,6 @@ class CanonicalArchitectureWorkspace:
                 planning: ArchitecturePlanningEvidence) -> str:
         return self.repository.record(
             GovernanceDecision(decision_id, candidate_id, revision, GovernanceCapability.ARCHITECTURE_APPROVAL,
-                               "approved", planning.scope, planning.human_gates), self.context)
+                               "approved", planning.scope, planning.human_gates,
+                               evidence={"planning_digest": planning.digest}
+                               if planning.criterion_assessment_contracts else None), self.context)

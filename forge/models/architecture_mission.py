@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from .criterion_assessment import (ApprovedRepositoryEvidenceSource, CriterionAssessmentContract,
+                                   validate_criterion_contracts)
 from .mission_candidate import MissionCandidate
 from .mission_recommendation import RequiredDiscipline
 
@@ -49,6 +51,10 @@ class ArchitectureMission:
     risks: tuple[str, ...] = ()
     status: ArchitectureMissionStatus = ArchitectureMissionStatus.ARCHITECTURE_REVIEW
     schema_version: str = ARCHITECTURE_MISSION_SCHEMA_VERSION
+    criterion_assessment_contracts: tuple[CriterionAssessmentContract, ...] = ()
+    maximum_actions: int | None = None
+    maximum_consecutive_no_progress_actions: int | None = None
+    repository_evidence_source: ApprovedRepositoryEvidenceSource | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != ARCHITECTURE_MISSION_SCHEMA_VERSION:
@@ -56,6 +62,13 @@ class ArchitectureMission:
         if not all((self.id, self.candidate_id, self.title, self.summary, self.business_objective, self.business_value,
                     self.architecture_review_reference, self.mission_recommendation_reference)):
             raise ValueError("architecture mission requires complete source Mission Candidate context")
+        contracts = validate_criterion_contracts(
+            self.criterion_assessment_contracts, self.maximum_actions,
+            self.maximum_consecutive_no_progress_actions, self.repository_evidence_source,
+        )
+        if contracts and {item.criterion for item in contracts} != set(self.acceptance_criteria):
+            raise ValueError("criterion assessment contracts must cover exactly the approved criteria")
+        object.__setattr__(self, "criterion_assessment_contracts", contracts)
         for values, label in (
             (self.scope, "scope"), (self.engineering_constraints, "engineering constraints"),
             (self.acceptance_criteria, "acceptance criteria"), (self.technical_assumptions, "technical assumptions"),
@@ -86,7 +99,7 @@ class ArchitectureMission:
                     self.dependencies, self.required_capabilities, self.required_disciplines, self.risks))
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        document = {
             "schema_version": self.schema_version, "id": self.id, "candidate_id": self.candidate_id,
             "title": self.title, "summary": self.summary, "business_objective": self.business_objective,
             "business_value": self.business_value, "architecture_review_reference": self.architecture_review_reference,
@@ -97,6 +110,15 @@ class ArchitectureMission:
             "required_disciplines": [item.value for item in self.required_disciplines], "risks": list(self.risks),
             "status": self.status.value,
         }
+        # Absent additions preserve historical Mission and planning digests.
+        if self.criterion_assessment_contracts:
+            document["criterion_assessment_contracts"] = [item.to_dict() for item in self.criterion_assessment_contracts]
+        if self.maximum_actions is not None:
+            document["maximum_actions"] = self.maximum_actions
+            document["maximum_consecutive_no_progress_actions"] = self.maximum_consecutive_no_progress_actions
+        if self.repository_evidence_source is not None:
+            document["repository_evidence_source"] = self.repository_evidence_source.to_dict()
+        return document
 
     @classmethod
     def from_dict(cls, document: dict[str, Any]) -> "ArchitectureMission":
@@ -110,4 +132,10 @@ class ArchitectureMission:
             required_capabilities=tuple(document["required_capabilities"]),
             required_disciplines=tuple(RequiredDiscipline(item) for item in document["required_disciplines"]), risks=tuple(document["risks"]),
             status=ArchitectureMissionStatus(document["status"]), schema_version=document["schema_version"],
+            criterion_assessment_contracts=tuple(CriterionAssessmentContract.from_dict(item)
+                                               for item in document.get("criterion_assessment_contracts", ())),
+            maximum_actions=document.get("maximum_actions"),
+            maximum_consecutive_no_progress_actions=document.get("maximum_consecutive_no_progress_actions"),
+            repository_evidence_source=(None if document.get("repository_evidence_source") is None else
+                                        ApprovedRepositoryEvidenceSource.from_dict(document["repository_evidence_source"])),
         )

@@ -50,11 +50,13 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.22", "2.7.23"): (38, 38),
     ("2.7.22", "2.7.24"): (38, 38),
     ("2.7.23", "2.7.24"): (38, 38),
+    ("2.7.24", "2.7.25"): (38, 39),
 }
 NORMAL_RELEASE_TRANSITIONS = frozenset({
     ("2.7.22", "2.7.23"),
     ("2.7.22", "2.7.24"),
     ("2.7.23", "2.7.24"),
+    ("2.7.24", "2.7.25"),
 })
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
@@ -743,7 +745,7 @@ def assert_completed_schema(
         or not isinstance(expected_digest, str)
         or snapshot.get("schema_digest") != expected_digest
     ):
-        raise InstalledForgeUpdateError("completed runtime schema changed from the activated schema 38")
+        raise InstalledForgeUpdateError("completed runtime schema changed from the activated schema")
 
 
 def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], request: UpdateRequest) -> dict[str, Any]:
@@ -787,7 +789,7 @@ def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], req
         if reset != [{"dataset_generation": 0, "active_operation_id": None, "state": "IDLE"}]:
             raise InstalledForgeUpdateError("schema-38 reset state is not an idle, fresh control record")
     elif reset != before.get("writer_state", {}).get("operational_reset", []):
-        raise InstalledForgeUpdateError("same-schema update changed operational-reset state")
+        raise InstalledForgeUpdateError("update changed preserved operational-reset state")
     return {
         "status": "PASS", "from_schema": schema_before, "to_schema": schema_after,
         "preserved_table_count": len(before_tables) - 1,
@@ -967,7 +969,10 @@ class InstalledForgeUpdateController:
         self.state_path = self.operation_root / "operation.json"
         self.receipt_path = self.operation_root / "receipt.json"
         self.backup_root = self.data_root / "backups" / "installation" / request.operation_id
-        self.backup_path = self.backup_root / "forge-schema37.sqlite3"
+        self.backup_path = self.backup_root / (
+            "forge-schema38.sqlite3" if (request.existing_version, request.version) == ("2.7.24", "2.7.25")
+            else "forge-schema37.sqlite3"
+        )
         self.slot = self.runtime_root / "slots" / f"{request.version}-{request.wheel_sha256.removeprefix('sha256:')[:12]}"
         self.slot_receipt = self.slot / "forge-installation-slot.json"
         self.slot_claim = self.slot.parent / f".{self.slot.name}.{request.operation_id}.owner.json"

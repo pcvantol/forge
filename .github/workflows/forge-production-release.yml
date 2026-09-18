@@ -91,6 +91,8 @@ jobs:
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-wheel/bin/python" -I -c 'import forge, pathlib, tempfile; from importlib.metadata import version; from forge._version import canonical_version; from forge.qualification.installed_smoke import run, assert_runtime_persistence; assert version("forge-autonomy") == canonical_version() == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run(); root=tempfile.TemporaryDirectory(); workspace=pathlib.Path(root.name)/"workspace"; workspace.mkdir(); assert_runtime_persistence(str(workspace), str(pathlib.Path(root.name)/"runtime"), canonical_version()); root.cleanup()'
           "$RUNNER_TEMP/forge-wheel/bin/forge" --help >/dev/null
           test "$("$RUNNER_TEMP/forge-wheel/bin/forge" --version)" = "$VERSION"
+          "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-wheel"
+          cp "$RUNNER_TEMP/forge-criterion-wheel/criterion-completion.public.json" "$GITHUB_WORKSPACE/dist/criterion-completion-qualified.json"
       - name: Rebuild from an isolated source distribution
         env:
           VERSION: ${{ needs.release-context.outputs.version }}
@@ -126,6 +128,7 @@ jobs:
               "exact_main_sha": sys.argv[1],
               "artifact_digests": digests,
               "qualification": "forge-production-distribution",
+              "criterion_completion": json.loads(Path("dist/criterion-completion-qualified.json").read_text()),
           }, sort_keys=True))
           PY
           python3 scripts/release_operation.py \
@@ -347,6 +350,8 @@ jobs:
           "$RUNNER_TEMP/forge-pypi/bin/pip" install --no-deps "registry-readback/$wheel"
           cd "$RUNNER_TEMP"
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-pypi/bin/python" -I -c 'import forge, pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
+          "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-published"
+          cp "$RUNNER_TEMP/forge-criterion-published/criterion-completion.public.json" "$GITHUB_WORKSPACE/release-input/dist/criterion-completion-published.json"
           test "$("$RUNNER_TEMP/forge-pypi/bin/forge" --version)" = "$VERSION"
       - name: Persist immutable PyPI readback as PUBLISHED evidence
         env:
@@ -364,7 +369,8 @@ jobs:
           from pathlib import Path
 
           observed = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          print(json.dumps({**observed, "readback": "PASS"}, sort_keys=True))
+          composition = json.loads(Path("release-input/dist/criterion-completion-published.json").read_text())
+          print(json.dumps({**observed, "readback": "PASS", "criterion_completion": composition}, sort_keys=True))
           PY
           python3 scripts/release_operation.py \
             --mark-published \

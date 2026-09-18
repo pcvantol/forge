@@ -15,6 +15,8 @@ from typing import Any, Mapping
 from uuid import uuid4
 
 from forge.completion import MissionCompletionEvaluator
+from forge.completion.repository_observer import RepositoryCriterionObserver
+from forge.models.criterion_observation import CriterionObservation
 from forge.execution import ExecutionLoop, RecoveryAuthorization
 from forge.execution_host_configuration import EngineeringPlatformExecutionHostFactory
 from forge.governance import ExecutionPolicy, ExecutionPolicyKind
@@ -180,6 +182,7 @@ class InstalledDynamicMissionRuntime:
         self.database, self.repository = database, repository
         self.data_root, self.provider, self.host, self.clock = data_root, provider, host, clock
         self.states = MissionStateStore(database, data_root=data_root)
+        self._criterion_observer = RepositoryCriterionObserver()
         self._initial_truth: dict[str, dict[str, str]] = {}
 
     @classmethod
@@ -661,10 +664,15 @@ class InstalledDynamicMissionRuntime:
                              str(contract["subject_revision"]), f"runtime://mission/{mission.id}/capability",
                              _digest({"capability": mission.required_capabilities[0], "mission": mission.id})),
         ]
-        if state.execution_history:
-            latest = state.execution_history[-1]
+        terminal_history = (state.execution_history if mission.criterion_assessment_contracts
+                            else state.execution_history[-1:])
+        for latest in terminal_history:
+            if latest.get("outcome") != "complete":
+                # Failures and verified delegations remain in the continuation
+                # context; they are not successful Host execution references.
+                continue
             repository = latest.get("repository_evidence")
-            if not isinstance(repository, Mapping) or latest.get("outcome") != "complete":
+            if not isinstance(repository, Mapping):
                 raise InstalledDynamicMissionError("dynamic replanning requires canonical complete Host evidence")
             receipt_id = latest.get("receipt_id")
             if not isinstance(receipt_id, str) or not receipt_id:
@@ -688,8 +696,17 @@ class InstalledDynamicMissionRuntime:
         )
         completed = tuple(sorted(str(item["id"]) for item in state.actions if item["status"] == "COMPLETE"))
         blocked = tuple(sorted(str(item["id"]) for item in state.actions if item["status"] in {"BLOCKED", "FAILED"}))
+        continuation = None
+        if mission.criterion_assessment_contracts:
+            from forge.models.mission_planner import MissionContinuationContext
+            continuation = MissionContinuationContext.from_runtime(
+                mission, planning=planning, actions=state.actions,
+                execution_history=state.execution_history, completion=state.completion,
+                delegations=state.delegations,
+                repository_truth=truth,
+            )
         return MissionPlannerInput(
-            mission, MissionPlanningState(mission.id, state.revision, completed, blocked, criterion_states),
+            mission, MissionPlanningState(mission.id, state.revision, completed, blocked, criterion_states, continuation),
             tuple(evidence), scopes,
         )
 
@@ -744,36 +761,42 @@ class InstalledDynamicMissionRuntime:
             "content_digest": repository.content_digest,
         }
 
-    @staticmethod
-    def _completion_evidence(state: MissionExecutionState, evidence: object,
+    def _completion_evidence(self, state: MissionExecutionState, evidence: object,
                              repository_truth: Mapping[str, Any]) -> MissionCompletionEvidence | None:
         mission = ArchitectureMission.from_dict(dict(state.mission))
-        current = asdict(evidence)
-        current["outcome"] = getattr(evidence, "outcome").value
-        documents = (*state.execution_history, current)
-        references: list[CanonicalExecutionEvidenceReference] = []
-        for document in documents:
-            repository = document.get("repository_evidence")
-            if document.get("outcome") != "complete" or not isinstance(repository, Mapping):
-                continue
-            try:
-                references.append(CanonicalExecutionEvidenceReference(
-                    str(document["receipt_id"]), str(repository["action_id"]), str(document["report_id"]),
-                    str(repository["repository_revision"]), str(repository["content_digest"]),
-                ))
-            except (KeyError, TypeError, ValueError):
-                continue
-        if not references:
-            return None
-        truth = RepositoryTruthReference(
-            str(repository_truth["source_id"]), str(repository_truth["revision"]),
-            str(repository_truth["locator"]), str(repository_truth["content_digest"]),
+        repository = evidence.repository_evidence
+        reference = CanonicalExecutionEvidenceReference(
+            evidence.receipt_id, repository.action_id, evidence.report_id,
+            repository.repository_revision, repository.content_digest,
+            candidate_revision=repository.candidate_revision,
         )
-        bindings = tuple(
-            MissionCriterionEvidenceBinding(mission_criterion_id(mission.id, criterion), tuple(references), truth)
-            for criterion in mission.acceptance_criteria
-        )
-        return MissionCompletionEvidence(mission.id, _digest(mission.to_dict()), bindings)
+        observations = list(self._criterion_observer.observe(mission, reference, self.host.config.repository_id))
+        # Original observations retain their original revision and receipt. No
+        # blanket copying of historical references to the current Truth occurs.
+        old = {}
+        if state.completion and state.completion.get("schema_version") == "2.0":
+            for item in state.completion.get("criteria", ()):
+                for document in item.get("observations", ()):
+                    observation = CriterionObservation.from_dict(document)
+                    old[observation.id] = observation
+        for observation in observations:
+            old[observation.id] = observation
+        all_observations = tuple(old.values())
+        truth = RepositoryTruthReference(**{key: str(repository_truth[key])
+            for key in ("source_id", "revision", "locator", "content_digest")})
+        bindings = []
+        for contract in mission.criterion_assessment_contracts:
+            identifier = mission_criterion_id(mission.id, contract.criterion)
+            relevant = tuple(item for item in all_observations if item.criterion_id == identifier)
+            references = {CanonicalExecutionEvidenceReference(
+                item.receipt_id, item.action_id, item.report_id, item.repository_revision,
+                item.repository_evidence_digest, item.candidate_revision) for item in relevant}
+            # Unsupported source contracts remain explicit unproven assessments.
+            # A current receipt is provenance only, never the missing observation.
+            references.add(reference)
+            bindings.append(MissionCriterionEvidenceBinding(
+                identifier, tuple(references), truth, relevant, contract.digest))
+        return MissionCompletionEvidence(mission.id, _digest(mission.to_dict()), tuple(bindings))
 
     def _assert_repository_scope(self, snapshot: RepositoryTruthSnapshot) -> None:
         if snapshot.repository_id != self.host.config.repository_id:

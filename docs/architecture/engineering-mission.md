@@ -143,6 +143,11 @@ identity or execution evidence.
 Mission completion is evidence-derived. It is not equivalent to completion of
 the Actions that happened to be present in the first plan.
 
+The concrete approved predicate, observation, freshness, bounded continuation
+and replay contract is [Criterion-bound Mission completion v2](criterion-completion-v2.md).
+An accepted COMPLETE Action receipt does not by itself prove a Mission
+criterion. Each criterion needs its own approved substantive assessment.
+
 After each reconciliation Forge evaluates the approved Mission success
 criteria against current evidence. If required work remains, Forge replans. If
 new evidence makes forecast work unnecessary, Forge must not execute it merely

@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 38
+RUNTIME_SCHEMA_VERSION = 39
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -1820,6 +1820,24 @@ class RuntimeDatabase:
                     self._connection.execute("PRAGMA user_version=38")
                 finally:
                     self._maintenance_write_state["permitted"] = False
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
+        elif version == 38:
+            # Completion-v2 changes the meaning of persisted Mission decisions.
+            # Advance the reader compatibility fence without rewriting any
+            # historical Mission, observation, approval, allocation or reset row.
+            active = self._connection.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()
+            if active is not None and active[0] is not None:
+                raise RuntimeMaintenanceActive("cannot migrate during operational reset maintenance")
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                self._set_metadata({"schema_version": "39", "migration_version": "39",
+                                    "last_migration": "39", "forge_version": forge_version})
+                self._connection.execute("PRAGMA user_version=39")
                 self._connection.commit()
             except Exception:
                 self._connection.rollback()

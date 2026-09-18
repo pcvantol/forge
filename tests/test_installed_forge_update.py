@@ -17,6 +17,7 @@ from unittest.mock import patch
 import zipfile
 
 from forge.runtime import RuntimeBootstrap
+import forge.runtime.database as runtime_database
 from forge.runtime.operational_reset import MAINTENANCE_TABLES
 
 
@@ -119,8 +120,15 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             base_python=sys.executable,
         )
 
+    @staticmethod
+    def _open_schema38(root):
+        # Exercise the retained historical migration with its explicit reader
+        # ceiling; current RuntimeBootstrap must otherwise migrate through 39.
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 38):
+            return RuntimeBootstrap(data_root=root, forge_version="2.7.24").open()
+
     def _installed_schema37(self) -> None:
-        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.22").open()
+        database = self._open_schema38(self.data_root)
         connection = database._connection
         self.runtime_id = database.runtime_identity.runtime_id
         self.request = update.UpdateRequest(**{
@@ -214,7 +222,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             self.runtime_id + "\n", encoding="utf-8"
         )
         update._copy_sqlite_backup(self.data_root / "forge.db", copy_root / "forge.db")
-        migrated = RuntimeBootstrap(data_root=copy_root, forge_version="2.7.22").open()
+        migrated = self._open_schema38(copy_root)
         migrated.close()
         update.verify_preservation(
             before, update.database_snapshot(copy_root / "forge.db"), self.request,
@@ -230,8 +238,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "wheel digest"):
             update.validate_qualified_artifact(self.request)
 
-    def test_normal_release_receipt_is_accepted_only_for_supported_normal_transitions(self) -> None:
-        version = "2.7.24"
+    def _normal_release_request(self, version="2.7.24", existing_version="2.7.22"):
         wheel = self.root / f"forge_autonomy-{version}-py3-none-any.whl"
         dist_info = f"forge_autonomy-{version}.dist-info"
         members = {
@@ -297,9 +304,12 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             "wheel_sha256": wheel_digest,
             "qualification_receipt": str(receipt),
             "qualification_receipt_sha256": update.file_digest(receipt),
-            "existing_version": "2.7.22",
+            "existing_version": existing_version,
         })
+        return request
 
+    def test_normal_release_receipt_is_accepted_only_for_supported_normal_transitions(self) -> None:
+        request = self._normal_release_request()
         evidence = update.validate_qualified_artifact(request)
 
         self.assertEqual(evidence["release_route"], "NORMAL")
@@ -329,7 +339,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         )
         copied = copy_root / "forge.db"
         copied.write_bytes(backup.read_bytes())
-        migrated = RuntimeBootstrap(data_root=copy_root, forge_version="2.7.22").open()
+        migrated = self._open_schema38(copy_root)
         migrated.close()
         after = update.database_snapshot(copied)
         preservation = update.verify_preservation(before, after, self.request)
@@ -596,7 +606,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
 
     def test_schema38_to_38_transition_preserves_all_runtime_content(self) -> None:
         self._installed_schema37()
-        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.22").open()
+        database = self._open_schema38(self.data_root)
         database.close()
         before = update.database_snapshot(self.data_root / "forge.db")
         request = self._same_schema_request()
@@ -651,6 +661,80 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual((self.data_root / "forge.db").stat().st_mode & 0o777, 0o400)
         self.assertFalse((self.data_root / "forge.db-wal").exists())
         self.assertFalse((self.data_root / "forge.db-shm").exists())
+
+    def _new_transition(self):
+        self._installed_schema37()
+        self._open_schema38(self.data_root).close()
+        self.request = self._normal_release_request("2.7.25", "2.7.24")
+        return update.database_snapshot(self.data_root / "forge.db")
+
+    def _qualified_schema39_copy(self, controller, before):
+        copy_root = controller.operation_root / "qualification-copy"
+        (copy_root / "instance").mkdir(parents=True)
+        (copy_root / "instance" / "runtime-instance.json").write_text(self.runtime_id + "\n")
+        update._copy_sqlite_backup(self.data_root / "forge.db", copy_root / "forge.db")
+        RuntimeBootstrap(data_root=copy_root, forge_version="2.7.25").open().close()
+        after = update.database_snapshot(copy_root / "forge.db")
+        update.verify_preservation(before, after, self.request)
+        return after
+
+    def test_2724_to_2725_normal_release_and_real_schema39_preserve_history(self):
+        before = self._new_transition()
+        self.assertEqual(update.validate_qualified_artifact(self.request)["release_route"], "NORMAL")
+        self.assertEqual(update.transition_schemas(self.request), (38, 39))
+        controller = self._controller()
+        self.assertEqual(controller.backup_path.name, "forge-schema38.sqlite3")
+        after = self._qualified_schema39_copy(controller, before)
+        self.assertEqual(before["user_version"], 38)
+        self.assertEqual(after["user_version"], 39)
+        self.assertEqual(before["schema_digest"], after["schema_digest"])
+        for table in before["tables"]:
+            if table != "runtime_metadata":
+                self.assertEqual(before["tables"][table], after["tables"][table], table)
+        self.assertEqual(before["peer"], after["peer"])
+        update.assert_completed_schema(after, {"database_schema_digest": after["schema_digest"]}, self.request)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
+            update.assert_completed_schema(before, {"database_schema_digest": after["schema_digest"]}, self.request)
+        with self.assertRaises(update.InstalledForgeUpdateError):
+            update.transition_schemas(update.UpdateRequest(**{
+                **self.request.__dict__, "existing_version": "2.7.23",
+            }))
+
+    def test_schema39_atomic_swap_resume_never_repeats_migration(self):
+        before = self._new_transition()
+        controller = update.InstalledForgeUpdateController(
+            self.request, process_reader=lambda: (), interrupt_after="database_swap",
+        )
+        self._qualified_schema39_copy(controller, before)
+        state = controller._state()
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "database_swap"):
+            controller._install_qualified_database(before)
+        resumed = self._controller()
+        with patch.object(resumed, "_install_qualified_database", side_effect=AssertionError("second migration")):
+            reconciled, after = resumed._migrate_live(state, before)
+        self.assertEqual(reconciled["phase"], "MIGRATED")
+        self.assertEqual(reconciled["safety_disposition"], "CANDIDATE_REQUIRED_SCHEMA_39")
+        self.assertEqual(after["user_version"], 39)
+        update.verify_preservation(before, after, self.request)
+        self.assertEqual((self.data_root / "forge.db").stat().st_mode & 0o777, 0o400)
+
+    def test_schema39_crash_before_swap_keeps_schema38_and_after_migration_fences(self):
+        before = self._new_transition()
+        controller = update.InstalledForgeUpdateController(
+            self.request, process_reader=lambda: (), interrupt_after="database_swap_prepared",
+        )
+        self._qualified_schema39_copy(controller, before)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "database_swap_prepared"):
+            controller._install_qualified_database(before)
+        self.assertEqual(update.database_snapshot(self.data_root / "forge.db")["content_digest"], before["content_digest"])
+        controller = self._controller()
+        with patch.object(update, "installed_identity", return_value={"version": "2.7.24"}):
+            state = controller._adopt_resolver(controller._state())
+        state = controller._fence(state)
+        controller._install_qualified_database(before)
+        controller._secure_failure(state, RuntimeError("interrupted"))
+        self.assertEqual(self.resolver.resolve(), controller.fenced_resolver.resolve())
+        self.assertNotEqual(self.resolver.resolve(), controller.legacy_entrypoint.resolve())
 
     def test_exact_published_wheel_end_to_end_when_requested(self) -> None:
         wheel_value = os.environ.get("FORGE_EXACT_WHEEL")

@@ -8,6 +8,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from forge.runtime import RUNTIME_SCHEMA_VERSION, RuntimeDatabase, RuntimeIntegrityError, RuntimeResolver
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
@@ -42,6 +43,39 @@ class RuntimeDatabaseTests(unittest.TestCase):
         self.assertTrue(self.database.path.exists())
         self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         self.database.validate_integrity()
+
+    def test_schema38_completion_fence_preserves_every_non_metadata_row(self) -> None:
+        self.database.create_mission_state({
+            **self._mission(), "status": "COMPLETED", "lifecycle": "COMPLETED",
+            "completion": {"schema_version": "1.0", "all_required_criteria_proven": True},
+            "execution_history": [{"receipt_id": "historical-receipt", "outcome": "complete"}],
+        })
+        path = self.database.path
+        original_identity = self.database.metadata["runtime_id"]
+        self.database.close()
+        with sqlite3.connect(path) as connection:
+            # Schemas 38 and 39 intentionally have identical tables/triggers.
+            connection.execute("UPDATE runtime_metadata SET value='38' WHERE key IN ('schema_version','migration_version','last_migration')")
+            connection.execute("PRAGMA user_version=38")
+            names = [row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name != 'runtime_metadata' ORDER BY name"
+            )]
+            before = {name: connection.execute('SELECT * FROM "' + name + '" ORDER BY rowid').fetchall()
+                      for name in names}
+            objects = connection.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall()
+        self.database = RuntimeDatabase(self.root, forge_version="test-criterion-completion")
+        self.assertEqual(self.database.metadata["schema_version"], "39")
+        self.assertEqual(self.database.metadata["runtime_id"], original_identity)
+        self.database.validate_integrity()
+        self.assertEqual(self.database.get_document("mission_state", "mission-1")["completion"]["schema_version"], "1.0")
+        with sqlite3.connect(path) as connection:
+            after = {name: connection.execute('SELECT * FROM "' + name + '" ORDER BY rowid').fetchall()
+                     for name in names}
+            self.assertEqual(connection.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall(), objects)
+        self.assertEqual(after, before)
+        with patch("forge.runtime.database.RUNTIME_SCHEMA_VERSION", 38):
+            with self.assertRaises(RuntimeIntegrityError):
+                RuntimeDatabase(self.root, forge_version="old-reader")
 
     def test_operational_log_is_redacted_immutable_and_dashboard_pageable(self) -> None:
         event = self.database.record_operational_event(

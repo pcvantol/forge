@@ -448,6 +448,7 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         _string(prompt.get("id"), "runtime prompt id"), _string(correlation.get("correlation_id"), "correlation id"),
         _string(run.get("id"), "run id"), _string(repository.get("id"), "repository id"), revision,
         report_id, artifact_digest,
+        candidate_revision=repository.get('candidate') if artifact_contract == '1.4' else None,
     )
     references = _object(document.get("references"), "artifact references")
     validation = references.get("validation", ())
