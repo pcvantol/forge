@@ -31,7 +31,8 @@ from .service import RuntimeServiceLock
 
 
 RESET_PROFILE = "forge-operational-history-v1"
-RESET_POLICY_VERSION = "1"
+RESET_POLICY_VERSION = "2"
+RESET_PLAN_CONTRACT = "forge-operational-reset-plan-1.1"
 _OPERATION_ID = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{7,127}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
@@ -511,10 +512,18 @@ class ForgeOperationalResetService:
             ).fetchone()
             if state is not None:
                 generation, active_operation = int(state[0]), state[1]
+        database_stat = self.database_path.stat()
+        database_binding = {
+            "path": str(self.database_path.resolve()),
+            "device": int(database_stat.st_dev),
+            "inode": int(database_stat.st_ino),
+        }
         target = {
             "product": "forge", "runtime_id": runtime_id,
             "data_root": str(self.data_root), "database": str(self.database_path),
-            "database_binding_digest": _digest(str(self.database_path.resolve())),
+            "database_binding_digest": _digest(database_binding),
+            "database_device": database_binding["device"],
+            "database_inode": database_binding["inode"],
             "marker_digest": _file_digest(self.marker_path), "schema_version": schema,
             "dataset_generation": generation,
         }
@@ -580,8 +589,12 @@ class ForgeOperationalResetService:
             and active_permits == 0
         )
         source_revision = self._source_revision()
+        semantic_classifications = {
+            category: entries for category, entries in classifications.items()
+            if category != "MAINTENANCE_AUDIT"
+        }
         plan_core = {
-            "contract": "forge-operational-reset-plan-1.0", "profile": RESET_PROFILE,
+            "contract": RESET_PLAN_CONTRACT, "profile": RESET_PROFILE,
             "policy_version": RESET_POLICY_VERSION, "product_version": canonical_version(),
             "source_revision": source_revision,
             "source_revision_kind": (
@@ -590,7 +603,8 @@ class ForgeOperationalResetService:
             ),
             "implementation_digest": self._implementation_digest(),
             "target": target,
-            "relevant_revision": relevant_revision, "classifications": classifications,
+            "relevant_revision": relevant_revision,
+            "classifications": semantic_classifications,
             "preserved": preserved, "effect_set": effect_set,
             "effect_set_digest": _digest(effect_set), "foreign_key_issues": foreign_keys,
             "required_fk_acknowledgements": [item["issue_id"] for item in operational_fk],
@@ -601,7 +615,7 @@ class ForgeOperationalResetService:
             "preserved_external_digest": _digest(preserved_external),
             "unknown_external": unknown_external,
             "unknown_tables": unknown_tables, "missing_tables": missing_tables,
-            "blockers": blockers, "no_op": no_op,
+            "no_op": no_op,
             "namespace": {
                 "repository_document": "missions/MISSION-0003.md",
                 "repository_document_kind": "HISTORICAL_REPOSITORY_DOCUMENT",
@@ -610,7 +624,17 @@ class ForgeOperationalResetService:
             },
         }
         return {
-            **plan_core, "plan_digest": _digest(plan_core),
+            **plan_core,
+            # Availability findings remain visible and fail closed, but are
+            # not part of the approved semantic effect plan.  In particular,
+            # the owning prepare transition necessarily makes maintenance
+            # active without redefining the reset that was authorized.
+            "blockers": blockers,
+            "plan_digest": _digest(plan_core),
+            "maintenance_observation": {
+                "active_operation_id": active_operation,
+                "tables": classifications["MAINTENANCE_AUDIT"],
+            },
             "external_control_entries": external_controls,
         }
 
@@ -999,7 +1023,78 @@ class ForgeOperationalResetService:
             raise OperationalResetError("source revision changed after authorization")
         if row["implementation_digest"] != self._implementation_digest():
             raise OperationalResetError("maintenance service revision changed after authorization")
+        actor_reference, authority_digest = self._operator_authority(connection)
+        if (
+            row["actor_reference"] != actor_reference
+            or row["authority_digest"] != authority_digest
+        ):
+            raise OperationalResetError("operator or reset authority changed after authorization")
         return row
+
+    def _pre_apply_revalidation(
+        self, connection: sqlite3.Connection, operation: sqlite3.Row,
+    ) -> dict[str, Any]:
+        """Re-prove one prepared operation without redefining its approved plan."""
+        if operation["state"] != "BACKUP_VERIFIED":
+            raise OperationalResetError("operation is not in the prepared revalidation phase")
+        operation_id = str(operation["operation_id"])
+        document = json.loads(operation["document"])
+        plan = document["plan"]
+        current = self._inventory(connection)
+        expected_maintenance = [{
+            "code": "MAINTENANCE_ALREADY_ACTIVE", "operation_id": operation_id,
+        }]
+        if current["blockers"] != expected_maintenance:
+            raise OperationalResetError("prepared operation has new or missing blocking findings")
+        if current["target"] != plan["target"]:
+            raise OperationalResetError("prepared operation target or database binding changed")
+        if current["relevant_revision"] != operation["relevant_revision"]:
+            raise OperationalResetError("meaningful source data changed after the approved preview")
+        for key in (
+            "effect_set_digest", "external_inventory_digest", "preserved_external_digest",
+            "required_fk_acknowledgements", "foreign_key_issues", "policy_version",
+            "source_revision", "implementation_digest",
+        ):
+            if current[key] != plan[key]:
+                raise OperationalResetError(f"prepared operation binding changed: {key}")
+        if int(current["target"]["dataset_generation"]) != int(operation["generation_before"]):
+            raise OperationalResetError("dataset generation changed after authorization")
+        evidence = {
+            "operation_id": operation_id,
+            "state": str(operation["state"]),
+            "writer_fence_owner": operation_id,
+            "actor_reference": str(operation["actor_reference"]),
+            "authority_digest": str(operation["authority_digest"]),
+            "target_binding_digest": str(plan["target"]["database_binding_digest"]),
+            "plan_digest": str(operation["plan_digest"]),
+            "request_digest": str(operation["request_digest"]),
+            "effect_set_digest": str(plan["effect_set_digest"]),
+            "relevant_revision_digest": str(operation["relevant_revision"]),
+            "backup_digest": str(operation["backup_digest"]),
+            "dataset_generation": int(operation["generation_before"]),
+            "source_revision": str(operation["source_revision"]),
+            "implementation_digest": str(operation["implementation_digest"]),
+        }
+        evidence["revalidation_digest"] = _digest(evidence)
+        return evidence
+
+    def revalidate(
+        self, *, operation_id: str, plan_digest: str, request_digest: str,
+        backup_digest: str,
+    ) -> dict[str, Any]:
+        """Read-only proof for the already prepared, exact owning operation."""
+        with self._lock.acquire():
+            with self._connect(read_only=True) as connection:
+                row = self._bound_operation(
+                    connection, operation_id, plan_digest=plan_digest,
+                    request_digest=request_digest, backup_digest=backup_digest,
+                )
+                evidence = self._pre_apply_revalidation(connection, row)
+                self._verify_operation_backup(row)
+        receipt = self._operation_receipt(operation_id)
+        receipt["revalidation"] = evidence
+        receipt["execution_allowed"] = True
+        return receipt
 
     @staticmethod
     def _tombstone_values(connection: sqlite3.Connection) -> list[tuple[str, str]]:
@@ -1036,6 +1131,7 @@ class ForgeOperationalResetService:
                 # and every DELETE. A stale BACKUP_VERIFIED label can never
                 # authorize a purge after recovery bytes were changed.
                 self._verify_operation_backup(row)
+                self._pre_apply_revalidation(connection, row)
                 current = self._relevant_revision(connection)
                 if current != row["relevant_revision"]:
                     raise OperationalResetError("meaningful source data changed after the approved preview")
@@ -1487,6 +1583,11 @@ class ForgeOperationalResetService:
         state = str(payload.get("state") or payload.get("status") or "UNKNOWN")
         backup_digest = payload.get("backup_digest")
         backup_reference = payload.get("backup_reference")
+        observed_generation = payload.get("generation_after")
+        if observed_generation is None:
+            observed_generation = payload.get("dataset_generation")
+        if observed_generation is None:
+            observed_generation = target.get("dataset_generation")
         return {
             "contract_version": "operational-reset-v1",
             "product": "forge",
@@ -1503,9 +1604,7 @@ class ForgeOperationalResetService:
                 "schema_version": target.get("schema_version", payload.get("schema_version")),
             },
             "profile": payload.get("profile", RESET_PROFILE),
-            "dataset_generation": target.get(
-                "dataset_generation", payload.get("generation_after", payload.get("dataset_generation"))
-            ),
+            "dataset_generation": observed_generation,
             "plan_digest": payload.get("plan_digest"),
             "relevant_revision_digest": (
                 None if plan is None else plan.get("relevant_revision")

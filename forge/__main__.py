@@ -101,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     prepare_reset.add_argument("--plan-digest", required=True)
     prepare_reset.add_argument("--acknowledge-operational-fk", action="append", default=[])
     for name, help_text in (
+        ("revalidate", "revalidate the exact prepared operation without changing it"),
         ("apply", "apply the authorized destructive reset"),
         ("verify", "verify reset integrity and preserved bindings"),
     ):
@@ -179,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
                     expected_plan_digest=args.plan_digest,
                     acknowledge_operational_fk=args.acknowledge_operational_fk,
                 )
-            elif args.reset_command in {"apply", "verify"}:
+            elif args.reset_command in {"revalidate", "apply", "verify"}:
                 result = getattr(service, args.reset_command)(
                     operation_id=args.operation_id, plan_digest=args.plan_digest,
                     request_digest=args.request_digest, backup_digest=args.backup_digest,

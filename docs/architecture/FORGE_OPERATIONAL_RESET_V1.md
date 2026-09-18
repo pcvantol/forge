@@ -29,6 +29,23 @@ There is no `--force`, arbitrary table list, peer SQL or automatic rollback.
 The stable machine envelope is `contract_version=operational-reset-v1` and
 contains no bearer values or raw credential verifiers.
 
+The semantic plan contract is `forge-operational-reset-plan-1.1` under reset
+policy version `2`. A general preview reports current availability separately
+from the approved reset meaning. Consequently, the owning prepare transition
+may add its exact maintenance operation, audit entries and verified backup
+without changing the plan digest. A general preview still reports
+`MAINTENANCE_ALREADY_ACTIVE` and cannot start or join an operation.
+
+Only `revalidate` may inspect an already prepared operation. It requires the
+exact operation, plan, request and backup digests and re-proves the current
+operator/authority, physical database binding, schema, writer-fence owner,
+source-row contents, preserved security/configuration, effect set, generation,
+product/implementation provenance and verified backup. It creates a distinct
+read-only revalidation digest; it neither rewrites the approved plan nor emits
+a new backup or authority. Plan 1.0 operations are not reinterpreted under
+these rules and must be cancelled before apply or handled by their original
+installed implementation.
+
 ## Schema-owned data classification
 
 Schema version 38 owns this complete table mapping. Any additional application
@@ -78,6 +95,7 @@ touches repositories, source, documents, other workspaces or other instances.
 read-only PREVIEW
   -> PREPARED (durable writer fence + exact authority/request binding)
   -> BACKUP_VERIFIED
+  -> read-only operation-bound REVALIDATE
   -> DATABASE_APPLIED (one domain transaction)
   -> APPLIED (every filesystem step reconciled)
   -> VERIFIED
@@ -93,6 +111,12 @@ commit. A process-local OS lock is therefore not the crash boundary. The
 same-root mutation lock serializes runtime service ticks and maintenance
 commands. A raw/peer SQL writer is unsupported and does not become a product
 interface.
+
+Successful revalidation is not a durable permission token. `apply` repeats
+the operation, operator/authority, database identity, lifecycle, fence,
+generation, meaningful-source and backup checks after entering its actual
+`BEGIN IMMEDIATE` mutation boundary. Fence loss or drift after revalidation
+therefore remains blocking.
 
 `resume` rereads the same operation. A failure before the SQLite commit leaves
 the whole operational population. A failure after commit continues forward.
