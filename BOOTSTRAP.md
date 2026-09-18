@@ -1,5 +1,19 @@
 # Forge bootstrap
 
+## Temporary dual-lane development before Forge cutover
+
+For the owner's two concurrent Codex architect sessions, read
+[the dual-lane plan](docs/roadmap/DUAL_LANE_DEVELOPMENT_V1.md),
+[LANE_1](docs/roadmap/lanes/LANE_1.md) or
+[LANE_2](docs/roadmap/lanes/LANE_2.md), and both linked live coordination issues.
+The [allocation index](docs/roadmap/dual-lane-development-v1.json) covers the
+existing 34 families without changing their owning dependency graphs or the
+historical count. Select independent ready subsets; do not issue a duplicate
+prompt or mutate another lane's repository/runtime. The next suitable scope
+moves to a qualified Forge Mission route as soon as it can, not after the full
+portfolio. This is operator planning/navigation, not a new runtime scheduler,
+authorization, maintenance operation or change to Mission-3 acceptance.
+
 ## Roadmap overview and autonomy-first focus
 
 Read the [roadmap overview and autonomy-first focus](docs/roadmap/ROADMAP_OVERVIEW_AND_AUTONOMY_FOCUS.md)
