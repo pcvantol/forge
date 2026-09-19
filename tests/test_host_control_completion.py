@@ -181,7 +181,7 @@ class HostControlCompletionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exactly one approved scope"):
                 inspect(str(path))
 
-    def test_inspect_rejects_constraint_that_ep_cannot_accept(self):
+    def test_inspect_enforces_ep_constraint_envelope_limits(self):
         planning = ArchitecturePlanningEvidence(
             ("target",), ("parser.py",), ("no unrelated work",), ("scope drift",),
             ("protected delivery",), ("ep",), 1000, 1000, "1",
@@ -202,6 +202,16 @@ class HostControlCompletionTests(unittest.TestCase):
             document["mission"]["engineering_constraints"][0] = "x" * 129
             path.write_text(json.dumps(document), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "128-character host limit"):
+                inspect(str(path))
+            required = ["ep-merge-delegation:" + "a" * 32,
+                        "ep-delivery-control-validation:1"]
+            document["mission"]["engineering_constraints"] = required + [
+                f"bounded-{index}" for index in range(62)]
+            path.write_text(json.dumps(document), encoding="utf-8")
+            self.assertEqual(inspect(str(path))["status"], "VALID")
+            document["mission"]["engineering_constraints"].append("bounded-62")
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "more than 64"):
                 inspect(str(path))
 
     def test_inspect_requires_delivery_validation_for_host_control(self):

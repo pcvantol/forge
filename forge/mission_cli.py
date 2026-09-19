@@ -55,6 +55,8 @@ def _contract(document: dict[str, Any]) -> tuple[ArchitecturePlanningEvidence, A
     # allocates an ID or the runner persists an unsendable Action.
     if any(len(value) > 128 for value in mission.engineering_constraints):
         raise ValueError("EP execution constraint exceeds the 128-character host limit")
+    if len(mission.engineering_constraints) > 64:
+        raise ValueError("EP execution constraints contain more than 64 entries")
     if mission.repository_evidence_source is None:
         raise ValueError("Mission requires an approved repository source for fresh initial Truth")
     delegation = tuple(value for value in mission.engineering_constraints

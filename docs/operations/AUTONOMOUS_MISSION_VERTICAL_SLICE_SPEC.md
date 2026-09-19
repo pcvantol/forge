@@ -15,8 +15,9 @@ The approved Mission constraints carry one EP-issued, Mission-scoped merge
 delegation reference and, for host-control criteria, the exact delivery
 validation request `ep-delivery-control-validation:1`. Forge transports those
 immutable constraints in the accepted Producer provenance. The installed EP
-limits each constraint to 128 characters; Forge rejects longer approved input
-at inspection, before Mission allocation or execution dispatch. The installed EP
+limits each constraint to 128 characters and accepts at most 64 distinct
+entries. Forge rejects incompatible approved input at inspection, before
+Mission allocation or execution dispatch. The installed EP
 must declare control publication, delivery validation, and bounded merge
 capabilities before the foreground command starts. A read-only
 input inspection checks the reference syntax; it does not assert that EP has
