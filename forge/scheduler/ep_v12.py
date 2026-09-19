@@ -204,7 +204,7 @@ def _v14_repository_binding(
         "artifact_type", "contract_version", "submission", "producer", "correlation", "provenance",
         "run", "host_execution", "repository", "delivery", "report", "references", "assurance",
     }
-    if set(document) != expected_document_keys:
+    if set(document) not in (expected_document_keys, expected_document_keys | {"validation_controls"}):
         raise ValueError("EP terminal v1.4 artifact schema is incomplete")
     repository_keys = {
         "id", "requested_revision", "execution_baseline", "baseline_transition", "candidate",
@@ -339,6 +339,8 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         provenance_keys += ("action_context_envelope",)
     if provenance.get("contract_version") == "1.3":
         provenance_keys += ("planning_context_envelope",)
+        if "execution_constraints" in provenance:
+            provenance_keys += ("execution_constraints",)
     expected_provenance = {key: provenance.get(key) for key in provenance_keys}
     if artifact_provenance != expected_provenance:
         raise ValueError("EP terminal artifact provenance differs from readback")
@@ -434,11 +436,13 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         if assurance.get("quality_review") not in {"PASS", "FAIL", "UNRESOLVED"} or assurance.get("security_review") not in {"PASS", "FAIL", "UNRESOLVED"}:
             raise ValueError("EP terminal assurance review result is invalid")
     if artifact_contract == "1.4":
-        candidate = _git_sha(repository.get("candidate"), "implementation candidate", nullable=True)
-        # A host-verified no-op has no reviewed implementation candidate, but
-        # it may still report the repository's observed candidate revision.
-        if not no_assurance_recorded and candidate != profile.get("candidate_sha"):
-            raise ValueError("EP terminal v1.4 candidate differs from assurance evidence")
+        # The implementation candidate precedes finalization and reconciliation.
+        # EP's current assurance profile can name a later reviewed PR head;
+        # equality would reject a valid protected delivery. Both identities
+        # remain separate, host-owned fields in the verified artifact.
+        if "candidate" not in repository:
+            raise ValueError("EP terminal v1.4 implementation candidate is missing")
+        _git_sha(repository["candidate"], "implementation candidate", nullable=no_assurance_recorded)
 
     prompt = _object(provenance.get("runtime_prompt"), "runtime prompt")
     report_id = _string(artifact_report.get("id"), "artifact report id")
@@ -458,6 +462,12 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         item["command"] for item in validation
         if isinstance(item, Mapping) and isinstance(item.get("command"), str) and item["command"]
     )
+    validation_controls = document.get("validation_controls")
+    if validation_controls is not None:
+        if (not isinstance(validation_controls, Mapping)
+                or validation_controls.get("contract_version") not in {"1.0", "1.1"}):
+            raise ValueError("EP validation control evidence contract is invalid")
+        validation_controls = dict(validation_controls)
     return ExecutionHostEvidence(host_id, repository_evidence.correlation_id, repository_evidence.host_run_id,
                                  report_id, ExecutionEvidenceOutcome(outcome.lower()), repository_evidence,
                                  validation_references=validation_references, receipt_id=receipt_id,
@@ -465,4 +475,5 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
                                  resolved_from_host_run_id=resolved_from_host_run_id,
                                  execution_started_at=execution_started_at,
                                  execution_completed_at=execution_completed_at,
-                                 execution_duration_ms=execution_duration_ms)
+                                 execution_duration_ms=execution_duration_ms,
+                                 validation_controls=validation_controls)

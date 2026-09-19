@@ -3,7 +3,8 @@
 Status: bounded product-owned maintenance provisioner for the selected Forge
 2.7.21 to 2.7.22 schema-37-to-38 transition and the selected 2.7.22/2.7.23 to
 2.7.23/2.7.24 same-schema corrective transitions, plus the selected 2.7.24 to
-2.7.25 schema-38-to-39 completion correction. Support for that route is not a
+2.7.25 schema-38-to-39 completion correction and 2.7.25 to 2.7.26 schema-39-to-39
+vertical-Mission delivery. Support for that route is not a
 claim that its release is published or an installation has been activated.
 
 This controller closes one concrete product provisioning gap. It is not the
@@ -43,7 +44,7 @@ interpreter, version, and bytes.
    canonical RECORD, purelib tag, package metadata, member allowlist, and the
    exact terminal release receipt without importing it. The historical
    2.7.22 reconciliation receipt retains its dedicated validation; 2.7.23 and
-   2.7.24 and 2.7.25 must have the normal protected release-complete
+   2.7.24, 2.7.25 and 2.7.26 must have the normal protected release-complete
    publication/readback/cleanup shape and cannot be presented to an
    unsupported transition.
 2. Create an isolated versioned runtime slot outside the source checkout with
@@ -71,14 +72,18 @@ interpreter, version, and bytes.
    domain/security/configuration row to remain byte-logically unchanged.
    The 38-to-39 route likewise permits no table additions or domain-row
    changes: it advances only the completion-reader compatibility metadata.
+   The 39-to-39 route qualifies the candidate against an isolated copy and
+   leaves the live database bytes in place when the owning bootstrap makes no
+   logical change.
    Historical terminal Missions are neither reopened nor reassessed.
 8. Normalize the product-owned maintenance launcher to operation-independent
    canonical bytes, accepting only the exact older operation-labelled shape,
-   then point the stable resolver at that fence. Take an exclusive SQLite
-   writer boundary, prove the live database is still byte-logically identical
-   to the backed-up snapshot, and atomically install the already Forge-migrated
-   database copy. The replacement remains read-only until activation and final
-   receipt persistence; full preservation and sidecar checks run again.
+   then point the stable resolver at that fence. For routes through 2.7.25,
+   take an exclusive SQLite writer boundary, prove the live database still
+   matches the backup, and atomically install the Forge-migrated copy. That
+   replacement remains read-only until activation and final receipt persistence.
+   For 2.7.25-to-2.7.26, verify the qualified schema-39 copy and unchanged live
+   snapshot under the fence, then retain the original database file.
 9. Atomically select the candidate slot and read back the exact installed CLI,
    module, interpreter, version, runtime identity, data root, schema, and peer
    binding. No service or historical Mission is started.
@@ -86,7 +91,8 @@ interpreter, version, and bytes.
     `artifacts/installation/<operation-id>` and retain the verified database
     backup below `backups/installation/<operation-id>`.
     The 2.7.24-to-2.7.25 route names its retained pre-migration backup
-    `forge-schema38.sqlite3`; older routes retain their prior backup name.
+    `forge-schema38.sqlite3`; the 2.7.25-to-2.7.26 route retains
+    `forge-schema39.sqlite3`; older routes retain their prior backup name.
 
 The controller never calls operational-reset prepare/apply/resume/finish,
 Mission intake, Action derivation, a planner/provider, or an EP submission.
@@ -119,7 +125,7 @@ separate authority and compatibility proof.
 ## Qualification boundary
 
 `tests/test_installed_forge_update.py` covers exact release binding, target and
-writer rejection, the bounded 37-to-38, 38-to-38 and 38-to-39 transitions, preservation
+writer rejection, the bounded 37-to-38, 38-to-38, 38-to-39 and 39-to-39 transitions, preservation
 of Missions, allocations, reviews, execution receipts, governance grants,
 configuration and identity, concurrent-operation exclusion, resolver adoption,
 prior-operation fence normalization and tamper rejection, canonical receipt
@@ -129,10 +135,13 @@ migration, after migration, and during activation. An opt-in test runs the
 entire route and replay against the exact published wheel and terminal release
 receipt.
 
-For 2.7.25 the only newly supported source version is 2.7.24. A jump from an
-older version is rejected. After schema 39 has been observed, interruption
-recovery keeps the qualified candidate or explicit maintenance fence selected;
-it never launches the retained schema-38 binary against the migrated store.
+For 2.7.25 the only newly supported source version is 2.7.24, and for 2.7.26 it
+is 2.7.25. A jump from an older version is rejected. After schema 39 has been
+observed during the 2.7.25 update, interruption recovery keeps the qualified
+candidate or explicit maintenance fence selected; it never launches the retained
+schema-38 binary against the migrated store. The 2.7.26 route does not swap an
+unchanged schema-39 database. Once its candidate activation boundary is durable,
+an interruption selects the candidate or maintenance fence until readback completes.
 An atomic swap completed before its state write is adopted on resume after
 preservation verification, without repeating the migration. Completion replay
 also checks the exact target schema and schema fingerprint.

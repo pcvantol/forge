@@ -51,12 +51,14 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.22", "2.7.24"): (38, 38),
     ("2.7.23", "2.7.24"): (38, 38),
     ("2.7.24", "2.7.25"): (38, 39),
+    ("2.7.25", "2.7.26"): (39, 39),
 }
 NORMAL_RELEASE_TRANSITIONS = frozenset({
     ("2.7.22", "2.7.23"),
     ("2.7.22", "2.7.24"),
     ("2.7.23", "2.7.24"),
     ("2.7.24", "2.7.25"),
+    ("2.7.25", "2.7.26"),
 })
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
@@ -492,7 +494,7 @@ def _normal_release_evidence(
         f"dist/{sdist_name}": sdist_digest,
     }
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
-    composition_keys = {"criterion_completion"} if request.version == "2.7.25" else set()
+    composition_keys = {"criterion_completion"} if request.version in {"2.7.25", "2.7.26"} else set()
     if (
         (request.existing_version, request.version) not in NORMAL_RELEASE_TRANSITIONS
         or set(receipt) != expected_top
@@ -900,6 +902,11 @@ def _copy_sqlite_backup(source: Path, destination: Path) -> dict[str, Any]:
         destination_connection = sqlite3.connect(temporary)
         source_connection.backup(destination_connection)
         destination_connection.commit()
+        # The online backup inherits WAL mode. Before the temporary database is
+        # renamed, make it self-contained: WAL sidecars retain the temporary
+        # basename and a read-only integrity check cannot open the renamed DB.
+        if destination_connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0] != "delete":
+            raise InstalledForgeUpdateError("SQLite backup journal finalization failed")
         if destination_connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise InstalledForgeUpdateError("SQLite backup integrity check failed")
         if destination_connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
@@ -1042,7 +1049,8 @@ class InstalledForgeUpdateController:
         self.receipt_path = self.operation_root / "receipt.json"
         self.backup_root = self.data_root / "backups" / "installation" / request.operation_id
         self.backup_path = self.backup_root / (
-            "forge-schema38.sqlite3" if (request.existing_version, request.version) == ("2.7.24", "2.7.25")
+            "forge-schema39.sqlite3" if (request.existing_version, request.version) == ("2.7.25", "2.7.26")
+            else "forge-schema38.sqlite3" if (request.existing_version, request.version) == ("2.7.24", "2.7.25")
             else "forge-schema37.sqlite3"
         )
         self.slot = self.runtime_root / "slots" / f"{request.version}-{request.wheel_sha256.removeprefix('sha256:')[:12]}"
@@ -1563,6 +1571,24 @@ class InstalledForgeUpdateController:
     def _migrate_live(self, state: dict[str, Any], before: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         schema_before, schema_after = transition_schemas(self.request)
         current = database_snapshot(self.database)
+        if (self.request.existing_version, self.request.version) == ("2.7.25", "2.7.26"):
+            qualified = database_snapshot(self.operation_root / "qualification-copy" / "forge.db")
+            verify_preservation(before, qualified, self.request)
+            if (current.get("content_digest") != before.get("content_digest")
+                    or qualified.get("content_digest") != before.get("content_digest")):
+                raise InstalledForgeUpdateError("same-schema runtime changed outside the bounded operation")
+            if state.get("phase") not in {"MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE"}:
+                state = self._fence(state)
+                state = self._advance(
+                    state, "MIGRATED", live_migration={
+                        **verify_preservation(before, current, self.request),
+                        "migrated_at": _now(), "application_mode": "UNCHANGED_DATABASE",
+                        "before_snapshot_digest": before["snapshot_digest"],
+                        "after_snapshot_digest": current["snapshot_digest"],
+                    }, safety_disposition=f"CANDIDATE_REQUIRED_SCHEMA_{schema_after}",
+                )
+                self._interrupt("migration")
+            return state, current
         if (
             current.get("user_version") == schema_before
             and (
@@ -1656,6 +1682,8 @@ class InstalledForgeUpdateController:
             and isinstance(before, Mapping)
             and current.get("content_digest") == before.get("content_digest")
             and self.legacy_entrypoint.exists()
+            and ((self.request.existing_version, self.request.version) != ("2.7.25", "2.7.26")
+                 or state.get("phase") not in {"MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE"})
         ):
             self._restore_legacy_before_migration(state, error)
             return
@@ -1748,9 +1776,10 @@ class InstalledForgeUpdateController:
         _safe_directory(self.data_root)
         _safe_directory(self.runtime_root)
         update_lock = self.runtime_root / "locks" / "installation-update.lock"
+        controller_lock = self.data_root / "forge-mission-controller.lock"
         runtime_lock = self.data_root / "forge-runtime-mutation.lock"
         bootstrap_lock = self.data_root / "locks" / "runtime.lock"
-        with exclusive_lock(update_lock):
+        with exclusive_lock(update_lock), exclusive_lock(controller_lock):
             _safe_directory(self.operation_root, create=True)
             os.chmod(self.operation_root, 0o700)
             state = self._state(allow_request_mismatch=self.reconcile_staged_controller)

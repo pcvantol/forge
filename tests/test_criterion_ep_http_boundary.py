@@ -125,11 +125,12 @@ class CriterionEpHttpBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'validation references'):
             self._retrieve()
 
-    def test_candidate_mismatch_fails_even_with_valid_artifact_digest(self):
+    def test_implementation_candidate_remains_distinct_from_later_assurance_candidate(self):
         self.artifact['repository']['candidate'] = 'd' * 40
         self._publish()
-        with self.assertRaisesRegex(ValueError, 'candidate differs'):
-            self._retrieve()
+        evidence = self._retrieve()
+        self.assertEqual(evidence.repository_evidence.candidate_revision, 'd' * 40)
+        self.assertEqual(self.artifact['assurance']['profile']['candidate_sha'], 'c' * 40)
 
     def test_delivery_mismatch_fails_even_with_valid_artifact_digest(self):
         self.artifact['delivery']['revision'] = 'd' * 40

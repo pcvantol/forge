@@ -6,8 +6,10 @@ the EP submission/run binding which follows from a persisted Forge request.
 from __future__ import annotations
 
 import json
+import re
 from hashlib import sha256
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -36,6 +38,32 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 
 
 _NO_REDIRECT_OPENER = build_opener(_NoRedirectHandler())
+_TERMINAL_ARTIFACT_PUBLICATION_GRACE = timedelta(minutes=2)
+
+
+def _terminal_artifact_publication_pending(readback: Mapping[str, Any]) -> bool:
+    """Allow EP's completed run a bounded interval to publish its artifact."""
+    run, result, evidence = (readback.get(key) for key in ("run", "result", "evidence"))
+    if not all(isinstance(item, Mapping) for item in (run, result, evidence)):
+        return False
+    if (run.get("state"), result.get("outcome"), evidence.get("status")) != (
+        "COMPLETE", "COMPLETE", "MISSING",
+    ):
+        return False
+    # The dispatch row's updated_at may still describe the initial submission
+    # when the terminal checkpoint becomes visible. EP's durable completion
+    # timestamp, not dispatch age, starts the publication grace period.
+    completed_at = run.get("execution_completed_at")
+    if not isinstance(completed_at, str):
+        return False
+    try:
+        completed_at = datetime.fromisoformat(completed_at)
+    except ValueError:
+        return False
+    if completed_at.tzinfo is None:
+        return False
+    age = datetime.now(timezone.utc) - completed_at.astimezone(timezone.utc)
+    return timedelta(0) <= age < _TERMINAL_ARTIFACT_PUBLICATION_GRACE
 
 
 def _open(request: Request, timeout: float):
@@ -367,20 +395,27 @@ class EngineeringPlatformHttpExecutionHost:
             raise ValueError("Forge Producer Contract lacks immutable Action or planning context")
         if revision_binding is None:
             raise ValueError("EP_REQUEST_REPOSITORY_REVISION_BINDING_REQUIRED")
+        forge_execution = {
+            "contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION, "host_id": request.host_id,
+            "repository_id": request.repository_id, "correlation_id": request.correlation_id,
+            "mission_id": request.mission_id, "mission_revision": self._mission_revision(request),
+            "intent_id": request.intent_id, "intent_revision": request.intent_revision,
+            "action_id": request.action_id,
+            "runtime_prompt": {"id": contract.runtime_prompt.id,
+                               "content_digest": contract.runtime_prompt.content_digest},
+            "retry_of_correlation_id": request.retry_of_correlation_id,
+            "producer_contract_version": contract.contract_version,
+            "forge_application_version": contract.producer.identity.version,
+            "action_context_envelope": action_context.to_dict(),
+            "planning_context_envelope": planning_context.to_dict(),
+        }
+        if any(value.startswith("ep-merge-delegation:") or value == "ep-delivery-control-validation:1"
+               for value in contract.execution_constraints):
+            forge_execution["execution_constraints"] = list(contract.execution_constraints)
         return {"repository_id": request.repository_id, "producer": contract.producer.identity.to_dict(),
                 "prompt": contract.runtime_prompt.content, "idempotency_key": request.correlation_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-                "engineering_action_id": request.action_id, "constraints": {"forge_execution": {
-                "contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION, "host_id": request.host_id, "repository_id": request.repository_id,
-                "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-                "mission_revision": self._mission_revision(request), "intent_id": request.intent_id,
-                "intent_revision": request.intent_revision, "action_id": request.action_id,
-                "runtime_prompt": {"id": contract.runtime_prompt.id, "content_digest": contract.runtime_prompt.content_digest},
-                    "retry_of_correlation_id": request.retry_of_correlation_id,
-                    "producer_contract_version": contract.contract_version,
-                    "forge_application_version": contract.producer.identity.version,
-                    "action_context_envelope": action_context.to_dict(),
-                    "planning_context_envelope": planning_context.to_dict()},
+                "engineering_action_id": request.action_id, "constraints": {"forge_execution": forge_execution,
                     "repository_revision_binding": revision_binding.ep_constraint()}}
 
     def _audit_document(self, request: ExecutionRequest, binding: Mapping[str, Any], *, receipt: Mapping[str, Any] | None = None) -> dict[str, object]:
@@ -603,7 +638,11 @@ class EngineeringPlatformHttpExecutionHost:
                 or not isinstance(instance, Mapping) or set(instance) != {"id"}
                 or not isinstance(instance.get("id"), str) or not instance["id"]
                 or not isinstance(contracts, Mapping)
-                or set(contracts) != {"producer_readback", "terminal_evidence"}
+                or not {"producer_readback", "terminal_evidence"}.issubset(contracts)
+                or not set(contracts).issubset({
+                    "producer_readback", "terminal_evidence", "validation_controls",
+                    "delivery_revision_validation", "bounded_merge_delegation",
+                })
                 or not isinstance(authentication, Mapping)
                 or set(authentication) != {
                     "consumer_id", "consumer_status", "project_id", "project_status",
@@ -631,7 +670,45 @@ class EngineeringPlatformHttpExecutionHost:
         terminal_versions = contracts.get("terminal_evidence")
         if not isinstance(terminal_versions, list) or terminal_versions != [self.config.terminal_evidence_contract]:
             raise ValueError("EP_TERMINAL_CONTRACT_INCOMPATIBLE")
+        if ("validation_controls" in contracts
+                and contracts["validation_controls"] not in (["1.0"], ["1.0", "1.1"])):
+            raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
+        for capability in ("delivery_revision_validation", "bounded_merge_delegation"):
+            if capability in contracts and contracts[capability] != ["1.0"]:
+                raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         return declaration
+
+    def merge_delegation_status(self, delegation_id: str) -> dict[str, Any]:
+        """Read the authenticated EP-owned grant; this endpoint cannot mutate it."""
+        if re.fullmatch(r"[0-9a-f]{32}", delegation_id) is None:
+            raise ValueError("EP merge delegation reference is invalid")
+        document = self._json(
+            f"/v1/projects/{self._segment(self.config.project_id)}/merge-delegations/{delegation_id}"
+        )
+        expected = {"contract_version", "delegation_id", "actor_reference", "project_id",
+                    "repository_id", "github_repository", "mission_id", "mission_revision",
+                    "base_branch", "roles", "expires_at", "activated_at", "revoked_at", "status"}
+        version = document.get("contract_version")
+        if version == "1.1":
+            expected |= {"assurance_profile_id", "assurance_profile_revision",
+                         "assurance_policy_digest"}
+            profile_id = document.get("assurance_profile_id")
+            profile_revision = document.get("assurance_profile_revision")
+            policy_digest = document.get("assurance_policy_digest")
+            if (not isinstance(profile_id, str) or not isinstance(profile_revision, str)
+                    or not isinstance(policy_digest, str)
+                    or (profile_id == "") != (profile_revision == "")
+                    or (profile_id == "") != (policy_digest == "")
+                    or (profile_id and re.fullmatch(r"[a-z][a-z0-9-]{0,63}", profile_id) is None)
+                    or (profile_revision and re.fullmatch(r"[1-9][0-9]*", profile_revision) is None)
+                    or (policy_digest and re.fullmatch(r"sha256:[0-9a-f]{64}", policy_digest) is None)):
+                raise ValueError("EP merge delegation assurance profile is malformed")
+        if (version not in {"1.0", "1.1"} or set(document) != expected
+                or document.get("delegation_id") != delegation_id
+                or document.get("project_id") != self.config.project_id
+                or document.get("repository_id") != self.config.repository_id):
+            raise ValueError("EP merge delegation readback scope differs")
+        return document
 
     def _readback(self, request: ExecutionRequest, binding: Mapping[str, Any]) -> dict[str, Any] | None:
         submission_id = binding.get("submission_id")
@@ -831,6 +908,8 @@ class EngineeringPlatformHttpExecutionHost:
             # retried operator resolution.  Forge must not follow that new EP
             # chain under the original correlation: a matching BLOCKED/FAILED
             # run and result is terminal for this persisted request.
+            if _terminal_artifact_publication_pending(readback):
+                return None
             if (isinstance(run, Mapping) and run.get("terminal") is True
                     or state in {"BLOCKED", "FAILED"} and outcome == state):
                 raise ValueError("EP_TERMINAL_WITHOUT_IMMUTABLE_EVIDENCE")

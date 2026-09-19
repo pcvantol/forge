@@ -287,6 +287,7 @@ class ExecutionHostEvidence:
     execution_completed_at: str | None = None
     receipt_id: str | None = None
     execution_duration_ms: int | None = None
+    validation_controls: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.correlation_id, self.host_run_id, self.report_id)):

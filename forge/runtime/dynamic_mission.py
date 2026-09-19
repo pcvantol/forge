@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from forge.completion import MissionCompletionEvaluator
 from forge.completion.repository_observer import RepositoryCriterionObserver
+from forge.completion.host_control_observer import HostControlCriterionObserver
 from forge.models.criterion_observation import CriterionObservation
 from forge.execution import ExecutionLoop, RecoveryAuthorization
 from forge.execution_host_configuration import EngineeringPlatformExecutionHostFactory
@@ -92,6 +93,14 @@ class DynamicMissionRunResult:
     planning_invocations: int
 
 
+def _quiescent_failed_attempt(state: MissionExecutionState) -> bool:
+    """A failed planning attempt with no Action or possible Host effect."""
+    return (
+        state.status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}
+        and not state.actions and not state.intents and state.execution_correlation is None
+    )
+
+
 class _InstalledMissionDispatcher:
     """Bind the existing loop to one selected installed Runtime Mission only."""
 
@@ -107,7 +116,15 @@ class _InstalledMissionDispatcher:
             "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton = 1"
         ).fetchone()
         if row is not None and row["status"] == "ACTIVE" and row["active_mission_id"] != self._mission_id:
-            raise InstalledDynamicMissionError("another Forge Mission is already active")
+            previous = self._states.get(row["active_mission_id"])
+            if not _quiescent_failed_attempt(previous):
+                raise InstalledDynamicMissionError("another Forge Mission is already active")
+            # Reconcile a dispatcher held by an older installed binary. This
+            # runs within ForgeRuntimeService's mutation lock before dispatch.
+            self._database.save_dispatcher_state(
+                status="IDLE", mission_sequence=(previous.mission_id,)
+            )
+            row = None
         if row is None or row["status"] != "ACTIVE":
             self._database.save_dispatcher_state(
                 status="ACTIVE", mission_sequence=(self._mission_id,), active_mission_id=self._mission_id,
@@ -131,6 +148,12 @@ class _InstalledMissionDispatcher:
     def hold(self, mission_id: str, status: MissionExecutionStatus) -> None:
         if mission_id != self._mission_id or status not in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}:
             raise InstalledDynamicMissionError("dispatcher hold does not match the selected terminal Mission")
+        row = self._database._connection.execute(
+            "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton = 1"
+        ).fetchone()
+        if (row is not None and row["status"] == "ACTIVE" and row["active_mission_id"] == mission_id
+                and _quiescent_failed_attempt(self._states.get(mission_id))):
+            self._database.save_dispatcher_state(status="IDLE", mission_sequence=(mission_id,))
 
     def recover(self, mission_id: str):
         if mission_id != self._mission_id:
@@ -183,7 +206,9 @@ class InstalledDynamicMissionRuntime:
         self.data_root, self.provider, self.host, self.clock = data_root, provider, host, clock
         self.states = MissionStateStore(database, data_root=data_root)
         self._criterion_observer = RepositoryCriterionObserver()
+        self._host_control_observer = HostControlCriterionObserver()
         self._initial_truth: dict[str, dict[str, str]] = {}
+        self._keep_running = lambda: True
 
     @classmethod
     def open(cls, data_root: str, *, provider_id: str = "codex-chatgpt-session") -> "InstalledDynamicMissionRuntime":
@@ -325,6 +350,8 @@ class InstalledDynamicMissionRuntime:
         truth = self._truth_from_snapshot(initial_repository_truth)
         self._assert_repository_scope(initial_repository_truth)
         self.preflight()
+        if not self._keep_running():
+            return self._result(state)
         self._initial_truth[mission_id] = truth
         self.states.transition(
             mission_id, MissionExecutionStatus.CREATED, occurred_at=self.clock(),
@@ -342,6 +369,8 @@ class InstalledDynamicMissionRuntime:
             raise InstalledDynamicMissionError("resumed Mission lacks canonical Repository Truth")
         self._initial_truth[mission_id] = dict(state.repository_truth)
         self.preflight()
+        if not self._keep_running():
+            return self._result(state)
         return self._tick(mission_id)
 
     def recover(self, mission_id: str, authorization: RecoveryAuthorization) -> DynamicMissionRunResult:
@@ -385,6 +414,20 @@ class InstalledDynamicMissionRuntime:
             reason="terminal_evidence_reconciliation_requested",
         )
         return self._tick(mission_id)
+
+    def reconcile_existing_successor(self, mission_id: str) -> DynamicMissionRunResult:
+        """Resume one blocked assessed receipt with an already approved READY Action."""
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        if state.repository_truth is None:
+            raise InstalledDynamicMissionError("existing-successor continuation lacks Repository Truth")
+        self._initial_truth[mission_id] = dict(state.repository_truth)
+        self.preflight()
+        loop = self._loop(mission_id)
+        service = ForgeRuntimeService(loop, self.states, runtime_database=self.database)
+        with service.mutation_lock.acquire():
+            loop.resume_existing_successor(mission_id)
+        return self._result(self.states.get(mission_id))
 
     def reconcile_completed_terminal_evidence(self, mission_id: str) -> DynamicMissionRunResult:
         """Close one historical, partially-persisted terminal reconciliation.
@@ -599,6 +642,7 @@ class InstalledDynamicMissionRuntime:
             completion_evaluator=MissionCompletionEvaluator(),
             runtime_database=self.database,
             repository_revision_binding_factory=self._repository_revision_binding,
+            keep_running=self._keep_running,
         )
 
     @staticmethod
@@ -771,6 +815,7 @@ class InstalledDynamicMissionRuntime:
             candidate_revision=repository.candidate_revision,
         )
         observations = list(self._criterion_observer.observe(mission, reference, self.host.config.repository_id))
+        observations.extend(self._host_control_observer.observe(mission, reference, evidence))
         # Original observations retain their original revision and receipt. No
         # blanket copying of historical references to the current Truth occurs.
         old = {}
@@ -824,7 +869,13 @@ class InstalledDynamicMissionRuntime:
         return contract
 
     def _assert_single_resumable(self, mission_id: str) -> None:
-        active = tuple(state.mission_id for state in self.states.resumable())
+        # A zero-Action failed planning attempt is durably held without any
+        # possible Host effect. Other blocked Missions retain exclusive scope.
+        active = tuple(
+            state.mission_id for state in self.states.resumable()
+            if state.mission_id == mission_id
+            or not _quiescent_failed_attempt(state)
+        )
         if active != (mission_id,):
             raise InstalledDynamicMissionError("public runtime requires exactly one selected non-terminal Mission")
 

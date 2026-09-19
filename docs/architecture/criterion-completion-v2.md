@@ -30,11 +30,23 @@ behavior. Broad natural-language criteria need appropriate approved predicates
 or a separately supported authoritative evidence source; a planner's intended
 change and an agent-authored PASS statement supply neither.
 
-`host_control` requirements retain an exact control identity and command as
-approved intent. The current supported producer evidence does not independently
-establish command execution. Such a requirement is `UNSATISFIED` with
-`UNSUPPORTED_AUTHORITATIVE_EVIDENCE_SOURCE`. If all remaining requirements
-have this limitation, continuation blocks before another provider call.
+`host_control` is a bounded, candidate-bound execution source when the
+approved requirement pins the EP validation ID, profile reference/version,
+category, logical identity, normalized command identity, stable definition
+digest, and minimum discovered test count. Forge reads the authenticated,
+digest-verified EP terminal artifact through the existing host adapter. Its
+optional `validation_controls` v1.0 record must bind the accepted run and
+candidate, the required profile control, executed command terminal, PASS,
+exit code zero, and immutable result detail. A behavioral requirement with a
+minimum test count cannot pass from an empty or uncounted suite. The profile
+digest continues to bind EP's actual candidate and command argv; Forge does
+not execute a command through this evidence reader.
+
+Old terminal artifacts without that record and legacy `host_control`
+requirements without a pinned definition remain `UNSATISFIED` with
+`UNSUPPORTED_AUTHORITATIVE_EVIDENCE_SOURCE`. A control's authentic execution
+is only evidence within its approved test scope. Forge still interprets the
+criterion, and Quality/Security review remains separate assurance.
 
 ## Observation and provenance
 

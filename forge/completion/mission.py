@@ -67,6 +67,34 @@ def _canonical_execution_references(
     return references
 
 
+def _host_control_observation_matches(observation, requirement, validity_policy: str) -> bool:
+    if (observation.schema_version != "1.1" or observation.result != "PASS"
+            or observation.reason != "APPROVED_HOST_CONTROL_EXECUTED_AND_PASSED"
+            or observation.content_digest != observation.repository_evidence_digest
+            or observation.observed_json is None):
+        return False
+    try:
+        record = json.loads(observation.observed_json)
+    except (TypeError, ValueError):
+        return False
+    return (isinstance(record, dict)
+            and record.get("validation_id") == requirement.validation_id
+            and record.get("control_identity") == requirement.control_identity
+            and record.get("control_definition_digest") == requirement.control_definition_digest
+            and record.get("validation_profile_version") == requirement.validation_profile_version
+            and record.get("profile_reference") == requirement.profile_reference
+            and record.get("category") == requirement.control_category
+            and (record.get("candidate_sha") == observation.repository_revision
+                 if validity_policy == "current_revision" else
+                 record.get("candidate_sha") in {observation.candidate_revision, observation.repository_revision})
+            and record.get("execution_status") == "EXECUTED"
+            and record.get("result") == "PASS" and record.get("exit_code") == 0
+            and (requirement.minimum_test_count == 0 or
+                 isinstance(record.get("test_count"), int)
+                 and not isinstance(record["test_count"], bool)
+                 and record["test_count"] >= requirement.minimum_test_count))
+
+
 class MissionCompletionEvaluator:
     """Interpret approved predicates over Forge-observed facts; never provider PASS."""
 
@@ -132,7 +160,31 @@ class MissionCompletionEvaluator:
                     if contract.validity_policy == "current_revision":
                         candidates = [obs for obs in candidates if obs.repository_revision == truth.revision]
                     source = mission.repository_evidence_source
-                    if requirement.kind != "repository_json":
+                    if requirement.kind == "host_control":
+                        if not requirement.control_definition_digest:
+                            result, why, matched = "UNSATISFIED", "UNSUPPORTED_AUTHORITATIVE_EVIDENCE_SOURCE", ()
+                        elif any(obs.source_kind != "host_control" or obs.source_identity != requirement.control_identity
+                                 or obs.artifact_path != "ep-terminal-artifact"
+                                 or obs.requirement_digest != requirement.digest or obs.json_pointer != ""
+                                 for obs in candidates):
+                            result, why, matched = "UNSATISFIED", "OBSERVATION_SOURCE_MISMATCH", ()
+                        elif not candidates:
+                            result, why, matched = "UNSATISFIED", "CURRENT_OBSERVATION_MISSING", ()
+                        else:
+                            if contract.validity_policy == "historical_delivery":
+                                passing = [obs for index, obs in enumerate(candidates)
+                                           if _host_control_observation_matches(obs, requirement, contract.validity_policy)
+                                           and not any(later.repository_revision == obs.repository_revision
+                                                       and not _host_control_observation_matches(later, requirement, contract.validity_policy)
+                                                       for later in candidates[index + 1:])]
+                                selected = passing[-1] if passing else candidates[-1]
+                            else:
+                                selected = candidates[-1]
+                            proven = _host_control_observation_matches(selected, requirement, contract.validity_policy)
+                            result = "PROVEN" if proven else "UNSATISFIED"
+                            why = "APPROVED_HOST_CONTROL_EXECUTED_AND_PASSED" if proven else selected.reason
+                            matched = (selected.id,)
+                    elif requirement.kind != "repository_json":
                         result, why, matched = "UNSATISFIED", "UNSUPPORTED_AUTHORITATIVE_EVIDENCE_SOURCE", ()
                     elif source is None:
                         result, why, matched = "UNSATISFIED", "APPROVED_REPOSITORY_SOURCE_MISSING", ()

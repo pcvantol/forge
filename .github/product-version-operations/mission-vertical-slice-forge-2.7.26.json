@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.25",
+  "classification_rationale": "mission-vertical-slice-pr-155",
+  "component": "product",
+  "event_lineage": "mission-vertical-slice-pr-155",
+  "expected_head": "4f95aded9c0f4570fb871074430145fbcf1fb363",
+  "operation_id": "mission-vertical-slice-forge-2.7.26",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.26"
+}

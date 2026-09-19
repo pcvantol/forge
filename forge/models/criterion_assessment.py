@@ -40,19 +40,45 @@ class CriterionEvidenceRequirement:
     artifact_path: str = ""
     json_pointer: str = ""
     expected_json: str = ""
+    validation_id: str = ""
+    validation_profile_version: str = ""
+    profile_reference: str = ""
+    control_category: str = ""
+    control_definition_digest: str = ""
+    minimum_test_count: int = 0
 
     def __post_init__(self) -> None:
         _text(self.requirement_id, "criterion evidence requirement_id")
         if any(not isinstance(getattr(self, name), str) for name in (
-                "kind", "control_identity", "command", "artifact_path", "json_pointer", "expected_json")):
+                "kind", "control_identity", "command", "artifact_path", "json_pointer", "expected_json",
+                "validation_id", "validation_profile_version", "profile_reference",
+                "control_category", "control_definition_digest")):
             raise ValueError("criterion evidence requirement fields must be text")
         if self.kind == "host_control":
             for name in ("control_identity", "command"):
                 _text(getattr(self, name), f"criterion evidence {name}")
             if any((self.artifact_path, self.json_pointer, self.expected_json)):
                 raise ValueError("host control requirement cannot contain repository assertions")
+            if self.control_definition_digest and (re.fullmatch(r"sha256:[0-9a-f]{64}", self.control_definition_digest) is None
+                                                   or not self.validation_id or not self.validation_profile_version
+                                                   or not self.profile_reference or not self.control_category):
+                raise ValueError("host control definition requires exact validation identity and profile version")
+            if self.control_definition_digest:
+                try:
+                    command_identity = json.loads(self.command)
+                except (ValueError, TypeError) as error:
+                    raise ValueError("approved host control command identity must be a JSON argv array") from error
+                if (not isinstance(command_identity, list) or not command_identity
+                        or any(not isinstance(part, str) or not part for part in command_identity)):
+                    raise ValueError("approved host control command identity must be a nonempty JSON argv array")
+                object.__setattr__(self, "command", json.dumps(command_identity, separators=(",", ":"),
+                                                                ensure_ascii=False))
+            if not isinstance(self.minimum_test_count, int) or isinstance(self.minimum_test_count, bool) or self.minimum_test_count < 0:
+                raise ValueError("host control minimum test count is invalid")
         elif self.kind == "repository_json":
-            if self.control_identity != "" or self.command != "":
+            if (self.control_identity or self.command or self.validation_id or self.validation_profile_version
+                    or self.profile_reference or self.control_category
+                    or self.control_definition_digest or self.minimum_test_count):
                 raise ValueError("repository assertion cannot contain host control claims")
             if (not isinstance(self.artifact_path, str)
                     or re.fullmatch(r"[A-Za-z0-9_.\-/]+", self.artifact_path) is None
@@ -78,7 +104,15 @@ class CriterionEvidenceRequirement:
     def to_dict(self) -> dict[str, str]:
         value = {"requirement_id": self.requirement_id, "kind": self.kind}
         if self.kind == "host_control":
-            return {**value, "control_identity": self.control_identity, "command": self.command}
+            control = {**value, "control_identity": self.control_identity, "command": self.command}
+            if self.control_definition_digest:
+                control.update({"validation_id": self.validation_id,
+                                "validation_profile_version": self.validation_profile_version,
+                                "profile_reference": self.profile_reference,
+                                "control_category": self.control_category,
+                                "control_definition_digest": self.control_definition_digest,
+                                "minimum_test_count": self.minimum_test_count})
+            return control
         return {**value, "artifact_path": self.artifact_path,
                 "json_pointer": self.json_pointer, "expected_json": self.expected_json}
 
@@ -93,7 +127,9 @@ class CriterionEvidenceRequirement:
         keys = ({"requirement_id", "kind", "control_identity", "command"}
                 if document.get("kind") == "host_control" else
                 {"requirement_id", "kind", "artifact_path", "json_pointer", "expected_json"})
-        if set(document) != keys:
+        extended = keys | {"validation_id", "validation_profile_version", "profile_reference",
+                           "control_category", "control_definition_digest", "minimum_test_count"}
+        if set(document) != keys and not (document.get("kind") == "host_control" and set(document) == extended):
             raise ValueError("criterion evidence requirement schema is invalid")
         return cls(**document)
 
@@ -170,7 +206,8 @@ delivery and currently valid behavior deliberately have distinct policies.
         identifiers = tuple(item.requirement_id for item in self.requirements)
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("criterion evidence requirement identities must be unique")
-        controls = tuple((item.kind, item.control_identity, item.command, item.artifact_path,
+        controls = tuple((item.kind, item.control_identity, item.command, item.validation_id,
+                          item.control_definition_digest, item.artifact_path,
                           item.json_pointer) for item in self.requirements)
         if len(controls) != len(set(controls)):
             raise ValueError("criterion evidence requirements must name distinct controls")

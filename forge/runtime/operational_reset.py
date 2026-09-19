@@ -28,6 +28,7 @@ from forge.operator_identity import MacOSGeneratedUIDIdentityAdapter, NamedOpera
 from .data_root import DataRootResolver
 from .database import RUNTIME_SCHEMA_VERSION
 from .service import RuntimeServiceLock
+from .mission_controller import require_no_controller
 
 
 RESET_PROFILE = "forge-operational-history-v1"
@@ -360,7 +361,10 @@ class ForgeOperationalResetService:
         entries: list[dict[str, Any]] = []
         unknown: list[dict[str, Any]] = []
         recognized_root_files = {"forge.db", "forge.db-wal", "forge.db-shm"}
-        recognized_root_controls = {"forge-runtime-mutation.lock"}
+        recognized_root_controls = {
+            "forge-runtime-mutation.lock", "forge-mission-controller.lock",
+            "forge-mission-controller.json", "forge-mission-stop.json",
+        }
         for child in sorted(self.data_root.iterdir(), key=lambda item: item.name):
             relative = child.relative_to(self.data_root).as_posix()
             if child.is_symlink():
@@ -703,7 +707,7 @@ class ForgeOperationalResetService:
         if _DIGEST.fullmatch(expected_plan_digest or "") is None:
             raise OperationalResetError("an exact preview plan digest is required")
         acknowledgements = tuple(sorted(set(acknowledge_operational_fk)))
-        with self._lock.acquire():
+        with require_no_controller(self.database_path), self._lock.acquire():
             with self._connect(read_only=False) as connection:
                 if int(connection.execute("PRAGMA user_version").fetchone()[0]) != RUNTIME_SCHEMA_VERSION:
                     raise OperationalResetError("installed schema migration 38 is required before prepare")

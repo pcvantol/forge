@@ -122,6 +122,29 @@ def main(argv: list[str] | None = None) -> int:
     finish_reset.add_argument("--verification-digest")
     finish_reset.add_argument("--cancel-before-apply", action="store_true")
     subparsers.add_parser("status", help="print read-only runtime status as JSON")
+    mission = subparsers.add_parser("mission", help="govern and run one selected Mission")
+    mission_commands = mission.add_subparsers(dest="mission_command", required=True)
+    for name, description in (
+        ("inspect", "validate Mission input and evidence fit without allocation"),
+        ("approve-business", "record canonical Business approval"),
+        ("approve-architecture", "record canonical Architecture approval"),
+        ("admit", "allocate and admit the canonically approved Mission"),
+    ):
+        command = mission_commands.add_parser(name, help=description)
+        command.add_argument("--input", required=True)
+    for name, description in (
+        ("run", "start once and control the selected Mission to a terminal or declared stop"),
+        ("reopen", "continue the same durable Mission execution"),
+        ("status", "read the exact Mission status and result"),
+        ("stop", "request a controlled foreground stop"),
+    ):
+        command = mission_commands.add_parser(name, help=description)
+        command.add_argument("--mission-id", required=True)
+        if name == "run":
+            command.add_argument("--repository-truth", required=True)
+        if name in {"run", "reopen"}:
+            command.add_argument("--poll-seconds", type=float, default=1.0)
+            command.add_argument("--maximum-wait-seconds", type=float, default=3600.0)
     execution_host = subparsers.add_parser("execution-host", help="manage the selected Execution Host peer")
     execution_host_commands = execution_host.add_subparsers(dest="execution_host_command", required=True)
     configure = execution_host_commands.add_parser("configure", help="persist one explicit EP peer binding")
@@ -159,6 +182,41 @@ def main(argv: list[str] | None = None) -> int:
         help="bounded interactive setup timeout in seconds (maximum: 120)",
     )
     args = parser.parse_args(argv)
+    if args.command == "mission":
+        from . import mission_cli
+        try:
+            command = args.mission_command
+            if command == "inspect":
+                result = mission_cli.inspect(args.input)
+            elif command in {"approve-business", "approve-architecture"}:
+                if args.data_root is None:
+                    raise ValueError("--data-root is required for Mission governance")
+                result = mission_cli.approve(args.data_root, args.input,
+                                             "business" if command == "approve-business" else "architecture")
+            elif command == "admit":
+                if args.data_root is None:
+                    raise ValueError("--data-root is required for Mission admission")
+                result = mission_cli.admit(args.data_root, args.input)
+            elif command == "status":
+                result = mission_cli.status(args.data_root, args.mission_id)
+            elif command == "stop":
+                result = mission_cli.stop(args.data_root, args.mission_id)
+            else:
+                if args.data_root is None:
+                    raise ValueError("--data-root is required for Mission execution")
+                result = mission_cli.run(args.data_root, args.mission_id,
+                    truth_path=args.repository_truth if command == "run" else None,
+                    poll_seconds=args.poll_seconds, maximum_wait_seconds=args.maximum_wait_seconds)
+            print(json.dumps(result, sort_keys=True))
+            if command == "inspect":
+                return 0 if result["status"] == "VALID" else 2
+            if command == "stop":
+                return 0 if result["stop_requested"] else 2
+            if command in {"run", "reopen"}:
+                return 0 if result["status"] == "COMPLETED" else 2
+            return 0
+        except (OSError, ValueError, KeyError, sqlite3.Error, RuntimeError, PermissionError) as error:
+            return _failure("mission " + args.mission_command, error)
     if args.command == "server" and args.server_command == "init":
         from .runtime import RuntimeBootstrap
         database = RuntimeBootstrap(data_root=args.data_root, forge_version=canonical_version()).open()

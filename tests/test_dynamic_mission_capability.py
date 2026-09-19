@@ -296,6 +296,61 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
         self.assertEqual(self.dispatcher.completed, [mission().id])
         self.assertEqual(len(provider.snapshots), 2)
 
+    def test_initial_two_action_plan_continues_approved_successor_without_rederivation(self) -> None:
+        class TwoActionProvider(DerivationProvider):
+            def derive(self, snapshot):
+                self.snapshots.append(snapshot)
+                if len(self.snapshots) > 1:
+                    raise AssertionError("approved successor must not be derived again")
+                first = self.proposal(snapshot, "action-a")
+                second = self.proposal(snapshot, "action-b", dependencies=("action-a",))
+                return (
+                    first,
+                    replace(second, provenance=first.provenance),
+                )
+
+        provider = TwoActionProvider()
+        waiting = self.loop(provider).run()
+        self.assertEqual(waiting.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
+        self.assertEqual([item["id"] for item in waiting.actions], ["action-a", "action-b"])
+        self.assertEqual([item["status"] for item in waiting.actions], ["COMPLETE", "WAITING_FOR_RESULT"])
+        self.assertEqual(self.host.requests, ["action-a", "action-b"])
+        self.assertEqual(len(provider.snapshots), 1)
+        self.assertEqual(len(waiting.planning_history), 1)
+
+        self.host.outcomes["action-b"] = ExecutionEvidenceOutcome.COMPLETE
+        complete = self.loop(provider).resume(mission().id)
+        self.assertEqual(complete.status, MissionExecutionStatus.COMPLETED)
+        self.assertEqual(len(provider.snapshots), 1)
+
+    def test_blocked_assessed_receipt_resumes_existing_successor_once(self) -> None:
+        class TwoActionProvider(DerivationProvider):
+            def derive(self, snapshot):
+                self.snapshots.append(snapshot)
+                if len(self.snapshots) > 1:
+                    raise AssertionError("no new Action derivation is authorized")
+                first = self.proposal(snapshot, "action-a")
+                second = self.proposal(snapshot, "action-b", dependencies=("action-a",))
+                return first, replace(second, provenance=first.provenance)
+
+        provider = TwoActionProvider()
+        old = self.loop(provider)
+        old._replan_after_evidence = lambda *_: (_ for _ in ()).throw(
+            ExecutionLoopError("derived successor cannot reuse a materialized Engineering Action identity")
+        )
+        blocked = old.run()
+        self.assertEqual(blocked.status, MissionExecutionStatus.BLOCKED)
+        self.assertEqual(blocked.resume["terminal_continuation"]["phase"], "ASSESSED")
+        self.assertEqual([item["status"] for item in blocked.actions], ["COMPLETE", "READY"])
+        self.assertEqual(self.host.requests, ["action-a"])
+
+        waiting = self.loop(provider).resume_existing_successor(mission().id)
+        self.assertEqual(waiting.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
+        self.assertEqual(self.host.requests, ["action-a", "action-b"])
+        self.assertEqual(len(provider.snapshots), 1)
+        with self.assertRaises(ExecutionLoopError):
+            self.loop(provider).resume_existing_successor(mission().id)
+
     def test_unmet_criteria_and_no_successor_fail_closed(self) -> None:
         provider = DerivationProvider("empty")
         blocked = self.loop(provider).run()

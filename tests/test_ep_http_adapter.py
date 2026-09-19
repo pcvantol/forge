@@ -5,6 +5,7 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -149,6 +150,60 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.readback["submission"]["accepted_request_digest"] = accepted_request_digest
         artifact["submission"]["accepted_request_digest"] = accepted_request_digest
         self.artifact = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+
+    def test_approved_lifecycle_constraints_are_sent_in_forge_provenance(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        old = host._payload(self.request)["constraints"]["forge_execution"]
+        self.assertNotIn("execution_constraints", old)
+        constraints = ("Execute only the supplied Runtime Prompt.",
+                       "ep-merge-delegation:" + "a" * 32,
+                       "ep-delivery-control-validation:1")
+        contract = replace(self.request.producer_contract, execution_constraints=constraints)
+        request = replace(self.request, producer_contract=contract)
+        sent = host._payload(request)["constraints"]["forge_execution"]
+        self.assertEqual(sent["execution_constraints"], list(contract.execution_constraints))
+
+    def test_merge_delegation_readback_is_authenticated_and_scoped(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        delegation_id = "a" * 32
+        document = {"contract_version": "1.0", "delegation_id": delegation_id,
+                    "actor_reference": "owner", "project_id": "forge", "repository_id": "forge",
+                    "github_repository": "example/qualification", "mission_id": "MISSION-0042",
+                    "mission_revision": "1", "base_branch": "main",
+                    "roles": ["IMPLEMENTATION", "FINALIZATION", "RECONCILIATION"],
+                    "expires_at": "2026-09-20T00:00:00+00:00", "activated_at": "2026-09-19T00:00:00+00:00",
+                    "revoked_at": None, "status": "ACTIVE"}
+        with patch.object(host, "_json", return_value=document) as read:
+            self.assertEqual(host.merge_delegation_status(delegation_id), document)
+        read.assert_called_once_with("/v1/projects/forge/merge-delegations/" + delegation_id)
+        with patch.object(host, "_json", return_value={**document, "repository_id": "other"}):
+            with self.assertRaisesRegex(ValueError, "scope differs"):
+                host.merge_delegation_status(delegation_id)
+        profiled = {**document, "contract_version": "1.1",
+                    "assurance_profile_id": "qualification-autonomous-qs",
+                    "assurance_profile_revision": "1",
+                    "assurance_policy_digest": "sha256:" + "a" * 64}
+        with patch.object(host, "_json", return_value=profiled):
+            self.assertEqual(host.merge_delegation_status(delegation_id), profiled)
+        standard = {**profiled, "assurance_profile_id": "", "assurance_profile_revision": "",
+                    "assurance_policy_digest": ""}
+        with patch.object(host, "_json", return_value=standard):
+            self.assertEqual(host.merge_delegation_status(delegation_id), standard)
+        for changed in (
+            {"assurance_profile_revision": ""},
+            {"assurance_profile_id": ""},
+            {"assurance_policy_digest": ""},
+            {"assurance_policy_digest": "sha256:bad"},
+            {"assurance_profile_id": "../other"},
+            {"assurance_profile_revision": "0"},
+            {"assurance_profile_revision": 1},
+        ):
+            with self.subTest(changed=changed), patch.object(host, "_json", return_value={**profiled, **changed}):
+                with self.assertRaisesRegex(ValueError, "assurance profile"):
+                    host.merge_delegation_status(delegation_id)
+        with patch.object(host, "_json", return_value={**document, "assurance_profile_id": "other"}):
+            with self.assertRaisesRegex(ValueError, "scope differs"):
+                host.merge_delegation_status(delegation_id)
 
     def _accepted_submission(self, request: ExecutionRequest | None = None) -> dict[str, object]:
         request = self.request if request is None else request
@@ -381,6 +436,29 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                         EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
                 self.assertEqual([request.get_method() for request in observed], ["GET"])
 
+    def test_preflight_accepts_exact_optional_mission_capabilities(self) -> None:
+        declaration = json.loads(json.dumps(self.compatible))
+        declaration["contracts"].update({
+            "validation_controls": ["1.0"], "delivery_revision_validation": ["1.0"],
+            "bounded_merge_delegation": ["1.0"],
+        })
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            self.assertEqual(EngineeringPlatformHttpExecutionHost(self.config, self.database)
+                             .preflight()["contracts"]["bounded_merge_delegation"], ["1.0"])
+        declaration["contracts"]["validation_controls"] = ["1.0", "1.1"]
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            self.assertEqual(EngineeringPlatformHttpExecutionHost(self.config, self.database)
+                             .preflight()["contracts"]["validation_controls"], ["1.0", "1.1"])
+        declaration["contracts"]["validation_controls"] = ["1.1"]
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "MALFORMED"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
+        declaration["contracts"]["validation_controls"] = ["1.0", "1.1"]
+        declaration["contracts"]["bounded_merge_delegation"] = ["unsafe"]
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "MALFORMED"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
+
     def test_preflight_authentication_rejection_is_safe_and_never_posts(self) -> None:
         rejected = HTTPError("https://ep.test/v1/producer-compatibility", 401, "denied", {}, None)
         with patch("forge.scheduler.ep_http_adapter._open", side_effect=rejected) as transport:
@@ -490,6 +568,14 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             )
         self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
 
+    def test_v14_validation_controls_are_preserved_from_integrity_checked_artifact(self) -> None:
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        controls = {"contract_version": "1.0", "status": "AVAILABLE",
+                    "candidate_sha": "b" * 40, "controls": {"repository_suite": {"result": "PASS"}}}
+        artifact["validation_controls"] = controls
+        evidence = self._terminal_retrieval(readback, artifact)
+        self.assertEqual(evidence.validation_controls, controls)
+
     def test_v14_revision_binding_rejects_wrong_request_baseline_candidate_or_shape(self) -> None:
         cases = (
             ("request", lambda a: a["repository"].update({
@@ -507,7 +593,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                     "to": "b" * 40, "allowed_to": "b" * 40,
                 },
             })),
-            ("candidate", lambda a: a["repository"].update({"candidate": "d" * 40})),
+            ("candidate", lambda a: a["repository"].update({"candidate": "not-a-sha"})),
             ("sha", lambda a: a["repository"].update({"execution_baseline": "not-a-sha"})),
             ("missing", lambda a: a["repository"].pop("candidate")),
         )
@@ -1001,6 +1087,36 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 )
         self.assertEqual(len(observed), 2, "a missing terminal artifact must never be fetched or fabricated")
 
+    def test_completed_run_waits_briefly_for_immutable_artifact_publication(self) -> None:
+        self._seed_binding()
+        readback = json.loads(json.dumps(self.readback))
+        readback["run"].update({
+            "state": "COMPLETE", "terminal": True,
+            "updated_at": (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat(),
+            "execution_completed_at": datetime.now(timezone.utc).isoformat(),
+        })
+        readback["result"].update({
+            "outcome": "COMPLETE", "terminal": True, "delivery_qualified": False,
+        })
+        readback["evidence"].update({"status": "MISSING", "terminal_artifact": None})
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode()], observed)):
+            self.assertIsNone(EngineeringPlatformHttpExecutionHost(
+                self.config, self.database,
+            ).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture")))
+        self.assertEqual(len(observed), 2, "pending publication must not fetch or invent an artifact")
+
+        readback["run"]["execution_completed_at"] = (
+            datetime.now(timezone.utc) - timedelta(minutes=3)
+        ).isoformat()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "EP_TERMINAL_WITHOUT_IMMUTABLE_EVIDENCE"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                    ExecutionDispatch(self.request, "run-fixture")
+                )
+
     def _terminal_retrieval(self, readback: dict, artifact: dict,
                             request: ExecutionRequest | None = None, *, seed: bool = True):
         request = self.request if request is None else request
@@ -1011,6 +1127,24 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
                 json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
             return EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(request, "run-fixture"))
+
+    def test_terminal_provenance_retains_approved_lifecycle_constraints(self) -> None:
+        constraints = ("ep-merge-delegation:" + "a" * 32, "ep-delivery-control-validation:1")
+        contract = replace(self.request.producer_contract, execution_constraints=constraints)
+        request = replace(self.request, producer_contract=contract)
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        readback["provenance"]["forge_execution"]["execution_constraints"] = list(constraints)
+        artifact["provenance"]["execution_constraints"] = list(constraints)
+        digest = EngineeringPlatformHttpExecutionHost(
+            self.config, self.database)._expected_ep_accepted_request_digest(request)
+        readback["submission"]["accepted_request_digest"] = digest
+        artifact["submission"]["accepted_request_digest"] = digest
+        evidence = self._terminal_retrieval(readback, artifact, request)
+        self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+        self.database._connection.execute("DELETE FROM execution_host_bindings")
+        artifact["provenance"]["execution_constraints"] = ["ep-merge-delegation:" + "b" * 32]
+        with self.assertRaisesRegex(ValueError, "provenance differs"):
+            self._terminal_retrieval(readback, artifact, request)
 
     def test_terminal_outcome_qualification_digest_and_flags_must_have_parity(self) -> None:
         cases = (

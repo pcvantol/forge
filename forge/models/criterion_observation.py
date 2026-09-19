@@ -37,7 +37,7 @@ class CriterionObservation:
     schema_version: str = '1.0'
 
     def __post_init__(self) -> None:
-        if self.schema_version != '1.0' or self.source_kind != 'repository_json':
+        if (self.schema_version, self.source_kind) not in {('1.0', 'repository_json'), ('1.1', 'host_control')}:
             raise ValueError('unsupported criterion observation source')
         if not all((self.mission_id, self.criterion_id, self.requirement_id, self.receipt_id,
                     self.action_id, self.report_id, self.repository_revision, self.source_identity,

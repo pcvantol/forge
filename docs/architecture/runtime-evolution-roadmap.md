@@ -38,6 +38,15 @@ support. Reuse the seven FCI nodes; qualify only missing owning seams. No new
 runtime, peer transport, Workspace/Console dependency or live-canary authority
 is created. Actual implementation/installed qualification remains PLANNED.
 
+## Minimal foreground Mission entry before live E2E
+
+The live autonomous qualification requires a packaged operator entrypoint
+that can govern, admit, start and supervise one exact Mission to a terminal
+or declared stop. The bounded foreground CLI adapter reuses the installed
+dynamic Mission runtime, Execution Loop and Runtime Service. This is part of
+the critical path to E2E qualification. Source delivery of the adapter alone
+does not qualify the integrated or installed route.
+
 ## Post-live-E2E server and later outer-loop CI — 2026-09-12
 
 The standalone **Forge Server process** is an explicit next product milestone
