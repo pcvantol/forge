@@ -339,6 +339,8 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         provenance_keys += ("action_context_envelope",)
     if provenance.get("contract_version") == "1.3":
         provenance_keys += ("planning_context_envelope",)
+        if "execution_constraints" in provenance:
+            provenance_keys += ("execution_constraints",)
     expected_provenance = {key: provenance.get(key) for key in provenance_keys}
     if artifact_provenance != expected_provenance:
         raise ValueError("EP terminal artifact provenance differs from readback")

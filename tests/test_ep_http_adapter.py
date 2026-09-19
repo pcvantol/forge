@@ -1046,6 +1046,24 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 json.dumps(self.compatible).encode(), json.dumps(readback).encode(), raw], [])):
             return EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(ExecutionDispatch(request, "run-fixture"))
 
+    def test_terminal_provenance_retains_approved_lifecycle_constraints(self) -> None:
+        constraints = ("ep-merge-delegation:" + "a" * 32, "ep-delivery-control-validation:1")
+        contract = replace(self.request.producer_contract, execution_constraints=constraints)
+        request = replace(self.request, producer_contract=contract)
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        readback["provenance"]["forge_execution"]["execution_constraints"] = list(constraints)
+        artifact["provenance"]["execution_constraints"] = list(constraints)
+        digest = EngineeringPlatformHttpExecutionHost(
+            self.config, self.database)._expected_ep_accepted_request_digest(request)
+        readback["submission"]["accepted_request_digest"] = digest
+        artifact["submission"]["accepted_request_digest"] = digest
+        evidence = self._terminal_retrieval(readback, artifact, request)
+        self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+        self.database._connection.execute("DELETE FROM execution_host_bindings")
+        artifact["provenance"]["execution_constraints"] = ["ep-merge-delegation:" + "b" * 32]
+        with self.assertRaisesRegex(ValueError, "provenance differs"):
+            self._terminal_retrieval(readback, artifact, request)
+
     def test_terminal_outcome_qualification_digest_and_flags_must_have_parity(self) -> None:
         cases = (
             ("artifact outcome", lambda r, a: a["run"].update({"outcome": "FAILED"})),

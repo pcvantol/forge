@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import asdict
 import json
+import math
 import os
 from pathlib import Path
 import signal
@@ -56,7 +57,8 @@ class MissionController:
 
     def __init__(self, runtime: InstalledDynamicMissionRuntime, mission_id: str,
                  *, poll_seconds: float = 1.0, maximum_wait_seconds: float = 3600.0):
-        if not mission_id or poll_seconds <= 0 or maximum_wait_seconds <= 0:
+        if (not mission_id or not math.isfinite(poll_seconds) or poll_seconds <= 0
+                or not math.isfinite(maximum_wait_seconds) or maximum_wait_seconds <= 0):
             raise ValueError("controller requires a selected Mission and positive wait bounds")
         self.runtime, self.mission_id = runtime, mission_id
         self.poll_seconds, self.maximum_wait_seconds = poll_seconds, maximum_wait_seconds

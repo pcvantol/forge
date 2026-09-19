@@ -1,5 +1,6 @@
 """Foreground control owns one selected Mission through its real state changes."""
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -60,6 +61,16 @@ class _Runtime:
 
 
 class MissionControllerTests(unittest.TestCase):
+    def test_wait_bounds_must_be_finite_and_positive(self):
+        with TemporaryDirectory() as directory:
+            runtime = _Runtime(Path(directory) / "forge.db")
+            for value in (0.0, -1.0, math.inf, -math.inf, math.nan):
+                with self.subTest(value=value):
+                    with self.assertRaisesRegex(ValueError, "positive wait bounds"):
+                        MissionController(runtime, "MISSION-0042", poll_seconds=value)
+                    with self.assertRaisesRegex(ValueError, "positive wait bounds"):
+                        MissionController(runtime, "MISSION-0042", maximum_wait_seconds=value)
+
     def test_one_start_drives_waiting_mission_to_completion(self):
         with TemporaryDirectory() as directory:
             runtime = _Runtime(Path(directory) / "forge.db")
