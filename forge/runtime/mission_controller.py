@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import asdict
+from datetime import UTC, datetime
 import json
 import math
 import os
@@ -10,11 +11,11 @@ from pathlib import Path
 import signal
 from threading import Event
 import time
-from typing import Iterator
+from typing import Callable, Iterator
 from uuid import uuid4
 
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
-from forge.runtime.service import RuntimeServiceBusy
+from forge.runtime.service import RuntimeServiceBusy, RuntimeServiceLock
 from forge.state import MissionExecutionStatus
 
 try:
@@ -56,12 +57,15 @@ class MissionController:
     """
 
     def __init__(self, runtime: InstalledDynamicMissionRuntime, mission_id: str,
-                 *, poll_seconds: float = 1.0, maximum_wait_seconds: float = 3600.0):
+                 *, poll_seconds: float = 1.0, maximum_wait_seconds: float = 3600.0,
+                 readback_only: bool = False, grant_current: Callable[[], bool | None] | None = None):
         if (not mission_id or not math.isfinite(poll_seconds) or poll_seconds <= 0
                 or not math.isfinite(maximum_wait_seconds) or maximum_wait_seconds <= 0):
             raise ValueError("controller requires a selected Mission and positive wait bounds")
         self.runtime, self.mission_id = runtime, mission_id
         self.poll_seconds, self.maximum_wait_seconds = poll_seconds, maximum_wait_seconds
+        self.readback_only = readback_only
+        self.grant_current = grant_current
         self._stop = Event()
         root = Path(runtime.database.path).parent
         self._lease = root / "forge-mission-controller.lock"
@@ -94,14 +98,47 @@ class MissionController:
             return False
         return request == {"mission_id": self.mission_id, "token": token, "stop": True}
 
+    def _block_partial_without_grant(self):
+        """Record a declared stop after terminal assessment, retrying a short lock race."""
+        deadline = time.monotonic() + min(2.0, self.maximum_wait_seconds)
+        while True:
+            try:
+                with RuntimeServiceLock(self.runtime.database.path).acquire():
+                    state = self.runtime.states.get(self.mission_id)
+                    marker = (state.resume or {}).get("terminal_continuation")
+                    if (state.status is MissionExecutionStatus.ACTIVE and isinstance(marker, dict)
+                            and marker.get("mission_complete") is False):
+                        state = self.runtime.states.transition(
+                            self.mission_id, MissionExecutionStatus.BLOCKED,
+                            occurred_at=datetime.now(UTC).isoformat(),
+                            reason="merge_delegation_inactive")
+                    return state, True
+            except RuntimeServiceBusy:
+                if time.monotonic() >= deadline:
+                    return self.runtime.states.get(self.mission_id), False
+                self._stop.wait(min(0.05, max(0.0, deadline - time.monotonic())))
+
     def run(self, *, initial_truth=None) -> dict[str, object]:
         with self._acquire() as token:
             operators = self.runtime.repository.operators
             operator_context = operators.context()
             def authorized() -> bool:
                 return operators.authorize(operator_context)
+            observed_grant: bool | None = False if self.readback_only else True
+            def may_continue() -> bool:
+                nonlocal observed_grant
+                observed_grant = (self.grant_current() if self.grant_current is not None else
+                                  False if self.readback_only else True)
+                if observed_grant is True and not self.readback_only:
+                    return True
+                state = self.runtime.states.get(self.mission_id)
+                correlation = state.execution_correlation or {}
+                marker = (state.resume or {}).get("terminal_continuation")
+                return ((state.status is MissionExecutionStatus.WAITING_FOR_EVIDENCE
+                         and isinstance(correlation.get("host_run_id"), str) and bool(correlation["host_run_id"]))
+                        or (isinstance(marker, dict) and marker.get("mission_complete") is True))
             self.runtime._keep_running = lambda: (not self._stop.is_set() and not self._requested(token)
-                                                  and authorized())
+                                                  and authorized() and may_continue())
             previous_int = signal.getsignal(signal.SIGINT)
             previous_term = signal.getsignal(signal.SIGTERM)
             signal.signal(signal.SIGINT, lambda *_: self._stop.set())
@@ -109,8 +146,15 @@ class MissionController:
             try:
                 state = self.runtime.states.get(self.mission_id)
                 if not self.runtime._keep_running():
+                    if authorized() and not self._stop.is_set() and not self._requested(token) and not may_continue():
+                        if observed_grant is None:
+                            return self._report(self.runtime._result(state), "merge_delegation_not_current")
+                        state, locked = self._block_partial_without_grant()
+                        return self._report(self.runtime._result(state),
+                                            "merge_delegation_inactive" if locked else "merge_delegation_lock_busy")
                     return self._report(self.runtime._result(state),
-                                        "authority_revoked" if not authorized() else "operator_stop")
+                                        "authority_revoked" if not authorized() else
+                                        "merge_delegation_inactive" if not may_continue() else "operator_stop")
                 if state.status is MissionExecutionStatus.APPROVED_PLANNABLE:
                     if initial_truth is None:
                         raise ValueError("initial Repository Truth is required for first start")
@@ -124,6 +168,12 @@ class MissionController:
                     state = self.runtime.states.get(self.mission_id)
                     if state.status in _STOPPED:
                         return self._report(result, "terminal")
+                    if not may_continue():
+                        if observed_grant is None:
+                            return self._report(result, "merge_delegation_not_current")
+                        state, locked = self._block_partial_without_grant()
+                        return self._report(self.runtime._result(state),
+                                            "merge_delegation_inactive" if locked else "merge_delegation_lock_busy")
                     if self._stop.is_set() or self._requested(token):
                         return self._report(result, "operator_stop")
                     if not authorized():

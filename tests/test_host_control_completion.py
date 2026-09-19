@@ -24,6 +24,7 @@ from forge.models.mission_completion import (
 )
 from forge.models.mission_recommendation import RequiredDiscipline
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
+from forge.state import MissionExecutionStatus
 
 
 def digest(value):
@@ -225,7 +226,8 @@ class HostControlCompletionTests(unittest.TestCase):
                  "activated_at": datetime.now(UTC).isoformat(), "revoked_at": None,
                  "status": "ACTIVE"}
         states = SimpleNamespace(get=lambda _: SimpleNamespace(
-            mission=self.mission.to_dict(), admission_contract={"subject_revision": "1"}))
+            mission=self.mission.to_dict(), admission_contract={"subject_revision": "1"},
+            execution_correlation=None, resume={}, status=MissionExecutionStatus.APPROVED_PLANNABLE))
         runtime = SimpleNamespace(
             states=states, host=SimpleNamespace(preflight=lambda: {"contracts": capabilities},
                                                 merge_delegation_status=lambda _: grant))
@@ -246,10 +248,32 @@ class HostControlCompletionTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 original = grant.copy()
                 grant.update(mutation)
-                with self.assertRaisesRegex(ValueError, "does not bind"):
+                with self.assertRaises(ValueError):
                     _require_ep_mission_capabilities(runtime, self.mission.id)
                 grant.clear()
                 grant.update(original)
+        expired = {**grant, "status": "REVOKED", "revoked_at": datetime.now(UTC).isoformat()}
+        pending_states = SimpleNamespace(get=lambda _: SimpleNamespace(
+            mission=self.mission.to_dict(), admission_contract={"subject_revision": "1"},
+            execution_correlation={"host_run_id": "existing-run"}, resume={},
+            status=MissionExecutionStatus.WAITING_FOR_EVIDENCE))
+        runtime = SimpleNamespace(states=pending_states, host=SimpleNamespace(
+            preflight=lambda: {"contracts": capabilities}, merge_delegation_status=lambda _: expired))
+        self.assertFalse(_require_ep_mission_capabilities(
+            runtime, self.mission.id, allow_pending_readback=True))
+        expired["status"] = "DRIFT"
+        self.assertIsNone(_require_ep_mission_capabilities(
+            runtime, self.mission.id, allow_pending_readback=True))
+        partial_states = SimpleNamespace(get=lambda _: SimpleNamespace(
+            mission=self.mission.to_dict(), admission_contract={"subject_revision": "1"},
+            execution_correlation={"host_run_id": "existing-run"},
+            resume={"terminal_continuation": {"mission_complete": False}},
+            status=MissionExecutionStatus.ACTIVE))
+        runtime.states = partial_states
+        self.assertIsNone(_require_ep_mission_capabilities(
+            runtime, self.mission.id, allow_pending_readback=True))
+        with self.assertRaisesRegex(ValueError, "inactive"):
+            _require_ep_mission_capabilities(runtime, self.mission.id)
 
     def test_skipped_empty_wrong_candidate_and_changed_definition_are_unproven(self):
         changes = (

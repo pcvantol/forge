@@ -26,7 +26,7 @@ from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
 from forge.runtime.mission_controller import MissionController, request_stop, require_no_controller
 from forge.runtime.service import RuntimeServiceLock
 from forge.operator_identity import MacOSGeneratedUIDIdentityAdapter
-from forge.state import MissionStateStore
+from forge.state import MissionExecutionStatus, MissionStateStore
 
 
 def _now() -> str:
@@ -241,7 +241,8 @@ def _verified_initial_truth(runtime: InstalledDynamicMissionRuntime, mission_id:
                                  observed_digest),))
 
 
-def _require_ep_mission_capabilities(runtime: InstalledDynamicMissionRuntime, mission_id: str) -> None:
+def _require_ep_mission_capabilities(runtime: InstalledDynamicMissionRuntime, mission_id: str,
+                                     *, allow_pending_readback: bool = False) -> bool | None:
     declaration = runtime.host.preflight()
     contracts = declaration.get("contracts") if isinstance(declaration, dict) else None
     required = ("validation_controls", "delivery_revision_validation", "bounded_merge_delegation")
@@ -260,10 +261,7 @@ def _require_ep_mission_capabilities(runtime: InstalledDynamicMissionRuntime, mi
         expiry = datetime.fromisoformat(grant["expires_at"])
     except (KeyError, TypeError, ValueError) as error:
         raise ValueError("EP merge delegation expiry is invalid") from error
-    if (grant.get("status") != "ACTIVE" or grant.get("activated_at") is None
-            or grant.get("revoked_at") is not None or expiry.tzinfo is None
-            or expiry <= datetime.now(UTC)
-            or grant.get("mission_id") != mission_id
+    if (grant.get("mission_id") != mission_id
             or grant.get("mission_revision") != approved["subject_revision"]
             or grant.get("repository_id") != source.repository_id
             or not isinstance(grant.get("github_repository"), str)
@@ -274,6 +272,21 @@ def _require_ep_mission_capabilities(runtime: InstalledDynamicMissionRuntime, mi
             or any(not isinstance(role, str) for role in grant["roles"])
             or not {"IMPLEMENTATION", "FINALIZATION", "RECONCILIATION"}.issubset(grant["roles"])):
         raise ValueError("EP merge delegation does not bind the approved active Mission and repository")
+    active = (grant.get("status") == "ACTIVE" and grant.get("activated_at") is not None
+              and grant.get("revoked_at") is None and expiry.tzinfo is not None
+              and expiry > datetime.now(UTC))
+    if active:
+        return True
+    pending = state.execution_correlation or {}
+    continuation = (state.resume or {}).get("terminal_continuation")
+    if (allow_pending_readback and grant.get("status") in {"EXPIRED", "REVOKED", "DRIFT"}
+            and ((state.status is MissionExecutionStatus.WAITING_FOR_EVIDENCE
+                  and isinstance(pending.get("host_run_id"), str) and pending["host_run_id"])
+                 or (state.status is MissionExecutionStatus.ACTIVE
+                     and isinstance(continuation, dict)
+                     and continuation.get("mission_complete") is False))):
+        return None if grant["status"] == "DRIFT" else False
+    raise ValueError("EP merge delegation is inactive for new Mission work")
 
 
 def run(data_root: str, mission_id: str, *, truth_path: str | None,
@@ -286,11 +299,22 @@ def run(data_root: str, mission_id: str, *, truth_path: str | None,
             document["observed_at"], tuple(RepositoryTruthEvidence(**item) for item in document["evidence"]),
             schema_version=document["schema_version"])
     with InstalledDynamicMissionRuntime.open(data_root) as runtime:
-        _require_ep_mission_capabilities(runtime, mission_id)
+        active_grant = _require_ep_mission_capabilities(
+            runtime, mission_id, allow_pending_readback=truth is None)
         if truth is not None:
             truth = _verified_initial_truth(runtime, mission_id, truth)
+        def grant_current() -> bool | None:
+            try:
+                return _require_ep_mission_capabilities(
+                    runtime, mission_id, allow_pending_readback=True)
+            except ValueError as error:
+                return False if str(error) == "EP merge delegation is inactive for new Mission work" else None
+            except (OSError, RuntimeError):
+                return None
         return MissionController(runtime, mission_id, poll_seconds=poll_seconds,
-                                 maximum_wait_seconds=maximum_wait_seconds).run(initial_truth=truth)
+                                 maximum_wait_seconds=maximum_wait_seconds,
+                                 readback_only=not active_grant,
+                                 grant_current=grant_current).run(initial_truth=truth)
 
 
 def stop(data_root: str, mission_id: str) -> dict[str, object]:

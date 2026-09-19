@@ -18,10 +18,16 @@ immutable constraints in the accepted Producer provenance. The installed EP
 must declare control publication, delivery validation, and bounded merge
 capabilities before the foreground command starts. A read-only
 input inspection checks the reference syntax; it does not assert that EP has
-reserved or activated the grant. Before the first start or a reopen, Forge
-reads the authenticated EP grant and requires an active, unexpired exact
-Mission/revision, repository, GitHub.com origin, protected `main`, and delivery
-role binding. The initial GitHub head is read from `github.com/main`.
+reserved or activated the grant. Before the first start and at each new-work
+boundary, Forge reads the authenticated EP grant and requires an active,
+unexpired exact Mission/revision, repository, GitHub.com origin, protected
+`main`, and delivery role binding. The initial GitHub head is read from
+`github.com/main`. If that grant expires or is revoked after EP accepted a run,
+a reopened controller may read and assess only that persisted run. It stops
+before a successor plan or submission and records a blocked Mission when the
+assessment remains partial. Temporary status loss and recoverable repository
+origin drift stop the controller without recording a permanent grant block.
+EP rejects new submissions and merges without an active grant.
 
 The functional evidence source is an EP-owned, immutable terminal artifact
 containing the actual candidate-bound validation-control execution record.
