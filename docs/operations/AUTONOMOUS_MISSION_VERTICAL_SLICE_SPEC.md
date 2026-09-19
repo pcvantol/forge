@@ -28,6 +28,11 @@ before a successor plan or submission and records a blocked Mission when the
 assessment remains partial. Temporary status loss and recoverable repository
 origin drift stop the controller without recording a permanent grant block.
 EP rejects new submissions and merges without an active grant.
+The authenticated grant readback accepts the original v1.0 shape and the
+v1.1 shape with an immutable assurance-profile identity and revision. Forge
+checks the versioned shape and the approved grant scope; EP owns selection and
+enforcement of the profile and the effective GitHub policy. A profile cannot
+be selected by the implementing provider.
 
 For independently assessable behavioral criteria, the same approved Mission
 may name up to eight exact `ep-delivery-unittest:<selector>` constraints. Each

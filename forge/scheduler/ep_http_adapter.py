@@ -661,7 +661,17 @@ class EngineeringPlatformHttpExecutionHost:
         expected = {"contract_version", "delegation_id", "actor_reference", "project_id",
                     "repository_id", "github_repository", "mission_id", "mission_revision",
                     "base_branch", "roles", "expires_at", "activated_at", "revoked_at", "status"}
-        if (set(document) != expected or document.get("contract_version") != "1.0"
+        version = document.get("contract_version")
+        if version == "1.1":
+            expected |= {"assurance_profile_id", "assurance_profile_revision"}
+            profile_id = document.get("assurance_profile_id")
+            profile_revision = document.get("assurance_profile_revision")
+            if (not isinstance(profile_id, str) or not isinstance(profile_revision, str)
+                    or (profile_id == "") != (profile_revision == "")
+                    or (profile_id and re.fullmatch(r"[a-z][a-z0-9-]{0,63}", profile_id) is None)
+                    or (profile_revision and re.fullmatch(r"[1-9][0-9]*", profile_revision) is None)):
+                raise ValueError("EP merge delegation assurance profile is malformed")
+        if (version not in {"1.0", "1.1"} or set(document) != expected
                 or document.get("delegation_id") != delegation_id
                 or document.get("project_id") != self.config.project_id
                 or document.get("repository_id") != self.config.repository_id):

@@ -178,6 +178,24 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with patch.object(host, "_json", return_value={**document, "repository_id": "other"}):
             with self.assertRaisesRegex(ValueError, "scope differs"):
                 host.merge_delegation_status(delegation_id)
+        profiled = {**document, "contract_version": "1.1",
+                    "assurance_profile_id": "qualification-autonomous-qs",
+                    "assurance_profile_revision": "1"}
+        with patch.object(host, "_json", return_value=profiled):
+            self.assertEqual(host.merge_delegation_status(delegation_id), profiled)
+        for changed in (
+            {"assurance_profile_revision": ""},
+            {"assurance_profile_id": ""},
+            {"assurance_profile_id": "../other"},
+            {"assurance_profile_revision": "0"},
+            {"assurance_profile_revision": 1},
+        ):
+            with self.subTest(changed=changed), patch.object(host, "_json", return_value={**profiled, **changed}):
+                with self.assertRaisesRegex(ValueError, "assurance profile"):
+                    host.merge_delegation_status(delegation_id)
+        with patch.object(host, "_json", return_value={**document, "assurance_profile_id": "other"}):
+            with self.assertRaisesRegex(ValueError, "scope differs"):
+                host.merge_delegation_status(delegation_id)
 
     def _accepted_submission(self, request: ExecutionRequest | None = None) -> dict[str, object]:
         request = self.request if request is None else request
