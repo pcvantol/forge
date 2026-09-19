@@ -180,12 +180,19 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                 host.merge_delegation_status(delegation_id)
         profiled = {**document, "contract_version": "1.1",
                     "assurance_profile_id": "qualification-autonomous-qs",
-                    "assurance_profile_revision": "1"}
+                    "assurance_profile_revision": "1",
+                    "assurance_policy_digest": "sha256:" + "a" * 64}
         with patch.object(host, "_json", return_value=profiled):
             self.assertEqual(host.merge_delegation_status(delegation_id), profiled)
+        standard = {**profiled, "assurance_profile_id": "", "assurance_profile_revision": "",
+                    "assurance_policy_digest": ""}
+        with patch.object(host, "_json", return_value=standard):
+            self.assertEqual(host.merge_delegation_status(delegation_id), standard)
         for changed in (
             {"assurance_profile_revision": ""},
             {"assurance_profile_id": ""},
+            {"assurance_policy_digest": ""},
+            {"assurance_policy_digest": "sha256:bad"},
             {"assurance_profile_id": "../other"},
             {"assurance_profile_revision": "0"},
             {"assurance_profile_revision": 1},

@@ -663,13 +663,18 @@ class EngineeringPlatformHttpExecutionHost:
                     "base_branch", "roles", "expires_at", "activated_at", "revoked_at", "status"}
         version = document.get("contract_version")
         if version == "1.1":
-            expected |= {"assurance_profile_id", "assurance_profile_revision"}
+            expected |= {"assurance_profile_id", "assurance_profile_revision",
+                         "assurance_policy_digest"}
             profile_id = document.get("assurance_profile_id")
             profile_revision = document.get("assurance_profile_revision")
+            policy_digest = document.get("assurance_policy_digest")
             if (not isinstance(profile_id, str) or not isinstance(profile_revision, str)
+                    or not isinstance(policy_digest, str)
                     or (profile_id == "") != (profile_revision == "")
+                    or (profile_id == "") != (policy_digest == "")
                     or (profile_id and re.fullmatch(r"[a-z][a-z0-9-]{0,63}", profile_id) is None)
-                    or (profile_revision and re.fullmatch(r"[1-9][0-9]*", profile_revision) is None)):
+                    or (profile_revision and re.fullmatch(r"[1-9][0-9]*", profile_revision) is None)
+                    or (policy_digest and re.fullmatch(r"sha256:[0-9a-f]{64}", policy_digest) is None)):
                 raise ValueError("EP merge delegation assurance profile is malformed")
         if (version not in {"1.0", "1.1"} or set(document) != expected
                 or document.get("delegation_id") != delegation_id
