@@ -19,6 +19,7 @@ from forge.governance_authority import (
 )
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.criterion_observation import canonical_digest
+from forge.completion.host_control_observer import approved_observation_selector
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime.bootstrap import RuntimeBootstrap
 from forge.runtime.data_root import DataRootResolver
@@ -57,6 +58,22 @@ def _contract(document: dict[str, Any]) -> tuple[ArchitecturePlanningEvidence, A
             for requirement in contract.requirements)
             and mission.engineering_constraints.count("ep-delivery-control-validation:1") != 1):
         raise ValueError("host control criteria require approved EP delivery-revision validation")
+    selectors = [value.split(":", 1)[1] for value in mission.engineering_constraints
+                 if value.startswith("ep-delivery-unittest:")]
+    if selectors:
+        if len(selectors) > 8 or len(set(selectors)) != len(selectors):
+            raise ValueError("EP unittest observation selectors must be distinct and bounded")
+        approved = {approved_observation_selector(requirement)
+                    for contract in mission.criterion_assessment_contracts
+                    for requirement in contract.requirements if requirement.kind == "host_control"
+                    and requirement.validation_id.startswith("unittest_selector_")}
+        if None in approved or set(selectors) != approved:
+            raise ValueError("EP unittest selectors require exact approved criterion bindings")
+    elif any(requirement.kind == "host_control" and
+             requirement.validation_id.startswith("unittest_selector_")
+             for contract in mission.criterion_assessment_contracts
+             for requirement in contract.requirements):
+        raise ValueError("EP unittest criterion lacks its approved execution selector")
     planning = ArchitecturePlanningEvidence.from_dict(document["planning"])
     specification_digest = canonical_digest(mission.to_dict())
     if planning.mission_spec_digest is not None and planning.mission_spec_digest != specification_digest:
@@ -246,10 +263,14 @@ def _require_ep_mission_capabilities(runtime: InstalledDynamicMissionRuntime, mi
     declaration = runtime.host.preflight()
     contracts = declaration.get("contracts") if isinstance(declaration, dict) else None
     required = ("validation_controls", "delivery_revision_validation", "bounded_merge_delegation")
-    if not isinstance(contracts, dict) or any(contracts.get(name) != ["1.0"] for name in required):
+    if (not isinstance(contracts, dict) or any(not isinstance(contracts.get(name), list)
+            or "1.0" not in contracts[name] for name in required)):
         raise ValueError("installed EP lacks the required autonomous Mission capabilities")
     state = runtime.states.get(mission_id)
     mission = ArchitectureMission.from_dict(dict(state.mission))
+    if (any(value.startswith("ep-delivery-unittest:") for value in mission.engineering_constraints)
+            and "1.1" not in contracts["validation_controls"]):
+        raise ValueError("installed EP lacks approved unittest observation capability")
     approved = state.admission_contract or {}
     source = mission.repository_evidence_source
     references = [value.split(":", 1)[1] for value in mission.engineering_constraints

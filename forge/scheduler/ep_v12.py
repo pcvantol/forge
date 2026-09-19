@@ -462,7 +462,8 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     )
     validation_controls = document.get("validation_controls")
     if validation_controls is not None:
-        if not isinstance(validation_controls, Mapping) or validation_controls.get("contract_version") != "1.0":
+        if (not isinstance(validation_controls, Mapping)
+                or validation_controls.get("contract_version") not in {"1.0", "1.1"}):
             raise ValueError("EP validation control evidence contract is invalid")
         validation_controls = dict(validation_controls)
     return ExecutionHostEvidence(host_id, repository_evidence.correlation_id, repository_evidence.host_run_id,

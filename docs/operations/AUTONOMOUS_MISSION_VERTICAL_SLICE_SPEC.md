@@ -29,6 +29,17 @@ assessment remains partial. Temporary status loss and recoverable repository
 origin drift stop the controller without recording a permanent grant block.
 EP rejects new submissions and merges without an active grant.
 
+For independently assessable behavioral criteria, the same approved Mission
+may name up to eight exact `ep-delivery-unittest:<selector>` constraints. Each
+selector must match one criterion's fixed unittest command, validation ID,
+profile reference, and definition digest. EP executes these observation
+controls on the delivered revision after the FULL delivery gate. Its v1.1
+control record keeps the required FULL controls separate from an optional
+`observation_validation_controls` receipt list. A failing or undiscovered
+observation test leaves that criterion unproven without fabricating a passing
+delivery control. Forge requires the declared v1.1 capability before starting
+such a Mission and checks each receipt against its approved requirement.
+
 The functional evidence source is an EP-owned, immutable terminal artifact
 containing the actual candidate-bound validation-control execution record.
 Forge accepts only controls named in the approved assessment contract and

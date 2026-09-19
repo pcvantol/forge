@@ -1,5 +1,6 @@
 """Only exact executed EP controls can prove a functional criterion."""
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 import json
@@ -232,6 +233,18 @@ class HostControlCompletionTests(unittest.TestCase):
             states=states, host=SimpleNamespace(preflight=lambda: {"contracts": capabilities},
                                                 merge_delegation_status=lambda _: grant))
         _require_ep_mission_capabilities(runtime, self.mission.id)
+        observation_mission = replace(self.mission, engineering_constraints=(
+            *self.mission.engineering_constraints,
+            "ep-delivery-unittest:acceptance.test_invalid_record"))
+        runtime.states = SimpleNamespace(get=lambda _: SimpleNamespace(
+            mission=observation_mission.to_dict(), admission_contract={"subject_revision": "1"},
+            execution_correlation=None, resume={}, status=MissionExecutionStatus.APPROVED_PLANNABLE))
+        with self.assertRaisesRegex(ValueError, "unittest observation"):
+            _require_ep_mission_capabilities(runtime, self.mission.id)
+        capabilities["validation_controls"] = ["1.0", "1.1"]
+        self.assertTrue(_require_ep_mission_capabilities(runtime, self.mission.id))
+        runtime.states = states
+        capabilities["validation_controls"] = ["1.0"]
         for missing in capabilities:
             with self.subTest(missing=missing):
                 reduced = {key: value for key, value in capabilities.items() if key != missing}
@@ -304,6 +317,67 @@ class HostControlCompletionTests(unittest.TestCase):
         context["candidate_sha"] = "b" * 40
         self.assertEqual(self.observe(context).result, "PASS")
         self.assertTrue(self.assess(context).all_required_criteria_proven)
+
+    def test_optional_unittest_observation_proves_only_its_approved_selector(self):
+        selector = "acceptance.test_invalid_record"
+        validation_id = "unittest_selector_" + sha256(selector.encode()).hexdigest()[:16]
+        command = ["{python}", "-m", "unittest", selector]
+        identity = "python3 -m unittest " + selector
+        definition = digest({"validation_profile_version": "1.0",
+                             "profile_reference": "validation-profile-registry:FULL@1.0",
+                             "validation_id": validation_id, "category": "repository",
+                             "control_identity": identity, "command_identity": command})
+        requirement = CriterionEvidenceRequirement(
+            "behavior", identity, json.dumps(command), validation_id=validation_id,
+            validation_profile_version="1.0",
+            profile_reference="validation-profile-registry:FULL@1.0",
+            control_category="repository", control_definition_digest=definition,
+            minimum_test_count=1)
+        contract = CriterionAssessmentContract("Installed parser rejects invalid input", (requirement,))
+        self.mission = replace(self.mission, criterion_assessment_contracts=(contract,),
+                               engineering_constraints=self.mission.engineering_constraints +
+                               ("ep-delivery-unittest:" + selector,))
+        planning = ArchitecturePlanningEvidence(
+            ("target",), ("parser.py",), ("no unrelated work",), ("scope drift",),
+            ("protected delivery",), ("ep",), 1000, 1000, "1",
+            criterion_assessment_contracts=self.mission.criterion_assessment_contracts,
+            maximum_actions=3, maximum_consecutive_no_progress_actions=1,
+            repository_evidence_source=self.mission.repository_evidence_source)
+        document = {"candidate_id": "candidate", "subject_revision": "1",
+                    "business_decision_id": "business", "architecture_decision_id": "architecture",
+                    "planning": planning.to_dict(), "mission": self.mission.to_dict()}
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "mission.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            self.assertEqual(inspect(str(path))["status"], "VALID")
+            document["mission"]["engineering_constraints"] = [
+                "ep-delivery-unittest:acceptance.test_valid_record"
+                if value == "ep-delivery-unittest:" + selector else value
+                for value in document["mission"]["engineering_constraints"]]
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exact approved criterion bindings"):
+                inspect(str(path))
+        self.reference = CanonicalExecutionEvidenceReference(
+            "receipt", "action", "report", "b" * 40, canonical_digest("artifact"), "a" * 40)
+        context = deepcopy(self.context)
+        context["contract_version"] = "1.1"
+        context["candidate_sha"] = "b" * 40
+        control = deepcopy(context["controls"]["repository_suite"])
+        control.update(validation_id=validation_id, control_identity=identity,
+                       control_definition_digest=definition, required_for_profile=False)
+        control["result_detail"]["validation_id"] = validation_id
+        context["observation_validation_controls"] = [control]
+        self.assertEqual(self.observe(context).result, "PASS")
+        self.assertTrue(self.assess(context).all_required_criteria_proven)
+        for change in (
+                lambda c: c["observation_validation_controls"].clear(),
+                lambda c: c["observation_validation_controls"][0].update(required_for_profile=True),
+                lambda c: c["observation_validation_controls"][0]["result_detail"].update(test_count=0),
+                lambda c: c.update(candidate_sha="a" * 40)):
+            bad = deepcopy(context)
+            change(bad)
+            self.assertEqual(self.observe(bad).result, "UNAVAILABLE")
+            self.assertFalse(self.assess(bad).all_required_criteria_proven)
 
 
 if __name__ == "__main__":

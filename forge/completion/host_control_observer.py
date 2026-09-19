@@ -21,11 +21,36 @@ def _valid_digest(value: object) -> bool:
     return isinstance(value, str) and _DIGEST.fullmatch(value) is not None
 
 
+def approved_observation_selector(requirement) -> str | None:
+    """Identify an EP unittest observation from its exact approved binding."""
+    try:
+        command = json.loads(requirement.command)
+    except (TypeError, ValueError):
+        return None
+    if (not isinstance(command, list) or len(command) != 4
+            or command[:3] != ["{python}", "-m", "unittest"]
+            or not isinstance(command[3], str)):
+        return None
+    selector = command[3]
+    if (len(selector) > 100 or re.fullmatch(
+            r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+", selector) is None):
+        return None
+    validation_id = "unittest_selector_" + sha256(selector.encode("utf-8")).hexdigest()[:16]
+    if (requirement.validation_id != validation_id
+            or requirement.control_identity != "python3 -m unittest " + selector
+            or requirement.control_category != "repository"
+            or requirement.validation_profile_version != "1.0"
+            or requirement.profile_reference != "validation-profile-registry:FULL@1.0"):
+        return None
+    return selector
+
+
 def _control_matches(requirement, context: Mapping[str, Any], run_id: str,
                      validated_revision: str | None) -> tuple[bool, str, dict[str, object] | None]:
     if not requirement.control_definition_digest:
         return False, "APPROVED_CONTROL_DEFINITION_MISSING", None
-    if context.get("contract_version") != "1.0" or context.get("status") != "AVAILABLE":
+    version = context.get("contract_version")
+    if version not in {"1.0", "1.1"} or context.get("status") != "AVAILABLE":
         return False, "HOST_CONTROL_EVIDENCE_UNAVAILABLE", None
     currentness = context.get("currentness")
     if (validated_revision is None or context.get("candidate_sha") != validated_revision
@@ -40,7 +65,16 @@ def _control_matches(requirement, context: Mapping[str, Any], run_id: str,
     required = context.get("required_validation_controls")
     if not isinstance(controls, Mapping) or not isinstance(required, list):
         return False, "HOST_CONTROL_BINDINGS_INVALID", None
-    if required.count(requirement.validation_id) != 1:
+    observation_controls = context.get("observation_validation_controls", []) if version == "1.1" else []
+    if not isinstance(observation_controls, list):
+        return False, "HOST_CONTROL_BINDINGS_INVALID", None
+    required_binding = required.count(requirement.validation_id) == 1
+    observation_matches = [item for item in observation_controls
+                           if isinstance(item, Mapping)
+                           and item.get("validation_id") == requirement.validation_id]
+    observation_binding = (version == "1.1" and len(observation_matches) == 1
+                           and approved_observation_selector(requirement) is not None)
+    if required_binding == observation_binding:
         return False, "HOST_CONTROL_BINDING_MISSING_OR_DUPLICATE", None
     command_identity = json.loads(requirement.command)
     definition = {"validation_profile_version": context["validation_profile_version"],
@@ -52,14 +86,15 @@ def _control_matches(requirement, context: Mapping[str, Any], run_id: str,
     digest = "sha256:" + sha256(_canonical(definition).encode("utf-8")).hexdigest()
     if digest != requirement.control_definition_digest:
         return False, "HOST_CONTROL_DEFINITION_MISMATCH", None
-    control = controls.get(requirement.validation_id)
+    control = (controls.get(requirement.validation_id) if required_binding
+               else observation_matches[0])
     if not isinstance(control, Mapping):
         return False, "HOST_CONTROL_RECORD_MISSING", None
     if (control.get("validation_id") != requirement.validation_id
             or control.get("category") != requirement.control_category
             or control.get("control_identity") != requirement.control_identity
             or control.get("control_definition_digest") != digest
-            or control.get("required_for_profile") is not True
+            or control.get("required_for_profile") is not required_binding
             or control.get("currentness") != currentness):
         return False, "HOST_CONTROL_RECORD_CONFLICT", None
     if (control.get("execution_status") != "EXECUTED" or control.get("result") != "PASS"
