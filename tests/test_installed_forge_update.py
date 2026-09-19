@@ -1081,6 +1081,10 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         wheel = Path(wheel_value).resolve()
         receipt = Path(receipt_value).resolve()
         release = json.loads(receipt.read_text(encoding="utf-8"))
+        target_version = release["version"]
+        target_schema = 39 if target_version in {"2.7.25", "2.7.26"} else 38
+        if target_version == "2.7.26":
+            RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.25").open().close()
         legacy_interpreter = Path(os.environ.get("FORGE_LEGACY_INTERPRETER", sys.executable))
         try:
             legacy_identity = update.installed_identity(legacy_interpreter, cwd=self.root)
@@ -1088,6 +1092,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             self.skipTest(f"legacy Forge interpreter was not supplied: {error}")
         request = update.UpdateRequest(**{
             **self.request.__dict__,
+            "version": target_version,
             "product_source": release["source_revision"],
             "wheel": str(wheel), "wheel_sha256": update.file_digest(wheel),
             "qualification_receipt": str(receipt),
@@ -1099,11 +1104,11 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         controller = update.InstalledForgeUpdateController(request, process_reader=lambda: ())
         completed = controller.run()
         self.assertEqual(completed["state"], "COMPLETE")
-        self.assertEqual(update.database_snapshot(self.data_root / "forge.db")["user_version"], 38)
+        self.assertEqual(update.database_snapshot(self.data_root / "forge.db")["user_version"], target_schema)
         self.assertEqual(controller.run(), completed)
         self.assertEqual((self.data_root / "forge.db").stat().st_mode & 0o777, 0o600)
         connection = sqlite3.connect(self.data_root / "forge.db")
-        connection.execute("PRAGMA user_version=37")
+        connection.execute(f"PRAGMA user_version={target_schema - 1}")
         connection.commit()
         connection.close()
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
