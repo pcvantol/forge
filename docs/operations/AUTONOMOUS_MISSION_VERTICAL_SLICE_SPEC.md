@@ -11,6 +11,11 @@ identity. On first start, Forge reads that repository's current default-branch
 commit through the configured GitHub identity and builds initial Repository
 Truth from that readback. The supplied revision must match; caller-provided
 evidence rows and timestamps are not promoted to runtime authority.
+The approved Mission constraints carry one EP-issued, Mission-scoped merge
+delegation reference and, for host-control criteria, the exact delivery
+validation request `ep-delivery-control-validation:1`. Forge transports those
+immutable constraints in the accepted Producer provenance. The installed EP
+must declare both capabilities before the foreground command starts.
 
 The functional evidence source is an EP-owned, immutable terminal artifact
 containing the actual candidate-bound validation-control execution record.
@@ -19,6 +24,10 @@ bound to the same Mission, Action, submission, run, candidate, and delivery.
 An executed passing behavioral test with nonzero discovered tests can support
 its declared criterion. A missing, skipped, empty, contradictory, or unrelated
 control cannot. Repository JSON remains available for structural assertions.
+For `current_revision`, the control must have run on the accepted delivery SHA;
+candidate-only controls remain historical evidence. EP publishes the actual
+post-delivery execution record and Forge retains the original candidate and
+delivery identities separately.
 
 The bounded qualification target is a dedicated, disposable Python package
 for this slice. Its two observable criteria are: (1) the public parser rejects

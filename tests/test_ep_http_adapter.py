@@ -150,6 +150,18 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         artifact["submission"]["accepted_request_digest"] = accepted_request_digest
         self.artifact = json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode() + b"\n"
 
+    def test_approved_lifecycle_constraints_are_sent_in_forge_provenance(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        old = host._payload(self.request)["constraints"]["forge_execution"]
+        self.assertNotIn("execution_constraints", old)
+        constraints = ("Execute only the supplied Runtime Prompt.",
+                       "ep-merge-delegation:" + "a" * 32,
+                       "ep-delivery-control-validation:1")
+        contract = replace(self.request.producer_contract, execution_constraints=constraints)
+        request = replace(self.request, producer_contract=contract)
+        sent = host._payload(request)["constraints"]["forge_execution"]
+        self.assertEqual(sent["execution_constraints"], list(contract.execution_constraints))
+
     def _accepted_submission(self, request: ExecutionRequest | None = None) -> dict[str, object]:
         request = self.request if request is None else request
         accepted_request_digest = (
@@ -380,6 +392,20 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, error):
                         EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
                 self.assertEqual([request.get_method() for request in observed], ["GET"])
+
+    def test_preflight_accepts_exact_optional_mission_capabilities(self) -> None:
+        declaration = json.loads(json.dumps(self.compatible))
+        declaration["contracts"].update({
+            "validation_controls": ["1.0"], "delivery_revision_validation": ["1.0"],
+            "bounded_merge_delegation": ["1.0"],
+        })
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            self.assertEqual(EngineeringPlatformHttpExecutionHost(self.config, self.database)
+                             .preflight()["contracts"]["bounded_merge_delegation"], ["1.0"])
+        declaration["contracts"]["bounded_merge_delegation"] = ["unsafe"]
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "MALFORMED"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
 
     def test_preflight_authentication_rejection_is_safe_and_never_posts(self) -> None:
         rejected = HTTPError("https://ep.test/v1/producer-compatibility", 401, "denied", {}, None)

@@ -367,20 +367,27 @@ class EngineeringPlatformHttpExecutionHost:
             raise ValueError("Forge Producer Contract lacks immutable Action or planning context")
         if revision_binding is None:
             raise ValueError("EP_REQUEST_REPOSITORY_REVISION_BINDING_REQUIRED")
+        forge_execution = {
+            "contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION, "host_id": request.host_id,
+            "repository_id": request.repository_id, "correlation_id": request.correlation_id,
+            "mission_id": request.mission_id, "mission_revision": self._mission_revision(request),
+            "intent_id": request.intent_id, "intent_revision": request.intent_revision,
+            "action_id": request.action_id,
+            "runtime_prompt": {"id": contract.runtime_prompt.id,
+                               "content_digest": contract.runtime_prompt.content_digest},
+            "retry_of_correlation_id": request.retry_of_correlation_id,
+            "producer_contract_version": contract.contract_version,
+            "forge_application_version": contract.producer.identity.version,
+            "action_context_envelope": action_context.to_dict(),
+            "planning_context_envelope": planning_context.to_dict(),
+        }
+        if any(value.startswith("ep-merge-delegation:") or value == "ep-delivery-control-validation:1"
+               for value in contract.execution_constraints):
+            forge_execution["execution_constraints"] = list(contract.execution_constraints)
         return {"repository_id": request.repository_id, "producer": contract.producer.identity.to_dict(),
                 "prompt": contract.runtime_prompt.content, "idempotency_key": request.correlation_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-                "engineering_action_id": request.action_id, "constraints": {"forge_execution": {
-                "contract_version": self.FORGE_PROVENANCE_CONTRACT_VERSION, "host_id": request.host_id, "repository_id": request.repository_id,
-                "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-                "mission_revision": self._mission_revision(request), "intent_id": request.intent_id,
-                "intent_revision": request.intent_revision, "action_id": request.action_id,
-                "runtime_prompt": {"id": contract.runtime_prompt.id, "content_digest": contract.runtime_prompt.content_digest},
-                    "retry_of_correlation_id": request.retry_of_correlation_id,
-                    "producer_contract_version": contract.contract_version,
-                    "forge_application_version": contract.producer.identity.version,
-                    "action_context_envelope": action_context.to_dict(),
-                    "planning_context_envelope": planning_context.to_dict()},
+                "engineering_action_id": request.action_id, "constraints": {"forge_execution": forge_execution,
                     "repository_revision_binding": revision_binding.ep_constraint()}}
 
     def _audit_document(self, request: ExecutionRequest, binding: Mapping[str, Any], *, receipt: Mapping[str, Any] | None = None) -> dict[str, object]:
@@ -603,7 +610,11 @@ class EngineeringPlatformHttpExecutionHost:
                 or not isinstance(instance, Mapping) or set(instance) != {"id"}
                 or not isinstance(instance.get("id"), str) or not instance["id"]
                 or not isinstance(contracts, Mapping)
-                or set(contracts) != {"producer_readback", "terminal_evidence"}
+                or not {"producer_readback", "terminal_evidence"}.issubset(contracts)
+                or not set(contracts).issubset({
+                    "producer_readback", "terminal_evidence", "validation_controls",
+                    "delivery_revision_validation", "bounded_merge_delegation",
+                })
                 or not isinstance(authentication, Mapping)
                 or set(authentication) != {
                     "consumer_id", "consumer_status", "project_id", "project_status",
@@ -631,6 +642,9 @@ class EngineeringPlatformHttpExecutionHost:
         terminal_versions = contracts.get("terminal_evidence")
         if not isinstance(terminal_versions, list) or terminal_versions != [self.config.terminal_evidence_contract]:
             raise ValueError("EP_TERMINAL_CONTRACT_INCOMPATIBLE")
+        for capability in ("validation_controls", "delivery_revision_validation", "bounded_merge_delegation"):
+            if capability in contracts and contracts[capability] != ["1.0"]:
+                raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         return declaration
 
     def _readback(self, request: ExecutionRequest, binding: Mapping[str, Any]) -> dict[str, Any] | None:

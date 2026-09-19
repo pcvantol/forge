@@ -11,7 +11,7 @@ from pathlib import Path
 from forge.completion.host_control_observer import HostControlCriterionObserver
 from forge.completion.mission import MissionCompletionEvaluator
 from forge.governance_authority import ArchitecturePlanningEvidence
-from forge.mission_cli import inspect, _verified_initial_truth
+from forge.mission_cli import inspect, _require_ep_mission_capabilities, _verified_initial_truth
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.criterion_assessment import (
     ApprovedRepositoryEvidenceSource, CriterionAssessmentContract, CriterionEvidenceRequirement,
@@ -51,7 +51,9 @@ class HostControlCompletionTests(unittest.TestCase):
         contract = CriterionAssessmentContract("Installed parser rejects invalid input", (requirement,))
         self.mission = ArchitectureMission(
             "MISSION-0042", "candidate", "Parser", "Verify parser", "Bounded parser work",
-            "Correct input handling", "architecture", "recommendation", ("target",), ("bounded",),
+            "Correct input handling", "architecture", "recommendation", ("target",),
+            ("bounded", "ep-merge-delegation:" + "a" * 32,
+             "ep-delivery-control-validation:1"),
             (contract.criterion,), ("test consumer",), ("ep",), ("parser",),
             (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("scope drift",),
             ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
@@ -129,8 +131,53 @@ class HostControlCompletionTests(unittest.TestCase):
             path = Path(directory) / "mission.json"
             path.write_text(json.dumps(document), encoding="utf-8")
             result = inspect(str(path))
+            incomplete = deepcopy(document)
+            incomplete["planning"]["criterion_assessment_contracts"][0]["requirements"][0]["minimum_test_count"] = 0
+            incomplete["mission"]["criterion_assessment_contracts"][0]["requirements"][0]["minimum_test_count"] = 0
+            path.write_text(json.dumps(incomplete), encoding="utf-8")
+            unsupported = inspect(str(path))
         self.assertEqual(result["status"], "VALID")
         self.assertFalse(result["allocated"])
+        self.assertEqual(unsupported["status"], "UNSUPPORTED_EVIDENCE")
+        self.assertEqual(len(unsupported["incomplete_host_controls"]), 1)
+
+    def test_inspect_rejects_missing_or_malformed_merge_delegation(self):
+        planning = ArchitecturePlanningEvidence(
+            ("target",), ("parser.py",), ("no unrelated work",), ("scope drift",),
+            ("protected delivery",), ("ep",), 1000, 1000, "1",
+            criterion_assessment_contracts=self.mission.criterion_assessment_contracts,
+            maximum_actions=3, maximum_consecutive_no_progress_actions=1,
+            repository_evidence_source=self.mission.repository_evidence_source)
+        for constraints in (("bounded",), ("bounded", "ep-merge-delegation:bad"),
+                            ("ep-merge-delegation:" + "a" * 32,
+                             "ep-merge-delegation:" + "b" * 32)):
+            with self.subTest(constraints=constraints), TemporaryDirectory() as directory:
+                document = {"candidate_id": "candidate", "subject_revision": "1",
+                            "business_decision_id": "business", "architecture_decision_id": "architecture",
+                            "planning": planning.to_dict(), "mission": {
+                                **self.mission.to_dict(), "engineering_constraints": list(constraints)}}
+                path = Path(directory) / "mission.json"
+                path.write_text(json.dumps(document), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "merge delegation"):
+                    inspect(str(path))
+
+    def test_inspect_requires_delivery_validation_for_host_control(self):
+        planning = ArchitecturePlanningEvidence(
+            ("target",), ("parser.py",), ("no unrelated work",), ("scope drift",),
+            ("protected delivery",), ("ep",), 1000, 1000, "1",
+            criterion_assessment_contracts=self.mission.criterion_assessment_contracts,
+            maximum_actions=3, maximum_consecutive_no_progress_actions=1,
+            repository_evidence_source=self.mission.repository_evidence_source)
+        with TemporaryDirectory() as directory:
+            document = {"candidate_id": "candidate", "subject_revision": "1",
+                        "business_decision_id": "business", "architecture_decision_id": "architecture",
+                        "planning": planning.to_dict(), "mission": {
+                            **self.mission.to_dict(), "engineering_constraints": [
+                                "bounded", "ep-merge-delegation:" + "a" * 32]}}
+            path = Path(directory) / "mission.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "delivery-revision validation"):
+                inspect(str(path))
 
     def test_start_truth_uses_fresh_approved_head_instead_of_supplied_evidence(self):
         revision = "a" * 40
@@ -149,6 +196,18 @@ class HostControlCompletionTests(unittest.TestCase):
         with patch("forge.mission_cli._github_default_head", return_value=("main", "b" * 40)):
             with self.assertRaisesRegex(ValueError, "stale"):
                 _verified_initial_truth(runtime, self.mission.id, requested)
+
+    def test_mission_run_requires_all_declared_ep_capabilities(self):
+        capabilities = {"validation_controls": ["1.0"], "delivery_revision_validation": ["1.0"],
+                        "bounded_merge_delegation": ["1.0"]}
+        runtime = SimpleNamespace(host=SimpleNamespace(preflight=lambda: {"contracts": capabilities}))
+        _require_ep_mission_capabilities(runtime)
+        for missing in capabilities:
+            with self.subTest(missing=missing):
+                reduced = {key: value for key, value in capabilities.items() if key != missing}
+                runtime = SimpleNamespace(host=SimpleNamespace(preflight=lambda: {"contracts": reduced}))
+                with self.assertRaisesRegex(ValueError, "lacks"):
+                    _require_ep_mission_capabilities(runtime)
 
     def test_skipped_empty_wrong_candidate_and_changed_definition_are_unproven(self):
         changes = (
@@ -171,6 +230,14 @@ class HostControlCompletionTests(unittest.TestCase):
         observation = self.observe(self.context)
         self.assertEqual(observation.reason, "HOST_CONTROL_DELIVERY_REVISION_NOT_VALIDATED")
         self.assertFalse(self.assess(self.context).all_required_criteria_proven)
+
+    def test_executed_control_on_final_delivery_proves_current_revision(self):
+        self.reference = CanonicalExecutionEvidenceReference(
+            "receipt", "action", "report", "b" * 40, canonical_digest("artifact"), "a" * 40)
+        context = deepcopy(self.context)
+        context["candidate_sha"] = "b" * 40
+        self.assertEqual(self.observe(context).result, "PASS")
+        self.assertTrue(self.assess(context).all_required_criteria_proven)
 
 
 if __name__ == "__main__":

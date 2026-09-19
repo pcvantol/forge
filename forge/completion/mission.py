@@ -67,7 +67,7 @@ def _canonical_execution_references(
     return references
 
 
-def _host_control_observation_matches(observation, requirement) -> bool:
+def _host_control_observation_matches(observation, requirement, validity_policy: str) -> bool:
     if (observation.schema_version != "1.1" or observation.result != "PASS"
             or observation.reason != "APPROVED_HOST_CONTROL_EXECUTED_AND_PASSED"
             or observation.content_digest != observation.repository_evidence_digest
@@ -84,7 +84,9 @@ def _host_control_observation_matches(observation, requirement) -> bool:
             and record.get("validation_profile_version") == requirement.validation_profile_version
             and record.get("profile_reference") == requirement.profile_reference
             and record.get("category") == requirement.control_category
-            and record.get("candidate_sha") == observation.candidate_revision
+            and (record.get("candidate_sha") == observation.repository_revision
+                 if validity_policy == "current_revision" else
+                 record.get("candidate_sha") in {observation.candidate_revision, observation.repository_revision})
             and record.get("execution_status") == "EXECUTED"
             and record.get("result") == "PASS" and record.get("exit_code") == 0
             and (requirement.minimum_test_count == 0 or
@@ -171,14 +173,14 @@ class MissionCompletionEvaluator:
                         else:
                             if contract.validity_policy == "historical_delivery":
                                 passing = [obs for index, obs in enumerate(candidates)
-                                           if _host_control_observation_matches(obs, requirement)
+                                           if _host_control_observation_matches(obs, requirement, contract.validity_policy)
                                            and not any(later.repository_revision == obs.repository_revision
-                                                       and not _host_control_observation_matches(later, requirement)
+                                                       and not _host_control_observation_matches(later, requirement, contract.validity_policy)
                                                        for later in candidates[index + 1:])]
                                 selected = passing[-1] if passing else candidates[-1]
                             else:
                                 selected = candidates[-1]
-                            proven = _host_control_observation_matches(selected, requirement)
+                            proven = _host_control_observation_matches(selected, requirement, contract.validity_policy)
                             result = "PROVEN" if proven else "UNSATISFIED"
                             why = "APPROVED_HOST_CONTROL_EXECUTED_AND_PASSED" if proven else selected.reason
                             matched = (selected.id,)

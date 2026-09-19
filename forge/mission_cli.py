@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 import json
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 from typing import Any
@@ -48,6 +49,14 @@ def _contract(document: dict[str, Any]) -> tuple[ArchitecturePlanningEvidence, A
         raise ValueError("Mission requires complete engineering readiness and criterion contracts")
     if mission.repository_evidence_source is None:
         raise ValueError("Mission requires an approved repository source for fresh initial Truth")
+    delegation = tuple(value for value in mission.engineering_constraints
+                       if value.startswith("ep-merge-delegation:"))
+    if len(delegation) != 1 or re.fullmatch(r"ep-merge-delegation:[0-9a-f]{32}", delegation[0]) is None:
+        raise ValueError("Mission requires one bounded EP merge delegation reference")
+    if (any(requirement.kind == "host_control" for contract in mission.criterion_assessment_contracts
+            for requirement in contract.requirements)
+            and mission.engineering_constraints.count("ep-delivery-control-validation:1") != 1):
+        raise ValueError("host control criteria require approved EP delivery-revision validation")
     planning = ArchitecturePlanningEvidence.from_dict(document["planning"])
     specification_digest = canonical_digest(mission.to_dict())
     if planning.mission_spec_digest is not None and planning.mission_spec_digest != specification_digest:
@@ -74,7 +83,7 @@ def _inspect_document(document: dict[str, Any]) -> dict[str, object]:
                                  for req in contract.requirements if req.kind == "host_control" and
                                  (not req.control_definition_digest or not req.validation_id
                                   or not req.validation_profile_version or not req.profile_reference
-                                  or not req.control_category))
+                                  or not req.control_category or req.minimum_test_count < 1))
     return {"status": "VALID" if not unsupported and not incomplete_controls else "UNSUPPORTED_EVIDENCE",
             "candidate_id": mission.candidate_id,
             "criteria": list(mission.acceptance_criteria), "evidence_kinds": sorted({req.kind
@@ -216,6 +225,14 @@ def _verified_initial_truth(runtime: InstalledDynamicMissionRuntime, mission_id:
                                  observed_digest),))
 
 
+def _require_ep_mission_capabilities(runtime: InstalledDynamicMissionRuntime) -> None:
+    declaration = runtime.host.preflight()
+    contracts = declaration.get("contracts") if isinstance(declaration, dict) else None
+    required = ("validation_controls", "delivery_revision_validation", "bounded_merge_delegation")
+    if not isinstance(contracts, dict) or any(contracts.get(name) != ["1.0"] for name in required):
+        raise ValueError("installed EP lacks the required autonomous Mission capabilities")
+
+
 def run(data_root: str, mission_id: str, *, truth_path: str | None,
         poll_seconds: float, maximum_wait_seconds: float) -> dict[str, object]:
     truth = None
@@ -226,6 +243,7 @@ def run(data_root: str, mission_id: str, *, truth_path: str | None,
             document["observed_at"], tuple(RepositoryTruthEvidence(**item) for item in document["evidence"]),
             schema_version=document["schema_version"])
     with InstalledDynamicMissionRuntime.open(data_root) as runtime:
+        _require_ep_mission_capabilities(runtime)
         if truth is not None:
             truth = _verified_initial_truth(runtime, mission_id, truth)
         return MissionController(runtime, mission_id, poll_seconds=poll_seconds,

@@ -22,13 +22,13 @@ def _valid_digest(value: object) -> bool:
 
 
 def _control_matches(requirement, context: Mapping[str, Any], run_id: str,
-                     candidate_revision: str | None) -> tuple[bool, str, dict[str, object] | None]:
+                     validated_revision: str | None) -> tuple[bool, str, dict[str, object] | None]:
     if not requirement.control_definition_digest:
         return False, "APPROVED_CONTROL_DEFINITION_MISSING", None
     if context.get("contract_version") != "1.0" or context.get("status") != "AVAILABLE":
         return False, "HOST_CONTROL_EVIDENCE_UNAVAILABLE", None
     currentness = context.get("currentness")
-    if (candidate_revision is None or context.get("candidate_sha") != candidate_revision
+    if (validated_revision is None or context.get("candidate_sha") != validated_revision
             or context.get("profile_currentness_conflict") is not False
             or not isinstance(currentness, int) or isinstance(currentness, bool) or currentness < 0
             or not _valid_digest(context.get("profile_digest"))):
@@ -89,7 +89,7 @@ def _control_matches(requirement, context: Mapping[str, Any], run_id: str,
         "validation_id": requirement.validation_id, "control_identity": requirement.control_identity,
         "control_definition_digest": digest, "validation_profile_version": requirement.validation_profile_version,
         "profile_reference": requirement.profile_reference, "category": requirement.control_category,
-        "candidate_sha": candidate_revision, "run_id": run_id, "command_id": control["command_id"],
+        "candidate_sha": validated_revision, "run_id": run_id, "command_id": control["command_id"],
         "result_detail_digest": detail["digest"], "output_digest": detail["output_digest"],
         "test_count": count, "execution_status": "EXECUTED", "result": "PASS", "exit_code": 0,
     }
@@ -103,12 +103,17 @@ class HostControlCriterionObserver:
             for requirement in contract.requirements:
                 if requirement.kind != "host_control":
                     continue
-                valid, reason, measured = _control_matches(
-                    requirement, context if isinstance(context, Mapping) else {},
-                    evidence.host_run_id, reference.candidate_revision)
-                if (valid and contract.validity_policy == "current_revision"
-                        and reference.candidate_revision != reference.repository_revision):
+                control_context = context if isinstance(context, Mapping) else {}
+                delivered = reference.repository_revision
+                candidate = reference.candidate_revision
+                if (contract.validity_policy == "current_revision" and candidate != delivered
+                        and control_context.get("candidate_sha") == candidate):
                     valid, reason, measured = False, "HOST_CONTROL_DELIVERY_REVISION_NOT_VALIDATED", None
+                else:
+                    expected_revision = (delivered if contract.validity_policy == "current_revision" else
+                                         delivered if control_context.get("candidate_sha") == delivered else candidate)
+                    valid, reason, measured = _control_matches(
+                        requirement, control_context, evidence.host_run_id, expected_revision)
                 observations.append(CriterionObservation(
                     mission.id, canonical_digest(mission.to_dict()), mission_criterion_id(mission.id, contract.criterion),
                     contract.digest, requirement.requirement_id, reference.receipt_id, reference.action_id,
