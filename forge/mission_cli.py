@@ -48,6 +48,8 @@ def _contract(document: dict[str, Any]) -> tuple[ArchitecturePlanningEvidence, A
     mission = ArchitectureMission.from_dict(mission_fields)
     if not mission.is_engineering_ready() or not mission.criterion_assessment_contracts:
         raise ValueError("Mission requires complete engineering readiness and criterion contracts")
+    if len(mission.scope) != 1:
+        raise ValueError("the installed serial Mission requires exactly one approved scope")
     if mission.repository_evidence_source is None:
         raise ValueError("Mission requires an approved repository source for fresh initial Truth")
     delegation = tuple(value for value in mission.engineering_constraints

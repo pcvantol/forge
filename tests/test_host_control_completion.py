@@ -164,6 +164,23 @@ class HostControlCompletionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "merge delegation"):
                     inspect(str(path))
 
+    def test_inspect_rejects_multiple_scopes_before_admission(self):
+        planning = ArchitecturePlanningEvidence(
+            ("target", "other"), ("parser.py",), ("no unrelated work",), ("scope drift",),
+            ("protected delivery",), ("ep",), 1000, 1000, "1",
+            criterion_assessment_contracts=self.mission.criterion_assessment_contracts,
+            maximum_actions=3, maximum_consecutive_no_progress_actions=1,
+            repository_evidence_source=self.mission.repository_evidence_source)
+        document = {"candidate_id": "candidate", "subject_revision": "1",
+                    "business_decision_id": "business", "architecture_decision_id": "architecture",
+                    "planning": planning.to_dict(), "mission": {
+                        **self.mission.to_dict(), "scope": ["target", "other"]}}
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "mission.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exactly one approved scope"):
+                inspect(str(path))
+
     def test_inspect_requires_delivery_validation_for_host_control(self):
         planning = ArchitecturePlanningEvidence(
             ("target",), ("parser.py",), ("no unrelated work",), ("scope drift",),
