@@ -5,6 +5,7 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -1085,6 +1086,35 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                     ExecutionDispatch(self.request, "run-fixture")
                 )
         self.assertEqual(len(observed), 2, "a missing terminal artifact must never be fetched or fabricated")
+
+    def test_completed_run_waits_briefly_for_immutable_artifact_publication(self) -> None:
+        self._seed_binding()
+        readback = json.loads(json.dumps(self.readback))
+        readback["run"].update({
+            "state": "COMPLETE", "terminal": True,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+        readback["result"].update({
+            "outcome": "COMPLETE", "terminal": True, "delivery_qualified": False,
+        })
+        readback["evidence"].update({"status": "MISSING", "terminal_artifact": None})
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode()], observed)):
+            self.assertIsNone(EngineeringPlatformHttpExecutionHost(
+                self.config, self.database,
+            ).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture")))
+        self.assertEqual(len(observed), 2, "pending publication must not fetch or invent an artifact")
+
+        readback["run"]["updated_at"] = (
+            datetime.now(timezone.utc) - timedelta(minutes=3)
+        ).isoformat()
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
+                json.dumps(self.compatible).encode(), json.dumps(readback).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "EP_TERMINAL_WITHOUT_IMMUTABLE_EVIDENCE"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).retrieve_evidence(
+                    ExecutionDispatch(self.request, "run-fixture")
+                )
 
     def _terminal_retrieval(self, readback: dict, artifact: dict,
                             request: ExecutionRequest | None = None, *, seed: bool = True):

@@ -9,6 +9,7 @@ import json
 import re
 from hashlib import sha256
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -37,6 +38,29 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 
 
 _NO_REDIRECT_OPENER = build_opener(_NoRedirectHandler())
+_TERMINAL_ARTIFACT_PUBLICATION_GRACE = timedelta(minutes=2)
+
+
+def _terminal_artifact_publication_pending(readback: Mapping[str, Any]) -> bool:
+    """Allow EP's completed run a bounded interval to publish its artifact."""
+    run, result, evidence = (readback.get(key) for key in ("run", "result", "evidence"))
+    if not all(isinstance(item, Mapping) for item in (run, result, evidence)):
+        return False
+    if (run.get("state"), result.get("outcome"), evidence.get("status")) != (
+        "COMPLETE", "COMPLETE", "MISSING",
+    ):
+        return False
+    updated_at = run.get("updated_at")
+    if not isinstance(updated_at, str):
+        return False
+    try:
+        completed_at = datetime.fromisoformat(updated_at)
+    except ValueError:
+        return False
+    if completed_at.tzinfo is None:
+        return False
+    age = datetime.now(timezone.utc) - completed_at.astimezone(timezone.utc)
+    return timedelta(0) <= age < _TERMINAL_ARTIFACT_PUBLICATION_GRACE
 
 
 def _open(request: Request, timeout: float):
@@ -881,6 +905,8 @@ class EngineeringPlatformHttpExecutionHost:
             # retried operator resolution.  Forge must not follow that new EP
             # chain under the original correlation: a matching BLOCKED/FAILED
             # run and result is terminal for this persisted request.
+            if _terminal_artifact_publication_pending(readback):
+                return None
             if (isinstance(run, Mapping) and run.get("terminal") is True
                     or state in {"BLOCKED", "FAILED"} and outcome == state):
                 raise ValueError("EP_TERMINAL_WITHOUT_IMMUTABLE_EVIDENCE")
