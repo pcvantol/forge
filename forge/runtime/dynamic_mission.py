@@ -415,6 +415,20 @@ class InstalledDynamicMissionRuntime:
         )
         return self._tick(mission_id)
 
+    def reconcile_existing_successor(self, mission_id: str) -> DynamicMissionRunResult:
+        """Resume one blocked assessed receipt with an already approved READY Action."""
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        if state.repository_truth is None:
+            raise InstalledDynamicMissionError("existing-successor continuation lacks Repository Truth")
+        self._initial_truth[mission_id] = dict(state.repository_truth)
+        self.preflight()
+        loop = self._loop(mission_id)
+        service = ForgeRuntimeService(loop, self.states, runtime_database=self.database)
+        with service.mutation_lock.acquire():
+            loop.resume_existing_successor(mission_id)
+        return self._result(self.states.get(mission_id))
+
     def reconcile_completed_terminal_evidence(self, mission_id: str) -> DynamicMissionRunResult:
         """Close one historical, partially-persisted terminal reconciliation.
 

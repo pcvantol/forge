@@ -19,7 +19,7 @@ from forge.dispatcher import MissionDispatcher
 from forge.governance import ApprovalRecord, ExecutionPolicy, ExecutionPolicyKind, PauseBoundary, execution_policy_for_profile
 from forge.models.action import EngineeringAction, EngineeringActionStatus
 from forge.models.architecture_mission import ArchitectureMission
-from forge.models.execution_host import ExecutionHost, ExecutionHostEvidence
+from forge.models.execution_host import ExecutionEvidenceOutcome, ExecutionHost, ExecutionHostEvidence
 from forge.models.producer import RepositoryRevisionBinding
 from forge.models.mission_completion import (MissionCompletionEvidence,
                                               MissionCriterionEvaluationStatus)
@@ -248,6 +248,27 @@ class ExecutionLoop:
         elif authorization is not None:
             raise ExecutionLoopError("recovery authorization is valid only for blocked or failed Missions")
         return self.run() if self._dispatcher.resume() else self._runner().run(mission_id)
+
+    def resume_existing_successor(self, mission_id: str) -> MissionExecutionState:
+        """Retry an assessed continuation whose approved next Action already exists."""
+        state = self._states.get(mission_id)
+        marker = state.resume.get("terminal_continuation")
+        remaining = tuple(item for item in state.actions if item["status"] != EngineeringActionStatus.COMPLETE.value)
+        if (state.status is not MissionExecutionStatus.BLOCKED
+                or state.waiting_reason != "mission_criteria_unmet_no_valid_successor"
+                or not isinstance(marker, Mapping) or marker.get("phase") != "ASSESSED"
+                or marker.get("mission_complete") is not False
+                or not remaining
+                or any(item["status"] != EngineeringActionStatus.READY.value for item in remaining)
+                or state.execution_evidence is None
+                or state.execution_evidence.get("outcome") != ExecutionEvidenceOutcome.COMPLETE.value):
+            raise ExecutionLoopError("existing-successor continuation is unavailable for this Mission")
+        state = self._states.transition(
+            mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._clock(),
+            reason="existing_successor_continuation_requested",
+        )
+        self._dispatcher.recover(mission_id)
+        return self._runner().run(mission_id)
 
     def approve_delegation(self, mission_id: str, delegation_id: str, approval: ApprovalRecord) -> MissionExecutionState:
         """Record governance approval for one exact delegation without invoking a provider."""
@@ -609,6 +630,10 @@ class ExecutionLoop:
             return state
 
         self._assert_current_replan_evidence(state, replanning, evidence)
+        # An approved successor can already be part of the initial dynamic
+        # plan. Continue that immutable Action instead of deriving a duplicate.
+        if remaining:
+            return state
         self._assert_successor_bounds(state, replanning.mission)
         plan, derivation = self._select_plan(replanning, state)
         if not self._keep_running():
