@@ -181,6 +181,29 @@ class HostControlCompletionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exactly one approved scope"):
                 inspect(str(path))
 
+    def test_inspect_rejects_constraint_that_ep_cannot_accept(self):
+        planning = ArchitecturePlanningEvidence(
+            ("target",), ("parser.py",), ("no unrelated work",), ("scope drift",),
+            ("protected delivery",), ("ep",), 1000, 1000, "1",
+            criterion_assessment_contracts=self.mission.criterion_assessment_contracts,
+            maximum_actions=3, maximum_consecutive_no_progress_actions=1,
+            repository_evidence_source=self.mission.repository_evidence_source)
+        document = {"candidate_id": "candidate", "subject_revision": "1",
+                    "business_decision_id": "business", "architecture_decision_id": "architecture",
+                    "planning": planning.to_dict(), "mission": {
+                        **self.mission.to_dict(), "engineering_constraints": [
+                            "x" * 129, "ep-merge-delegation:" + "a" * 32,
+                            "ep-delivery-control-validation:1"]}}
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "mission.json"
+            document["mission"]["engineering_constraints"][0] = "x" * 128
+            path.write_text(json.dumps(document), encoding="utf-8")
+            self.assertEqual(inspect(str(path))["status"], "VALID")
+            document["mission"]["engineering_constraints"][0] = "x" * 129
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "128-character host limit"):
+                inspect(str(path))
+
     def test_inspect_requires_delivery_validation_for_host_control(self):
         planning = ArchitecturePlanningEvidence(
             ("target",), ("parser.py",), ("no unrelated work",), ("scope drift",),

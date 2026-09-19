@@ -50,6 +50,11 @@ def _contract(document: dict[str, Any]) -> tuple[ArchitecturePlanningEvidence, A
         raise ValueError("Mission requires complete engineering readiness and criterion contracts")
     if len(mission.scope) != 1:
         raise ValueError("the installed serial Mission requires exactly one approved scope")
+    # EP's versioned Forge provenance contract caps each approved execution
+    # constraint at 128 characters. Catch an oversized Mission before Intake
+    # allocates an ID or the runner persists an unsendable Action.
+    if any(len(value) > 128 for value in mission.engineering_constraints):
+        raise ValueError("EP execution constraint exceeds the 128-character host limit")
     if mission.repository_evidence_source is None:
         raise ValueError("Mission requires an approved repository source for fresh initial Truth")
     delegation = tuple(value for value in mission.engineering_constraints
