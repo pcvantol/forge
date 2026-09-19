@@ -1,5 +1,12 @@
 # Autonomous Mission vertical slice: implementation and qualification scope
 
+Delivery evidence and the installed outcome for this selected slice are
+reconciled in the [MISSION-0017 completion record](MISSION_0017_VERTICAL_RELEASE_INSTALLATION_COMPLETION.md).
+The isolated live qualification completed; product releases, the later EP
+reset-fence patch and CENTRAL installation have separate source, artifact and
+operation identities. The scope still excludes production Mission 3 and the
+production CENTRAL reset.
+
 This delivery adds a packaged `forge mission` entrypoint for read-only input
 inspection, canonical Business and Architecture decisions, admission of one
 approved Mission, one foreground start, status, controlled stop, and reopen of
