@@ -419,6 +419,15 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
             self.assertEqual(EngineeringPlatformHttpExecutionHost(self.config, self.database)
                              .preflight()["contracts"]["bounded_merge_delegation"], ["1.0"])
+        declaration["contracts"]["validation_controls"] = ["1.0", "1.1"]
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            self.assertEqual(EngineeringPlatformHttpExecutionHost(self.config, self.database)
+                             .preflight()["contracts"]["validation_controls"], ["1.0", "1.1"])
+        declaration["contracts"]["validation_controls"] = ["1.1"]
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            with self.assertRaisesRegex(ValueError, "MALFORMED"):
+                EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
+        declaration["contracts"]["validation_controls"] = ["1.0", "1.1"]
         declaration["contracts"]["bounded_merge_delegation"] = ["unsafe"]
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
             with self.assertRaisesRegex(ValueError, "MALFORMED"):

@@ -643,7 +643,10 @@ class EngineeringPlatformHttpExecutionHost:
         terminal_versions = contracts.get("terminal_evidence")
         if not isinstance(terminal_versions, list) or terminal_versions != [self.config.terminal_evidence_contract]:
             raise ValueError("EP_TERMINAL_CONTRACT_INCOMPATIBLE")
-        for capability in ("validation_controls", "delivery_revision_validation", "bounded_merge_delegation"):
+        if ("validation_controls" in contracts
+                and contracts["validation_controls"] not in (["1.0"], ["1.0", "1.1"])):
+            raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
+        for capability in ("delivery_revision_validation", "bounded_merge_delegation"):
             if capability in contracts and contracts[capability] != ["1.0"]:
                 raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         return declaration
