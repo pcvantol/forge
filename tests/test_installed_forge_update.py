@@ -908,6 +908,20 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertFalse((self.data_root / "forge.db-wal").exists())
         self.assertFalse((self.data_root / "forge.db-shm").exists())
 
+    def test_wal_source_backup_is_self_contained_after_atomic_rename(self) -> None:
+        self._installed_schema37()
+        source = self.data_root / "forge.db"
+        with sqlite3.connect(source) as connection:
+            self.assertEqual(connection.execute("PRAGMA journal_mode=WAL").fetchone()[0], "wal")
+        destination = self.root / "backup" / "forge.sqlite3"
+        evidence = update._copy_sqlite_backup(source, destination)
+        self.assertEqual(evidence["integrity_check"], "ok")
+        self.assertFalse(destination.with_name(destination.name + "-wal").exists())
+        self.assertFalse(destination.with_name(destination.name + "-shm").exists())
+        with sqlite3.connect(destination.resolve().as_uri() + "?mode=ro", uri=True) as readback:
+            self.assertEqual(readback.execute("PRAGMA journal_mode").fetchone()[0], "delete")
+            self.assertEqual(readback.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+
     def test_database_swap_is_crash_safe_after_atomic_replace(self) -> None:
         self._installed_schema37()
         controller = update.InstalledForgeUpdateController(

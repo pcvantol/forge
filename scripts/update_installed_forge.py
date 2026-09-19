@@ -900,6 +900,11 @@ def _copy_sqlite_backup(source: Path, destination: Path) -> dict[str, Any]:
         destination_connection = sqlite3.connect(temporary)
         source_connection.backup(destination_connection)
         destination_connection.commit()
+        # The online backup inherits WAL mode. Before the temporary database is
+        # renamed, make it self-contained: WAL sidecars retain the temporary
+        # basename and a read-only integrity check cannot open the renamed DB.
+        if destination_connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0] != "delete":
+            raise InstalledForgeUpdateError("SQLite backup journal finalization failed")
         if destination_connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise InstalledForgeUpdateError("SQLite backup integrity check failed")
         if destination_connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
