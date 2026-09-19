@@ -50,11 +50,14 @@ def _terminal_artifact_publication_pending(readback: Mapping[str, Any]) -> bool:
         "COMPLETE", "COMPLETE", "MISSING",
     ):
         return False
-    updated_at = run.get("updated_at")
-    if not isinstance(updated_at, str):
+    # The dispatch row's updated_at may still describe the initial submission
+    # when the terminal checkpoint becomes visible. EP's durable completion
+    # timestamp, not dispatch age, starts the publication grace period.
+    completed_at = run.get("execution_completed_at")
+    if not isinstance(completed_at, str):
         return False
     try:
-        completed_at = datetime.fromisoformat(updated_at)
+        completed_at = datetime.fromisoformat(completed_at)
     except ValueError:
         return False
     if completed_at.tzinfo is None:

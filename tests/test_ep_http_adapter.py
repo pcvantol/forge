@@ -1092,7 +1092,8 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         readback = json.loads(json.dumps(self.readback))
         readback["run"].update({
             "state": "COMPLETE", "terminal": True,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat(),
+            "execution_completed_at": datetime.now(timezone.utc).isoformat(),
         })
         readback["result"].update({
             "outcome": "COMPLETE", "terminal": True, "delivery_qualified": False,
@@ -1106,7 +1107,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             ).retrieve_evidence(ExecutionDispatch(self.request, "run-fixture")))
         self.assertEqual(len(observed), 2, "pending publication must not fetch or invent an artifact")
 
-        readback["run"]["updated_at"] = (
+        readback["run"]["execution_completed_at"] = (
             datetime.now(timezone.utc) - timedelta(minutes=3)
         ).isoformat()
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([
