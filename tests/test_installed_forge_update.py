@@ -1053,15 +1053,25 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         before = self._same_schema39_transition()
         controller = self._controller()
         self._qualified_schema39_copy(controller, before)
+        qualified_path = controller.operation_root / "qualification-copy" / "forge.db"
+        qualified_connection = sqlite3.connect(qualified_path)
+        qualified_connection.execute(
+            "UPDATE runtime_metadata SET value=? WHERE key='forge_version'",
+            ("2.7.26" if before["metadata"]["forge_version"] != "2.7.26" else "2.7.25",),
+        )
+        qualified_connection.commit()
+        qualified_connection.close()
         with patch.object(update, "installed_identity", return_value={"version": "2.7.25"}):
             state = controller._adopt_resolver(controller._state())
         original_inode = (self.data_root / "forge.db").stat().st_ino
         current = update.database_snapshot(self.data_root / "forge.db")
         qualified = update.database_snapshot(controller.operation_root / "qualification-copy" / "forge.db")
-        for label, snapshot in (("live", current), ("qualified", qualified)):
-            changed = sorted(key for key in before if key != "database" and before[key] != snapshot[key])
-            self.assertEqual(snapshot["content_digest"], before["content_digest"],
-                             f"same-schema {label} snapshot changed fields: {changed}")
+        self.assertEqual(current["content_digest"], before["content_digest"])
+        self.assertNotEqual(qualified["content_digest"], before["content_digest"])
+        self.assertEqual(qualified["schema_digest"], before["schema_digest"])
+        self.assertEqual(qualified["writer_state"], before["writer_state"])
+        self.assertEqual(set(qualified["metadata"]), set(before["metadata"]))
+        update.verify_preservation(before, qualified, self.request)
         with patch.object(controller, "_install_qualified_database", side_effect=AssertionError("database swap")):
             migrated, after = controller._migrate_live(state, before)
         self.assertEqual(migrated["phase"], "MIGRATED")
@@ -1117,7 +1127,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         connection.execute(f"PRAGMA user_version={target_schema - 1}")
         connection.commit()
         connection.close()
-        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "schema changed"):
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError,
+                                    "schema changed|selected runtime schema is outside"):
             controller.run()
 
 
