@@ -116,9 +116,11 @@ def _control_matches(requirement, context: Mapping[str, Any], run_id: str,
             or not _valid_digest(detail.get("digest")) or not _valid_digest(detail.get("output_digest"))):
         return False, "HOST_CONTROL_RESULT_DETAIL_INVALID", None
     count = detail.get("test_count")
-    if requirement.minimum_test_count and (not isinstance(count, int) or isinstance(count, bool)
-                                          or count < requirement.minimum_test_count
-                                          or detail.get("test_count_source") != "unittest_terminal_summary"):
+    minimum_test_count = (max(1, requirement.minimum_test_count) if observation_binding
+                          else requirement.minimum_test_count)
+    if minimum_test_count and (not isinstance(count, int) or isinstance(count, bool)
+                               or count < minimum_test_count
+                               or detail.get("test_count_source") != "unittest_terminal_summary"):
         return False, "HOST_CONTROL_TEST_COUNT_INSUFFICIENT", None
     return True, "APPROVED_HOST_CONTROL_EXECUTED_AND_PASSED", {
         "validation_id": requirement.validation_id, "control_identity": requirement.control_identity,

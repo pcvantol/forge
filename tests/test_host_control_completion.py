@@ -378,6 +378,14 @@ class HostControlCompletionTests(unittest.TestCase):
             change(bad)
             self.assertEqual(self.observe(bad).result, "UNAVAILABLE")
             self.assertFalse(self.assess(bad).all_required_criteria_proven)
+        # The observer keeps this floor even if a legacy or alternate intake
+        # somehow persisted a weaker approved minimum than the CLI permits.
+        weak = replace(requirement, minimum_test_count=0)
+        self.mission = replace(self.mission, criterion_assessment_contracts=(
+            CriterionAssessmentContract(contract.criterion, (weak,)),))
+        empty = deepcopy(context)
+        empty["observation_validation_controls"][0]["result_detail"]["test_count"] = 0
+        self.assertEqual(self.observe(empty).reason, "HOST_CONTROL_TEST_COUNT_INSUFFICIENT")
 
 
 if __name__ == "__main__":
