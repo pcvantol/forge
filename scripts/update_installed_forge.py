@@ -1574,8 +1574,14 @@ class InstalledForgeUpdateController:
         if (self.request.existing_version, self.request.version) == ("2.7.25", "2.7.26"):
             qualified = database_snapshot(self.operation_root / "qualification-copy" / "forge.db")
             verify_preservation(before, qualified, self.request)
+            # Candidate initialization may update the known volatile metadata in
+            # its isolated copy. Preservation checks bind every historical table
+            # and protected metadata key; only the live database must remain
+            # byte-for-byte logically unchanged before activation.
             if (current.get("content_digest") != before.get("content_digest")
-                    or qualified.get("content_digest") != before.get("content_digest")):
+                    or qualified.get("schema_digest") != before.get("schema_digest")
+                    or qualified.get("writer_state") != before.get("writer_state")
+                    or set(qualified.get("metadata", {})) != set(before.get("metadata", {}))):
                 raise InstalledForgeUpdateError("same-schema runtime changed outside the bounded operation")
             if state.get("phase") not in {"MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE"}:
                 state = self._fence(state)
