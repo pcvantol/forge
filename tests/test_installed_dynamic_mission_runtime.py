@@ -38,7 +38,9 @@ from forge.operator_identity import InstallationOperatorService, NamedOperatorId
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.database import RuntimeDatabaseError, RuntimeIntegrityError
-from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
+from forge.runtime.dynamic_mission import (
+    InstalledDynamicMissionError, InstalledDynamicMissionRuntime, _InstalledMissionDispatcher,
+)
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state.mission_state import MissionExecutionStatus
 from forge._version import canonical_version
@@ -152,6 +154,82 @@ class _Host:
 
 
 class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
+    def test_held_failed_attempt_does_not_block_a_different_selected_mission(self) -> None:
+        runtime = object.__new__(InstalledDynamicMissionRuntime)
+        held = SimpleNamespace(
+            mission_id="MISSION-0006", status=MissionExecutionStatus.BLOCKED,
+            actions=(), intents=(), execution_correlation=None,
+        )
+        selected = SimpleNamespace(mission_id="MISSION-0007", status=MissionExecutionStatus.APPROVED_PLANNABLE)
+        runtime.states = SimpleNamespace(resumable=lambda: (held, selected))
+        runtime._assert_single_resumable(selected.mission_id)
+        with self.assertRaises(InstalledDynamicMissionError):
+            runtime._assert_single_resumable(held.mission_id)
+        runtime.states = SimpleNamespace(resumable=lambda: (held,))
+        runtime._assert_single_resumable(held.mission_id)
+
+    def test_held_dispatcher_is_reconciled_before_new_mission_dispatch(self) -> None:
+        held = SimpleNamespace(
+            mission_id="MISSION-0006", status=MissionExecutionStatus.BLOCKED,
+            actions=(), intents=(), execution_correlation=None,
+        )
+        selected = SimpleNamespace(
+            mission_id="MISSION-0007", status=MissionExecutionStatus.CREATED,
+            actions=(), intents=(), execution_correlation=None,
+        )
+        states = SimpleNamespace(
+            get=lambda mission_id: {held.mission_id: held, selected.mission_id: selected}[mission_id],
+            resumable=lambda: (held, selected),
+        )
+        self.runtime.database.save_dispatcher_state(
+            status="ACTIVE", mission_sequence=(held.mission_id,), active_mission_id=held.mission_id,
+        )
+        self.runtime.states = states
+        self.runtime._assert_single_resumable(selected.mission_id)
+        dispatcher = _InstalledMissionDispatcher(
+            self.runtime.database, states, selected.mission_id, lambda: "2026-09-11T16:00:00Z",
+        )
+        self.assertEqual(dispatcher.dispatch().mission_id, selected.mission_id)
+        row = self.runtime.database._connection.execute(
+            "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton=1"
+        ).fetchone()
+        self.assertEqual((row["status"], row["active_mission_id"]), ("ACTIVE", selected.mission_id))
+        with self.assertRaises(InstalledDynamicMissionError):
+            self.runtime._assert_single_resumable(held.mission_id)
+
+    def test_blocked_mission_with_host_effect_keeps_exclusive_dispatcher(self) -> None:
+        held = SimpleNamespace(
+            mission_id="MISSION-0006", status=MissionExecutionStatus.BLOCKED,
+            actions=({"id": "ACTION-1"},), intents=(), execution_correlation={"host_run_id": "run-1"},
+        )
+        selected = SimpleNamespace(
+            mission_id="MISSION-0007", status=MissionExecutionStatus.CREATED,
+            actions=(), intents=(), execution_correlation=None,
+        )
+        states = SimpleNamespace(
+            get=lambda mission_id: {held.mission_id: held, selected.mission_id: selected}[mission_id],
+            resumable=lambda: (held, selected),
+        )
+        self.runtime.database.save_dispatcher_state(
+            status="ACTIVE", mission_sequence=(held.mission_id,), active_mission_id=held.mission_id,
+        )
+        self.runtime.states = states
+        with self.assertRaises(InstalledDynamicMissionError):
+            self.runtime._assert_single_resumable(selected.mission_id)
+        dispatcher = _InstalledMissionDispatcher(
+            self.runtime.database, states, selected.mission_id, lambda: "2026-09-11T16:00:00Z",
+        )
+        with self.assertRaises(InstalledDynamicMissionError):
+            dispatcher.dispatch()
+
+    def test_two_runnable_missions_remain_excluded(self) -> None:
+        runtime = object.__new__(InstalledDynamicMissionRuntime)
+        first = SimpleNamespace(mission_id="MISSION-0007", status=MissionExecutionStatus.APPROVED_PLANNABLE)
+        second = SimpleNamespace(mission_id="MISSION-0008", status=MissionExecutionStatus.CREATED)
+        runtime.states = SimpleNamespace(resumable=lambda: (first, second))
+        with self.assertRaises(InstalledDynamicMissionError):
+            runtime._assert_single_resumable(first.mission_id)
+
     def setUp(self) -> None:
         self.temporary = TemporaryDirectory()
         self.root = Path(self.temporary.name) / "forge-server"

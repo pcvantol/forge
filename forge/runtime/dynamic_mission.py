@@ -93,6 +93,14 @@ class DynamicMissionRunResult:
     planning_invocations: int
 
 
+def _quiescent_failed_attempt(state: MissionExecutionState) -> bool:
+    """A failed planning attempt with no Action or possible Host effect."""
+    return (
+        state.status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}
+        and not state.actions and not state.intents and state.execution_correlation is None
+    )
+
+
 class _InstalledMissionDispatcher:
     """Bind the existing loop to one selected installed Runtime Mission only."""
 
@@ -108,7 +116,15 @@ class _InstalledMissionDispatcher:
             "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton = 1"
         ).fetchone()
         if row is not None and row["status"] == "ACTIVE" and row["active_mission_id"] != self._mission_id:
-            raise InstalledDynamicMissionError("another Forge Mission is already active")
+            previous = self._states.get(row["active_mission_id"])
+            if not _quiescent_failed_attempt(previous):
+                raise InstalledDynamicMissionError("another Forge Mission is already active")
+            # Reconcile a dispatcher held by an older installed binary. This
+            # runs within ForgeRuntimeService's mutation lock before dispatch.
+            self._database.save_dispatcher_state(
+                status="IDLE", mission_sequence=(previous.mission_id,)
+            )
+            row = None
         if row is None or row["status"] != "ACTIVE":
             self._database.save_dispatcher_state(
                 status="ACTIVE", mission_sequence=(self._mission_id,), active_mission_id=self._mission_id,
@@ -132,6 +148,12 @@ class _InstalledMissionDispatcher:
     def hold(self, mission_id: str, status: MissionExecutionStatus) -> None:
         if mission_id != self._mission_id or status not in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED}:
             raise InstalledDynamicMissionError("dispatcher hold does not match the selected terminal Mission")
+        row = self._database._connection.execute(
+            "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton = 1"
+        ).fetchone()
+        if (row is not None and row["status"] == "ACTIVE" and row["active_mission_id"] == mission_id
+                and _quiescent_failed_attempt(self._states.get(mission_id))):
+            self._database.save_dispatcher_state(status="IDLE", mission_sequence=(mission_id,))
 
     def recover(self, mission_id: str):
         if mission_id != self._mission_id:
@@ -833,7 +855,13 @@ class InstalledDynamicMissionRuntime:
         return contract
 
     def _assert_single_resumable(self, mission_id: str) -> None:
-        active = tuple(state.mission_id for state in self.states.resumable())
+        # A zero-Action failed planning attempt is durably held without any
+        # possible Host effect. Other blocked Missions retain exclusive scope.
+        active = tuple(
+            state.mission_id for state in self.states.resumable()
+            if state.mission_id == mission_id
+            or not _quiescent_failed_attempt(state)
+        )
         if active != (mission_id,):
             raise InstalledDynamicMissionError("public runtime requires exactly one selected non-terminal Mission")
 
