@@ -1,5 +1,11 @@
 # Verticale slices: één aftrap, volledige autonome oplevering
 
+De geselecteerde seriële Mission-slice heeft een eigen
+[MISSION-0017-opleverrecord](../operations/MISSION_0017_VERTICAL_RELEASE_INSTALLATION_COMPLETION.md).
+Dat record sluit uitsluitend de daar beschreven product- en installatiegrens;
+parallelle Actions, Server/Workspace-uitbreiding en de bredere autonomiebacklog
+houden hun afzonderlijke roadmapstatus.
+
 **Afspraak:** `VERTICAL_SLICE_DELIVERY_V1`, 18 september 2026. **Eigenaar:** opdrachtgever van de twee lanes. **Toepassing:** iedere geselecteerde uitvoeringsopdracht in LANE_1 en LANE_2, vóór en na overdracht aan Forge. **NO_BUMP voor deze documentatielevering.**
 
 De eigenaar vraagt dat ieder uitvoerbaar roadmap-item een echte verticale implementatieslice is: niet één prompt voor code en daarna nieuwe prompts voor tests, refactoring, DoD, owner authorization, PR of merge. De [tweesporenplanning](DUAL_LANE_DEVELOPMENT_V1.md), [machineleesbare indeling](dual-lane-development-v1.json) en beide sessierouters gebruiken deze afspraak. Zij legt het expliciete eigenaarsmandaat voor de normale lifecycle vast; zij is geen nieuw runtimegrant, scheduler, automatische start van de hele backlog of wijziging van peer-productgovernance.

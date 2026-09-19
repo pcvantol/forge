@@ -117,6 +117,12 @@ and atomically activates a versioned slot. It is not packaged as a Forge
 Runtime command and does not replace Forge Platform's normal installer/update
 composition boundary.
 
+The later [MISSION-0017 vertical release and installation completion](docs/operations/MISSION_0017_VERTICAL_RELEASE_INSTALLATION_COMPLETION.md)
+records the isolated two-Action qualification, protected Forge and EP product
+delivery, exact published artifacts, scoped CENTRAL installation and the
+remaining Mission-3 policy boundary. It does not authorize a production reset
+or Mission start.
+
 ## Mission 3 acceptance preflight
 
 The [18 September 2026 Mission 3 preflight report](docs/operations/MISSION_3_PREFLIGHT_ACCEPTANCE_2026_09_18.md)
