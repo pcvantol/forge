@@ -593,7 +593,7 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
                     "to": "b" * 40, "allowed_to": "b" * 40,
                 },
             })),
-            ("candidate", lambda a: a["repository"].update({"candidate": "d" * 40})),
+            ("candidate", lambda a: a["repository"].update({"candidate": "not-a-sha"})),
             ("sha", lambda a: a["repository"].update({"execution_baseline": "not-a-sha"})),
             ("missing", lambda a: a["repository"].pop("candidate")),
         )

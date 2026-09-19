@@ -436,11 +436,13 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         if assurance.get("quality_review") not in {"PASS", "FAIL", "UNRESOLVED"} or assurance.get("security_review") not in {"PASS", "FAIL", "UNRESOLVED"}:
             raise ValueError("EP terminal assurance review result is invalid")
     if artifact_contract == "1.4":
-        candidate = _git_sha(repository.get("candidate"), "implementation candidate", nullable=True)
-        # A host-verified no-op has no reviewed implementation candidate, but
-        # it may still report the repository's observed candidate revision.
-        if not no_assurance_recorded and candidate != profile.get("candidate_sha"):
-            raise ValueError("EP terminal v1.4 candidate differs from assurance evidence")
+        # The implementation candidate precedes finalization and reconciliation.
+        # EP's current assurance profile can name a later reviewed PR head;
+        # equality would reject a valid protected delivery. Both identities
+        # remain separate, host-owned fields in the verified artifact.
+        if "candidate" not in repository:
+            raise ValueError("EP terminal v1.4 implementation candidate is missing")
+        _git_sha(repository["candidate"], "implementation candidate", nullable=no_assurance_recorded)
 
     prompt = _object(provenance.get("runtime_prompt"), "runtime prompt")
     report_id = _string(artifact_report.get("id"), "artifact report id")
