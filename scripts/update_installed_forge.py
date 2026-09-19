@@ -1092,15 +1092,26 @@ class InstalledForgeUpdateController:
         if not isinstance(previous, Mapping) or set(previous) != set(requested):
             raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
         changed = {key for key in requested if previous.get(key) != requested[key]}
-        if not changed or not changed.issubset({"controller_source", "controller_sha256"}):
+        resolver_correction = (
+            "resolver" in changed
+            and changed.issubset({"resolver", "controller_source", "controller_sha256"})
+            and previous.get("resolver") == str(self.stable_resolver)
+            and Path(self.request.resolver) != self.stable_resolver
+            and previous.get("resolver_sha256") == requested["resolver_sha256"]
+            and state.get("last_error") == "external Forge resolver has an unrecognized managed target"
+        )
+        controller_correction = (
+            changed.issubset({"controller_source", "controller_sha256"})
+            and state.get("last_error")
+            == f"path contains a symbolic-link component: {self.request.resolver}"
+        )
+        if not changed or not (resolver_correction or controller_correction):
             raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
         previous_request = UpdateRequest(**dict(previous))
         if (
             state.get("request_digest") != previous_request.digest
             or state.get("phase") != "STAGED"
             or state.get("safety_disposition") != "UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED"
-            or state.get("last_error")
-            != f"path contains a symbolic-link component: {self.request.resolver}"
             or any(
                 key in state
                 for key in (
@@ -1141,7 +1152,11 @@ class InstalledForgeUpdateController:
         ):
             raise InstalledForgeUpdateError("controller reconciliation requires the recorded maintenance fence")
         reconciliation_identity = {
-            "reason": "PROTECTED_CONTROLLER_CORRECTION_AFTER_MANAGED_RESOLVER_PRE_ADOPTION_FAILURE",
+            "reason": (
+                "PROTECTED_RESOLVER_CORRECTION_AFTER_PRE_ADOPTION_FAILURE"
+                if resolver_correction else
+                "PROTECTED_CONTROLLER_CORRECTION_AFTER_MANAGED_RESOLVER_PRE_ADOPTION_FAILURE"
+            ),
             "previous_controller_source": previous_request.controller_source,
             "previous_controller_sha256": previous_request.controller_sha256,
             "previous_request_digest": previous_request.digest,
@@ -1321,8 +1336,10 @@ class InstalledForgeUpdateController:
         if (
             state.get("phase") == "STAGED"
             and state.get("safety_disposition") == "UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED"
-            and state.get("last_error")
-            == f"path contains a symbolic-link component: {self.request.resolver}"
+            and state.get("last_error") in {
+                f"path contains a symbolic-link component: {self.request.resolver}",
+                "external Forge resolver has an unrecognized managed target",
+            }
         ):
             allowed_targets.add(self.fenced_resolver.resolve(strict=True))
         if current_target not in allowed_targets:

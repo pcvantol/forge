@@ -651,6 +651,49 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(slot["request_digest"], replacement.digest)
         self.assertEqual(len(slot["controller_reconciliations"]), 1)
 
+    def test_staged_internal_resolver_request_rebinds_only_to_existing_external_link(self) -> None:
+        controller, state, previous_forge = self._managed_successor_controller(fenced=True)
+        mistaken = update.UpdateRequest(**{
+            **controller.request.__dict__, "resolver": str(controller.stable_resolver),
+        })
+        state = {
+            **state, "request": mistaken.__dict__, "request_digest": mistaken.digest,
+            "last_error": "external Forge resolver has an unrecognized managed target",
+        }
+        evidence = {"wheel_manifest_digest": "sha256:" + "1" * 64}
+        identity = {"version": controller.request.version,
+                    "module": str(controller.slot / "lib/python/site-packages/forge/__init__.py")}
+        state = controller._advance(state, "STAGED", candidate=identity, installed_files=evidence)
+        controller.slot.mkdir(parents=True)
+        update._atomic_json(controller.slot_receipt, {
+            "request_digest": mistaken.digest,
+            "wheel_manifest_digest": evidence["wheel_manifest_digest"],
+            "installed_files": evidence,
+        })
+        replacement = update.UpdateRequest(**{
+            **controller.request.__dict__, "controller_source": "c" * 40,
+        })
+        recovered = update.InstalledForgeUpdateController(
+            replacement, process_reader=lambda: (), reconcile_staged_controller=True,
+        )
+        with (
+            patch.object(update, "assert_selected_installation"),
+            patch.object(update, "assert_quiescent"),
+            patch.object(update, "_qualified_artifact", return_value=(
+                {"wheel_manifest_digest": evidence["wheel_manifest_digest"]}, b"wheel", {},
+            )),
+            patch.object(update, "_verify_candidate_files", return_value=evidence),
+            patch.object(update, "installed_identity", return_value=identity),
+        ):
+            rebound = recovered._reconcile_staged_controller(
+                recovered._state(allow_request_mismatch=True),
+                {"user_version": update.transition_schemas(replacement)[0]},
+            )
+        self.assertEqual(rebound["request_digest"], replacement.digest)
+        self.assertEqual(rebound["controller_reconciliations"][-1]["reason"],
+                         "PROTECTED_RESOLVER_CORRECTION_AFTER_PRE_ADOPTION_FAILURE")
+        self.assertEqual(recovered._managed_resolver_source(self.resolver, rebound), previous_forge)
+
     def test_staged_controller_reconciliation_rejects_a_product_change(self) -> None:
         controller, _state, _previous_forge = self._managed_successor_controller(fenced=True)
         changed = update.UpdateRequest(**{
