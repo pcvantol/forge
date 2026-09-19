@@ -1056,6 +1056,12 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         with patch.object(update, "installed_identity", return_value={"version": "2.7.25"}):
             state = controller._adopt_resolver(controller._state())
         original_inode = (self.data_root / "forge.db").stat().st_ino
+        current = update.database_snapshot(self.data_root / "forge.db")
+        qualified = update.database_snapshot(controller.operation_root / "qualification-copy" / "forge.db")
+        for label, snapshot in (("live", current), ("qualified", qualified)):
+            changed = sorted(key for key in before if key != "database" and before[key] != snapshot[key])
+            self.assertEqual(snapshot["content_digest"], before["content_digest"],
+                             f"same-schema {label} snapshot changed fields: {changed}")
         with patch.object(controller, "_install_qualified_database", side_effect=AssertionError("database swap")):
             migrated, after = controller._migrate_live(state, before)
         self.assertEqual(migrated["phase"], "MIGRATED")
