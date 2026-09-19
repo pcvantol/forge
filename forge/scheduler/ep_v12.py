@@ -204,7 +204,7 @@ def _v14_repository_binding(
         "artifact_type", "contract_version", "submission", "producer", "correlation", "provenance",
         "run", "host_execution", "repository", "delivery", "report", "references", "assurance",
     }
-    if set(document) != expected_document_keys:
+    if set(document) not in (expected_document_keys, expected_document_keys | {"validation_controls"}):
         raise ValueError("EP terminal v1.4 artifact schema is incomplete")
     repository_keys = {
         "id", "requested_revision", "execution_baseline", "baseline_transition", "candidate",
@@ -458,6 +458,11 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
         item["command"] for item in validation
         if isinstance(item, Mapping) and isinstance(item.get("command"), str) and item["command"]
     )
+    validation_controls = document.get("validation_controls")
+    if validation_controls is not None:
+        if not isinstance(validation_controls, Mapping) or validation_controls.get("contract_version") != "1.0":
+            raise ValueError("EP validation control evidence contract is invalid")
+        validation_controls = dict(validation_controls)
     return ExecutionHostEvidence(host_id, repository_evidence.correlation_id, repository_evidence.host_run_id,
                                  report_id, ExecutionEvidenceOutcome(outcome.lower()), repository_evidence,
                                  validation_references=validation_references, receipt_id=receipt_id,
@@ -465,4 +470,5 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
                                  resolved_from_host_run_id=resolved_from_host_run_id,
                                  execution_started_at=execution_started_at,
                                  execution_completed_at=execution_completed_at,
-                                 execution_duration_ms=execution_duration_ms)
+                                 execution_duration_ms=execution_duration_ms,
+                                 validation_controls=validation_controls)

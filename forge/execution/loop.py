@@ -134,6 +134,7 @@ class ExecutionLoop:
         completion_evaluator: MissionCompletionEvaluator | None = None,
         runtime_database: RuntimeDatabase | None = None,
         repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
+        keep_running: Callable[[], bool] | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise ExecutionLoopError("execution host, workspace, and repository identities are required")
@@ -150,14 +151,19 @@ class ExecutionLoop:
         self._completion_evaluator = completion_evaluator or MissionCompletionEvaluator()
         self._runtime_database = runtime_database
         self._repository_revision_binding_factory = repository_revision_binding_factory
+        self._keep_running = keep_running or (lambda: True)
 
     def run(self) -> MissionExecutionState | None:
         """Run the one dispatched Mission until terminal or awaiting host evidence."""
+        if not self._keep_running():
+            return None
         record = self._dispatcher.dispatch()
         if record is None:
             return None
         state = self._states.get(record.mission_id)
         state = self._states.set_execution_policy(state.mission_id, self._execution_policy.to_dict(), occurred_at=self._clock())
+        if not self._keep_running():
+            return state
         if state.status is MissionExecutionStatus.CREATED:
             try:
                 state = self._plan(state)
@@ -209,6 +215,8 @@ class ExecutionLoop:
                approval: ApprovalRecord | None = None) -> MissionExecutionState:
         """Resume durable work; a blocked or failed Action needs explicit authority."""
         state = self._states.get(mission_id)
+        if not self._keep_running():
+            return state
         if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
             if approval is None:
                 raise ExecutionLoopError("governance-paused Mission requires an approval record")
@@ -289,6 +297,8 @@ class ExecutionLoop:
         if input_value.mission.id != state.mission_id:
             raise ExecutionLoopError("planner input must belong to the active Mission")
         plan, derivation = self._select_plan(input_value, state)
+        if not self._keep_running():
+            return state
         return self._persist_planned_result(state, plan, derivation)
 
     def resume_authorized_next_derivation(
@@ -333,6 +343,8 @@ class ExecutionLoop:
 
     def _persist_planned_result(self, state: MissionExecutionState, plan: MissionPlan,
                                 derivation: Mapping[str, Any] | None) -> MissionExecutionState:
+        if not self._keep_running():
+            return state
         actions = tuple(action for intent in plan.intents for action in intent.actions)
         if not actions:
             raise ExecutionLoopError("approved Mission planning produced no executable Engineering Actions")
@@ -540,7 +552,8 @@ class ExecutionLoop:
                                       clock=self._clock, correlation_id_factory=self._correlation_id_factory,
                                       completion_context=completion, replan_after_evidence=self._replan_after_evidence,
                                       evidence_progression_gate=self._pause_after_evidence,
-                                      repository_revision_binding_factory=self._repository_revision_binding_factory)
+                                      repository_revision_binding_factory=self._repository_revision_binding_factory,
+                                      keep_running=self._keep_running)
 
     def _pause_after_evidence(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...],
                               evidence: ExecutionHostEvidence, mission_complete: bool) -> MissionExecutionState | None:
@@ -598,6 +611,8 @@ class ExecutionLoop:
         self._assert_current_replan_evidence(state, replanning, evidence)
         self._assert_successor_bounds(state, replanning.mission)
         plan, derivation = self._select_plan(replanning, state)
+        if not self._keep_running():
+            return state
         assert derivation is not None
         previous_fingerprints = {
             item["work_fingerprint"] for record in state.planning_history
@@ -631,6 +646,8 @@ class ExecutionLoop:
         if isinstance(continuation, Mapping):
             resume["terminal_continuation"] = {**continuation, "phase": "SUCCESSOR_READY"}
         try:
+            if not self._keep_running():
+                return state
             return self._states.transition(
                 state.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._clock(),
                 reason="dynamic_successor_materialized", intents=(*state.intents, *new_intents),

@@ -490,6 +490,14 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
             )
         self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
 
+    def test_v14_validation_controls_are_preserved_from_integrity_checked_artifact(self) -> None:
+        readback, artifact = json.loads(json.dumps(self.readback)), json.loads(self.artifact)
+        controls = {"contract_version": "1.0", "status": "AVAILABLE",
+                    "candidate_sha": "b" * 40, "controls": {"repository_suite": {"result": "PASS"}}}
+        artifact["validation_controls"] = controls
+        evidence = self._terminal_retrieval(readback, artifact)
+        self.assertEqual(evidence.validation_controls, controls)
+
     def test_v14_revision_binding_rejects_wrong_request_baseline_candidate_or_shape(self) -> None:
         cases = (
             ("request", lambda a: a["repository"].update({

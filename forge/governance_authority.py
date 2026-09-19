@@ -201,6 +201,7 @@ class ArchitecturePlanningEvidence:
     maximum_actions: int | None = None
     maximum_consecutive_no_progress_actions: int | None = None
     repository_evidence_source: ApprovedRepositoryEvidenceSource | None = None
+    mission_spec_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not all((self.scope, self.write_scopes, self.non_goals, self.risk_inputs, self.human_gates,
@@ -211,6 +212,10 @@ class ArchitecturePlanningEvidence:
             self.criterion_assessment_contracts, self.maximum_actions,
             self.maximum_consecutive_no_progress_actions, self.repository_evidence_source,
         ))
+        if self.mission_spec_digest is not None and (not isinstance(self.mission_spec_digest, str)
+                or len(self.mission_spec_digest) != 71 or not self.mission_spec_digest.startswith("sha256:")
+                or any(character not in "0123456789abcdef" for character in self.mission_spec_digest[7:])):
+            raise ValueError("Mission specification digest is invalid")
 
     def to_dict(self) -> dict[str, object]:
         value = asdict(self)
@@ -227,6 +232,8 @@ class ArchitecturePlanningEvidence:
             value.pop("repository_evidence_source")
         else:
             value["repository_evidence_source"] = self.repository_evidence_source.to_dict()
+        if self.mission_spec_digest is None:
+            value.pop("mission_spec_digest")
         return value
 
     @property
@@ -271,6 +278,10 @@ class MissionPlanningEvidenceEnvelope:
                 raise ValueError("approval envelope has invalid, stale, conflicting, or cross-installation lineage")
         if planning.provenance_revision != subject_revision:
             raise ValueError("planning evidence revision is stale")
+        if planning.mission_spec_digest is not None and (
+                tuple(sorted(business.get("scope", ()))) != tuple(sorted(planning.scope))
+                or tuple(sorted(business.get("gates", ()))) != tuple(sorted(planning.human_gates))):
+            raise ValueError("Architecture planning exceeds or changes the exact Business-approved scope and gates")
         evidence = architecture.get("evidence")
         approved_digest = evidence.get("planning_digest") if isinstance(evidence, dict) else None
         if (planning.criterion_assessment_contracts and approved_digest is None

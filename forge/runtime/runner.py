@@ -372,6 +372,7 @@ class BootstrapMissionRunner:
         replan_after_evidence: ReplanAfterEvidence | None = None,
         evidence_progression_gate: EvidenceProgressionGate | None = None,
         repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
+        keep_running: Callable[[], bool] | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
             raise MissionRunnerError("runtime host, workspace, and repository identities are required")
@@ -389,6 +390,7 @@ class BootstrapMissionRunner:
         self._replan_after_evidence = replan_after_evidence
         self._evidence_progression_gate = evidence_progression_gate
         self._repository_revision_binding_factory = repository_revision_binding_factory
+        self._keep_running = keep_running or (lambda: True)
 
     def start(self, mission: Any, intents: Sequence[Any], actions: Sequence[Any]) -> MissionExecutionState:
         """Persist the one permitted Mission and make it available to the Runtime."""
@@ -405,6 +407,8 @@ class BootstrapMissionRunner:
         """Advance until terminal state or a host has no terminal evidence yet."""
         while True:
             state = self._store.get(mission_id)
+            if not self._keep_running():
+                return state
             if state.status in {MissionExecutionStatus.COMPLETED, MissionExecutionStatus.AWAITING_APPROVAL,
                                 MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED}:
                 return state
@@ -526,6 +530,8 @@ class BootstrapMissionRunner:
         try:
             dispatch = self._host.recover_dispatch(request)
             if dispatch is None:
+                if not self._keep_running():
+                    return state
                 dispatch = self._host.dispatch(request)
             # An accepted submission may legitimately have no run yet.  Keep
             # the persisted request in WAITING_FOR_EXECUTION and recover it on
@@ -613,7 +619,7 @@ class BootstrapMissionRunner:
                 "mission_complete": mission_complete,
             }},
         )
-        return self._continue_after_evidence(reconciled)
+        return reconciled if not self._keep_running() else self._continue_after_evidence(reconciled)
 
     def _continue_after_evidence(self, state: MissionExecutionState) -> MissionExecutionState:
         """Resume the persisted assessment decision without rereading the Host.
@@ -622,6 +628,8 @@ class BootstrapMissionRunner:
         together. A successor materialization advances the marker in that same
         transaction; a restart must never allocate a second logical successor.
         """
+        if not self._keep_running():
+            return state
         marker = state.resume.get("terminal_continuation")
         if (not isinstance(marker, Mapping) or set(marker) != {
                 "schema_version", "phase", "receipt_id", "action_id", "execution_digest",
@@ -665,6 +673,8 @@ class BootstrapMissionRunner:
             else:
                 try:
                     reconciled = self._replan_after_evidence(reconciled, evidence)
+                    if not self._keep_running():
+                        return reconciled
                 except Exception as error:
                     code = _failure_code(error)
                     return self._store.transition(

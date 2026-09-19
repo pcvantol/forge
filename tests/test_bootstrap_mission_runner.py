@@ -149,6 +149,23 @@ class BootstrapMissionRunnerTests(unittest.TestCase):
         self.assertEqual(state.status, MissionExecutionStatus.WAITING_FOR_EXECUTION)
         self.assertIsNotNone(state.execution_correlation)
 
+    def test_stop_during_recovery_readback_prevents_new_dispatch(self) -> None:
+        host = Host()
+        runner = self.runner(host)
+        runner.start(mission("one"), (intent("one"),), (action(1, "one"),))
+        self.store.transition("mission-1", MissionExecutionStatus.ACTIVE,
+                              occurred_at="2026-08-01T20:00:00Z", reason="test")
+        runner._release_action(self.store.get("mission-1"))
+
+        def recover_then_stop(_request):
+            runner._keep_running = lambda: False
+            return None
+
+        host.recover_dispatch = recover_then_stop
+        state = runner.resume("mission-1")
+        self.assertEqual(state.status, MissionExecutionStatus.WAITING_FOR_EXECUTION)
+        self.assertEqual(host.requests, [])
+
     def test_temporary_evidence_unavailability_keeps_the_run_recoverable(self) -> None:
         host = Host()
         runner = self.runner(host)

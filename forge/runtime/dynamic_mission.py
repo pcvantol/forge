@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from forge.completion import MissionCompletionEvaluator
 from forge.completion.repository_observer import RepositoryCriterionObserver
+from forge.completion.host_control_observer import HostControlCriterionObserver
 from forge.models.criterion_observation import CriterionObservation
 from forge.execution import ExecutionLoop, RecoveryAuthorization
 from forge.execution_host_configuration import EngineeringPlatformExecutionHostFactory
@@ -183,7 +184,9 @@ class InstalledDynamicMissionRuntime:
         self.data_root, self.provider, self.host, self.clock = data_root, provider, host, clock
         self.states = MissionStateStore(database, data_root=data_root)
         self._criterion_observer = RepositoryCriterionObserver()
+        self._host_control_observer = HostControlCriterionObserver()
         self._initial_truth: dict[str, dict[str, str]] = {}
+        self._keep_running = lambda: True
 
     @classmethod
     def open(cls, data_root: str, *, provider_id: str = "codex-chatgpt-session") -> "InstalledDynamicMissionRuntime":
@@ -325,6 +328,8 @@ class InstalledDynamicMissionRuntime:
         truth = self._truth_from_snapshot(initial_repository_truth)
         self._assert_repository_scope(initial_repository_truth)
         self.preflight()
+        if not self._keep_running():
+            return self._result(state)
         self._initial_truth[mission_id] = truth
         self.states.transition(
             mission_id, MissionExecutionStatus.CREATED, occurred_at=self.clock(),
@@ -342,6 +347,8 @@ class InstalledDynamicMissionRuntime:
             raise InstalledDynamicMissionError("resumed Mission lacks canonical Repository Truth")
         self._initial_truth[mission_id] = dict(state.repository_truth)
         self.preflight()
+        if not self._keep_running():
+            return self._result(state)
         return self._tick(mission_id)
 
     def recover(self, mission_id: str, authorization: RecoveryAuthorization) -> DynamicMissionRunResult:
@@ -599,6 +606,7 @@ class InstalledDynamicMissionRuntime:
             completion_evaluator=MissionCompletionEvaluator(),
             runtime_database=self.database,
             repository_revision_binding_factory=self._repository_revision_binding,
+            keep_running=self._keep_running,
         )
 
     @staticmethod
@@ -771,6 +779,7 @@ class InstalledDynamicMissionRuntime:
             candidate_revision=repository.candidate_revision,
         )
         observations = list(self._criterion_observer.observe(mission, reference, self.host.config.repository_id))
+        observations.extend(self._host_control_observer.observe(mission, reference, evidence))
         # Original observations retain their original revision and receipt. No
         # blanket copying of historical references to the current Truth occurs.
         old = {}

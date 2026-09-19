@@ -1748,9 +1748,10 @@ class InstalledForgeUpdateController:
         _safe_directory(self.data_root)
         _safe_directory(self.runtime_root)
         update_lock = self.runtime_root / "locks" / "installation-update.lock"
+        controller_lock = self.data_root / "forge-mission-controller.lock"
         runtime_lock = self.data_root / "forge-runtime-mutation.lock"
         bootstrap_lock = self.data_root / "locks" / "runtime.lock"
-        with exclusive_lock(update_lock):
+        with exclusive_lock(update_lock), exclusive_lock(controller_lock):
             _safe_directory(self.operation_root, create=True)
             os.chmod(self.operation_root, 0o700)
             state = self._state(allow_request_mismatch=self.reconcile_staged_controller)

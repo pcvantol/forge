@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from typing import Callable, Sequence
 
@@ -12,6 +12,7 @@ from forge.models.mission import EngineeringMission, MissionStatus
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore, MissionStateStoreError
 from forge.governance_authority import CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope
+from forge.models.criterion_observation import canonical_digest
 from forge.runtime.database import RuntimeDatabaseError
 
 
@@ -50,19 +51,7 @@ class MissionIntake:
         This is the canonical governance bridge.  It preserves the legacy
         bootstrap admission method below for its separately-versioned contract.
         """
-        self.validate_approved_evidence(envelope, repository)
-        if mission.status is not ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING:
-            raise MissionIntakeError("Mission Intake requires an engineering-approved Architecture Mission")
-        planning = envelope.planning
-        if mission.criterion_assessment_contracts or planning.criterion_assessment_contracts:
-            if (mission.candidate_id != envelope.subject_id
-                    or tuple(sorted(mission.scope)) != tuple(sorted(planning.scope))
-                    or mission.architecture_review_reference != envelope.architecture_decision_id
-                    or mission.criterion_assessment_contracts != planning.criterion_assessment_contracts
-                    or mission.maximum_actions != planning.maximum_actions
-                    or mission.maximum_consecutive_no_progress_actions != planning.maximum_consecutive_no_progress_actions
-                    or mission.repository_evidence_source != planning.repository_evidence_source):
-                raise MissionIntakeError("Mission Intake criterion contract differs from canonical Architecture approval")
+        self.validate_canonical_mission_contract(mission, envelope, repository)
         source = "canonical-governance-envelope:" + envelope.digest
         allocation = repository.database._connection.execute(
             "SELECT mission_id FROM mission_id_allocations WHERE source = ?", (source,)
@@ -118,6 +107,29 @@ class MissionIntake:
         except RuntimeDatabaseError as error:
             raise MissionIntakeError("Mission Intake could not create canonical Mission state") from error
         return MissionStateStore._decode(json.dumps(document, sort_keys=True, separators=(",", ":")))
+
+    def validate_canonical_mission_contract(
+        self, mission: ArchitectureMission, envelope: MissionPlanningEvidenceEnvelope,
+        repository: CanonicalGovernanceRepository,
+    ) -> None:
+        """Check all approval and Mission content before any allocation."""
+        self.validate_approved_evidence(envelope, repository)
+        if mission.status is not ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING:
+            raise MissionIntakeError("Mission Intake requires an engineering-approved Architecture Mission")
+        planning = envelope.planning
+        if (planning.mission_spec_digest is not None
+                and planning.mission_spec_digest != canonical_digest(
+                    replace(mission, id="MISSION-PREVIEW").to_dict())):
+            raise MissionIntakeError("Mission content differs from the exact Architecture-approved specification")
+        if mission.criterion_assessment_contracts or planning.criterion_assessment_contracts:
+            if (mission.candidate_id != envelope.subject_id
+                    or tuple(sorted(mission.scope)) != tuple(sorted(planning.scope))
+                    or mission.architecture_review_reference != envelope.architecture_decision_id
+                    or mission.criterion_assessment_contracts != planning.criterion_assessment_contracts
+                    or mission.maximum_actions != planning.maximum_actions
+                    or mission.maximum_consecutive_no_progress_actions != planning.maximum_consecutive_no_progress_actions
+                    or mission.repository_evidence_source != planning.repository_evidence_source):
+                raise MissionIntakeError("Mission Intake criterion contract differs from canonical Architecture approval")
 
     def admit(
         self,
