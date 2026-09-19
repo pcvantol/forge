@@ -1,5 +1,6 @@
 """Only exact executed EP controls can prove a functional criterion."""
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 import json
 from types import SimpleNamespace
@@ -11,7 +12,7 @@ from pathlib import Path
 from forge.completion.host_control_observer import HostControlCriterionObserver
 from forge.completion.mission import MissionCompletionEvaluator
 from forge.governance_authority import ArchitecturePlanningEvidence
-from forge.mission_cli import inspect, _require_ep_mission_capabilities, _verified_initial_truth
+from forge.mission_cli import inspect, _github_default_head, _require_ep_mission_capabilities, _verified_initial_truth
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.criterion_assessment import (
     ApprovedRepositoryEvidenceSource, CriterionAssessmentContract, CriterionEvidenceRequirement,
@@ -197,17 +198,58 @@ class HostControlCompletionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "stale"):
                 _verified_initial_truth(runtime, self.mission.id, requested)
 
+    def test_approved_github_head_is_pinned_to_github_com_main(self):
+        replies = (SimpleNamespace(returncode=0, stdout=json.dumps({
+            "full_name": "example/qualification", "default_branch": "main"})),
+            SimpleNamespace(returncode=0, stdout=json.dumps({"sha": "a" * 40})))
+        with patch("forge.mission_cli.subprocess.run", side_effect=replies) as invoked:
+            self.assertEqual(_github_default_head("example/qualification"), ("main", "a" * 40))
+        self.assertEqual(invoked.call_count, 2)
+        self.assertTrue(all(call.args[0][2:4] == ["--hostname", "github.com"]
+                            for call in invoked.call_args_list))
+        wrong_branch = SimpleNamespace(returncode=0, stdout=json.dumps({
+            "full_name": "example/qualification", "default_branch": "develop"}))
+        with patch("forge.mission_cli.subprocess.run", return_value=wrong_branch):
+            with self.assertRaisesRegex(ValueError, "default branch"):
+                _github_default_head("example/qualification")
+
     def test_mission_run_requires_all_declared_ep_capabilities(self):
         capabilities = {"validation_controls": ["1.0"], "delivery_revision_validation": ["1.0"],
                         "bounded_merge_delegation": ["1.0"]}
-        runtime = SimpleNamespace(host=SimpleNamespace(preflight=lambda: {"contracts": capabilities}))
-        _require_ep_mission_capabilities(runtime)
+        grant = {"contract_version": "1.0", "delegation_id": "a" * 32,
+                 "actor_reference": "owner", "project_id": "forge", "repository_id": "target",
+                 "github_repository": "example/qualification", "mission_id": self.mission.id,
+                 "mission_revision": "1", "base_branch": "main",
+                 "roles": ["IMPLEMENTATION", "FINALIZATION", "RECONCILIATION"],
+                 "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+                 "activated_at": datetime.now(UTC).isoformat(), "revoked_at": None,
+                 "status": "ACTIVE"}
+        states = SimpleNamespace(get=lambda _: SimpleNamespace(
+            mission=self.mission.to_dict(), admission_contract={"subject_revision": "1"}))
+        runtime = SimpleNamespace(
+            states=states, host=SimpleNamespace(preflight=lambda: {"contracts": capabilities},
+                                                merge_delegation_status=lambda _: grant))
+        _require_ep_mission_capabilities(runtime, self.mission.id)
         for missing in capabilities:
             with self.subTest(missing=missing):
                 reduced = {key: value for key, value in capabilities.items() if key != missing}
-                runtime = SimpleNamespace(host=SimpleNamespace(preflight=lambda: {"contracts": reduced}))
+                runtime = SimpleNamespace(states=states, host=SimpleNamespace(
+                    preflight=lambda: {"contracts": reduced}, merge_delegation_status=lambda _: grant))
                 with self.assertRaisesRegex(ValueError, "lacks"):
-                    _require_ep_mission_capabilities(runtime)
+                    _require_ep_mission_capabilities(runtime, self.mission.id)
+        runtime = SimpleNamespace(states=states, host=SimpleNamespace(
+            preflight=lambda: {"contracts": capabilities}, merge_delegation_status=lambda _: grant))
+        for mutation in ({"status": "RESERVED"}, {"revoked_at": datetime.now(UTC).isoformat()},
+                         {"github_repository": "example/other"}, {"mission_id": "MISSION-OTHER"},
+                         {"mission_revision": "2"}, {"base_branch": "develop"},
+                         {"roles": ["IMPLEMENTATION"]}):
+            with self.subTest(mutation=mutation):
+                original = grant.copy()
+                grant.update(mutation)
+                with self.assertRaisesRegex(ValueError, "does not bind"):
+                    _require_ep_mission_capabilities(runtime, self.mission.id)
+                grant.clear()
+                grant.update(original)
 
     def test_skipped_empty_wrong_candidate_and_changed_definition_are_unproven(self):
         changes = (

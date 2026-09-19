@@ -162,20 +162,36 @@ def status(data_root: str, mission_id: str) -> dict[str, object]:
     database = root / "forge.db"
     with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
         row = connection.execute("SELECT document FROM mission_state WHERE mission_id = ?", (mission_id,)).fetchone()
-    if row is None:
-        raise ValueError("unknown Mission")
+        if row is None:
+            raise ValueError("unknown Mission")
+        planning_attempts = connection.execute(
+            "SELECT COUNT(*) FROM action_derivations WHERE mission_id = ?", (mission_id,)).fetchone()[0]
     state = MissionStateStore._decode(row[0])
+    attempts = tuple({"correlation_id": item.get("correlation_id"),
+                      "host_run_id": item.get("host_run_id"),
+                      "receipt_id": item.get("receipt_id"), "outcome": item.get("outcome"),
+                      "retry_of_correlation_id": item.get("retry_of_correlation_id")}
+                     for item in state.execution_history)
+    current = state.current_engineering_action or {}
+    truth = state.repository_truth or {}
     return {"mission_id": state.mission_id, "status": state.status.value,
             "revision": state.revision, "action_ids": [item["id"] for item in state.actions],
-            "planning_invocations": len(state.planning_history), "waiting_reason": state.waiting_reason,
-            "completion": state.completion, "read_only": True}
+            "current_action_id": current.get("id"),
+            "planning_attempts_recorded": planning_attempts,
+            "materialized_plans": sum(bool(item.get("derivation_id")) for item in state.planning_history),
+            "planning_invocations": None,
+            "repository_revision": truth.get("revision"), "execution_attempts": attempts,
+            "recovery_authorizations": sum(item.get("reason") == "authorized_recovery"
+                                            for item in state.state_history),
+            "waiting_reason": state.waiting_reason, "completion": state.completion, "read_only": True}
 
 
 def _github_default_head(repository: str) -> tuple[str, str]:
     """Read the current default-branch commit through the configured gh identity."""
     def read(path: str) -> dict[str, Any]:
         try:
-            result = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github+json", path],
+            result = subprocess.run(["gh", "api", "--hostname", "github.com",
+                                     "-H", "Accept: application/vnd.github+json", path],
                                     capture_output=True, text=True, timeout=20, check=False)
         except (OSError, subprocess.TimeoutExpired) as error:
             raise ValueError("approved repository head is unavailable") from error
@@ -193,7 +209,7 @@ def _github_default_head(repository: str) -> tuple[str, str]:
     branch = metadata.get("default_branch")
     full_name = metadata.get("full_name")
     if (not isinstance(full_name, str) or full_name.lower() != repository.lower()
-            or not isinstance(branch, str) or not branch):
+            or branch != "main"):
         raise ValueError("approved repository identity or default branch differs")
     commit = read("repos/" + repository + "/commits/" + quote(branch, safe=""))
     revision = commit.get("sha")
@@ -225,12 +241,39 @@ def _verified_initial_truth(runtime: InstalledDynamicMissionRuntime, mission_id:
                                  observed_digest),))
 
 
-def _require_ep_mission_capabilities(runtime: InstalledDynamicMissionRuntime) -> None:
+def _require_ep_mission_capabilities(runtime: InstalledDynamicMissionRuntime, mission_id: str) -> None:
     declaration = runtime.host.preflight()
     contracts = declaration.get("contracts") if isinstance(declaration, dict) else None
     required = ("validation_controls", "delivery_revision_validation", "bounded_merge_delegation")
     if not isinstance(contracts, dict) or any(contracts.get(name) != ["1.0"] for name in required):
         raise ValueError("installed EP lacks the required autonomous Mission capabilities")
+    state = runtime.states.get(mission_id)
+    mission = ArchitectureMission.from_dict(dict(state.mission))
+    approved = state.admission_contract or {}
+    source = mission.repository_evidence_source
+    references = [value.split(":", 1)[1] for value in mission.engineering_constraints
+                  if re.fullmatch(r"ep-merge-delegation:[0-9a-f]{32}", value)]
+    if len(references) != 1 or source is None or not approved.get("subject_revision"):
+        raise ValueError("admitted Mission lacks its approved EP merge scope")
+    grant = runtime.host.merge_delegation_status(references[0])
+    try:
+        expiry = datetime.fromisoformat(grant["expires_at"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("EP merge delegation expiry is invalid") from error
+    if (grant.get("status") != "ACTIVE" or grant.get("activated_at") is None
+            or grant.get("revoked_at") is not None or expiry.tzinfo is None
+            or expiry <= datetime.now(UTC)
+            or grant.get("mission_id") != mission_id
+            or grant.get("mission_revision") != approved["subject_revision"]
+            or grant.get("repository_id") != source.repository_id
+            or not isinstance(grant.get("github_repository"), str)
+            or grant["github_repository"].lower() != source.github_repository.lower()
+            or grant.get("base_branch") != "main"
+            or not isinstance(grant.get("actor_reference"), str) or not grant["actor_reference"]
+            or not isinstance(grant.get("roles"), list)
+            or any(not isinstance(role, str) for role in grant["roles"])
+            or not {"IMPLEMENTATION", "FINALIZATION", "RECONCILIATION"}.issubset(grant["roles"])):
+        raise ValueError("EP merge delegation does not bind the approved active Mission and repository")
 
 
 def run(data_root: str, mission_id: str, *, truth_path: str | None,
@@ -243,7 +286,7 @@ def run(data_root: str, mission_id: str, *, truth_path: str | None,
             document["observed_at"], tuple(RepositoryTruthEvidence(**item) for item in document["evidence"]),
             schema_version=document["schema_version"])
     with InstalledDynamicMissionRuntime.open(data_root) as runtime:
-        _require_ep_mission_capabilities(runtime)
+        _require_ep_mission_capabilities(runtime, mission_id)
         if truth is not None:
             truth = _verified_initial_truth(runtime, mission_id, truth)
         return MissionController(runtime, mission_id, poll_seconds=poll_seconds,

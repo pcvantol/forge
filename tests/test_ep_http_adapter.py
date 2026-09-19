@@ -162,6 +162,23 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         sent = host._payload(request)["constraints"]["forge_execution"]
         self.assertEqual(sent["execution_constraints"], list(contract.execution_constraints))
 
+    def test_merge_delegation_readback_is_authenticated_and_scoped(self) -> None:
+        host = EngineeringPlatformHttpExecutionHost(self.config, self.database)
+        delegation_id = "a" * 32
+        document = {"contract_version": "1.0", "delegation_id": delegation_id,
+                    "actor_reference": "owner", "project_id": "forge", "repository_id": "forge",
+                    "github_repository": "example/qualification", "mission_id": "MISSION-0042",
+                    "mission_revision": "1", "base_branch": "main",
+                    "roles": ["IMPLEMENTATION", "FINALIZATION", "RECONCILIATION"],
+                    "expires_at": "2026-09-20T00:00:00+00:00", "activated_at": "2026-09-19T00:00:00+00:00",
+                    "revoked_at": None, "status": "ACTIVE"}
+        with patch.object(host, "_json", return_value=document) as read:
+            self.assertEqual(host.merge_delegation_status(delegation_id), document)
+        read.assert_called_once_with("/v1/projects/forge/merge-delegations/" + delegation_id)
+        with patch.object(host, "_json", return_value={**document, "repository_id": "other"}):
+            with self.assertRaisesRegex(ValueError, "scope differs"):
+                host.merge_delegation_status(delegation_id)
+
     def _accepted_submission(self, request: ExecutionRequest | None = None) -> dict[str, object]:
         request = self.request if request is None else request
         accepted_request_digest = (

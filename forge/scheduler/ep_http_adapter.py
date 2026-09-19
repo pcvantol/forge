@@ -6,6 +6,7 @@ the EP submission/run binding which follows from a persisted Forge request.
 from __future__ import annotations
 
 import json
+import re
 from hashlib import sha256
 from dataclasses import dataclass, field, replace
 from typing import Any, Mapping, Protocol
@@ -646,6 +647,23 @@ class EngineeringPlatformHttpExecutionHost:
             if capability in contracts and contracts[capability] != ["1.0"]:
                 raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         return declaration
+
+    def merge_delegation_status(self, delegation_id: str) -> dict[str, Any]:
+        """Read the authenticated EP-owned grant; this endpoint cannot mutate it."""
+        if re.fullmatch(r"[0-9a-f]{32}", delegation_id) is None:
+            raise ValueError("EP merge delegation reference is invalid")
+        document = self._json(
+            f"/v1/projects/{self._segment(self.config.project_id)}/merge-delegations/{delegation_id}"
+        )
+        expected = {"contract_version", "delegation_id", "actor_reference", "project_id",
+                    "repository_id", "github_repository", "mission_id", "mission_revision",
+                    "base_branch", "roles", "expires_at", "activated_at", "revoked_at", "status"}
+        if (set(document) != expected or document.get("contract_version") != "1.0"
+                or document.get("delegation_id") != delegation_id
+                or document.get("project_id") != self.config.project_id
+                or document.get("repository_id") != self.config.repository_id):
+            raise ValueError("EP merge delegation readback scope differs")
+        return document
 
     def _readback(self, request: ExecutionRequest, binding: Mapping[str, Any]) -> dict[str, Any] | None:
         submission_id = binding.get("submission_id")

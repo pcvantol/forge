@@ -15,7 +15,13 @@ The approved Mission constraints carry one EP-issued, Mission-scoped merge
 delegation reference and, for host-control criteria, the exact delivery
 validation request `ep-delivery-control-validation:1`. Forge transports those
 immutable constraints in the accepted Producer provenance. The installed EP
-must declare both capabilities before the foreground command starts.
+must declare control publication, delivery validation, and bounded merge
+capabilities before the foreground command starts. A read-only
+input inspection checks the reference syntax; it does not assert that EP has
+reserved or activated the grant. Before the first start or a reopen, Forge
+reads the authenticated EP grant and requires an active, unexpired exact
+Mission/revision, repository, GitHub.com origin, protected `main`, and delivery
+role binding. The initial GitHub head is read from `github.com/main`.
 
 The functional evidence source is an EP-owned, immutable terminal artifact
 containing the actual candidate-bound validation-control execution record.
