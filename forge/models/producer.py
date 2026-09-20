@@ -414,12 +414,15 @@ class RepositoryRevisionBinding:
             "transition_authority_id": self.transition_authority_id,
         }
 
-    def ep_constraint(self) -> dict[str, str | None]:
+    def ep_constraint(self, repository_identity: str | None = None) -> dict[str, str | None]:
         """Return the exact, intentionally narrow EP request shape."""
-        return {
+        constraint = {
             "requested_revision": self.requested_revision,
             "allowed_baseline_revision": self.allowed_baseline_revision,
         }
+        if repository_identity is not None:
+            constraint["repository_identity"] = repository_identity
+        return constraint
 
     def digest(self) -> str:
         return _canonical_digest(self.to_dict())

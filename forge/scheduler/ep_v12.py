@@ -279,7 +279,7 @@ def terminal_evidence(readback: Mapping[str, Any], artifact: bytes, *, host_id: 
     all readback/artifact fields used below must therefore be explicitly
     present, correctly typed, and mutually consistent.
     """
-    if set(readback) != _READBACK_KEYS or readback.get("contract_version") != "1.2":
+    if set(readback) != _READBACK_KEYS or readback.get("contract_version") not in {"1.2", "1.3"}:
         raise ValueError("unsupported EP readback contract")
     evidence = _object(readback.get("evidence"), "readback evidence")
     terminal = _object(evidence.get("terminal_artifact"), "terminal artifact reference")

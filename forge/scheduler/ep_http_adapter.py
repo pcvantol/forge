@@ -92,7 +92,7 @@ class EngineeringPlatformHttpConfiguration:
 class EngineeringPlatformHttpExecutionHost:
     """EP v1.2/v1.4 transport with compatibility preflight and durable idempotency."""
 
-    SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)
+    SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2", "1.3")
     FORGE_PROVENANCE_CONTRACT_VERSION = "1.3"
     EP_SUBMISSION_RECEIPT_CONTRACT_VERSION = "1.0"
     _COMPATIBILITY_KEYS = frozenset({
@@ -132,7 +132,8 @@ class EngineeringPlatformHttpExecutionHost:
                           headers={"Authorization": "Bearer " + self.config.bearer_token,
                                    "Content-Type": "application/json",
                                    "EP-Project-ID": self.config.project_id,
-                                   "EP-Repository-ID": self.config.repository_id})
+                                   "EP-Repository-ID": self.config.repository_id,
+                                   "EP-Producer-Readback-Contract": "1.3"})
         try:
             with _open(request, timeout=self.config.timeout) as response:
                 raw = response.read(1_048_577)
@@ -225,6 +226,8 @@ class EngineeringPlatformHttpExecutionHost:
         revision_binding = request.repository_revision_binding
         if revision_binding is None:
             raise ValueError("EP_REQUEST_REPOSITORY_REVISION_BINDING_REQUIRED")
+        if request.origin_identity is None:
+            raise ValueError("EP_REQUEST_APPROVED_ORIGIN_IDENTITY_REQUIRED")
         payload = self._payload(request)
         return {"correlation_id": request.correlation_id, "host_id": request.host_id, "project_id": self.config.project_id,
                 "repository_id": request.repository_id, "mission_id": request.mission_id,
@@ -387,6 +390,8 @@ class EngineeringPlatformHttpExecutionHost:
 
     def _payload(self, request: ExecutionRequest) -> dict[str, Any]:
         self._validate_request_scope(request)
+        if request.origin_identity is None:
+            raise ValueError("EP_REQUEST_APPROVED_ORIGIN_IDENTITY_REQUIRED")
         contract = request.producer_contract
         action_context = contract.action_context
         planning_context = contract.planning_context
@@ -416,7 +421,8 @@ class EngineeringPlatformHttpExecutionHost:
                 "prompt": contract.runtime_prompt.content, "idempotency_key": request.correlation_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
                 "engineering_action_id": request.action_id, "constraints": {"forge_execution": forge_execution,
-                    "repository_revision_binding": revision_binding.ep_constraint()}}
+                    "repository_revision_binding": revision_binding.ep_constraint(
+                        request.origin_identity)}}
 
     def _audit_document(self, request: ExecutionRequest, binding: Mapping[str, Any], *, receipt: Mapping[str, Any] | None = None) -> dict[str, object]:
         contract = request.producer_contract
@@ -665,7 +671,10 @@ class EngineeringPlatformHttpExecutionHost:
         ):
             raise ValueError("EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH")
         versions = contracts.get("producer_readback")
-        if not isinstance(versions, list) or versions != [self.config.producer_readback_contract]:
+        if (not isinstance(versions, list) or not versions
+                or len(versions) != len(set(versions))
+                or self.config.producer_readback_contract not in versions
+                or any(version not in self.SUPPORTED_PRODUCER_READBACK_CONTRACTS for version in versions)):
             raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
         terminal_versions = contracts.get("terminal_evidence")
         if not isinstance(terminal_versions, list) or terminal_versions != [self.config.terminal_evidence_contract]:
@@ -677,6 +686,27 @@ class EngineeringPlatformHttpExecutionHost:
             if capability in contracts and contracts[capability] != ["1.0"]:
                 raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         return declaration
+
+    def managed_workspace_readiness(self) -> dict[str, Any]:
+        """Read EP's current Managed workspace capability without submission."""
+        document = self._json(
+            f"/v1/projects/{self._segment(self.config.project_id)}/managed-workspace-readiness"
+        )
+        required = {
+            "contract_version", "project_id", "repository_id", "managed_workspace_id",
+            "execution_mode", "repository_identity", "origin", "head_sha", "branch",
+            "clean", "busy", "active_lease", "preparation_capability", "status",
+            "known_blocker", "observed_at",
+        }
+        if (set(document) != required or document["contract_version"] != "1.0"
+                or document["project_id"] != self.config.project_id
+                or document["repository_id"] != self.config.repository_id
+                or document["execution_mode"] != "MANAGED"
+                or ("/" in self.config.repository_identity
+                    and document["repository_identity"] != self.config.repository_identity)
+                or document["preparation_capability"] != "EXACT_MAIN_FAST_FORWARD_V1"):
+            raise ValueError("EP_MANAGED_WORKSPACE_READINESS_MALFORMED")
+        return document
 
     def merge_delegation_status(self, delegation_id: str) -> dict[str, Any]:
         """Read the authenticated EP-owned grant; this endpoint cannot mutate it."""

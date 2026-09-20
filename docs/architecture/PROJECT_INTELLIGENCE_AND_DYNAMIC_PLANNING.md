@@ -236,6 +236,39 @@ Workspace is not required for Forge to derive Mission Candidates or run the firs
 
 These remain follow-on capabilities after the first reliable execution/reconciliation loop unless a concrete bootstrap dependency emerges.
 
+## Serial evidence-bound Action materialization
+
+Repository Truth is the execution baseline for each Action, as well as planner
+context. Forge freezes its exact revision and Truth provenance in the Producer
+Contract. After accepted delivery, Forge derives the next Repository Truth from
+the terminal receipt before a new planner invocation. The Mission start SHA is
+not a permanent baseline for successor Actions.
+The approved Mission repository evidence source supplies the independent
+GitHub origin identity. The installed runtime compares it with EP's read-only
+Managed workspace readiness and includes it with each exact Action revision
+constraint; the Forge runtime's logical repository ID is not treated as an
+origin URL.
+Forge accepts the existing EP producer readback v1.2 and requests v1.3 for
+the current dispatch disposition. EP can therefore retain the v1.2 historical
+queue projection for older consumers while v1.3 distinguishes terminal
+execution from the immutable QUEUED event. The consumer must be delivered
+before EP advertises v1.3.
+
+One planner invocation may describe multiple proposed steps. Forge validates
+the complete output, retains later proposal identities as non-executable
+forecast in planning history, and materializes only the currently eligible
+Action. Forecast has no Mission Action membership, dispatch, lease, delivery
+authority or completion credit. If terminal evidence proves all approved
+criteria, the Mission closes after that Action. Otherwise a new invocation
+uses the accepted evidence, updated Repository Truth, prior Actions, remaining
+criteria and current limits to decide the successor. Reusing a forecast idea
+still requires that new decision. Parallel independent Actions remain a
+separate architecture scope.
+
+The production MISSION-0003 attempt of 20 September 2026 remains a failed,
+immutable acceptance record: its P1 materialized both Actions before A
+evidence, and its first submission was blocked before implementation.
+
 ## Non-goals
 
 - Expected Missions are not a hidden second roadmap.

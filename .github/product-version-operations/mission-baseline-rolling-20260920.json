@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.26",
+  "classification_rationale": "fix/mission-baseline-rolling-planning-20260920",
+  "component": "product",
+  "event_lineage": "fix/mission-baseline-rolling-planning-20260920",
+  "expected_head": "174adfe873d9970683d6214212cb3c6fea5a323c",
+  "operation_id": "mission-baseline-rolling-20260920",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.27"
+}

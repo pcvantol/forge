@@ -52,13 +52,18 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.23", "2.7.24"): (38, 38),
     ("2.7.24", "2.7.25"): (38, 39),
     ("2.7.25", "2.7.26"): (39, 39),
+    ("2.7.26", "2.7.27"): (39, 39),
 }
+SAME_SCHEMA_39_TRANSITIONS = frozenset({
+    ("2.7.25", "2.7.26"), ("2.7.26", "2.7.27"),
+})
 NORMAL_RELEASE_TRANSITIONS = frozenset({
     ("2.7.22", "2.7.23"),
     ("2.7.22", "2.7.24"),
     ("2.7.23", "2.7.24"),
     ("2.7.24", "2.7.25"),
     ("2.7.25", "2.7.26"),
+    ("2.7.26", "2.7.27"),
 })
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
@@ -494,7 +499,7 @@ def _normal_release_evidence(
         f"dist/{sdist_name}": sdist_digest,
     }
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
-    composition_keys = {"criterion_completion"} if request.version in {"2.7.25", "2.7.26"} else set()
+    composition_keys = {"criterion_completion"} if request.version in {"2.7.25", "2.7.26", "2.7.27"} else set()
     if (
         (request.existing_version, request.version) not in NORMAL_RELEASE_TRANSITIONS
         or set(receipt) != expected_top
@@ -1049,7 +1054,7 @@ class InstalledForgeUpdateController:
         self.receipt_path = self.operation_root / "receipt.json"
         self.backup_root = self.data_root / "backups" / "installation" / request.operation_id
         self.backup_path = self.backup_root / (
-            "forge-schema39.sqlite3" if (request.existing_version, request.version) == ("2.7.25", "2.7.26")
+            "forge-schema39.sqlite3" if (request.existing_version, request.version) in SAME_SCHEMA_39_TRANSITIONS
             else "forge-schema38.sqlite3" if (request.existing_version, request.version) == ("2.7.24", "2.7.25")
             else "forge-schema37.sqlite3"
         )
@@ -1588,7 +1593,7 @@ class InstalledForgeUpdateController:
     def _migrate_live(self, state: dict[str, Any], before: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         schema_before, schema_after = transition_schemas(self.request)
         current = database_snapshot(self.database)
-        if (self.request.existing_version, self.request.version) == ("2.7.25", "2.7.26"):
+        if (self.request.existing_version, self.request.version) in SAME_SCHEMA_39_TRANSITIONS:
             qualified = database_snapshot(self.operation_root / "qualification-copy" / "forge.db")
             verify_preservation(before, qualified, self.request)
             # Candidate initialization may update the known volatile metadata in
@@ -1705,7 +1710,7 @@ class InstalledForgeUpdateController:
             and isinstance(before, Mapping)
             and current.get("content_digest") == before.get("content_digest")
             and self.legacy_entrypoint.exists()
-            and ((self.request.existing_version, self.request.version) != ("2.7.25", "2.7.26")
+            and ((self.request.existing_version, self.request.version) not in SAME_SCHEMA_39_TRANSITIONS
                  or state.get("phase") not in {"MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE"})
         ):
             self._restore_legacy_before_migration(state, error)

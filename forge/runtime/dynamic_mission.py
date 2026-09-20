@@ -165,7 +165,12 @@ class _InstalledMissionDispatcher:
 
 
 class _OneActionProvider:
-    """Keep the first serial canary to one active provider-derived Action."""
+    """Pass validated provider hypotheses to serial Action materialization.
+
+    A provider may forecast several steps.  The ExecutionLoop chooses the
+    immediate Action after validation; this adapter must not confuse a
+    multi-step forecast with parallel execution authority.
+    """
 
     def __init__(self, provider: object) -> None:
         self._provider = provider
@@ -185,8 +190,8 @@ class _OneActionProvider:
         result = self._provider.derive_with_planning_input(snapshot, planning_input, derivation_policy, **kwargs)
         if isinstance(result, GovernanceRefinementRequired):
             return result
-        if not isinstance(result, tuple) or len(result) != 1:
-            raise InstalledDynamicMissionError("the serial installed Mission requires exactly one derived Action per invocation")
+        if not isinstance(result, tuple) or not result:
+            raise InstalledDynamicMissionError("the installed Mission requires at least one derived proposal")
         return result
 
 
@@ -254,17 +259,27 @@ class InstalledDynamicMissionRuntime:
             raise InstalledDynamicMissionError("canonical Mission Intake did not preserve zero-Action planning state")
         return state
 
-    def preflight(self) -> dict[str, object]:
+    def preflight(self, *, expected_origin: str | None = None,
+                  require_workspace_readiness: bool = True) -> dict[str, object]:
         """Perform only the configured Codex and EP read-only capability checks."""
         provider_preflight = getattr(self.provider, "preflight", None)
         readiness = provider_preflight() if callable(provider_preflight) else None
         if readiness is not None and not getattr(readiness, "ready", False):
             raise InstalledDynamicMissionError("configured Codex planning session is not ready")
         declaration = self.host.preflight()
+        workspace_readiness = getattr(self.host, "managed_workspace_readiness", None)
+        managed = (workspace_readiness() if require_workspace_readiness
+                   and callable(workspace_readiness) else None)
+        if managed is not None and managed.get("status") != "READY":
+            raise InstalledDynamicMissionError("EP Managed workspace is not ready for exact Action preparation")
+        if (expected_origin is not None and managed is not None
+                and managed.get("repository_identity") != expected_origin):
+            raise InstalledDynamicMissionError("EP Managed workspace origin differs from the approved Mission source")
         return {
             "provider": "READY" if readiness is None else getattr(getattr(readiness, "state", None), "value", "READY"),
             "execution_host": "PASS",
             "declaration": declaration,
+            "PRE_T0_MANAGED_WORKSPACE_READINESS": managed,
         }
 
     def action_derivation_readback(self, mission_id: str) -> tuple[dict[str, object], ...]:
@@ -331,7 +346,7 @@ class InstalledDynamicMissionRuntime:
         if state.repository_truth is None:
             raise InstalledDynamicMissionError("authorized planning continuation lacks canonical Repository Truth")
         self._initial_truth[mission_id] = dict(state.repository_truth)
-        self.preflight()
+        self.preflight(expected_origin=self._approved_origin(state))
         loop = self._loop(mission_id)
         service = ForgeRuntimeService(loop, self.states, runtime_database=self.database)
         with service.mutation_lock.acquire():
@@ -349,7 +364,7 @@ class InstalledDynamicMissionRuntime:
             raise InstalledDynamicMissionError("public start requires a canonically admitted zero-Action Mission")
         truth = self._truth_from_snapshot(initial_repository_truth)
         self._assert_repository_scope(initial_repository_truth)
-        self.preflight()
+        self.preflight(expected_origin=self._approved_origin(state))
         if not self._keep_running():
             return self._result(state)
         self._initial_truth[mission_id] = truth
@@ -368,7 +383,11 @@ class InstalledDynamicMissionRuntime:
         if state.repository_truth is None:
             raise InstalledDynamicMissionError("resumed Mission lacks canonical Repository Truth")
         self._initial_truth[mission_id] = dict(state.repository_truth)
-        self.preflight()
+        # A running EP Action owns its workspace lease. Pre-T0 readiness is
+        # unavailable while that Action executes; exact per-Action preparation
+        # remains EP's admission responsibility.
+        self.preflight(expected_origin=self._approved_origin(state),
+                       require_workspace_readiness=False)
         if not self._keep_running():
             return self._result(state)
         return self._tick(mission_id)
@@ -619,9 +638,19 @@ class InstalledDynamicMissionRuntime:
         ForgeRuntimeService(loop, self.states, runtime_database=self.database).tick()
         return self._result(self.states.get(mission_id))
 
+    def _approved_origin(self, state: MissionExecutionState) -> str:
+        mission = ArchitectureMission.from_dict(dict(state.mission))
+        source = mission.repository_evidence_source
+        if source is None or source.repository_id != self.host.config.repository_id:
+            raise InstalledDynamicMissionError(
+                "approved Mission lacks a repository origin binding for the configured execution target"
+            )
+        return source.github_repository
+
     def _loop(self, mission_id: str) -> ExecutionLoop:
         config = self.host.config
         state = self.states.get(mission_id)
+        origin_identity = self._approved_origin(state)
         contract = self._admission_contract(state)
         planning = contract["planning"]
         policy = DerivationPolicy(
@@ -633,6 +662,7 @@ class InstalledDynamicMissionRuntime:
             lambda intent, action: self._prompt(mission_id, intent, action), self._repository_truth,
             host_id=config.host_id, workspace_id=config.project_id, repository_id=config.repository_id,
             repository_identity=config.repository_identity, clock=self.clock,
+            origin_identity=origin_identity,
             correlation_id_factory=lambda: "forge-runtime-" + str(uuid4()),
             execution_policy=ExecutionPolicy(ExecutionPolicyKind.CONTINUOUS),
             ai_planner=(DurableAIMissionPlanner(self.database, _OneActionProvider(self.provider))

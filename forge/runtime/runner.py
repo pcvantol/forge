@@ -321,6 +321,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
         original_correlation_id=document.get("original_correlation_id"),
         producer_contract=contract,
         repository_identity=document.get("repository_identity", document["repository_id"]),
+        origin_identity=document.get("origin_identity"),
         repository_revision_binding=request_revision,
     )
 
@@ -345,6 +346,8 @@ def _request_document(request: ExecutionRequest) -> dict[str, Any]:
     }
     if request.repository_revision_binding is not None:
         document["repository_revision_binding"] = request.repository_revision_binding.to_dict()
+    if request.origin_identity is not None:
+        document["origin_identity"] = request.origin_identity
     return document
 
 
@@ -366,6 +369,7 @@ class BootstrapMissionRunner:
         workspace_id: str,
         repository_id: str,
         repository_identity: str | None = None,
+        origin_identity: str | None = None,
         clock: Callable[[], str] | None = None,
         correlation_id_factory: Callable[[], str],
         completion_context: CompletionContextFactory | None = None,
@@ -384,6 +388,7 @@ class BootstrapMissionRunner:
         self._workspace_id = workspace_id
         self._repository_id = repository_id
         self._repository_identity = repository_identity or repository_id
+        self._origin_identity = origin_identity
         self._clock = clock or (lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"))
         self._correlation_id_factory = correlation_id_factory
         self._completion_context = completion_context
@@ -454,6 +459,7 @@ class BootstrapMissionRunner:
             self._workspace_id, self._repository_id, self._correlation_id_factory(), self._now(),
             retry_of_correlation_id=retry_of, original_correlation_id=original,
             repository_identity=self._repository_identity,
+            origin_identity=self._origin_identity,
             planning_context=planning_context,
             repository_revision_binding=revision_binding,
         )

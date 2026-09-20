@@ -321,11 +321,11 @@ def planner_input_from_derivation(
             dependencies=proposal.dependencies,
         ))
     scopes = tuple(ApprovedScope(scope.scope, scope.capability_id, scope.architecture_references,
-                                 tuple(by_scope[scope.scope]), allow_provider_derivation=scope.allow_provider_derivation)
-                   for scope in planning_input.approved_scopes if by_scope[scope.scope])
-    # An approved Mission must still be fully represented. A provider cannot omit a scope.
-    if {scope.scope for scope in scopes} != set(planning_input.mission.scope):
-        raise ProposalValidationError("derived proposals do not cover every approved Mission scope")
+                                 tuple(by_scope[scope.scope]),
+                                 allow_provider_derivation=scope.allow_provider_derivation or not by_scope[scope.scope])
+                   for scope in planning_input.approved_scopes)
+    # Preserve the full approved boundary map, including scopes without work
+    # in this invocation. They remain available for evidence-bound replanning.
     return MissionPlannerInput(planning_input.mission, planning_input.mission_state,
                                planning_input.evidence, scopes)
 

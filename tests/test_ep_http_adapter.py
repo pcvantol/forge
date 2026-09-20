@@ -63,7 +63,8 @@ def _request() -> ExecutionRequest:
         repository_revision_binding=revision_binding)
     return ExecutionRequest("engineering-platform", "mission-fixture", "intent-fixture", "7", "action-fixture", prompt,
         "workspace-1", "forge", "forge-correlation-fixture", "2026-09-07T00:00:00Z",
-        producer_contract=contract, repository_revision_binding=revision_binding)
+        producer_contract=contract, repository_revision_binding=revision_binding,
+        origin_identity="pcvantol/forge")
 
 
 class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
@@ -361,7 +362,8 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         })
         self.assertEqual(
             submitted["constraints"]["repository_revision_binding"],
-            {"requested_revision": "a" * 40, "allowed_baseline_revision": None},
+            {"requested_revision": "a" * 40, "allowed_baseline_revision": None,
+             "repository_identity": "pcvantol/forge"},
         )
         persisted = self.database.execution_host_binding(self.request.correlation_id)
         self.assertEqual(persisted["repository_revision_binding"], self.request.repository_revision_binding.to_dict())
@@ -458,6 +460,49 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
             with self.assertRaisesRegex(ValueError, "MALFORMED"):
                 EngineeringPlatformHttpExecutionHost(self.config, self.database).preflight()
+
+    def test_preflight_accepts_additive_readback_version_for_safe_peer_rollout(self) -> None:
+        declaration = json.loads(json.dumps(self.compatible))
+        declaration["contracts"]["producer_readback"] = ["1.2", "1.3"]
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(declaration).encode()], [])):
+            self.assertEqual(
+                EngineeringPlatformHttpExecutionHost(self.config, self.database)
+                .preflight()["contracts"]["producer_readback"], ["1.2", "1.3"],
+            )
+
+    def test_managed_workspace_readiness_is_read_only_and_scoped(self) -> None:
+        readiness = {
+            "contract_version": "1.0", "project_id": "forge", "repository_id": "forge",
+            "managed_workspace_id": "forge:forge", "execution_mode": "MANAGED",
+            "repository_identity": "pcvantol/forge", "origin": "pcvantol/forge",
+            "head_sha": "a" * 40, "branch": "main", "clean": True, "busy": False,
+            "active_lease": False, "preparation_capability": "EXACT_MAIN_FAST_FORWARD_V1",
+            "status": "READY", "known_blocker": None,
+            "observed_at": "2026-09-20T00:00:00+00:00",
+        }
+        observed: list[object] = []
+        with patch("forge.scheduler.ep_http_adapter._open", self._urlopen([json.dumps(readiness).encode()], observed)):
+            self.assertEqual(EngineeringPlatformHttpExecutionHost(self.config, self.database)
+                             .managed_workspace_readiness()["head_sha"], "a" * 40)
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0].get_method(), "GET")
+        self.assertEqual(observed[0].get_header("Ep-producer-readback-contract"), "1.3")
+        self.assertIn("/v1/projects/forge/managed-workspace-readiness", observed[0].full_url)
+
+    def test_github_repository_identity_is_bound_with_exact_action_revision(self) -> None:
+        request = replace(self.request, origin_identity="pcvantol/forge")
+        payload = EngineeringPlatformHttpExecutionHost(self.config, self.database)._payload(request)
+        self.assertEqual(payload["constraints"]["repository_revision_binding"], {
+            "requested_revision": "a" * 40,
+            "allowed_baseline_revision": None,
+            "repository_identity": "pcvantol/forge",
+        })
+
+    def test_exact_action_submission_requires_independent_origin_identity(self) -> None:
+        with self.assertRaisesRegex(ValueError, "APPROVED_ORIGIN_IDENTITY_REQUIRED"):
+            EngineeringPlatformHttpExecutionHost(self.config, self.database)._payload(
+                replace(self.request, origin_identity=None)
+            )
 
     def test_preflight_authentication_rejection_is_safe_and_never_posts(self) -> None:
         rejected = HTTPError("https://ep.test/v1/producer-compatibility", 401, "denied", {}, None)
@@ -833,6 +878,15 @@ class EngineeringPlatformHttpExecutionHostTests(unittest.TestCase):
         self.assertEqual(evidence.execution_started_at, "2026-09-12T00:00:00+00:00")
         self.assertEqual(evidence.execution_completed_at, "2026-09-12T00:01:00+00:00")
         self.assertEqual(evidence.execution_duration_ms, 60_000)
+
+    def test_v13_current_readback_reconciles_terminal_execution_evidence(self) -> None:
+        readback = json.loads(json.dumps(self.readback))
+        readback["contract_version"] = "1.3"
+        readback["disposition"]["state"] = "COMPLETE"
+        readback["disposition"]["terminal"] = True
+        readback["disposition"]["execution_eligible"] = False
+        evidence = self._terminal_retrieval(readback, json.loads(self.artifact))
+        self.assertEqual(evidence.repository_evidence.repository_revision, "1" * 40)
 
     def test_v13_host_evidence_rejects_a_raw_checkout_path(self) -> None:
         """A local EP path is operator evidence, never Forge receipt data."""
