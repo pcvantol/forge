@@ -820,6 +820,60 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 recovered._state(allow_request_mismatch=True), {"user_version": 37},
             )
 
+    def test_backed_up_readback_failure_rebinds_same_operation_only_with_intact_live_and_backup(self) -> None:
+        self._installed_schema37()
+        controller, state, _previous_forge = self._managed_successor_controller()
+        with patch.object(update, "installed_identity", return_value={"version": controller.request.existing_version}):
+            state = controller._adopt_resolver(state)
+        live = update.database_snapshot(self.data_root / "forge.db")
+        backup = update._copy_sqlite_backup(self.data_root / "forge.db", controller.backup_path)
+        backup["path"] = str(controller.backup_path)
+        file_evidence = {"installed_file_count": 1}
+        identity = {"version": controller.request.version,
+                    "module": str(controller.slot / "lib/python/site-packages/forge/__init__.py")}
+        controller.slot.mkdir(parents=True)
+        update._atomic_json(controller.slot_receipt, {
+            "request_digest": controller.request.digest,
+            "wheel_manifest_digest": "sha256:" + "1" * 64,
+            "installed_files": file_evidence,
+        })
+        state = controller._advance(
+            state, "BACKED_UP", before=live, backup=backup,
+            candidate=identity, installed_files=file_evidence,
+        )
+        controller._restore_legacy_before_migration(
+            state, update.InstalledForgeUpdateError("runtime database readback failed"),
+        )
+        replacement = update.UpdateRequest(**{
+            **controller.request.__dict__, "controller_source": "c" * 40,
+            "controller_sha256": "sha256:" + "a" * 64,
+        })
+        recovered = update.InstalledForgeUpdateController(
+            replacement, process_reader=lambda: (), reconcile_staged_controller=True,
+        )
+        real_digest = update.file_digest
+        def replacement_digest(path):
+            return replacement.controller_sha256 if Path(path) == SCRIPT else real_digest(path)
+        with (
+            patch.object(update, "assert_selected_installation"),
+            patch.object(update, "assert_quiescent"),
+            patch.object(update, "transition_schemas", return_value=(37, 37)),
+            patch.object(update, "file_digest", side_effect=replacement_digest),
+            patch.object(update, "_qualified_artifact", return_value=(
+                {"wheel_manifest_digest": "sha256:" + "1" * 64}, b"wheel", {},
+            )),
+            patch.object(update, "_verify_candidate_files", return_value=file_evidence),
+            patch.object(update, "installed_identity", return_value=identity),
+        ):
+            rebound = recovered._reconcile_staged_controller(
+                recovered._state(allow_request_mismatch=True), live,
+            )
+        self.assertEqual(rebound["phase"], "BACKED_UP")
+        self.assertEqual(rebound["controller_reconciliations"][-1]["reason"],
+                         "PROTECTED_BACKED_UP_QUALIFICATION_READBACK_CORRECTION")
+        self.assertEqual(update.database_snapshot(self.data_root / "forge.db")["snapshot_digest"],
+                         live["snapshot_digest"])
+
     def test_run_reuses_a_controller_reconciliation_interrupted_between_audit_writes(self) -> None:
         controller, state, _previous_forge = self._managed_successor_controller(fenced=True)
         evidence = {
@@ -1078,6 +1132,39 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             self.assertEqual(readback.execute("PRAGMA journal_mode").fetchone()[0], "delete")
             self.assertEqual(readback.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
+    def test_completed_isolated_wal_copy_checkpoints_before_readback(self) -> None:
+        self._installed_schema37()
+        source = self.data_root / "forge.db"
+        copy = self.root / "qualification-copy" / "forge.db"
+        update._copy_sqlite_backup(source, copy)
+        with sqlite3.connect(copy) as connection:
+            self.assertEqual(connection.execute("PRAGMA journal_mode=WAL").fetchone()[0], "wal")
+        baseline = update.database_snapshot(source)
+        update.normalize_isolated_qualification_copy(copy, operation_root=self.root)
+        qualified = update.database_snapshot(copy)
+        self.assertEqual(qualified["content_digest"], baseline["content_digest"])
+        with sqlite3.connect(copy) as connection:
+            self.assertEqual(connection.execute("PRAGMA journal_mode").fetchone()[0], "delete")
+        self.assertFalse(copy.with_name(copy.name + "-wal").exists())
+        self.assertFalse(copy.with_name(copy.name + "-shm").exists())
+        sidecar = copy.with_name(copy.name + "-wal")
+        sidecar.symlink_to(self.root / "unknown-wal")
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "symbolic-link component"):
+            update.normalize_isolated_qualification_copy(copy, operation_root=self.root)
+
+    def test_qualification_checkpoint_rejects_symlinked_parent_before_writing(self) -> None:
+        self._installed_schema37()
+        outside = self.root / "outside"
+        database = outside / "forge.db"
+        update._copy_sqlite_backup(self.data_root / "forge.db", database)
+        (self.root / "qualification-copy").symlink_to(outside, target_is_directory=True)
+        before = update.file_digest(database)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "symbolic-link component"):
+            update.normalize_isolated_qualification_copy(
+                self.root / "qualification-copy" / "forge.db", operation_root=self.root,
+            )
+        self.assertEqual(update.file_digest(database), before)
+
     def test_database_swap_is_crash_safe_after_atomic_replace(self) -> None:
         self._installed_schema37()
         controller = update.InstalledForgeUpdateController(
@@ -1183,7 +1270,12 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(controller.backup_path.name, "forge-schema39.sqlite3")
         after = self._qualified_schema39_copy(controller, before)
         self.assertEqual(after["user_version"], 39)
-        self.assertEqual(after["content_digest"], before["content_digest"])
+        # RuntimeBootstrap may refresh volatile last-access metadata in the
+        # isolated copy; every domain table and protected key must still match.
+        for table in before["tables"]:
+            if table != "runtime_metadata":
+                self.assertEqual(after["tables"][table], before["tables"][table], table)
+        self.assertEqual(after["protected_metadata_digest"], before["protected_metadata_digest"])
         self.assertEqual(after["schema_digest"], before["schema_digest"])
         update.verify_preservation(before, after, self.request)
         update.assert_completed_schema(after, {"database_schema_digest": after["schema_digest"]}, self.request)

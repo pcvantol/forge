@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import argparse
 import base64
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import csv
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -760,6 +760,37 @@ def database_snapshot(path: Path, *, existing_connection: sqlite3.Connection | N
     return snapshot
 
 
+def normalize_isolated_qualification_copy(path: Path, *, operation_root: Path) -> None:
+    """Checkpoint a completed candidate copy before read-only readback/replay."""
+    if path != operation_root / "qualification-copy" / "forge.db":
+        raise InstalledForgeUpdateError("qualification database is outside the owning operation")
+    _assert_no_symlink_components(path)
+    if path.is_symlink() or not path.is_file():
+        raise InstalledForgeUpdateError("isolated qualification database is unavailable or unsafe")
+    for suffix in ("-wal", "-shm"):
+        sidecar = path.with_name(path.name + suffix)
+        _assert_no_symlink_components(sidecar)
+        if sidecar.is_symlink():
+            raise InstalledForgeUpdateError("isolated qualification database has an unsafe sidecar")
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=rw", uri=True)) as connection:
+            connection.execute("PRAGMA busy_timeout=0")
+            mode = connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+            if str(mode).lower() != "delete":
+                raise InstalledForgeUpdateError("isolated qualification database did not checkpoint safely")
+    except sqlite3.Error as error:
+        raise InstalledForgeUpdateError("isolated qualification database checkpoint failed") from error
+    for suffix in ("-wal", "-shm"):
+        sidecar = path.with_name(path.name + suffix)
+        _assert_no_symlink_components(sidecar)
+        if sidecar.exists():
+            if sidecar.is_symlink() or not sidecar.is_file() or (suffix == "-wal" and sidecar.stat().st_size):
+                raise InstalledForgeUpdateError("isolated qualification database retained unsafe SQLite sidecars")
+            # SQLite may leave an empty WAL or shared-memory index after the
+            # successful DELETE checkpoint. This is the isolated copy only.
+            sidecar.unlink()
+
+
 def assert_selected_installation(request: UpdateRequest, snapshot: Mapping[str, Any]) -> None:
     metadata = snapshot.get("metadata")
     peer = snapshot.get("peer")
@@ -1364,16 +1395,44 @@ class InstalledForgeUpdateController:
             and state.get("last_error")
             == f"path contains a symbolic-link component: {self.request.resolver}"
         )
+        backed_up_correction = (
+            changed == {"controller_source", "controller_sha256"}
+            and state.get("phase") == "BACKED_UP"
+            and state.get("last_error") == "runtime database readback failed"
+            and state.get("safety_disposition") == "LEGACY_RESTORED_BEFORE_MIGRATION"
+        )
         interpreter_correction = (
             changed == {"existing_interpreter", "controller_source", "controller_sha256"}
             and state.get("phase") == "STAGED"
             and state.get("last_error") is None
             and state.get("safety_disposition") is None
         )
-        if not changed or not (resolver_correction or controller_correction or interpreter_correction):
+        if not changed or not (
+            resolver_correction or controller_correction or interpreter_correction or backed_up_correction
+        ):
             raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
         previous_request = UpdateRequest(**dict(previous))
-        if (
+        if backed_up_correction:
+            before = state.get("before")
+            backup = state.get("backup")
+            if (
+                state.get("request_digest") != previous_request.digest
+                or not isinstance(before, Mapping)
+                or not isinstance(backup, Mapping)
+                or any(key in state for key in (
+                    "migration_qualification", "live_migration", "installed_readback", "receipt_sha256",
+                ))
+                or self.receipt_path.exists()
+                or backup.get("path") != str(self.backup_path)
+                or file_digest(self.backup_path) != backup.get("sha256")
+                or live.get("snapshot_digest") != before.get("snapshot_digest")
+                or database_snapshot(self.backup_path).get("content_digest") != before.get("content_digest")
+                or not self.current.is_symlink()
+                or self.current.resolve(strict=True) != self.legacy_entrypoint.resolve(strict=True)
+            ):
+                raise InstalledForgeUpdateError("controller reconciliation lacks an intact pre-migration backup")
+            assert_quiescent(live)
+        elif (
             state.get("request_digest") != previous_request.digest
             or state.get("phase") != "STAGED"
             or (not interpreter_correction
@@ -1472,7 +1531,7 @@ class InstalledForgeUpdateController:
                     _prove_terminal_host_authority(self.request, connection, document)
             else:
                 raise InstalledForgeUpdateError("staged interpreter correction dispatcher is not quiescent")
-        if not interpreter_correction and (
+        if not interpreter_correction and not backed_up_correction and (
             not Path(self.request.resolver).is_symlink()
             or os.readlink(self.request.resolver) != str(self.stable_resolver)
             or not self.stable_resolver.is_symlink()
@@ -1485,6 +1544,8 @@ class InstalledForgeUpdateController:
             "reason": (
                 "PROTECTED_STAGED_INTERPRETER_CORRECTION_BEFORE_ADOPTION"
                 if interpreter_correction else
+                "PROTECTED_BACKED_UP_QUALIFICATION_READBACK_CORRECTION"
+                if backed_up_correction else
                 "PROTECTED_RESOLVER_CORRECTION_AFTER_PRE_ADOPTION_FAILURE"
                 if resolver_correction else
                 "PROTECTED_CONTROLLER_CORRECTION_AFTER_MANAGED_RESOLVER_PRE_ADOPTION_FAILURE"
@@ -1525,7 +1586,7 @@ class InstalledForgeUpdateController:
         else:
             raise InstalledForgeUpdateError("controller reconciliation audit history conflicts")
         history = list(state.get("history", []))
-        history.append({"phase": "STAGED", "event": "CONTROLLER_RECONCILED", "at": reconciliation["reconciled_at"]})
+        history.append({"phase": state["phase"], "event": "CONTROLLER_RECONCILED", "at": reconciliation["reconciled_at"]})
         updated = {
             **state,
             "request": requested,
@@ -1787,6 +1848,7 @@ class InstalledForgeUpdateController:
         existing = state.get("migration_qualification")
         if isinstance(existing, Mapping) and existing.get("status") == "PASS":
             database = self.operation_root / "qualification-copy" / "forge.db"
+            normalize_isolated_qualification_copy(database, operation_root=self.operation_root)
             qualified = database_snapshot(database)
             verify_preservation(before, qualified, self.request)
             if existing.get("after_snapshot_digest") != qualified.get("snapshot_digest"):
@@ -1829,6 +1891,9 @@ class InstalledForgeUpdateController:
             self.slot / "bin" / "forge", root, cwd=self.runtime_root,
             target_schema=schema_after,
         )
+        # Candidate initialization may leave this isolated copy in WAL mode.
+        # Checkpoint it only after the candidate subprocess has exited.
+        normalize_isolated_qualification_copy(database, operation_root=self.operation_root)
         copy_after = database_snapshot(database)
         qualification = verify_preservation(copy_before, copy_after, self.request)
         qualification.update({
@@ -1855,6 +1920,7 @@ class InstalledForgeUpdateController:
     def _install_qualified_database(self, before: Mapping[str, Any]) -> dict[str, Any]:
         schema_before, _schema_after = transition_schemas(self.request)
         source = self.operation_root / "qualification-copy" / "forge.db"
+        normalize_isolated_qualification_copy(source, operation_root=self.operation_root)
         qualified = database_snapshot(source)
         verify_preservation(before, qualified, self.request)
         descriptor, name = tempfile.mkstemp(prefix=".forge.db.install-", dir=self.data_root)
@@ -1924,7 +1990,9 @@ class InstalledForgeUpdateController:
         schema_before, schema_after = transition_schemas(self.request)
         current = database_snapshot(self.database)
         if (self.request.existing_version, self.request.version) in SAME_SCHEMA_39_TRANSITIONS:
-            qualified = database_snapshot(self.operation_root / "qualification-copy" / "forge.db")
+            qualified_copy = self.operation_root / "qualification-copy" / "forge.db"
+            normalize_isolated_qualification_copy(qualified_copy, operation_root=self.operation_root)
+            qualified = database_snapshot(qualified_copy)
             verify_preservation(before, qualified, self.request)
             # Candidate initialization may update the known volatile metadata in
             # its isolated copy. Preservation checks bind every historical table
