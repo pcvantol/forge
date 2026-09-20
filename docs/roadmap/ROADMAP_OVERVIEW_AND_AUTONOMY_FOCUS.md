@@ -2,6 +2,15 @@
 
 **Vastgelegd:** 17 september 2026. **Classificatie:** brongebonden analyse en focusnotitie, geen uitvoerbare backlog. **NO_BUMP.**
 
+**Gerichte statusupdate, 20 september 2026.** De EP-route voor een
+repositorygebonden autonoom Quality/Security-profiel en Missiongebonden
+mergebevoegdheid is [geleverd, geïsoleerd live gekwalificeerd en voor
+`pcvantol/forge` geïnstalleerd en geselecteerd](../operations/REPOSITORY_BOUND_AUTONOMOUS_ASSURANCE_COMPLETION.md).
+De target staat klaar voor binding aan een later afzonderlijk goedgekeurde
+Mission. De productie-Mission 3, haar clean-CENTRAL-voorbereiding en haar
+historische acceptatie blijven onuitgevoerd respectievelijk ongewijzigd.
+De bevroren tellingen en overige roadmapfamilies hieronder veranderen niet.
+
 ## Tijdelijke uitvoering met twee architectsessies — 18 september 2026
 
 De eigenaar kiest vóór Forge-cutover voor twee onafhankelijke Codex-sporen.
