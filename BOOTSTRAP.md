@@ -1,5 +1,15 @@
 # Forge bootstrap
 
+## Production Mission 3 joint-reset stop — 20 September 2026
+
+The [production acceptance record](docs/operations/MISSION_3_PRODUCTION_ACCEPTANCE_2026_09_20.md)
+preserves the single authorized clean-CENTRAL operation's partial reset and
+pre-T0 failure. Forge reached dataset generation 1; EP stopped after artifact
+archiving at generation 0. Both products remain in maintenance under the same
+operation identities. No Mission was allocated or started, and no C01–C20
+autonomy acceptance is claimed. Use the owning recovery receipts and the
+two lane handoff records before touching either runtime or target repository.
+
 ## Temporary dual-lane development before Forge cutover
 
 For the owner's two concurrent Codex architect sessions, read
