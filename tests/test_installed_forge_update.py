@@ -745,6 +745,24 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 recovered._state(allow_request_mismatch=True), {"user_version": 38},
             )
 
+    def test_predecessor_slot_verification_preserves_bytecode_cache(self) -> None:
+        slot = self.runtime_root / "slots" / "prior"
+        site = slot / "lib" / "python3.14" / "site-packages"
+        module = site / "forge" / "__init__.py"
+        module.parent.mkdir(parents=True)
+        module.write_text("__version__ = '2.7.26'\n")
+        cache = module.parent / "__pycache__" / "__init__.cpython-314.pyc"
+        cache.parent.mkdir()
+        cache.write_bytes(b"generated-bytecode")
+        entrypoint = slot / "bin" / "forge"
+        entrypoint.parent.mkdir()
+        entrypoint.write_bytes(update._entrypoint_bytes(slot))
+        result = update._verify_candidate_files(
+            slot, {"forge/__init__.py": update.file_digest(module)}, clean_bytecode=False,
+        )
+        self.assertEqual(result["installed_file_count"], 1)
+        self.assertEqual(cache.read_bytes(), b"generated-bytecode")
+
     def test_staged_internal_resolver_request_rebinds_only_to_existing_external_link(self) -> None:
         controller, state, previous_forge = self._managed_successor_controller(fenced=True)
         mistaken = update.UpdateRequest(**{

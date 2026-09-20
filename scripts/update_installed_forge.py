@@ -287,7 +287,10 @@ print(json.dumps({
     "prefix": str(pathlib.Path(sys.prefix).resolve()),
 }, sort_keys=True))
 """
-    result = _run((str(interpreter), "-B", "-I", "-c", program), cwd=cwd)
+    # Ignore any bytecode cache in the installed slot while proving the
+    # source files against the wheel; -B also prevents creating new caches.
+    empty_cache = Path(tempfile.gettempdir()) / ("forge-update-empty-bytecode-" + secrets.token_hex(16))
+    result = _run((str(interpreter), "-B", "-I", "-X", f"pycache_prefix={empty_cache}", "-c", program), cwd=cwd)
     try:
         identity = json.loads(result.stdout)
     except json.JSONDecodeError as error:
@@ -1216,7 +1219,9 @@ def _install_validated_wheel(slot: Path, wheel_bytes: bytes, manifest: Mapping[s
     _verify_candidate_files(slot, manifest)
 
 
-def _verify_candidate_files(slot: Path, manifest: Mapping[str, str]) -> dict[str, Any]:
+def _verify_candidate_files(
+    slot: Path, manifest: Mapping[str, str], *, clean_bytecode: bool = True,
+) -> dict[str, Any]:
     site_packages = _candidate_site_packages(slot)
     for cache in list(site_packages.rglob("__pycache__")):
         _assert_no_symlink_components(cache)
@@ -1224,10 +1229,13 @@ def _verify_candidate_files(slot: Path, manifest: Mapping[str, str]) -> dict[str
             raise InstalledForgeUpdateError("candidate bytecode cache path is unsafe")
         for child in cache.rglob("*"):
             _assert_no_symlink_components(child)
-        shutil.rmtree(cache)
+        if clean_bytecode:
+            shutil.rmtree(cache)
     actual: dict[str, str] = {}
     for path in site_packages.rglob("*"):
         _assert_no_symlink_components(path)
+        if not clean_bytecode and "__pycache__" in path.relative_to(site_packages).parts:
+            continue
         if path.is_file():
             relative = path.relative_to(site_packages).as_posix()
             actual[relative] = file_digest(path)
@@ -1331,7 +1339,7 @@ class InstalledForgeUpdateController:
             raise InstalledForgeUpdateError("selected prior slot conflicts with completed update evidence")
         qualification, _wheel_bytes, manifest = _qualified_artifact(prior_request)
         if (qualification.get("wheel_manifest_digest") != receipt.get("wheel_manifest_digest")
-                or _verify_candidate_files(slot, manifest) != receipt.get("installed_files")):
+                or _verify_candidate_files(slot, manifest, clean_bytecode=False) != receipt.get("installed_files")):
             raise InstalledForgeUpdateError("selected prior slot bytes changed from its qualified wheel")
 
     def _reconcile_staged_controller(
