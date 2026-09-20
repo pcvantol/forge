@@ -810,6 +810,66 @@ def assert_quiescent(snapshot: Mapping[str, Any]) -> None:
         raise InstalledForgeUpdateError("Forge operational reset maintenance is active")
 
 
+def reconcile_terminal_dispatcher_for_update(
+    request: UpdateRequest, snapshot: Mapping[str, Any], database_path: Path,
+) -> dict[str, Any]:
+    """Release only a stale dispatcher projection bound to a terminal Mission.
+
+    The caller owns the controller, runtime mutation, bootstrap and update
+    locks and has excluded a live Forge process. Mission and Action history is
+    never rewritten. The canonical database writer records the transition.
+    """
+    writer = snapshot.get("writer_state")
+    if not isinstance(writer, Mapping):
+        raise InstalledForgeUpdateError("writer-state readback is missing")
+    dispatcher = writer.get("dispatcher")
+    if not isinstance(dispatcher, list) or len(dispatcher) != 1 or not isinstance(dispatcher[0], Mapping):
+        raise InstalledForgeUpdateError("Forge dispatcher state is malformed")
+    current = dispatcher[0]
+    if current.get("status") == "IDLE":
+        assert_quiescent(snapshot)
+        return dict(snapshot)
+    mission_id = current.get("active_mission_id")
+    missions = writer.get("missions")
+    if (current.get("status") != "ACTIVE" or not isinstance(mission_id, str)
+            or not mission_id or not isinstance(missions, list)
+            or sum(row.get("mission_id") == mission_id and row.get("status") in {"FAILED", "BLOCKED"}
+                   for row in missions if isinstance(row, Mapping)) != 1):
+        raise InstalledForgeUpdateError("active dispatcher is not bound to one terminal failed Mission")
+    candidate_writer = dict(writer)
+    candidate_writer["dispatcher"] = [{"status": "IDLE", "active_mission_id": None}]
+    assert_quiescent({**snapshot, "writer_state": candidate_writer})
+
+    # Open through the installed runtime's owning resolver, not an arbitrary
+    # SQLite writer. A different installed package or selected data root is a
+    # conflict, and the held runtime locks exclude a concurrent controller.
+    from forge.runtime import RuntimeBootstrap
+
+    with RuntimeBootstrap(data_root=Path(request.data_root), forge_version=request.existing_version).open() as database:
+        if database.path.resolve() != database_path.resolve() or database.runtime_identity.runtime_id != request.runtime_id:
+            raise InstalledForgeUpdateError("terminal dispatcher reconciliation resolved another runtime")
+        bound = database._connection.execute(
+            "SELECT status,active_mission_id FROM dispatcher_state WHERE singleton=1"
+        ).fetchone()
+        mission = database._connection.execute(
+            "SELECT status FROM mission_state WHERE mission_id=?", (mission_id,)
+        ).fetchone()
+        if (bound is None or tuple(bound) != ("ACTIVE", mission_id)
+                or mission is None or mission[0] not in {"FAILED", "BLOCKED"}):
+            raise InstalledForgeUpdateError("terminal dispatcher binding changed before reconciliation")
+        database.save_dispatcher_state(status="IDLE", mission_sequence=(mission_id,))
+        database.record_operational_event(
+            component="forge_mission_runtime", level="INFO",
+            event="terminal_dispatcher_update_reconciled", mission_id=mission_id,
+            details={"operation": "terminal_dispatcher_update_reconciliation",
+                     "previous_state": "ACTIVE", "new_state": "IDLE",
+                     "result_state": mission[0]},
+        )
+    reconciled = database_snapshot(database_path)
+    assert_quiescent(reconciled)
+    return reconciled
+
+
 def assert_completed_schema(
     snapshot: Mapping[str, Any], installed_readback: Mapping[str, Any], request: UpdateRequest,
 ) -> None:
@@ -1828,7 +1888,7 @@ class InstalledForgeUpdateController:
                 self._assert_no_runtime_process()
                 live = database_snapshot(self.database)
                 assert_selected_installation(self.request, live)
-                assert_quiescent(live)
+                live = reconcile_terminal_dispatcher_for_update(self.request, live, self.database)
                 try:
                     schema_before, _schema_after = transition_schemas(self.request)
                     state = self._adopt_resolver(state)

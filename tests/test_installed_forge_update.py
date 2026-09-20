@@ -1092,6 +1092,65 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "noncanonical"):
             update.validate_qualified_artifact(changed)
 
+    def test_terminal_failed_dispatcher_reconciliation_preserves_mission_history(self):
+        self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
+        path = self.data_root / "forge.db"
+        with sqlite3.connect(path) as connection:
+            connection.execute("UPDATE mission_state SET status='FAILED' WHERE mission_id='MISSION-0001'")
+            connection.execute(
+                "UPDATE dispatcher_state SET status='ACTIVE',active_mission_id='MISSION-0001' WHERE singleton=1"
+            )
+        before = update.database_snapshot(path)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "dispatcher"):
+            update.assert_quiescent(before)
+        after = update.reconcile_terminal_dispatcher_for_update(self.request, before, path)
+        self.assertEqual(after["writer_state"]["dispatcher"],
+                         [{"status": "IDLE", "active_mission_id": None}])
+        self.assertEqual(after["tables"]["mission_state"], before["tables"]["mission_state"])
+        self.assertEqual(after["tables"]["action_derivations"], before["tables"]["action_derivations"])
+        with sqlite3.connect(path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM forge_operational_logs WHERE event='terminal_dispatcher_update_reconciled'"
+            ).fetchone()[0], 1)
+        replay = update.reconcile_terminal_dispatcher_for_update(self.request, after, path)
+        self.assertEqual(replay["content_digest"], after["content_digest"])
+
+    def test_terminal_dispatcher_reconciliation_rejects_active_or_unrelated_mission(self):
+        self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
+        path = self.data_root / "forge.db"
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "UPDATE dispatcher_state SET status='ACTIVE',active_mission_id='MISSION-0001' WHERE singleton=1"
+            )
+        before = update.database_snapshot(path)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "terminal failed Mission"):
+            update.reconcile_terminal_dispatcher_for_update(self.request, before, path)
+        with sqlite3.connect(path) as connection:
+            connection.execute("UPDATE mission_state SET status='FAILED' WHERE mission_id='MISSION-0001'")
+            connection.execute(
+                "UPDATE dispatcher_state SET active_mission_id='MISSION-OTHER' WHERE singleton=1"
+            )
+        before = update.database_snapshot(path)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "terminal failed Mission"):
+            update.reconcile_terminal_dispatcher_for_update(self.request, before, path)
+
+    def test_terminal_dispatcher_reconciliation_rejects_pending_planning_work(self):
+        self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
+        path = self.data_root / "forge.db"
+        with sqlite3.connect(path) as connection:
+            connection.execute("UPDATE mission_state SET status='FAILED' WHERE mission_id='MISSION-0001'")
+            connection.execute(
+                "UPDATE dispatcher_state SET status='ACTIVE',active_mission_id='MISSION-0001' WHERE singleton=1"
+            )
+            connection.execute(
+                "INSERT INTO planning_state VALUES (1,'test','[\"pending\"]','[]','[]','{}','{}','{}')"
+            )
+        before = update.database_snapshot(path)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "planning queue"):
+            update.reconcile_terminal_dispatcher_for_update(self.request, before, path)
+        self.assertEqual(update.database_snapshot(path)["writer_state"]["dispatcher"],
+                         [{"status": "ACTIVE", "active_mission_id": "MISSION-0001"}])
+
     def test_2726_to_2727_same_schema_release_preserves_history_and_requires_composition(self):
         before = self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
         self.assertEqual(update.transition_schemas(self.request), (39, 39))

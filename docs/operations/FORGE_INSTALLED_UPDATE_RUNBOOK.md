@@ -60,6 +60,12 @@ interpreter, version, and bytes.
    active runtime process, dispatcher, non-terminal Mission or scheduler
    submission, active provider-generation permit, planning queue, reset, or
    conflicting operation.
+   A dispatcher left `ACTIVE` by an older terminal `FAILED`/`BLOCKED` Mission
+   can be reconciled only while all four locks are held, no Forge process is
+   active, and every other writer-state check is quiescent. The installed
+   Runtime Database writer records `IDLE` plus an operational audit event;
+   Mission, Action, submission and evidence rows remain unchanged. Any
+   non-terminal or mismatched dispatcher binding still blocks the update.
 5. Adopt the selected legacy command entry point behind a stable product-owned
    resolver. Before migration it still resolves to the byte-equal retained
    legacy entry point.
@@ -135,6 +141,10 @@ database replacement, late-writer rejection, and interruption before
 migration, after migration, and during activation. An opt-in test runs the
 entire route and replay against the exact published wheel and terminal release
 receipt.
+It also checks that the bounded stale-terminal dispatcher reconciliation leaves
+the failed Mission history byte-for-byte intact, is idempotent, and refuses an
+active or unrelated Mission. The installation controller's protected source
+revision is reported separately from the released wheel's product source.
 
 For 2.7.25 the only newly supported source version is 2.7.24; for 2.7.26 it
 is 2.7.25; for 2.7.27 it is 2.7.26. A jump from an older version is rejected. After schema 39 has been
