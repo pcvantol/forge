@@ -79,6 +79,18 @@ Testscenario's, bewijsvoorwaarden, dependency-only peerreferenties, historische 
 
 ## Focus: het platform moet zijn eigen resterende werk zo vroeg mogelijk overnemen
 
+De mislukte productie-MISSION-0003 blijft een ongewijzigde, niet-gehaalde
+acceptatiepoging. Haar drie samenhangende blockers vormen één verticale
+herstelassignment: Forge bindt iedere seriële Action aan actuele Repository
+Truth, bewaart toekomstige plannerideeën als forecast zonder Action-authority
+en materialiseert een evidence-afhankelijke opvolger pas na nieuwe
+plannerbeslissing; EP bereidt de Managed workspace onder lease voor op de
+exacte Action-SHA en projecteert een afgehandelde submission buiten de actieve
+queue. De volgende productieacceptatie is een afzonderlijke opdracht met
+nieuwe T0 en ongewijzigde C01–C20. Deze roadmapbeschrijving is geen
+kwalificatie- of installed-PASS. Parallelle Actions, autonome volgende-Mission-
+selectie en de volledige Server/Workspace blijven aparte toekomstige scope.
+
 Onderstaande focus is de praktische interpretatie van het eigenaarsdoel en de bestaande roadmaplijnen. Het is **geen nieuwe harde DAG-volgorde** en verleent geen toestemming om werk te starten. Raadpleeg de owning DAG voor echte afhankelijkheden; de grootte of recentheid van een familie bepaalt niet automatisch de prioriteit.
 
 | Focus | Eerstvolgende aantoonbare waarde | Bestaande route / grens |

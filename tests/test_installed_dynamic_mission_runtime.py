@@ -328,6 +328,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(readback[0]["processing_phase"], "MATERIALIZED")
         self.assertTrue(readback[0]["result_available"])
         self.assertNotIn("payload", readback[0])
+        self.assertEqual(self.host.requests[-1].origin_identity, "synthetic/forge")
         planning_context = self.host.requests[-1].producer_contract.planning_context
         self.assertIsNotNone(planning_context)
         self.assertEqual(planning_context.mission_title, "Durable status projection")
@@ -348,6 +349,20 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         state = self.runtime.states.get(mission.id)
         self.assertTrue(state.completion["all_required_criteria_proven"])
         self.assertEqual(state.execution_history[-1]["receipt_id"], "ep-receipt-status-projection")
+
+    def test_pre_t0_workspace_origin_must_match_approved_mission_source(self) -> None:
+        mission, envelope = self._mission_and_envelope()
+        self.runtime.admit(mission, envelope)
+        self.host.managed_workspace_readiness = lambda: {
+            "status": "READY", "repository_identity": "another/repository",
+        }
+        with self.assertRaisesRegex(
+            InstalledDynamicMissionError, "origin differs from the approved Mission source",
+        ):
+            self.runtime.start(mission.id, self._truth())
+        self.assertEqual(self.runtime.states.get(mission.id).status.value, "APPROVED_PLANNABLE")
+        self.assertEqual(self.provider.calls, 0)
+        self.assertEqual(self.host.requests, [])
 
     def test_public_readback_surfaces_linked_legacy_confirmed_result_without_generation(self) -> None:
         mission, envelope = self._mission_and_envelope()

@@ -13,11 +13,11 @@ from forge.scheduler.ep_http_adapter import EngineeringPlatformHttpExecutionHost
 
 
 def run() -> None:
-    """Prove installed resources and the strict EP v1.2 consumer are present."""
+    """Prove installed resources and compatible EP readback consumers are present."""
     FoundationDocumentLoader()
     PlanningDocumentLoader()
-    if EngineeringPlatformHttpExecutionHost.SUPPORTED_PRODUCER_READBACK_CONTRACTS != ("1.2",):
-        raise RuntimeError("installed Forge wheel does not contain the strict EP v1.2 consumer")
+    if EngineeringPlatformHttpExecutionHost.SUPPORTED_PRODUCER_READBACK_CONTRACTS != ("1.2", "1.3"):
+        raise RuntimeError("installed Forge wheel does not contain the versioned EP readback consumer")
     if PEER_CONFIGURATION_SCHEMA_VERSION != "1.1":
         raise RuntimeError("installed Forge wheel does not contain the durable EP peer configuration factory")
     EngineeringPlatformExecutionHostFactory()

@@ -338,7 +338,7 @@ class InitialActionCeilingTests(unittest.TestCase):
     def _mission():
         return replace(fixture.mission(), maximum_actions=1, maximum_consecutive_no_progress_actions=1)
 
-    def test_initial_validated_plan_cannot_exceed_approved_total_before_dispatch(self):
+    def test_forecast_does_not_consume_approved_action_limit_before_dispatch(self):
         class TwoActions(fixture.DerivationProvider):
             def derive(self, snapshot):
                 self.snapshots.append(snapshot)
@@ -348,9 +348,10 @@ class InitialActionCeilingTests(unittest.TestCase):
         provider = TwoActions()
         self.host.outcomes["action-a"] = None
         state = self.loop(provider).run()
-        self.assertEqual(state.status, MissionExecutionStatus.BLOCKED)
-        self.assertEqual(state.actions, ())
-        self.assertEqual(self.host.requests, [])
+        self.assertEqual(state.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
+        self.assertEqual([item["id"] for item in state.actions], ["action-a"])
+        self.assertEqual(state.planning_history[0]["forecast_proposal_ids"], ["action-c"])
+        self.assertEqual(self.host.requests, ["action-a"])
         self.assertEqual(len(provider.snapshots), 1)
 
 

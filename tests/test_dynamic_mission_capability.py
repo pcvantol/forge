@@ -273,6 +273,11 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
                            if item.kind is PlanningInputKind.REPOSITORY_TRUTH)
         self.assertEqual(execution_input.content_digest, digest("repository-action-a"))
         self.assertEqual(truth_input.content_digest, digest("truth-action-a"))
+        continuation = provider.snapshots[1].continuation_context.to_dict()
+        self.assertEqual([item["id"] for item in continuation["prior_actions"]], ["action-a"])
+        self.assertEqual(continuation["repository_truth"]["revision"], "revision-action-a")
+        self.assertTrue(any(item["status"] == "UNSATISFIED"
+                            for item in continuation["criterion_assessments"]))
 
         before_restart = (waiting.mission_id, tuple(waiting.actions), tuple(waiting.planning_history))
         self.runtime.close()
@@ -296,31 +301,46 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
         self.assertEqual(self.dispatcher.completed, [mission().id])
         self.assertEqual(len(provider.snapshots), 2)
 
-    def test_initial_two_action_plan_continues_approved_successor_without_rederivation(self) -> None:
+    def test_initial_forecast_does_not_materialize_successor_before_evidence(self) -> None:
         class TwoActionProvider(DerivationProvider):
             def derive(self, snapshot):
                 self.snapshots.append(snapshot)
-                if len(self.snapshots) > 1:
-                    raise AssertionError("approved successor must not be derived again")
-                first = self.proposal(snapshot, "action-a")
-                second = self.proposal(snapshot, "action-b", dependencies=("action-a",))
-                return (
-                    first,
-                    replace(second, provenance=first.provenance),
-                )
+                if len(self.snapshots) == 1:
+                    first = self.proposal(snapshot, "action-a")
+                    second = self.proposal(snapshot, "action-b", dependencies=("action-a",))
+                    return first, replace(second, provenance=first.provenance)
+                return (self.proposal(snapshot, "action-b", dependencies=("action-a",),
+                                      mission_gap=self.successor_gap(snapshot, "action-b")),)
 
         provider = TwoActionProvider()
+        self.host.outcomes["action-a"] = None
         waiting = self.loop(provider).run()
         self.assertEqual(waiting.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
-        self.assertEqual([item["id"] for item in waiting.actions], ["action-a", "action-b"])
-        self.assertEqual([item["status"] for item in waiting.actions], ["COMPLETE", "WAITING_FOR_RESULT"])
-        self.assertEqual(self.host.requests, ["action-a", "action-b"])
+        self.assertEqual([item["id"] for item in waiting.actions], ["action-a"])
+        self.assertEqual(waiting.planning_history[0]["forecast_proposal_ids"], ["action-b"])
+        self.assertEqual(waiting.planning_history[0]["materialized_action_ids"], ["action-a"])
+        self.assertEqual(self.host.requests, ["action-a"])
         self.assertEqual(len(provider.snapshots), 1)
         self.assertEqual(len(waiting.planning_history), 1)
 
+        self.host.outcomes["action-a"] = ExecutionEvidenceOutcome.COMPLETE
         self.host.outcomes["action-b"] = ExecutionEvidenceOutcome.COMPLETE
         complete = self.loop(provider).resume(mission().id)
         self.assertEqual(complete.status, MissionExecutionStatus.COMPLETED)
+        self.assertEqual([item["id"] for item in complete.actions], ["action-a", "action-b"])
+        self.assertEqual(len(provider.snapshots), 2)
+        self.assertEqual(complete.planning_history[1]["materialized_action_ids"], ["action-b"])
+        self.assertEqual(complete.planning_history[1]["completed_action_ids_at_derivation"], ["action-a"])
+
+    def test_one_action_that_proves_all_criteria_completes_without_p2(self) -> None:
+        provider = DerivationProvider()
+        self.completion_evidence = lambda state, current, truth: terminal_completion(
+            mission(), current, truth, {"A evidence reconciled", "B evidence reconciled"},
+        )
+        complete = self.loop(provider).run()
+        self.assertEqual(complete.status, MissionExecutionStatus.COMPLETED)
+        self.assertEqual([item["id"] for item in complete.actions], ["action-a"])
+        self.assertEqual(self.host.requests, ["action-a"])
         self.assertEqual(len(provider.snapshots), 1)
 
     def test_blocked_assessed_receipt_resumes_existing_successor_once(self) -> None:
@@ -341,12 +361,8 @@ class DynamicMissionCapabilityTests(unittest.TestCase):
         blocked = old.run()
         self.assertEqual(blocked.status, MissionExecutionStatus.BLOCKED)
         self.assertEqual(blocked.resume["terminal_continuation"]["phase"], "ASSESSED")
-        self.assertEqual([item["status"] for item in blocked.actions], ["COMPLETE", "READY"])
+        self.assertEqual([item["status"] for item in blocked.actions], ["COMPLETE"])
         self.assertEqual(self.host.requests, ["action-a"])
-
-        waiting = self.loop(provider).resume_existing_successor(mission().id)
-        self.assertEqual(waiting.status, MissionExecutionStatus.WAITING_FOR_EVIDENCE)
-        self.assertEqual(self.host.requests, ["action-a", "action-b"])
         self.assertEqual(len(provider.snapshots), 1)
         with self.assertRaises(ExecutionLoopError):
             self.loop(provider).resume_existing_successor(mission().id)

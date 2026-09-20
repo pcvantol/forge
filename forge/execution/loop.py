@@ -123,6 +123,7 @@ class ExecutionLoop:
         workspace_id: str,
         repository_id: str,
         repository_identity: str | None = None,
+        origin_identity: str | None = None,
         clock: Callable[[], str],
         correlation_id_factory: Callable[[], str],
         execution_policy: ExecutionPolicy | None = None,
@@ -142,6 +143,7 @@ class ExecutionLoop:
         self._planning_input, self._prompt_factory, self._repository_truth = planning_input, prompt_factory, repository_truth
         self._host_id, self._workspace_id, self._repository_id = host_id, workspace_id, repository_id
         self._repository_identity = repository_identity or repository_id
+        self._origin_identity = origin_identity
         self._clock, self._correlation_id_factory = clock, correlation_id_factory
         self._execution_policy = execution_policy or execution_policy_for_profile(governance_profile)
         self._capability_registry = capability_registry
@@ -366,6 +368,8 @@ class ExecutionLoop:
                                 derivation: Mapping[str, Any] | None) -> MissionExecutionState:
         if not self._keep_running():
             return state
+        if derivation is not None:
+            plan, derivation = self._immediate_action_plan(plan, derivation, ())
         actions = tuple(action for intent in plan.intents for action in intent.actions)
         if not actions:
             raise ExecutionLoopError("approved Mission planning produced no executable Engineering Actions")
@@ -488,9 +492,39 @@ class ExecutionLoop:
             "validated_before_materialization": True,
             "materialized_plan_id": result.plan.id,
             "materialized_plan_digest": result.plan.input_digest,
-            "materialized_action_ids": [proposal.logical_action_id for proposal in proposals],
+            "materialized_action_ids": [],
             "proposals": list(proposal_documents),
             "completed_action_ids_at_derivation": list(planning_input.mission_state.completed_action_ids),
+        }
+
+    @staticmethod
+    def _immediate_action_plan(
+        plan: MissionPlan, derivation: Mapping[str, Any], completed_ids: tuple[str, ...],
+    ) -> tuple[MissionPlan, Mapping[str, Any]]:
+        """Keep one executable Action; retain other hypotheses only as audit forecast.
+
+        Selection is deterministic for replay of a persisted provider result.
+        A forecast has no Action identity in Mission State and is reconsidered
+        against new Repository Truth and evidence by the next invocation.
+        """
+        completed = set(completed_ids)
+        candidates = sorted(
+            (action for intent in plan.intents for action in intent.actions
+             if action.status is EngineeringActionStatus.READY
+             and set(action.dependencies) <= completed),
+            key=lambda action: (action.order, action.id),
+        )
+        if not candidates:
+            raise ExecutionLoopError("NO_IMMEDIATE_ACTION_AFTER_VALIDATED_FORECAST")
+        chosen = candidates[0]
+        intents = tuple(replace(intent, actions=(chosen,)) for intent in plan.intents
+                        if any(action.id == chosen.id for action in intent.actions))
+        forecast = [item["logical_action_id"] for item in derivation.get("proposals", ())
+                    if item["logical_action_id"] != chosen.id]
+        return replace(plan, intents=intents), {
+            **derivation,
+            "materialized_action_ids": [chosen.id],
+            "forecast_proposal_ids": forecast,
         }
 
     def _delegate_if_required(self, state: MissionExecutionState) -> MissionExecutionState:
@@ -570,6 +604,7 @@ class ExecutionLoop:
         return BootstrapMissionRunner(self._states, BootstrapMissionScheduler(), self._host, self._prompt_factory,
                                       host_id=self._host_id, workspace_id=self._workspace_id, repository_id=self._repository_id,
                                       repository_identity=self._repository_identity,
+                                      origin_identity=self._origin_identity,
                                       clock=self._clock, correlation_id_factory=self._correlation_id_factory,
                                       completion_context=completion, replan_after_evidence=self._replan_after_evidence,
                                       evidence_progression_gate=self._pause_after_evidence,
@@ -639,12 +674,19 @@ class ExecutionLoop:
         if not self._keep_running():
             return state
         assert derivation is not None
+        plan, derivation = self._immediate_action_plan(
+            plan, derivation, tuple(action.id for action in actions
+                                    if action.status is EngineeringActionStatus.COMPLETE),
+        )
         previous_fingerprints = {
             item["work_fingerprint"] for record in state.planning_history
             for item in record.get("proposals", ())
-            if isinstance(item, Mapping) and isinstance(item.get("work_fingerprint"), str)
+            if isinstance(item, Mapping)
+            and item.get("logical_action_id") in record.get("materialized_action_ids", ())
+            and isinstance(item.get("work_fingerprint"), str)
         }
-        if any(item["work_fingerprint"] in previous_fingerprints for item in derivation["proposals"]):
+        if any(item["work_fingerprint"] in previous_fingerprints for item in derivation["proposals"]
+               if item["logical_action_id"] in derivation["materialized_action_ids"]):
             raise ExecutionLoopError("DUPLICATE_SUCCESSOR_WORK")
         existing_ids = {action.id for action in actions}
         proposed = tuple(action for intent in plan.intents for action in intent.actions)

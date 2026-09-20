@@ -123,10 +123,11 @@ class ActionDerivationTests(unittest.TestCase):
         with self.assertRaisesRegex(ProposalValidationError, "cycle"):
             validator.validate((first, second), self.snapshot, self.input, self.policy)
 
-    def test_provider_cannot_omit_an_approved_scope(self) -> None:
+    def test_provider_may_defer_an_approved_scope_until_new_evidence(self) -> None:
         provider = FixtureProvider((proposal(snapshot=self.snapshot),))
-        with self.assertRaisesRegex(ProposalValidationError, "cover every approved Mission scope"):
-            AIMissionPlanner(provider).plan(self.input, self.policy)
+        result = AIMissionPlanner(provider).plan(self.input, self.policy)
+        self.assertEqual([action.id for intent in result.plan.intents for action in intent.actions],
+                         ["derive-contract"])
         self.assertEqual(provider.calls, 1)
 
     def test_lifecycle_is_ordered_and_terminal_states_fail_closed(self) -> None:

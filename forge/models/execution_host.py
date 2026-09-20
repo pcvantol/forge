@@ -124,6 +124,7 @@ class ExecutionRequest:
     original_correlation_id: str | None = None
     producer_contract: ProducerContract | None = None
     repository_identity: str | None = None
+    origin_identity: str | None = None
     planning_context: ForgePlanningContextEnvelope | None = None
     repository_revision_binding: RepositoryRevisionBinding | None = None
 
@@ -136,6 +137,10 @@ class ExecutionRequest:
             object.__setattr__(self, "repository_identity", self.repository_id)
         elif not isinstance(self.repository_identity, str) or not self.repository_identity:
             raise ValueError("execution request repository identity binding is invalid")
+        if self.origin_identity is not None:
+            import re
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}", self.origin_identity) is None:
+                raise ValueError("execution request origin identity binding is invalid")
         prompt_identity = (
             getattr(self.runtime_prompt, "source_intent_id", getattr(self.runtime_prompt, "intent_id", None)),
             getattr(self.runtime_prompt, "source_intent_revision", getattr(self.runtime_prompt, "intent_revision", None)),
