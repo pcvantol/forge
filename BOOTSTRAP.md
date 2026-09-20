@@ -1,5 +1,16 @@
 # Forge bootstrap
 
+## Production Mission 3 R3 acceptance stop — 20 September 2026
+
+The [R3 production acceptance record](docs/operations/MISSION_3_PRODUCTION_ATTEMPT_R3_2026_09_20.md)
+records a new pre-T0 failure: automatic approval review blocked the destructive
+joint-reset apply after verified backups and operation-bound revalidation. The
+owning EP preparation was aborted and the Forge preparation cancelled before
+apply; both datasets remain at generation 1, EP is reopened and ready, and no
+new Mission or controller was started. The prior attempts and MISSION-0003
+history remain unchanged. This record does not authorize another reset or
+Mission.
+
 ## Production Mission 3 joint-reset stop — 20 September 2026
 
 The [production acceptance record](docs/operations/MISSION_3_PRODUCTION_ACCEPTANCE_2026_09_20.md)
