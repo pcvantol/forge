@@ -651,6 +651,62 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(slot["request_digest"], replacement.digest)
         self.assertEqual(len(slot["controller_reconciliations"]), 1)
 
+    def test_staged_interpreter_correction_reuses_unadopted_operation(self) -> None:
+        controller, state, previous_forge = self._managed_successor_controller()
+        mistaken = update.UpdateRequest(**{
+            **controller.request.__dict__, "controller_sha256": "sha256:" + "a" * 64,
+        })
+        state = {**state, "request": mistaken.__dict__, "request_digest": mistaken.digest}
+        evidence = {"wheel_manifest_digest": "sha256:" + "1" * 64,
+                    "installed_file_count": 7}
+        candidate_identity = {"version": controller.request.version,
+                              "module": str(controller.slot / "lib/python/site-packages/forge/__init__.py")}
+        state = controller._advance(state, "STAGED", candidate=candidate_identity, installed_files=evidence)
+        controller.slot.mkdir(parents=True)
+        update._atomic_json(controller.slot_receipt, {
+            "request_digest": mistaken.digest, "wheel_manifest_digest": evidence["wheel_manifest_digest"],
+            "installed_files": evidence,
+        })
+        installed_bin = self.runtime_root / "slots" / "2.7.22-installed" / "bin"
+        installed_bin.mkdir(parents=True)
+        installed_python = installed_bin / "python"
+        installed_python.write_bytes(b"installed-python")
+        installed_forge = installed_bin / "forge"
+        installed_forge.write_bytes(previous_forge.read_bytes())
+        installed_forge.chmod(0o700)
+        update._replace_symlink(controller.current, os.path.relpath(installed_forge, self.runtime_root))
+        replacement = update.UpdateRequest(**{
+            **mistaken.__dict__, "existing_interpreter": str(installed_python),
+            "controller_source": "c" * 40, "controller_sha256": update.file_digest(SCRIPT),
+        })
+        recovered = update.InstalledForgeUpdateController(
+            replacement, process_reader=lambda: (), reconcile_staged_controller=True,
+        )
+        def identity(path, *, cwd):
+            if path == Path(mistaken.existing_interpreter):
+                return {"version": "2.7.21"}
+            if path == installed_python:
+                return {"version": "2.7.22", "distribution_version": "2.7.22",
+                        "sys_executable": str(path), "module": str(installed_bin.parent / "lib/forge/__init__.py"),
+                        "prefix": str(installed_bin.parent)}
+            return candidate_identity
+        with (
+            patch.object(update, "assert_selected_installation"),
+            patch.object(update, "_qualified_artifact", return_value=(
+                {"wheel_manifest_digest": evidence["wheel_manifest_digest"]}, b"wheel", {},
+            )),
+            patch.object(update, "_verify_candidate_files", return_value=evidence),
+            patch.object(update, "installed_identity", side_effect=identity),
+        ):
+            rebound = recovered._reconcile_staged_controller(
+                recovered._state(allow_request_mismatch=True), {"user_version": 38},
+            )
+        self.assertEqual(rebound["operation_id"], mistaken.operation_id)
+        self.assertEqual(rebound["request_digest"], replacement.digest)
+        self.assertEqual(rebound["controller_reconciliations"][-1]["reason"],
+                         "PROTECTED_STAGED_INTERPRETER_CORRECTION_BEFORE_ADOPTION")
+        self.assertEqual(update._read_json(recovered.slot_receipt)["request_digest"], replacement.digest)
+
     def test_staged_internal_resolver_request_rebinds_only_to_existing_external_link(self) -> None:
         controller, state, previous_forge = self._managed_successor_controller(fenced=True)
         mistaken = update.UpdateRequest(**{

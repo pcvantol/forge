@@ -1306,7 +1306,7 @@ class InstalledForgeUpdateController:
     def _reconcile_staged_controller(
         self, state: dict[str, Any], live: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Rebind only a source-corrected controller before any live effect."""
+        """Rebind a protected controller or selected interpreter before any live effect."""
         previous = state.get("request")
         requested = asdict(self.request)
         if not isinstance(previous, Mapping) or set(previous) != set(requested):
@@ -1325,13 +1325,20 @@ class InstalledForgeUpdateController:
             and state.get("last_error")
             == f"path contains a symbolic-link component: {self.request.resolver}"
         )
-        if not changed or not (resolver_correction or controller_correction):
+        interpreter_correction = (
+            changed == {"existing_interpreter", "controller_source", "controller_sha256"}
+            and state.get("phase") == "STAGED"
+            and state.get("last_error") is None
+            and state.get("safety_disposition") is None
+        )
+        if not changed or not (resolver_correction or controller_correction or interpreter_correction):
             raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
         previous_request = UpdateRequest(**dict(previous))
         if (
             state.get("request_digest") != previous_request.digest
             or state.get("phase") != "STAGED"
-            or state.get("safety_disposition") != "UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED"
+            or (not interpreter_correction
+                and state.get("safety_disposition") != "UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED")
             or any(
                 key in state
                 for key in (
@@ -1345,7 +1352,24 @@ class InstalledForgeUpdateController:
             raise InstalledForgeUpdateError("controller reconciliation is not a pre-migration staged recovery")
         schema_before, _schema_after = transition_schemas(self.request)
         assert_selected_installation(self.request, live)
-        assert_quiescent(live)
+        if not interpreter_correction:
+            assert_quiescent(live)
+        else:
+            # Only the pointer inherited from the preceding update is
+            # corrected. No adoption, backup, migration or runtime fence has
+            # happened. The current managed resolver must select the corrected
+            # interpreter, while the previous one must genuinely be stale.
+            old = installed_identity(Path(previous_request.existing_interpreter), cwd=self.runtime_root)
+            new = installed_identity(Path(self.request.existing_interpreter), cwd=self.runtime_root)
+            if (old.get("version") == self.request.existing_version
+                    or new.get("version") != self.request.existing_version
+                    or new.get("distribution_version") != self.request.existing_version
+                    or Path(str(new.get("sys_executable"))).resolve() != Path(self.request.existing_interpreter).resolve()
+                    or not Path(self.request.existing_interpreter).is_relative_to(self.runtime_root / "slots")
+                    or not Path(str(new.get("module"))).is_relative_to(Path(str(new.get("prefix"))))
+                    or self._managed_resolver_source(Path(self.request.resolver), state)
+                       != Path(self.request.existing_interpreter).parent / "forge"):
+                raise InstalledForgeUpdateError("staged interpreter correction does not select the installed release")
         if live.get("user_version") != schema_before:
             raise InstalledForgeUpdateError("controller reconciliation source schema changed")
         if file_digest(Path(__file__)) != self.request.controller_sha256:
@@ -1362,7 +1386,7 @@ class InstalledForgeUpdateController:
         identity = installed_identity(self.slot / "bin" / "python", cwd=self.runtime_root)
         if state.get("candidate") != identity or identity.get("version") != self.request.version:
             raise InstalledForgeUpdateError("staged candidate identity changed during controller reconciliation")
-        if (
+        if not interpreter_correction and (
             not Path(self.request.resolver).is_symlink()
             or os.readlink(self.request.resolver) != str(self.stable_resolver)
             or not self.stable_resolver.is_symlink()
@@ -1373,6 +1397,8 @@ class InstalledForgeUpdateController:
             raise InstalledForgeUpdateError("controller reconciliation requires the recorded maintenance fence")
         reconciliation_identity = {
             "reason": (
+                "PROTECTED_STAGED_INTERPRETER_CORRECTION_BEFORE_ADOPTION"
+                if interpreter_correction else
                 "PROTECTED_RESOLVER_CORRECTION_AFTER_PRE_ADOPTION_FAILURE"
                 if resolver_correction else
                 "PROTECTED_CONTROLLER_CORRECTION_AFTER_MANAGED_RESOLVER_PRE_ADOPTION_FAILURE"
@@ -1383,6 +1409,9 @@ class InstalledForgeUpdateController:
             "replacement_controller_source": self.request.controller_source,
             "replacement_controller_sha256": self.request.controller_sha256,
             "replacement_request_digest": self.request.digest,
+            **({"previous_existing_interpreter": previous_request.existing_interpreter,
+                "replacement_existing_interpreter": self.request.existing_interpreter}
+               if interpreter_correction else {}),
         }
         state_reconciliations = state.get("controller_reconciliations", [])
         slot_reconciliations = slot_receipt.get("controller_reconciliations", [])
