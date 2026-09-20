@@ -40,7 +40,7 @@ jobs:
           test "$(python3 -c 'import json; print(json.load(open("product-version.json"))["version"])')" = "$VERSION"
           test -f pyproject.toml
           grep -Fq 'name = "forge-autonomy"' pyproject.toml
-          grep -Fq 'SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2",)' forge/scheduler/ep_http_adapter.py
+          grep -Fq 'SUPPORTED_PRODUCER_READBACK_CONTRACTS = ("1.2", "1.3")' forge/scheduler/ep_http_adapter.py
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           # The complete protected-main revision is part of the durable operation
