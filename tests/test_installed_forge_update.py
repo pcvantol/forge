@@ -1092,6 +1092,131 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "noncanonical"):
             update.validate_qualified_artifact(changed)
 
+    def test_terminal_failed_dispatcher_reconciliation_preserves_mission_history(self):
+        self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
+        path = self.data_root / "forge.db"
+        with sqlite3.connect(path) as connection:
+            connection.execute("UPDATE mission_state SET status='FAILED',document=json_set(document,'$.status','FAILED') WHERE mission_id='MISSION-0001'")
+            connection.execute(
+                "UPDATE dispatcher_state SET status='ACTIVE',active_mission_id='MISSION-0001',"
+                "mission_sequence='[\"MISSION-0001\"]',"
+                "document='{\"active_mission_id\":\"MISSION-0001\",\"mission_sequence\":[\"MISSION-0001\"],\"status\":\"ACTIVE\"}' WHERE singleton=1"
+            )
+        before = update.database_snapshot(path)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "dispatcher"):
+            update.assert_quiescent(before)
+        with patch.object(update, "installed_identity", return_value={
+            "version": self.request.existing_version, "distribution_version": self.request.existing_version,
+            "sys_executable": self.request.existing_interpreter,
+            "module": str(Path(self.request.existing_interpreter).parent.parent / "lib" / "forge" / "__init__.py"),
+            "prefix": str(Path(self.request.existing_interpreter).parent.parent),
+        }), update.exclusive_lock(self.data_root / "locks" / "runtime.lock"):
+            after = update.reconcile_terminal_dispatcher_for_update(self.request, before, path)
+        self.assertEqual(after["writer_state"]["dispatcher"],
+                         [{"status": "IDLE", "active_mission_id": None}])
+        self.assertEqual(after["tables"]["mission_state"], before["tables"]["mission_state"])
+        self.assertEqual(after["tables"]["action_derivations"], before["tables"]["action_derivations"])
+        with sqlite3.connect(path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM forge_operational_logs WHERE event='terminal_dispatcher_update_reconciled'"
+            ).fetchone()[0], 1)
+        replay = update.reconcile_terminal_dispatcher_for_update(self.request, after, path)
+        self.assertEqual(replay["content_digest"], after["content_digest"])
+
+    def test_terminal_dispatcher_reconciliation_rejects_active_or_unrelated_mission(self):
+        self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
+        path = self.data_root / "forge.db"
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "UPDATE dispatcher_state SET status='ACTIVE',active_mission_id='MISSION-0001' WHERE singleton=1"
+            )
+        before = update.database_snapshot(path)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "terminal failed Mission"):
+            update.reconcile_terminal_dispatcher_for_update(self.request, before, path)
+        with sqlite3.connect(path) as connection:
+            connection.execute("UPDATE mission_state SET status='FAILED',document=json_set(document,'$.status','FAILED') WHERE mission_id='MISSION-0001'")
+            connection.execute(
+                "UPDATE dispatcher_state SET active_mission_id='MISSION-OTHER' WHERE singleton=1"
+            )
+        before = update.database_snapshot(path)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "terminal failed Mission"):
+            update.reconcile_terminal_dispatcher_for_update(self.request, before, path)
+
+    def test_terminal_dispatcher_reconciliation_rejects_pending_planning_work(self):
+        self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
+        path = self.data_root / "forge.db"
+        with sqlite3.connect(path) as connection:
+            connection.execute("UPDATE mission_state SET status='FAILED',document=json_set(document,'$.status','FAILED') WHERE mission_id='MISSION-0001'")
+            connection.execute(
+                "UPDATE dispatcher_state SET status='ACTIVE',active_mission_id='MISSION-0001' WHERE singleton=1"
+            )
+            connection.execute(
+                "INSERT INTO planning_state VALUES (1,'test','[\"pending\"]','[]','[]','{}','{}','{}')"
+            )
+        before = update.database_snapshot(path)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "planning queue"):
+            update.reconcile_terminal_dispatcher_for_update(self.request, before, path)
+        self.assertEqual(update.database_snapshot(path)["writer_state"]["dispatcher"],
+                         [{"status": "ACTIVE", "active_mission_id": "MISSION-0001"}])
+
+    def test_actionful_terminal_dispatcher_requires_bound_ep_disposition(self):
+        self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
+        path = self.data_root / "forge.db"
+        grant_id = "a" * 32
+        mission = {
+            "mission_id": "MISSION-0001", "status": "FAILED", "waiting_reason": "host_evidence_failed",
+            "actions": [{"id": "action-1", "status": "WAITING_FOR_RESULT"}],
+            "intents": [{"id": "intent-1"}],
+            "execution_correlation": {"request": {"correlation_id": "correlation-1",
+                                                   "producer_contract": {"execution_constraints": [
+                                                       "ep-merge-delegation:" + grant_id]}}},
+            "execution_evidence": {"outcome": "failed"},
+            "admission_contract": {"subject_revision": "mission-subject-1",
+                                   "mission": {"engineering_constraints": ["ep-merge-delegation:" + grant_id]}},
+            "repository_truth": {"revision": "b" * 40,
+                                 "source_id": "github-default-head:example/repository:" + "b" * 40},
+        }
+        binding = {
+            "mission_id": "MISSION-0001", "action_id": "action-1", "correlation_id": "correlation-1",
+            "submission_id": "submission-1", "host_run_id": "run-1", "project_id": "project-1",
+            "repository_id": "repository-1", "submission_receipt": {"accepted_request_digest": "sha256:" + "c" * 64},
+        }
+        proof = {
+            "project": "project-1", "repository": "repository-1",
+            "submission": {
+                "contract_version": "1.3",
+                "submission": {"id": "submission-1", "project_id": "project-1", "repository_id": "repository-1",
+                               "accepted_request_digest": "sha256:" + "c" * 64},
+                "correlation": {"mission_id": "MISSION-0001", "engineering_action_id": "action-1",
+                                "correlation_id": "correlation-1"},
+                "run": {"id": "run-1", "operator_resolution": "DISMISSED", "state": "BLOCKED", "terminal": False},
+                "disposition": {"state": "DISMISSED", "terminal": True, "execution_eligible": False},
+            },
+            "delegation": {"status": "REVOKED", "mission_id": "MISSION-0001", "project_id": "project-1",
+                           "repository_id": "repository-1", "mission_revision": "mission-subject-1",
+                           "delegation_id": grant_id, "github_repository": "example/repository",
+                           "base_branch": "main", "roles": ["IMPLEMENTATION"],
+                           "revoked_at": "2026-09-20T00:00:00Z"},
+        }
+        with sqlite3.connect(path) as connection:
+            connection.execute("INSERT INTO execution_host_bindings VALUES (?,?)",
+                               ("correlation-1", json.dumps(binding)))
+        candidate = (Path(self.request.runtime_root) / "slots" /
+                     f"{self.request.version}-{self.request.wheel_sha256.removeprefix('sha256:')[:12]}")
+        candidate_identity = {"version": self.request.version, "distribution_version": self.request.version,
+                              "module": str(candidate / "lib" / "forge" / "__init__.py")}
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+            with patch.object(update, "installed_identity", return_value=candidate_identity), patch.object(
+                update, "_run", return_value=SimpleNamespace(stdout=json.dumps(proof))
+            ):
+                update._prove_terminal_host_authority(self.request, connection, mission)
+            proof["submission"]["disposition"]["execution_eligible"] = True
+            with patch.object(update, "installed_identity", return_value=candidate_identity), patch.object(
+                update, "_run", return_value=SimpleNamespace(stdout=json.dumps(proof))
+            ):
+                with self.assertRaises(update.InstalledForgeUpdateError):
+                    update._prove_terminal_host_authority(self.request, connection, mission)
+
     def test_2726_to_2727_same_schema_release_preserves_history_and_requires_composition(self):
         before = self._same_schema39_transition(existing_version="2.7.26", target_version="2.7.27")
         self.assertEqual(update.transition_schemas(self.request), (39, 39))
