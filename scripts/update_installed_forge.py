@@ -1303,6 +1303,37 @@ class InstalledForgeUpdateController:
         _atomic_json(self.state_path, state)
         return state
 
+    def _verify_selected_predecessor_slot(self, selected: Path) -> None:
+        """Bind the currently selected venv to its completed owning update."""
+        slot = selected.parent.parent
+        _assert_no_symlink_components(slot)
+        receipt = _read_json(slot / "forge-installation-slot.json")
+        operation_root = _safe_directory(self.data_root / "artifacts" / "installation")
+        matches: list[dict[str, Any]] = []
+        for path in operation_root.glob("*/operation.json"):
+            _assert_no_symlink_components(path)
+            operation = _read_json(path)
+            if operation.get("phase") == "COMPLETE" and operation.get("candidate_slot") == str(slot):
+                matches.append(operation)
+        if len(matches) != 1:
+            raise InstalledForgeUpdateError("selected prior slot lacks one completed owning update")
+        operation = matches[0]
+        prior_request = UpdateRequest(**operation["request"])
+        prior_request.validate()
+        if (operation.get("request_digest") != prior_request.digest
+                or receipt.get("request_digest") != prior_request.digest
+                or prior_request.version != self.request.existing_version
+                or prior_request.wheel_sha256 != receipt.get("wheel_sha256")
+                or operation.get("candidate") != receipt.get("identity")
+                or operation.get("installed_files") != receipt.get("installed_files")
+                or not selected.is_symlink()
+                or selected.resolve(strict=True) != Path(prior_request.base_python).resolve(strict=True)):
+            raise InstalledForgeUpdateError("selected prior slot conflicts with completed update evidence")
+        qualification, _wheel_bytes, manifest = _qualified_artifact(prior_request)
+        if (qualification.get("wheel_manifest_digest") != receipt.get("wheel_manifest_digest")
+                or _verify_candidate_files(slot, manifest) != receipt.get("installed_files")):
+            raise InstalledForgeUpdateError("selected prior slot bytes changed from its qualified wheel")
+
     def _reconcile_staged_controller(
         self, state: dict[str, Any], live: Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -1368,11 +1399,16 @@ class InstalledForgeUpdateController:
                 raise InstalledForgeUpdateError("staged interpreter correction escapes managed slots")
             old_path = Path(previous_request.existing_interpreter)
             _assert_no_symlink_components(old_path.parent)
-            old = installed_identity(old_path, cwd=self.runtime_root)
+            old_slot = old_path.parent.parent
+            if (".." in old_path.parts or old_path.name != "python" or old_path.parent.name != "bin"
+                    or not old_slot.resolve().is_relative_to(slots)):
+                raise InstalledForgeUpdateError("previous interpreter path is not a managed slot")
+            old_receipt = _read_json(old_slot / "forge-installation-slot.json")
+            self._verify_selected_predecessor_slot(selected)
             new = installed_identity(selected, cwd=self.runtime_root)
             prior_slot = selected.parent.parent
             prior_receipt = _read_json(prior_slot / "forge-installation-slot.json")
-            if (old.get("version") == self.request.existing_version
+            if (old_receipt.get("version") == self.request.existing_version
                     or new.get("version") != self.request.existing_version
                     or new.get("distribution_version") != self.request.existing_version
                     or Path(str(new.get("sys_executable"))).resolve() != Path(self.request.existing_interpreter).resolve()

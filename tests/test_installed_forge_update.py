@@ -653,8 +653,14 @@ class InstalledForgeUpdateTests(unittest.TestCase):
 
     def test_staged_interpreter_correction_reuses_unadopted_operation(self) -> None:
         controller, state, previous_forge = self._managed_successor_controller()
+        stale_bin = self.runtime_root / "slots" / "2.7.21-stale" / "bin"
+        stale_bin.mkdir(parents=True)
+        stale_python = stale_bin / "python"
+        stale_python.write_bytes(b"stale-python")
+        update._atomic_json(stale_bin.parent / "forge-installation-slot.json", {"version": "2.7.21"})
         mistaken = update.UpdateRequest(**{
             **controller.request.__dict__, "controller_sha256": "sha256:" + "a" * 64,
+            "existing_interpreter": str(stale_python),
         })
         state = {**state, "request": mistaken.__dict__, "request_digest": mistaken.digest}
         evidence = {"wheel_manifest_digest": "sha256:" + "1" * 64,
@@ -702,6 +708,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 {"wheel_manifest_digest": evidence["wheel_manifest_digest"]}, b"wheel", {},
             )),
             patch.object(update, "_verify_candidate_files", return_value=evidence),
+            patch.object(recovered, "_verify_selected_predecessor_slot"),
             patch.object(update, "installed_identity", side_effect=identity),
         ):
             rebound = recovered._reconcile_staged_controller(
