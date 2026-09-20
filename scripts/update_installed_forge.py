@@ -36,6 +36,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any, Callable, Iterator, Mapping, Sequence
+import uuid
 import zipfile
 
 try:
@@ -810,6 +811,100 @@ def assert_quiescent(snapshot: Mapping[str, Any]) -> None:
         raise InstalledForgeUpdateError("Forge operational reset maintenance is active")
 
 
+def _prove_terminal_host_authority(
+    request: UpdateRequest, connection: sqlite3.Connection, mission: Mapping[str, Any],
+) -> None:
+    """Prove that an Actionful failed Mission has no remaining EP execution authority."""
+    actions = mission.get("actions", [])
+    if not isinstance(actions, list):
+        raise InstalledForgeUpdateError("terminal Mission Actions are unreadable")
+    if not actions:
+        if mission.get("execution_correlation") is not None or mission.get("intents"):
+            raise InstalledForgeUpdateError("failed Mission has possible Host effect")
+        return
+    correlation = mission.get("execution_correlation")
+    evidence = mission.get("execution_evidence")
+    if (mission.get("status") != "FAILED" or mission.get("waiting_reason") != "host_evidence_failed"
+            or not isinstance(correlation, Mapping) or not isinstance(correlation.get("request"), Mapping)
+            or not isinstance(evidence, Mapping) or evidence.get("outcome") != "failed"):
+        raise InstalledForgeUpdateError("Actionful Mission lacks the bounded terminal Host failure")
+    correlation_id = correlation["request"].get("correlation_id")
+    if not isinstance(correlation_id, str):
+        raise InstalledForgeUpdateError("failed Mission lacks its Host correlation")
+    rows = connection.execute(
+        "SELECT document FROM execution_host_bindings WHERE correlation_id=?", (correlation_id,),
+    ).fetchall()
+    if len(rows) != 1:
+        raise InstalledForgeUpdateError("failed Mission lacks exactly one persisted Host binding")
+    binding = json.loads(rows[0][0])
+    mission_id = mission["mission_id"]
+    if (binding.get("mission_id") != mission_id or binding.get("correlation_id") != correlation_id
+            or binding.get("action_id") not in {action.get("id") for action in actions if isinstance(action, Mapping)}
+            or not isinstance(binding.get("submission_id"), str)
+            or not isinstance(binding.get("submission_receipt"), Mapping)):
+        raise InstalledForgeUpdateError("failed Mission Host binding is incomplete")
+    all_bindings = connection.execute(
+        "SELECT document FROM execution_host_bindings WHERE json_extract(document,'$.mission_id')=?", (mission_id,),
+    ).fetchall()
+    if len(all_bindings) != 1 or any(action.get("status") == "IN_PROGRESS" for action in actions):
+        raise InstalledForgeUpdateError("failed Mission has another possible Host execution")
+    references = re.findall(r"ep-merge-delegation:([0-9a-f]{32})", json.dumps(mission, sort_keys=True))
+    if len(set(references)) != 1:
+        raise InstalledForgeUpdateError("failed Mission lacks one exact delegation binding")
+    # Resolve the installed peer credential inside the selected isolated
+    # interpreter. The bearer token never crosses stdout, argv, or an audit
+    # record. HTTP redirects are rejected and responses are bounded.
+    program = """
+import importlib.metadata,json,pathlib,sys
+from urllib.parse import quote
+from urllib.request import Request,build_opener,HTTPRedirectHandler
+import forge
+from forge.execution_host_configuration import EngineeringPlatformExecutionHostFactory
+class NoRedirect(HTTPRedirectHandler):
+ def redirect_request(self,*args,**kwargs): return None
+if importlib.metadata.version('forge-autonomy') != sys.argv[4] or not pathlib.Path(forge.__file__).resolve().is_relative_to(pathlib.Path(sys.prefix).resolve()):
+ raise SystemExit('installed Forge package provenance changed')
+host=EngineeringPlatformExecutionHostFactory().from_data_root(pathlib.Path(sys.argv[1]))
+project=host.config.project_id
+opener=build_opener(NoRedirect())
+def get(suffix):
+ req=Request(host.config.base_url.rstrip('/')+'/v1/projects/'+quote(project,safe='')+suffix,headers={'Authorization':'Bearer '+host.config.bearer_token,'EP-Producer-Readback-Contract':'1.3'})
+ with opener.open(req,timeout=10) as response:
+  raw=response.read(1048577)
+  if len(raw)>1048576: raise ValueError('EP proof exceeds bound')
+  return json.loads(raw)
+print(json.dumps({'submission':get('/submissions/'+quote(sys.argv[2],safe='')),'delegation':get('/merge-delegations/'+quote(sys.argv[3],safe='')),'project':project,'repository':host.config.repository_id},sort_keys=True))
+"""
+    response = _run((request.existing_interpreter, "-B", "-I", "-c", program,
+                     request.data_root, binding["submission_id"], references[0], request.existing_version),
+                    cwd=Path(request.runtime_root), timeout=35)
+    try:
+        proof = json.loads(response.stdout)
+        submission, grant = proof["submission"], proof["delegation"]
+        record, linked, disposition = submission["submission"], submission["correlation"], submission["disposition"]
+        receipt = binding["submission_receipt"]
+        if (submission.get("contract_version") != "1.3"
+                or proof["project"] != binding["project_id"] or proof["repository"] != binding["repository_id"]
+                or record["id"] != binding["submission_id"] or record["project_id"] != binding["project_id"]
+                or record["repository_id"] != binding["repository_id"]
+                or record["accepted_request_digest"] != receipt["accepted_request_digest"]
+                or linked["mission_id"] != mission_id or linked["engineering_action_id"] != binding["action_id"]
+                or linked["correlation_id"] != correlation_id
+                or submission["run"]["id"] != binding["host_run_id"]
+                or submission["run"]["operator_resolution"] != "DISMISSED"
+                or submission["run"]["terminal"] is not True
+                or disposition["state"] != "DISMISSED" or disposition["terminal"] is not True
+                or disposition["execution_eligible"] is not False
+                or grant["status"] not in {"REVOKED", "EXPIRED"}
+                or grant["mission_id"] != mission_id or grant["project_id"] != binding["project_id"]
+                or grant["repository_id"] != binding["repository_id"]
+                or grant["mission_revision"] != mission["repository_truth"]["revision"]
+                or grant["status"] == "REVOKED" and not grant.get("revoked_at")):
+            raise InstalledForgeUpdateError("EP does not prove terminal submission and revoked delegation")
+    except (KeyError, IndexError, TypeError, ValueError) as error:
+        raise InstalledForgeUpdateError("EP terminal authority proof is incomplete") from error
+
+
 def reconcile_terminal_dispatcher_for_update(
     request: UpdateRequest, snapshot: Mapping[str, Any], database_path: Path,
 ) -> dict[str, Any]:
@@ -840,31 +935,59 @@ def reconcile_terminal_dispatcher_for_update(
     candidate_writer["dispatcher"] = [{"status": "IDLE", "active_mission_id": None}]
     assert_quiescent({**snapshot, "writer_state": candidate_writer})
 
-    # Open through the installed runtime's owning resolver, not an arbitrary
-    # SQLite writer. A different installed package or selected data root is a
-    # conflict, and the held runtime locks exclude a concurrent controller.
-    from forge.runtime import RuntimeBootstrap
-
-    with RuntimeBootstrap(data_root=Path(request.data_root), forge_version=request.existing_version).open() as database:
-        if database.path.resolve() != database_path.resolve() or database.runtime_identity.runtime_id != request.runtime_id:
-            raise InstalledForgeUpdateError("terminal dispatcher reconciliation resolved another runtime")
-        bound = database._connection.execute(
-            "SELECT status,active_mission_id FROM dispatcher_state WHERE singleton=1"
+    # The updater already holds the bootstrap lock. RuntimeBootstrap.open()
+    # would try to acquire it a second time and deadlock/fail. This narrowly
+    # scoped product maintenance writer uses the existing selected database
+    # under all four updater locks; it never opens a second RuntimeBootstrap.
+    identity = installed_identity(Path(request.existing_interpreter), cwd=Path(request.runtime_root))
+    if (identity.get("version") != request.existing_version
+            or identity.get("distribution_version") != request.existing_version
+            or Path(str(identity.get("sys_executable"))).resolve() != Path(request.existing_interpreter).resolve()
+            or not Path(str(identity.get("module"))).is_relative_to(Path(str(identity.get("prefix"))))):
+        raise InstalledForgeUpdateError("selected installed Forge package provenance changed")
+    try:
+        connection = sqlite3.connect(database_path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=1000")
+        connection.execute("BEGIN IMMEDIATE")
+        bound = connection.execute(
+            "SELECT status,active_mission_id,mission_sequence,document FROM dispatcher_state WHERE singleton=1"
         ).fetchone()
-        mission = database._connection.execute(
-            "SELECT status FROM mission_state WHERE mission_id=?", (mission_id,)
+        mission = connection.execute(
+            "SELECT status,document FROM mission_state WHERE mission_id=?", (mission_id,)
         ).fetchone()
-        if (bound is None or tuple(bound) != ("ACTIVE", mission_id)
-                or mission is None or mission[0] not in {"FAILED", "BLOCKED"}):
+        if (bound is None or bound["status"] != "ACTIVE" or bound["active_mission_id"] != mission_id
+                or mission is None or mission["status"] not in {"FAILED", "BLOCKED"}):
             raise InstalledForgeUpdateError("terminal dispatcher binding changed before reconciliation")
-        database.save_dispatcher_state(status="IDLE", mission_sequence=(mission_id,))
-        database.record_operational_event(
-            component="forge_mission_runtime", level="INFO",
-            event="terminal_dispatcher_update_reconciled", mission_id=mission_id,
-            details={"operation": "terminal_dispatcher_update_reconciliation",
-                     "previous_state": "ACTIVE", "new_state": "IDLE",
-                     "result_state": mission[0]},
+        document = json.loads(mission["document"])
+        if document.get("mission_id") != mission_id or document.get("status") != mission["status"]:
+            raise InstalledForgeUpdateError("terminal Mission document conflicts with its state")
+        _prove_terminal_host_authority(request, connection, document)
+        sequence = json.loads(bound["mission_sequence"])
+        if not isinstance(sequence, list) or mission_id not in sequence:
+            raise InstalledForgeUpdateError("dispatcher sequence does not include its bound Mission")
+        new_document = {"status": "IDLE", "active_mission_id": None, "mission_sequence": sequence}
+        changed = connection.execute(
+            "UPDATE dispatcher_state SET status='IDLE',active_mission_id=NULL,document=? "
+            "WHERE singleton=1 AND status='ACTIVE' AND active_mission_id=? AND document=?",
+            (json.dumps(new_document, sort_keys=True, separators=(",", ":")), mission_id, bound["document"]),
+        ).rowcount
+        if changed != 1:
+            raise InstalledForgeUpdateError("terminal dispatcher changed during reconciliation")
+        connection.execute(
+            "INSERT INTO forge_operational_logs VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            ("forge-operational-log-" + str(uuid.uuid4()), "forge_mission_runtime", "INFO",
+             "terminal_dispatcher_update_reconciled", mission_id, None, None, None, None, _now(),
+             json.dumps({"event_contract_version": "1.0", "operation": "terminal_dispatcher_update_reconciliation",
+                         "previous_state": "ACTIVE", "new_state": "IDLE", "result_state": mission["status"]},
+                        sort_keys=True, separators=(",", ":"))),
         )
+        connection.commit()
+    except (sqlite3.Error, ValueError, TypeError) as error:
+        raise InstalledForgeUpdateError("terminal dispatcher reconciliation could not prove or commit state") from error
+    finally:
+        if "connection" in locals():
+            connection.close()
     reconciled = database_snapshot(database_path)
     assert_quiescent(reconciled)
     return reconciled
