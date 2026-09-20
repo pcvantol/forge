@@ -651,6 +651,118 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(slot["request_digest"], replacement.digest)
         self.assertEqual(len(slot["controller_reconciliations"]), 1)
 
+    def test_staged_interpreter_correction_reuses_unadopted_operation(self) -> None:
+        controller, state, previous_forge = self._managed_successor_controller()
+        stale_bin = self.runtime_root / "slots" / "2.7.21-stale" / "bin"
+        stale_bin.mkdir(parents=True)
+        stale_python = stale_bin / "python"
+        stale_python.write_bytes(b"stale-python")
+        update._atomic_json(stale_bin.parent / "forge-installation-slot.json", {"version": "2.7.21"})
+        mistaken = update.UpdateRequest(**{
+            **controller.request.__dict__, "controller_sha256": "sha256:" + "a" * 64,
+            "existing_interpreter": str(stale_python),
+        })
+        state = {**state, "request": mistaken.__dict__, "request_digest": mistaken.digest}
+        evidence = {"wheel_manifest_digest": "sha256:" + "1" * 64,
+                    "installed_file_count": 7}
+        candidate_identity = {"version": controller.request.version,
+                              "module": str(controller.slot / "lib/python/site-packages/forge/__init__.py")}
+        state = controller._advance(state, "STAGED", candidate=candidate_identity, installed_files=evidence)
+        controller.slot.mkdir(parents=True)
+        update._atomic_json(controller.slot_receipt, {
+            "request_digest": mistaken.digest, "wheel_manifest_digest": evidence["wheel_manifest_digest"],
+            "installed_files": evidence,
+        })
+        prior_wheel = "sha256:" + "4" * 64
+        installed_bin = self.runtime_root / "slots" / ("2.7.22-" + "4" * 12) / "bin"
+        installed_bin.mkdir(parents=True)
+        installed_python = installed_bin / "python"
+        installed_python.write_bytes(b"installed-python")
+        installed_forge = installed_bin / "forge"
+        installed_forge.write_bytes(previous_forge.read_bytes())
+        installed_forge.chmod(0o700)
+        update._replace_symlink(controller.current, os.path.relpath(installed_forge, self.runtime_root))
+        replacement = update.UpdateRequest(**{
+            **mistaken.__dict__, "existing_interpreter": str(installed_python),
+            "controller_source": "c" * 40, "controller_sha256": update.file_digest(SCRIPT),
+        })
+        recovered = update.InstalledForgeUpdateController(
+            replacement, process_reader=lambda: (), reconcile_staged_controller=True,
+        )
+        def identity(path, *, cwd):
+            if path == Path(mistaken.existing_interpreter):
+                return {"version": "2.7.21"}
+            if path == installed_python:
+                return {"version": "2.7.22", "distribution_version": "2.7.22",
+                        "sys_executable": str(path), "module": str(installed_bin.parent / "lib/forge/__init__.py"),
+                        "prefix": str(installed_bin.parent)}
+            return candidate_identity
+        update._atomic_json(installed_bin.parent / "forge-installation-slot.json", {
+            "contract_version": update.CONTRACT_VERSION, "version": "2.7.22",
+            "wheel_sha256": prior_wheel, "identity": identity(installed_python, cwd=self.runtime_root),
+            "installed_files": {"entrypoint_sha256": "sha256:" + "5" * 64},
+        })
+        with (
+            patch.object(update, "assert_selected_installation"),
+            patch.object(update, "_qualified_artifact", return_value=(
+                {"wheel_manifest_digest": evidence["wheel_manifest_digest"]}, b"wheel", {},
+            )),
+            patch.object(update, "_verify_candidate_files", return_value=evidence),
+            patch.object(recovered, "_verify_selected_predecessor_slot"),
+            patch.object(update, "installed_identity", side_effect=identity),
+        ):
+            rebound = recovered._reconcile_staged_controller(
+                recovered._state(allow_request_mismatch=True),
+                {"user_version": 38, "writer_state": {"dispatcher": [
+                    {"status": "IDLE", "active_mission_id": None}], "missions": [],
+                    "submissions": [], "generation_permits": [], "planning": [], "operational_reset": []}},
+            )
+        self.assertEqual(rebound["operation_id"], mistaken.operation_id)
+        self.assertEqual(rebound["request_digest"], replacement.digest)
+        self.assertEqual(rebound["controller_reconciliations"][-1]["reason"],
+                         "PROTECTED_STAGED_INTERPRETER_CORRECTION_BEFORE_ADOPTION")
+        self.assertEqual(update._read_json(recovered.slot_receipt)["request_digest"], replacement.digest)
+
+    def test_staged_interpreter_correction_rejects_path_traversal_before_execution(self) -> None:
+        controller, state, _previous_forge = self._managed_successor_controller()
+        mistaken = update.UpdateRequest(**{
+            **controller.request.__dict__, "controller_sha256": "sha256:" + "a" * 64,
+        })
+        state = {**state, "request": mistaken.__dict__, "request_digest": mistaken.digest}
+        controller._advance(state, "STAGED")
+        replacement = update.UpdateRequest(**{
+            **mistaken.__dict__,
+            "existing_interpreter": str(self.runtime_root / "slots" / ".." / "outside" / "bin" / "python"),
+            "controller_source": "c" * 40, "controller_sha256": update.file_digest(SCRIPT),
+        })
+        recovered = update.InstalledForgeUpdateController(
+            replacement, process_reader=lambda: (), reconcile_staged_controller=True,
+        )
+        with (patch.object(update, "assert_selected_installation"),
+              patch.object(update, "installed_identity", side_effect=AssertionError("executed untrusted path")),
+              self.assertRaisesRegex(update.InstalledForgeUpdateError, "path is not a managed slot")):
+            recovered._reconcile_staged_controller(
+                recovered._state(allow_request_mismatch=True), {"user_version": 38},
+            )
+
+    def test_predecessor_slot_verification_preserves_bytecode_cache(self) -> None:
+        slot = self.runtime_root / "slots" / "prior"
+        site = slot / "lib" / "python3.14" / "site-packages"
+        module = site / "forge" / "__init__.py"
+        module.parent.mkdir(parents=True)
+        module.write_text("__version__ = '2.7.26'\n")
+        cache = module.parent / "__pycache__" / "__init__.cpython-314.pyc"
+        cache.parent.mkdir()
+        cache.write_bytes(b"generated-bytecode")
+        entrypoint = slot / "bin" / "forge"
+        entrypoint.parent.mkdir()
+        entrypoint.write_bytes(update._entrypoint_bytes(slot))
+        result = update._verify_candidate_files(
+            slot, {"forge/__init__.py": update.file_digest(module)}, clean_bytecode=False,
+        )
+        self.assertEqual(result["installed_file_count"], 1)
+        self.assertEqual(cache.read_bytes(), b"generated-bytecode")
+
     def test_staged_internal_resolver_request_rebinds_only_to_existing_external_link(self) -> None:
         controller, state, previous_forge = self._managed_successor_controller(fenced=True)
         mistaken = update.UpdateRequest(**{
@@ -1224,7 +1336,13 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         controller = self._controller()
         self.assertEqual(controller.backup_path.name, "forge-schema39.sqlite3")
         after = self._qualified_schema39_copy(controller, before)
-        self.assertEqual(after["content_digest"], before["content_digest"])
+        # Opening the qualification copy can refresh volatile runtime
+        # metadata at a different wall-clock instant under coverage. Preserve
+        # every domain table and the protected identity/configuration fields.
+        for table, evidence in before["tables"].items():
+            if table != "runtime_metadata":
+                self.assertEqual(after["tables"][table], evidence, table)
+        self.assertEqual(after["protected_metadata_digest"], before["protected_metadata_digest"])
         self.assertEqual(after["schema_digest"], before["schema_digest"])
         update.verify_preservation(before, after, self.request)
         receipt = Path(self.request.qualification_receipt)

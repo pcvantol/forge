@@ -287,7 +287,10 @@ print(json.dumps({
     "prefix": str(pathlib.Path(sys.prefix).resolve()),
 }, sort_keys=True))
 """
-    result = _run((str(interpreter), "-B", "-I", "-c", program), cwd=cwd)
+    # Ignore any bytecode cache in the installed slot while proving the
+    # source files against the wheel; -B also prevents creating new caches.
+    empty_cache = Path(tempfile.gettempdir()) / ("forge-update-empty-bytecode-" + secrets.token_hex(16))
+    result = _run((str(interpreter), "-B", "-I", "-X", f"pycache_prefix={empty_cache}", "-c", program), cwd=cwd)
     try:
         identity = json.loads(result.stdout)
     except json.JSONDecodeError as error:
@@ -1216,7 +1219,9 @@ def _install_validated_wheel(slot: Path, wheel_bytes: bytes, manifest: Mapping[s
     _verify_candidate_files(slot, manifest)
 
 
-def _verify_candidate_files(slot: Path, manifest: Mapping[str, str]) -> dict[str, Any]:
+def _verify_candidate_files(
+    slot: Path, manifest: Mapping[str, str], *, clean_bytecode: bool = True,
+) -> dict[str, Any]:
     site_packages = _candidate_site_packages(slot)
     for cache in list(site_packages.rglob("__pycache__")):
         _assert_no_symlink_components(cache)
@@ -1224,10 +1229,13 @@ def _verify_candidate_files(slot: Path, manifest: Mapping[str, str]) -> dict[str
             raise InstalledForgeUpdateError("candidate bytecode cache path is unsafe")
         for child in cache.rglob("*"):
             _assert_no_symlink_components(child)
-        shutil.rmtree(cache)
+        if clean_bytecode:
+            shutil.rmtree(cache)
     actual: dict[str, str] = {}
     for path in site_packages.rglob("*"):
         _assert_no_symlink_components(path)
+        if not clean_bytecode and "__pycache__" in path.relative_to(site_packages).parts:
+            continue
         if path.is_file():
             relative = path.relative_to(site_packages).as_posix()
             actual[relative] = file_digest(path)
@@ -1303,10 +1311,41 @@ class InstalledForgeUpdateController:
         _atomic_json(self.state_path, state)
         return state
 
+    def _verify_selected_predecessor_slot(self, selected: Path) -> None:
+        """Bind the currently selected venv to its completed owning update."""
+        slot = selected.parent.parent
+        _assert_no_symlink_components(slot)
+        receipt = _read_json(slot / "forge-installation-slot.json")
+        operation_root = _safe_directory(self.data_root / "artifacts" / "installation")
+        matches: list[dict[str, Any]] = []
+        for path in operation_root.glob("*/operation.json"):
+            _assert_no_symlink_components(path)
+            operation = _read_json(path)
+            if operation.get("phase") == "COMPLETE" and operation.get("candidate_slot") == str(slot):
+                matches.append(operation)
+        if len(matches) != 1:
+            raise InstalledForgeUpdateError("selected prior slot lacks one completed owning update")
+        operation = matches[0]
+        prior_request = UpdateRequest(**operation["request"])
+        prior_request.validate()
+        if (operation.get("request_digest") != prior_request.digest
+                or receipt.get("request_digest") != prior_request.digest
+                or prior_request.version != self.request.existing_version
+                or prior_request.wheel_sha256 != receipt.get("wheel_sha256")
+                or operation.get("candidate") != receipt.get("identity")
+                or operation.get("installed_files") != receipt.get("installed_files")
+                or not selected.is_symlink()
+                or selected.resolve(strict=True) != Path(prior_request.base_python).resolve(strict=True)):
+            raise InstalledForgeUpdateError("selected prior slot conflicts with completed update evidence")
+        qualification, _wheel_bytes, manifest = _qualified_artifact(prior_request)
+        if (qualification.get("wheel_manifest_digest") != receipt.get("wheel_manifest_digest")
+                or _verify_candidate_files(slot, manifest, clean_bytecode=False) != receipt.get("installed_files")):
+            raise InstalledForgeUpdateError("selected prior slot bytes changed from its qualified wheel")
+
     def _reconcile_staged_controller(
         self, state: dict[str, Any], live: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Rebind only a source-corrected controller before any live effect."""
+        """Rebind a protected controller or selected interpreter before any live effect."""
         previous = state.get("request")
         requested = asdict(self.request)
         if not isinstance(previous, Mapping) or set(previous) != set(requested):
@@ -1325,13 +1364,20 @@ class InstalledForgeUpdateController:
             and state.get("last_error")
             == f"path contains a symbolic-link component: {self.request.resolver}"
         )
-        if not changed or not (resolver_correction or controller_correction):
+        interpreter_correction = (
+            changed == {"existing_interpreter", "controller_source", "controller_sha256"}
+            and state.get("phase") == "STAGED"
+            and state.get("last_error") is None
+            and state.get("safety_disposition") is None
+        )
+        if not changed or not (resolver_correction or controller_correction or interpreter_correction):
             raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
         previous_request = UpdateRequest(**dict(previous))
         if (
             state.get("request_digest") != previous_request.digest
             or state.get("phase") != "STAGED"
-            or state.get("safety_disposition") != "UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED"
+            or (not interpreter_correction
+                and state.get("safety_disposition") != "UNVERIFIED_OR_MIGRATED_RUNTIME_FENCED")
             or any(
                 key in state
                 for key in (
@@ -1345,7 +1391,46 @@ class InstalledForgeUpdateController:
             raise InstalledForgeUpdateError("controller reconciliation is not a pre-migration staged recovery")
         schema_before, _schema_after = transition_schemas(self.request)
         assert_selected_installation(self.request, live)
-        assert_quiescent(live)
+        if not interpreter_correction:
+            assert_quiescent(live)
+        else:
+            # Only the pointer inherited from the preceding update is
+            # corrected. No adoption, backup, migration or runtime fence has
+            # happened. The current managed resolver must select the corrected
+            # interpreter, while the previous one must genuinely be stale.
+            selected = Path(self.request.existing_interpreter)
+            if ".." in selected.parts or selected.name != "python" or selected.parent.name != "bin":
+                raise InstalledForgeUpdateError("staged interpreter correction path is not a managed slot")
+            _assert_no_symlink_components(selected.parent)
+            slots = (self.runtime_root / "slots").resolve()
+            if not selected.parent.parent.resolve().is_relative_to(slots):
+                raise InstalledForgeUpdateError("staged interpreter correction escapes managed slots")
+            old_path = Path(previous_request.existing_interpreter)
+            _assert_no_symlink_components(old_path.parent)
+            old_slot = old_path.parent.parent
+            if (".." in old_path.parts or old_path.name != "python" or old_path.parent.name != "bin"
+                    or not old_slot.resolve().is_relative_to(slots)):
+                raise InstalledForgeUpdateError("previous interpreter path is not a managed slot")
+            old_receipt = _read_json(old_slot / "forge-installation-slot.json")
+            self._verify_selected_predecessor_slot(selected)
+            new = installed_identity(selected, cwd=self.runtime_root)
+            prior_slot = selected.parent.parent
+            prior_receipt = _read_json(prior_slot / "forge-installation-slot.json")
+            if (old_receipt.get("version") == self.request.existing_version
+                    or new.get("version") != self.request.existing_version
+                    or new.get("distribution_version") != self.request.existing_version
+                    or Path(str(new.get("sys_executable"))).resolve() != Path(self.request.existing_interpreter).resolve()
+                    or not Path(str(new.get("module"))).is_relative_to(Path(str(new.get("prefix"))))
+                    or Path(str(new.get("prefix"))).resolve() != prior_slot.resolve()
+                    or prior_receipt.get("contract_version") != CONTRACT_VERSION
+                    or prior_receipt.get("version") != self.request.existing_version
+                    or prior_receipt.get("identity") != new
+                    or not isinstance(prior_receipt.get("wheel_sha256"), str)
+                    or prior_slot.name != self.request.existing_version + "-" + prior_receipt["wheel_sha256"].removeprefix("sha256:")[:12]
+                    or not isinstance(prior_receipt.get("installed_files"), Mapping)
+                    or self._managed_resolver_source(Path(self.request.resolver), state)
+                       != Path(self.request.existing_interpreter).parent / "forge"):
+                raise InstalledForgeUpdateError("staged interpreter correction does not select the installed release")
         if live.get("user_version") != schema_before:
             raise InstalledForgeUpdateError("controller reconciliation source schema changed")
         if file_digest(Path(__file__)) != self.request.controller_sha256:
@@ -1362,7 +1447,32 @@ class InstalledForgeUpdateController:
         identity = installed_identity(self.slot / "bin" / "python", cwd=self.runtime_root)
         if state.get("candidate") != identity or identity.get("version") != self.request.version:
             raise InstalledForgeUpdateError("staged candidate identity changed during controller reconciliation")
-        if (
+        if interpreter_correction:
+            writer = live.get("writer_state")
+            dispatcher = writer.get("dispatcher") if isinstance(writer, Mapping) else None
+            if not isinstance(dispatcher, list) or len(dispatcher) != 1 or not isinstance(dispatcher[0], Mapping):
+                raise InstalledForgeUpdateError("staged interpreter correction lacks dispatcher readback")
+            if dispatcher[0].get("status") == "IDLE":
+                assert_quiescent(live)
+            elif dispatcher[0].get("status") == "ACTIVE":
+                mission_id = dispatcher[0].get("active_mission_id")
+                if not isinstance(mission_id, str) or not mission_id:
+                    raise InstalledForgeUpdateError("staged interpreter correction lacks bound Mission")
+                candidate_writer = {**writer, "dispatcher": [{"status": "IDLE", "active_mission_id": None}]}
+                assert_quiescent({**live, "writer_state": candidate_writer})
+                with sqlite3.connect(self.database.resolve().as_uri() + "?mode=ro", uri=True) as connection:
+                    connection.execute("PRAGMA query_only=ON")
+                    mission = connection.execute("SELECT status,document FROM mission_state WHERE mission_id=?",
+                                                 (mission_id,)).fetchone()
+                    if mission is None or mission[0] not in {"FAILED", "BLOCKED"}:
+                        raise InstalledForgeUpdateError("staged interpreter correction Mission is not terminal")
+                    document = json.loads(mission[1])
+                    if document.get("mission_id") != mission_id or document.get("status") != mission[0]:
+                        raise InstalledForgeUpdateError("staged interpreter correction Mission changed")
+                    _prove_terminal_host_authority(self.request, connection, document)
+            else:
+                raise InstalledForgeUpdateError("staged interpreter correction dispatcher is not quiescent")
+        if not interpreter_correction and (
             not Path(self.request.resolver).is_symlink()
             or os.readlink(self.request.resolver) != str(self.stable_resolver)
             or not self.stable_resolver.is_symlink()
@@ -1373,6 +1483,8 @@ class InstalledForgeUpdateController:
             raise InstalledForgeUpdateError("controller reconciliation requires the recorded maintenance fence")
         reconciliation_identity = {
             "reason": (
+                "PROTECTED_STAGED_INTERPRETER_CORRECTION_BEFORE_ADOPTION"
+                if interpreter_correction else
                 "PROTECTED_RESOLVER_CORRECTION_AFTER_PRE_ADOPTION_FAILURE"
                 if resolver_correction else
                 "PROTECTED_CONTROLLER_CORRECTION_AFTER_MANAGED_RESOLVER_PRE_ADOPTION_FAILURE"
@@ -1383,6 +1495,9 @@ class InstalledForgeUpdateController:
             "replacement_controller_source": self.request.controller_source,
             "replacement_controller_sha256": self.request.controller_sha256,
             "replacement_request_digest": self.request.digest,
+            **({"previous_existing_interpreter": previous_request.existing_interpreter,
+                "replacement_existing_interpreter": self.request.existing_interpreter}
+               if interpreter_correction else {}),
         }
         state_reconciliations = state.get("controller_reconciliations", [])
         slot_reconciliations = slot_receipt.get("controller_reconciliations", [])
