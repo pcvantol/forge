@@ -1359,14 +1359,31 @@ class InstalledForgeUpdateController:
             # corrected. No adoption, backup, migration or runtime fence has
             # happened. The current managed resolver must select the corrected
             # interpreter, while the previous one must genuinely be stale.
-            old = installed_identity(Path(previous_request.existing_interpreter), cwd=self.runtime_root)
-            new = installed_identity(Path(self.request.existing_interpreter), cwd=self.runtime_root)
+            selected = Path(self.request.existing_interpreter)
+            if ".." in selected.parts or selected.name != "python" or selected.parent.name != "bin":
+                raise InstalledForgeUpdateError("staged interpreter correction path is not a managed slot")
+            _assert_no_symlink_components(selected.parent)
+            slots = (self.runtime_root / "slots").resolve()
+            if not selected.parent.parent.resolve().is_relative_to(slots):
+                raise InstalledForgeUpdateError("staged interpreter correction escapes managed slots")
+            old_path = Path(previous_request.existing_interpreter)
+            _assert_no_symlink_components(old_path.parent)
+            old = installed_identity(old_path, cwd=self.runtime_root)
+            new = installed_identity(selected, cwd=self.runtime_root)
+            prior_slot = selected.parent.parent
+            prior_receipt = _read_json(prior_slot / "forge-installation-slot.json")
             if (old.get("version") == self.request.existing_version
                     or new.get("version") != self.request.existing_version
                     or new.get("distribution_version") != self.request.existing_version
                     or Path(str(new.get("sys_executable"))).resolve() != Path(self.request.existing_interpreter).resolve()
-                    or not Path(self.request.existing_interpreter).is_relative_to(self.runtime_root / "slots")
                     or not Path(str(new.get("module"))).is_relative_to(Path(str(new.get("prefix"))))
+                    or Path(str(new.get("prefix"))).resolve() != prior_slot.resolve()
+                    or prior_receipt.get("contract_version") != CONTRACT_VERSION
+                    or prior_receipt.get("version") != self.request.existing_version
+                    or prior_receipt.get("identity") != new
+                    or not isinstance(prior_receipt.get("wheel_sha256"), str)
+                    or prior_slot.name != self.request.existing_version + "-" + prior_receipt["wheel_sha256"].removeprefix("sha256:")[:12]
+                    or not isinstance(prior_receipt.get("installed_files"), Mapping)
                     or self._managed_resolver_source(Path(self.request.resolver), state)
                        != Path(self.request.existing_interpreter).parent / "forge"):
                 raise InstalledForgeUpdateError("staged interpreter correction does not select the installed release")
@@ -1386,6 +1403,31 @@ class InstalledForgeUpdateController:
         identity = installed_identity(self.slot / "bin" / "python", cwd=self.runtime_root)
         if state.get("candidate") != identity or identity.get("version") != self.request.version:
             raise InstalledForgeUpdateError("staged candidate identity changed during controller reconciliation")
+        if interpreter_correction:
+            writer = live.get("writer_state")
+            dispatcher = writer.get("dispatcher") if isinstance(writer, Mapping) else None
+            if not isinstance(dispatcher, list) or len(dispatcher) != 1 or not isinstance(dispatcher[0], Mapping):
+                raise InstalledForgeUpdateError("staged interpreter correction lacks dispatcher readback")
+            if dispatcher[0].get("status") == "IDLE":
+                assert_quiescent(live)
+            elif dispatcher[0].get("status") == "ACTIVE":
+                mission_id = dispatcher[0].get("active_mission_id")
+                if not isinstance(mission_id, str) or not mission_id:
+                    raise InstalledForgeUpdateError("staged interpreter correction lacks bound Mission")
+                candidate_writer = {**writer, "dispatcher": [{"status": "IDLE", "active_mission_id": None}]}
+                assert_quiescent({**live, "writer_state": candidate_writer})
+                with sqlite3.connect(self.database.resolve().as_uri() + "?mode=ro", uri=True) as connection:
+                    connection.execute("PRAGMA query_only=ON")
+                    mission = connection.execute("SELECT status,document FROM mission_state WHERE mission_id=?",
+                                                 (mission_id,)).fetchone()
+                    if mission is None or mission[0] not in {"FAILED", "BLOCKED"}:
+                        raise InstalledForgeUpdateError("staged interpreter correction Mission is not terminal")
+                    document = json.loads(mission[1])
+                    if document.get("mission_id") != mission_id or document.get("status") != mission[0]:
+                        raise InstalledForgeUpdateError("staged interpreter correction Mission changed")
+                    _prove_terminal_host_authority(self.request, connection, document)
+            else:
+                raise InstalledForgeUpdateError("staged interpreter correction dispatcher is not quiescent")
         if not interpreter_correction and (
             not Path(self.request.resolver).is_symlink()
             or os.readlink(self.request.resolver) != str(self.stable_resolver)
