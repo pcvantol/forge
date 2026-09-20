@@ -10,6 +10,15 @@ they remain `PENDING_PR`. Documented does not mean implemented, qualified,
 installed or active. This increment changes no code, CI workflow, configuration,
 version manifest, schema migration, grant, budget or runtime instance.
 
+**Scoped delivery status, 20 September 2026.** The separate
+[repository-bound autonomous assurance slice](../operations/REPOSITORY_BOUND_AUTONOMOUS_ASSURANCE_COMPLETION.md)
+delivered EP's versioned `repository-autonomous-qs@1` profile, owner-selected
+`pcvantol/forge` target, Mission-bound delegation lifecycle and effective
+GitHub-policy checks. The installed target choice is ready for a later real
+Mission binding; no production Mission or active grant was created. This
+does not implement the whole cross-product policy model below or authorize
+other repositories, profiles or autonomous backlog selection.
+
 Forge maintains the Forge-family policy vocabulary and planning integration
 specified here. This does not make Forge a global policy server or replace the
 independently owned generic AI-development contracts. Each product owns its

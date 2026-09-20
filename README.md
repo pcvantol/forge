@@ -123,6 +123,11 @@ delivery, exact published artifacts, scoped CENTRAL installation and the
 remaining Mission-3 policy boundary. It does not authorize a production reset
 or Mission start.
 
+The subsequent [repository-bound autonomous assurance delivery](docs/operations/REPOSITORY_BOUND_AUTONOMOUS_ASSURANCE_COMPLETION.md)
+records EP's versioned owner profile, isolated protected delivery qualification,
+release and CENTRAL target configuration. It keeps Mission 3 and the
+clean-CENTRAL procedure separate.
+
 ## Mission 3 acceptance preflight
 
 The [18 September 2026 Mission 3 preflight report](docs/operations/MISSION_3_PREFLIGHT_ACCEPTANCE_2026_09_18.md)
