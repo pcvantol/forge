@@ -1336,7 +1336,13 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         controller = self._controller()
         self.assertEqual(controller.backup_path.name, "forge-schema39.sqlite3")
         after = self._qualified_schema39_copy(controller, before)
-        self.assertEqual(after["content_digest"], before["content_digest"])
+        # Opening the qualification copy can refresh volatile runtime
+        # metadata at a different wall-clock instant under coverage. Preserve
+        # every domain table and the protected identity/configuration fields.
+        for table, evidence in before["tables"].items():
+            if table != "runtime_metadata":
+                self.assertEqual(after["tables"][table], evidence, table)
+        self.assertEqual(after["protected_metadata_digest"], before["protected_metadata_digest"])
         self.assertEqual(after["schema_digest"], before["schema_digest"])
         update.verify_preservation(before, after, self.request)
         receipt = Path(self.request.qualification_receipt)
