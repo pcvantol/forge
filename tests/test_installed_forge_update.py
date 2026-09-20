@@ -1167,10 +1167,14 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             "mission_id": "MISSION-0001", "status": "FAILED", "waiting_reason": "host_evidence_failed",
             "actions": [{"id": "action-1", "status": "WAITING_FOR_RESULT"}],
             "intents": [{"id": "intent-1"}],
-            "execution_correlation": {"request": {"correlation_id": "correlation-1"}},
+            "execution_correlation": {"request": {"correlation_id": "correlation-1",
+                                                   "producer_contract": {"execution_constraints": [
+                                                       "ep-merge-delegation:" + grant_id]}}},
             "execution_evidence": {"outcome": "failed"},
-            "admission_contract": {"write_scopes": ["ep-merge-delegation:" + grant_id]},
-            "repository_truth": {"revision": "b" * 40},
+            "admission_contract": {"subject_revision": "mission-subject-1",
+                                   "mission": {"engineering_constraints": ["ep-merge-delegation:" + grant_id]}},
+            "repository_truth": {"revision": "b" * 40,
+                                 "source_id": "github-default-head:example/repository:" + "b" * 40},
         }
         binding = {
             "mission_id": "MISSION-0001", "action_id": "action-1", "correlation_id": "correlation-1",
@@ -1185,21 +1189,31 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                                "accepted_request_digest": "sha256:" + "c" * 64},
                 "correlation": {"mission_id": "MISSION-0001", "engineering_action_id": "action-1",
                                 "correlation_id": "correlation-1"},
-                "run": {"id": "run-1", "operator_resolution": "DISMISSED", "terminal": True},
+                "run": {"id": "run-1", "operator_resolution": "DISMISSED", "state": "BLOCKED", "terminal": False},
                 "disposition": {"state": "DISMISSED", "terminal": True, "execution_eligible": False},
             },
             "delegation": {"status": "REVOKED", "mission_id": "MISSION-0001", "project_id": "project-1",
-                           "repository_id": "repository-1", "mission_revision": "b" * 40,
+                           "repository_id": "repository-1", "mission_revision": "mission-subject-1",
+                           "delegation_id": grant_id, "github_repository": "example/repository",
+                           "base_branch": "main", "roles": ["IMPLEMENTATION"],
                            "revoked_at": "2026-09-20T00:00:00Z"},
         }
         with sqlite3.connect(path) as connection:
             connection.execute("INSERT INTO execution_host_bindings VALUES (?,?)",
                                ("correlation-1", json.dumps(binding)))
+        candidate = (Path(self.request.runtime_root) / "slots" /
+                     f"{self.request.version}-{self.request.wheel_sha256.removeprefix('sha256:')[:12]}")
+        candidate_identity = {"version": self.request.version, "distribution_version": self.request.version,
+                              "module": str(candidate / "lib" / "forge" / "__init__.py")}
         with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
-            with patch.object(update, "_run", return_value=SimpleNamespace(stdout=json.dumps(proof))):
+            with patch.object(update, "installed_identity", return_value=candidate_identity), patch.object(
+                update, "_run", return_value=SimpleNamespace(stdout=json.dumps(proof))
+            ):
                 update._prove_terminal_host_authority(self.request, connection, mission)
             proof["submission"]["disposition"]["execution_eligible"] = True
-            with patch.object(update, "_run", return_value=SimpleNamespace(stdout=json.dumps(proof))):
+            with patch.object(update, "installed_identity", return_value=candidate_identity), patch.object(
+                update, "_run", return_value=SimpleNamespace(stdout=json.dumps(proof))
+            ):
                 with self.assertRaises(update.InstalledForgeUpdateError):
                     update._prove_terminal_host_authority(self.request, connection, mission)
 

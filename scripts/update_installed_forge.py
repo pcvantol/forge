@@ -848,12 +848,37 @@ def _prove_terminal_host_authority(
     ).fetchall()
     if len(all_bindings) != 1 or any(action.get("status") == "IN_PROGRESS" for action in actions):
         raise InstalledForgeUpdateError("failed Mission has another possible Host execution")
-    references = re.findall(r"ep-merge-delegation:([0-9a-f]{32})", json.dumps(mission, sort_keys=True))
-    if len(set(references)) != 1:
+    admission = mission.get("admission_contract")
+    approved = admission.get("mission") if isinstance(admission, Mapping) else None
+    constraints = approved.get("engineering_constraints") if isinstance(approved, Mapping) else None
+    references = ([re.fullmatch(r"ep-merge-delegation:([0-9a-f]{32})", item)
+                   for item in constraints if isinstance(item, str)] if isinstance(constraints, list) else [])
+    references = [match.group(1) for match in references if match is not None]
+    if len(references) != 1 or not isinstance(admission.get("subject_revision"), str):
         raise InstalledForgeUpdateError("failed Mission lacks one exact delegation binding")
-    # Resolve the installed peer credential inside the selected isolated
-    # interpreter. The bearer token never crosses stdout, argv, or an audit
-    # record. HTTP redirects are rejected and responses are bounded.
+    producer_contract = correlation["request"].get("producer_contract")
+    execution_constraints = (producer_contract.get("execution_constraints")
+                             if isinstance(producer_contract, Mapping) else None)
+    if (not isinstance(execution_constraints, list)
+            or execution_constraints.count("ep-merge-delegation:" + references[0]) != 1):
+        raise InstalledForgeUpdateError("Host execution omitted its approved delegation binding")
+    truth = mission.get("repository_truth")
+    source_id = truth.get("source_id") if isinstance(truth, Mapping) else None
+    source_match = (re.fullmatch(r"github-default-head:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+):([0-9a-f]{40})", source_id)
+                    if isinstance(source_id, str) else None)
+    if source_match is None or source_match.group(2) != truth.get("revision"):
+        raise InstalledForgeUpdateError("failed Mission lacks exact GitHub Repository Truth")
+    # Resolve the peer credential using the exact staged, published candidate.
+    # Its preflight accepts both EP readback shapes and proves the configured
+    # instance, consumer and repository before the terminal GETs. The bearer
+    # token never crosses stdout, argv, or an audit record.
+    candidate = (Path(request.runtime_root) / "slots" /
+                 f"{request.version}-{request.wheel_sha256.removeprefix('sha256:')[:12]}" / "bin" / "python")
+    candidate_identity = installed_identity(candidate, cwd=Path(request.runtime_root))
+    if (candidate_identity.get("version") != request.version
+            or candidate_identity.get("distribution_version") != request.version
+            or not Path(str(candidate_identity.get("module"))).is_relative_to(candidate.parent.parent)):
+        raise InstalledForgeUpdateError("staged Forge candidate provenance changed before EP proof")
     program = """
 import importlib.metadata,json,pathlib,sys
 from urllib.parse import quote
@@ -865,6 +890,9 @@ class NoRedirect(HTTPRedirectHandler):
 if importlib.metadata.version('forge-autonomy') != sys.argv[4] or not pathlib.Path(forge.__file__).resolve().is_relative_to(pathlib.Path(sys.prefix).resolve()):
  raise SystemExit('installed Forge package provenance changed')
 host=EngineeringPlatformExecutionHostFactory().from_data_root(pathlib.Path(sys.argv[1]))
+declaration=host.preflight()
+if declaration['instance']['id']!=host.config.expected_instance_id or declaration['authentication']['consumer_id']!=host.config.expected_consumer_id:
+ raise SystemExit('EP peer identity changed')
 project=host.config.project_id
 opener=build_opener(NoRedirect())
 def get(suffix):
@@ -875,8 +903,8 @@ def get(suffix):
   return json.loads(raw)
 print(json.dumps({'submission':get('/submissions/'+quote(sys.argv[2],safe='')),'delegation':get('/merge-delegations/'+quote(sys.argv[3],safe='')),'project':project,'repository':host.config.repository_id},sort_keys=True))
 """
-    response = _run((request.existing_interpreter, "-B", "-I", "-c", program,
-                     request.data_root, binding["submission_id"], references[0], request.existing_version),
+    response = _run((str(candidate), "-B", "-I", "-c", program,
+                     request.data_root, binding["submission_id"], references[0], request.version),
                     cwd=Path(request.runtime_root), timeout=35)
     try:
         proof = json.loads(response.stdout)
@@ -892,13 +920,17 @@ print(json.dumps({'submission':get('/submissions/'+quote(sys.argv[2],safe='')),'
                 or linked["correlation_id"] != correlation_id
                 or submission["run"]["id"] != binding["host_run_id"]
                 or submission["run"]["operator_resolution"] != "DISMISSED"
-                or submission["run"]["terminal"] is not True
+                or submission["run"]["state"] not in {"BLOCKED", "FAILED"}
                 or disposition["state"] != "DISMISSED" or disposition["terminal"] is not True
                 or disposition["execution_eligible"] is not False
                 or grant["status"] not in {"REVOKED", "EXPIRED"}
+                or grant["delegation_id"] != references[0]
                 or grant["mission_id"] != mission_id or grant["project_id"] != binding["project_id"]
                 or grant["repository_id"] != binding["repository_id"]
-                or grant["mission_revision"] != mission["repository_truth"]["revision"]
+                or grant["github_repository"] != source_match.group(1)
+                or not isinstance(grant.get("base_branch"), str) or not grant["base_branch"]
+                or not isinstance(grant.get("roles"), list) or "IMPLEMENTATION" not in grant["roles"]
+                or grant["mission_revision"] != admission["subject_revision"]
                 or grant["status"] == "REVOKED" and not grant.get("revoked_at")):
             raise InstalledForgeUpdateError("EP does not prove terminal submission and revoked delegation")
     except (KeyError, IndexError, TypeError, ValueError) as error:
