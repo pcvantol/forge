@@ -146,7 +146,8 @@ backlog selection, other repositories or other assurance profiles.
 EP source PR #288, its production release operation and `<EP_UPDATE_A>` are
 terminal. The isolated qualification run is terminal; its test grant and
 test target selection are revoked. The isolated development service and
-protected local evidence remain available to the owning Architecture lane;
+all test providers are stopped; protected local evidence is archived for
+the owning Architecture lane;
 their private identifiers are mapped only in the protected local ledger.
 The production EP service remains healthy and active. No production Mission,
 reset, provider run, merge grant or follow-on roadmap operation remains
