@@ -342,6 +342,10 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
         self.host.return_evidence = True
         self.runtime = self._open_runtime()
+        self.host.managed_workspace_readiness = lambda: {
+            "status": "BLOCKED", "known_blocker": "MANAGED_LEASE_ACTIVE",
+            "repository_identity": "synthetic/forge",
+        }
         complete = self.runtime.resume(mission.id)
         self.assertEqual(complete.runtime_id, runtime_id)
         self.assertEqual(complete.status, "COMPLETED")

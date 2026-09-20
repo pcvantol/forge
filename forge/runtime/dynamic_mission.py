@@ -259,7 +259,8 @@ class InstalledDynamicMissionRuntime:
             raise InstalledDynamicMissionError("canonical Mission Intake did not preserve zero-Action planning state")
         return state
 
-    def preflight(self, *, expected_origin: str | None = None) -> dict[str, object]:
+    def preflight(self, *, expected_origin: str | None = None,
+                  require_workspace_readiness: bool = True) -> dict[str, object]:
         """Perform only the configured Codex and EP read-only capability checks."""
         provider_preflight = getattr(self.provider, "preflight", None)
         readiness = provider_preflight() if callable(provider_preflight) else None
@@ -267,7 +268,8 @@ class InstalledDynamicMissionRuntime:
             raise InstalledDynamicMissionError("configured Codex planning session is not ready")
         declaration = self.host.preflight()
         workspace_readiness = getattr(self.host, "managed_workspace_readiness", None)
-        managed = workspace_readiness() if callable(workspace_readiness) else None
+        managed = (workspace_readiness() if require_workspace_readiness
+                   and callable(workspace_readiness) else None)
         if managed is not None and managed.get("status") != "READY":
             raise InstalledDynamicMissionError("EP Managed workspace is not ready for exact Action preparation")
         if (expected_origin is not None and managed is not None
@@ -381,7 +383,11 @@ class InstalledDynamicMissionRuntime:
         if state.repository_truth is None:
             raise InstalledDynamicMissionError("resumed Mission lacks canonical Repository Truth")
         self._initial_truth[mission_id] = dict(state.repository_truth)
-        self.preflight(expected_origin=self._approved_origin(state))
+        # A running EP Action owns its workspace lease. Pre-T0 readiness is
+        # unavailable while that Action executes; exact per-Action preparation
+        # remains EP's admission responsibility.
+        self.preflight(expected_origin=self._approved_origin(state),
+                       require_workspace_readiness=False)
         if not self._keep_running():
             return self._result(state)
         return self._tick(mission_id)
