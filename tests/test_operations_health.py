@@ -1,17 +1,26 @@
-"""Installed-service qualification for bounded aggregate health composition."""
+"""Aggregate-health composition and installed-service qualification."""
 from __future__ import annotations
 
+from base64 import urlsafe_b64encode
 from contextlib import redirect_stdout
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from io import StringIO
 import json
+import os
 from pathlib import Path
+import socket
+import sqlite3
+import subprocess
 from tempfile import TemporaryDirectory
 from threading import Thread
+import time
 import unittest
 from unittest.mock import patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+import venv
+import zipfile
 
 from forge.__main__ import main
 from forge.component_registry import COMPONENT_REGISTRY_VERSION, component_registry
@@ -33,6 +42,67 @@ from forge.secure_store import SecretReference
 
 NOW = datetime(2026, 9, 21, 9, 0, tzinfo=UTC)
 CREDENTIAL = "synthetic-health-credential"
+
+
+def _write_candidate_wheel(repository: Path, destination: Path) -> tuple[Path, str]:
+    """Create one valid wheel from the checked-out candidate using only stdlib.
+
+    The production workflow separately qualifies the normal build backend. This
+    helper keeps the repository suite offline while still crossing a real wheel
+    installation and generated console-script boundary.
+    """
+    version = json.loads(
+        (repository / "product-version.json").read_text(encoding="utf-8"),
+    )["version"]
+    distribution = "forge_autonomy"
+    wheel = destination / f"{distribution}-{version}-py3-none-any.whl"
+    dist_info = f"{distribution}-{version}.dist-info"
+    entries = {
+        path.relative_to(repository).as_posix(): path.read_bytes()
+        for path in sorted((repository / "forge").rglob("*"))
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+    }
+    entries.update({
+        f"{dist_info}/METADATA": (
+            "Metadata-Version: 2.4\n"
+            "Name: forge-autonomy\n"
+            f"Version: {version}\n"
+            "Requires-Python: >=3.11\n"
+        ).encode(),
+        f"{dist_info}/WHEEL": (
+            "Wheel-Version: 1.0\n"
+            "Generator: forge-installed-health-qualification\n"
+            "Root-Is-Purelib: true\n"
+            "Tag: py3-none-any\n"
+        ).encode(),
+        f"{dist_info}/entry_points.txt": b"[console_scripts]\nforge = forge.__main__:main\n",
+    })
+    records = []
+    for name, content in sorted(entries.items()):
+        digest = urlsafe_b64encode(sha256(content).digest()).rstrip(b"=").decode()
+        records.append(f"{name},sha256={digest},{len(content)}")
+    record_name = f"{dist_info}/RECORD"
+    entries[record_name] = ("\n".join(records) + f"\n{record_name},,\n").encode()
+    with zipfile.ZipFile(wheel, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in sorted(entries.items()):
+            archive.writestr(name, content)
+    return wheel, version
+
+
+def _logical_runtime_snapshot(root: Path) -> dict[str, object]:
+    """Hash domain state, including transactions that still reside in WAL."""
+    database = root / "forge.db"
+    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        logical_database = "\n".join(connection.iterdump()).encode()
+    finally:
+        connection.close()
+    files = {
+        path.relative_to(root).as_posix(): sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and path.name not in {"forge.db", "forge.db-wal", "forge.db-shm"}
+    }
+    return {"database": sha256(logical_database).hexdigest(), "files": files}
 
 
 class _InstalledHealthFixture(unittest.TestCase):
@@ -357,6 +427,147 @@ class HealthContractTests(_InstalledHealthFixture):
             {item["check_id"] for item in cli_ready["checks"]},
             {"process", "storage", "execution_peer"},
         )
+
+
+class InstalledDistributionHealthTests(unittest.TestCase):
+    def test_candidate_wheel_runs_installed_http_and_cli_outside_checkout(self) -> None:
+        repository = Path(__file__).resolve().parents[1]
+        with TemporaryDirectory() as temporary_name:
+            temporary = Path(temporary_name)
+            wheel, version = _write_candidate_wheel(repository, temporary)
+            environment = os.environ.copy()
+            environment.pop("PYTHONPATH", None)
+            environment.update({"PYTHONNOUSERSITE": "1", "PYTHONSAFEPATH": "1"})
+            virtual_environment = temporary / "installed"
+            venv.EnvBuilder(with_pip=True).create(virtual_environment)
+            python = virtual_environment / "bin" / "python"
+            forge = virtual_environment / "bin" / "forge"
+
+            installed = subprocess.run(
+                [str(python), "-m", "pip", "install", "--no-index", "--no-deps", str(wheel)],
+                cwd=temporary, env=environment, text=True, capture_output=True, timeout=30,
+            )
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            location = subprocess.run(
+                [
+                    str(python), "-I", "-c",
+                    "import forge,json,pathlib; print(json.dumps({'file':str(pathlib.Path(forge.__file__).resolve())}))",
+                ],
+                cwd=temporary, env=environment, text=True, capture_output=True, timeout=10,
+            )
+            self.assertEqual(location.returncode, 0, location.stderr)
+            installed_file = Path(json.loads(location.stdout)["file"])
+            self.assertTrue(installed_file.is_relative_to(virtual_environment.resolve()))
+            self.assertFalse(installed_file.is_relative_to(repository.resolve()))
+
+            root = temporary / "runtime"
+            initialized = subprocess.run(
+                [str(forge), "--data-root", str(root), "server", "init"],
+                cwd=temporary, env=environment, text=True, capture_output=True, timeout=20,
+            )
+            self.assertEqual(initialized.returncode, 0, initialized.stderr)
+            runtime_id = json.loads(initialized.stdout)["instance_id"]
+            observed_version = subprocess.run(
+                [str(forge), "--version"], cwd=temporary, env=environment,
+                text=True, capture_output=True, timeout=10,
+            )
+            self.assertEqual((observed_version.returncode, observed_version.stdout.strip()), (0, version))
+
+            credential_file = temporary / "operations-api.credential"
+            credential_file.write_text(CREDENTIAL + "\n", encoding="utf-8")
+            credential_file.chmod(0o600)
+            with socket.socket() as reservation:
+                reservation.bind(("127.0.0.1", 0))
+                port = reservation.getsockname()[1]
+            server = subprocess.Popen(
+                [
+                    str(forge), "--data-root", str(root), "operations-api",
+                    "--credential-file", str(credential_file), "--port", str(port),
+                ],
+                cwd=temporary, env=environment, stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE, text=True,
+            )
+            base = f"http://127.0.0.1:{port}"
+            try:
+                deadline = time.monotonic() + 5
+                while True:
+                    if server.poll() is not None:
+                        self.fail("installed operations API exited before accepting requests")
+                    try:
+                        with urlopen(base + "/v1/health/live", timeout=0.25) as response:
+                            live = json.load(response)
+                        break
+                    except URLError:
+                        if time.monotonic() >= deadline:
+                            self.fail("installed operations API did not become ready within five seconds")
+                        time.sleep(0.05)
+                before = _logical_runtime_snapshot(root)
+                self.assertEqual(live["liveness"], {"alive": True, "state": "ALIVE"})
+
+                local_request = Request(
+                    base + "/v1/health/readiness?capability=local_work",
+                    headers={"Authorization": "Bearer " + CREDENTIAL},
+                )
+                with urlopen(local_request, timeout=2) as response:
+                    local = json.load(response)
+                self.assertEqual((local["state"], local["runtime_id"], local["installation_id"]), (
+                    "HEALTHY", runtime_id, runtime_id,
+                ))
+
+                aggregate_request = Request(
+                    base + "/v1/health/readiness",
+                    headers={"Authorization": "Bearer " + CREDENTIAL},
+                )
+                with self.assertRaises(HTTPError) as degraded_response:
+                    urlopen(aggregate_request, timeout=2)
+                degraded = json.load(degraded_response.exception)
+                self.assertEqual((degraded_response.exception.code, degraded["state"]), (503, "DEGRADED"))
+                degraded_response.exception.close()
+
+                cli_live = subprocess.run(
+                    [str(forge), "--data-root", str(root), "health", "live"],
+                    cwd=temporary, env=environment, text=True, capture_output=True, timeout=10,
+                )
+                cli_ready = subprocess.run(
+                    [
+                        str(forge), "--data-root", str(root), "health", "readiness",
+                        "--capability", "local_work",
+                    ],
+                    cwd=temporary, env=environment, text=True, capture_output=True, timeout=10,
+                )
+                self.assertEqual(cli_live.returncode, 0, cli_live.stderr)
+                self.assertEqual(cli_ready.returncode, 0, cli_ready.stderr)
+                self.assertEqual(json.loads(cli_live.stdout)["liveness"]["state"], "ALIVE")
+                self.assertEqual(json.loads(cli_ready.stdout)["runtime_id"], runtime_id)
+                self.assertEqual(_logical_runtime_snapshot(root), before)
+
+                connection = sqlite3.connect(root / "forge.db")
+                try:
+                    with connection:
+                        connection.execute(
+                            "UPDATE runtime_metadata SET value='maintenance' WHERE key='status'",
+                        )
+                finally:
+                    connection.close()
+                maintenance = _logical_runtime_snapshot(root)
+                with self.assertRaises(HTTPError) as unavailable_response:
+                    urlopen(local_request, timeout=2)
+                unavailable = json.load(unavailable_response.exception)
+                self.assertEqual(
+                    (unavailable_response.exception.code, unavailable["state"]),
+                    (503, "UNAVAILABLE"),
+                )
+                unavailable_response.exception.close()
+                self.assertEqual(_logical_runtime_snapshot(root), maintenance)
+            finally:
+                server.terminate()
+                try:
+                    server.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait(timeout=5)
+                if server.stderr is not None:
+                    server.stderr.close()
 
 
 if __name__ == "__main__":
