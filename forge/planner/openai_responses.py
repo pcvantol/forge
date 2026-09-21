@@ -668,6 +668,13 @@ def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[s
         raise ValueError("canonical derivation policy is required")
     schema = json.loads(json.dumps(_SCHEMA))
     properties = schema["properties"]["proposals"]["items"]["properties"]
+    # Keep Structured Outputs at least as strict as the parser that consumes
+    # them.  The base schema historically allowed empty strings in these
+    # arrays while ``_proposal`` rejected them after a successful provider
+    # invocation, turning schema-valid output into an unrecoverable contract
+    # failure.
+    for key in ("dependencies", "expected_evidence", "validation_strategy", "source_evidence_refs"):
+        properties[key]["items"]["minLength"] = 1
     properties["scope"] = {
         "type": "string", "enum": list(scopes),
     }

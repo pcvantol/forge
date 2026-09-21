@@ -250,6 +250,9 @@ class CodexCliSessionTests(unittest.TestCase):
         self.assertEqual(runner.schemas[0]["required"], ["result"])
         self.assertEqual(runner.schemas[0]["properties"]["result"]["anyOf"][0]["properties"]["proposals"]["items"]["properties"]["write_scopes"]["items"]["enum"],
                          ["forge/planner"])
+        proposal_properties = runner.schemas[0]["properties"]["result"]["anyOf"][0]["properties"]["proposals"]["items"]["properties"]
+        for key in ("dependencies", "expected_evidence", "validation_strategy", "source_evidence_refs"):
+            self.assertEqual(proposal_properties[key]["items"]["minLength"], 1)
         evidence = self.invocation_documents()
         self.assertEqual([item["state"] for item in evidence], ["STARTED", "HAPPENED_AND_CONFIRMED"])
         self.assertEqual(evidence[-1]["diagnostic"]["classification"], "COMPLETED_VALID")
