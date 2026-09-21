@@ -183,15 +183,13 @@ def admit(data_root: str, path: str) -> dict[str, object]:
         database.close()
 
 
-def status(data_root: str, mission_id: str) -> dict[str, object]:
-    root = DataRootResolver(cli_data_root=data_root).resolve()
-    database = root / "forge.db"
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
-        row = connection.execute("SELECT document FROM mission_state WHERE mission_id = ?", (mission_id,)).fetchone()
-        if row is None:
-            raise ValueError("unknown Mission")
-        planning_attempts = connection.execute(
-            "SELECT COUNT(*) FROM action_derivations WHERE mission_id = ?", (mission_id,)).fetchone()[0]
+def _status_projection(connection: sqlite3.Connection, mission_id: str):
+    """Build the public Mission projection from one caller-owned read snapshot."""
+    row = connection.execute("SELECT document FROM mission_state WHERE mission_id = ?", (mission_id,)).fetchone()
+    if row is None:
+        raise ValueError("unknown Mission")
+    planning_attempts = connection.execute(
+        "SELECT COUNT(*) FROM action_derivations WHERE mission_id = ?", (mission_id,)).fetchone()[0]
     state = MissionStateStore._decode(row[0])
     attempts = tuple({"correlation_id": item.get("correlation_id"),
                       "host_run_id": item.get("host_run_id"),
@@ -200,7 +198,7 @@ def status(data_root: str, mission_id: str) -> dict[str, object]:
                      for item in state.execution_history)
     current = state.current_engineering_action or {}
     truth = state.repository_truth or {}
-    return {"mission_id": state.mission_id, "status": state.status.value,
+    projection = {"mission_id": state.mission_id, "status": state.status.value,
             "revision": state.revision, "action_ids": [item["id"] for item in state.actions],
             "current_action_id": current.get("id"),
             "planning_attempts_recorded": planning_attempts,
@@ -210,6 +208,18 @@ def status(data_root: str, mission_id: str) -> dict[str, object]:
             "recovery_authorizations": sum(item.get("reason") == "authorized_recovery"
                                             for item in state.state_history),
             "waiting_reason": state.waiting_reason, "completion": state.completion, "read_only": True}
+    return projection, state
+
+
+def status(data_root: str, mission_id: str) -> dict[str, object]:
+    root = DataRootResolver(cli_data_root=data_root).resolve()
+    database = root / "forge.db"
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    try:
+        projection, _ = _status_projection(connection, mission_id)
+        return projection
+    finally:
+        connection.close()
 
 
 def _github_default_head(repository: str) -> tuple[str, str]:

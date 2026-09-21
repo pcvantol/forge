@@ -1,0 +1,60 @@
+{
+  "auth": {
+    "bearer": [{"key": "token", "type": "string", "value": "{{bearerCredential}}"}],
+    "type": "bearer"
+  },
+  "info": {
+    "name": "Forge Operations Read API V1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Installed status",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/status"},
+      "response": [{"code": 200, "name": "Available"}, {"code": 503, "name": "Unavailable"}]
+    },
+    {
+      "auth": {"type": "noauth"},
+      "name": "Installed status requires authentication",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/status"},
+      "response": [{"code": 401, "name": "Authentication required"}]
+    },
+    {
+      "name": "Mission detail",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/missions/{{missionId}}"},
+      "response": [{"code": 200, "name": "Available"}]
+    },
+    {
+      "auth": {"type": "noauth"},
+      "name": "Mission detail requires authentication",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/missions/{{missionId}}"},
+      "response": [{"code": 401, "name": "Authentication required"}]
+    },
+    {
+      "name": "Mission reference invalid",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/missions/%20"},
+      "response": [{"code": 400, "name": "Invalid"}]
+    },
+    {
+      "name": "Mission missing",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/missions/MISSION-MISSING"},
+      "response": [{"code": 404, "name": "Missing"}]
+    },
+    {
+      "name": "Mission ambiguous",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/missions/{{ambiguousMissionId}}"},
+      "response": [{"code": 409, "name": "Ambiguous"}]
+    },
+    {
+      "name": "Mission unavailable",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/missions/{{missionId}}"},
+      "response": [{"code": 503, "name": "Unavailable"}]
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://127.0.0.1:8765"},
+    {"key": "bearerCredential", "value": ""},
+    {"key": "missionId", "value": "MISSION-0004"},
+    {"key": "ambiguousMissionId", "value": "MISSION-AMBIGUOUS"}
+  ]
+}
