@@ -669,12 +669,13 @@ def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[s
     schema = json.loads(json.dumps(_SCHEMA))
     properties = schema["properties"]["proposals"]["items"]["properties"]
     # Keep Structured Outputs at least as strict as the parser that consumes
-    # them.  The base schema historically allowed empty strings in these
-    # arrays while ``_proposal`` rejected them after a successful provider
-    # invocation, turning schema-valid output into an unrecoverable contract
-    # failure.
+    # them.  Evidence, validation, and provenance are required by the typed
+    # proposal model, so their arrays must contain at least one non-empty
+    # value.  Dependencies may be empty for the first executable proposal.
     for key in ("dependencies", "expected_evidence", "validation_strategy", "source_evidence_refs"):
         properties[key]["items"]["minLength"] = 1
+    for key in ("expected_evidence", "validation_strategy", "source_evidence_refs"):
+        properties[key]["minItems"] = 1
     properties["scope"] = {
         "type": "string", "enum": list(scopes),
     }
@@ -701,7 +702,9 @@ def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[s
                                           "items": {"type": "string", "enum": [item.source_id for item in snapshot.evidence]}},
              "planning_snapshot_digest": {"type": "string", "enum": [snapshot.digest]},
              "causal_objective": {"type": "string", "minLength": 1},
-             "mission_caused_by_action_ids": {"type": "array", "items": {"type": "string"}},
+             "mission_caused_by_action_ids": {
+                 "type": "array", "items": {"type": "string", "minLength": 1},
+             },
          }},
         {"type": "null"},
     ]}
@@ -715,9 +718,10 @@ def _mission_gap(document: object) -> MissionGapBinding | None:
         raise ValueError("Mission-gap binding is malformed")
     return MissionGapBinding(
         MissionGapClassification(str(document["classification"])),
-        tuple(document["criterion_ids"]), tuple(document["triggering_evidence_refs"]),
+        tuple(dict.fromkeys(document["criterion_ids"])),
+        tuple(dict.fromkeys(document["triggering_evidence_refs"])),
         str(document["planning_snapshot_digest"]), str(document["causal_objective"]),
-        tuple(document["mission_caused_by_action_ids"]),
+        tuple(dict.fromkeys(document["mission_caused_by_action_ids"])),
     )
 
 
