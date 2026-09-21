@@ -137,6 +137,17 @@ class InstalledOperationsReadService:
         observed_at = max(
             valid_times, key=lambda item: _parse_time(item) or datetime.min.replace(tzinfo=UTC),
         ) if valid_times else None
+        projection.update({
+            "criteria": list(state.mission.get("acceptance_criteria", ())),
+            "actions": [dict(item) for item in state.actions],
+            "evidence_lineage": {
+                "execution_evidence": state.execution_evidence,
+                "execution_attempts": [dict(item) for item in state.execution_history],
+                "repository_truth": state.repository_truth,
+                "criterion_assessment": state.completion,
+                "criterion_assessment_history": [dict(item) for item in state.completion_history],
+            },
+        })
         return _redact({
             "api_version": API_VERSION,
             "availability": "AVAILABLE",

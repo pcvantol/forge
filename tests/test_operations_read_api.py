@@ -11,6 +11,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from forge.models.action import EngineeringAction, EngineeringActionStatus
+from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.intent import EngineeringIntent, IntentCategory, IntentReference, IntentTraceability
 from forge.models.mission import EngineeringMission, MissionIntentMembership, MissionScope
 from forge.operations_read_api import InstalledOperationsReadService, OperationsReadAPI, make_server
@@ -76,10 +77,14 @@ class TestStatusEndpoint(_InstalledFixture):
 
 class TestMissionEndpoint(_InstalledFixture):
     def test_mission_lineage_read_only(self) -> None:
-        mission = EngineeringMission(
-            "MISSION-0042", "1", "Read-only projection", "Expose lineage",
-            MissionScope(("projection",), ("mutation",)),
-            (MissionIntentMembership(1, "INTENT-0042", "1"),),
+        criterion = "Report approved criteria, Actions, and evidence lineage"
+        mission = ArchitectureMission(
+            id="MISSION-0042", candidate_id="CANDIDATE-0042", title="Read-only projection",
+            summary="Expose lineage", business_objective="Make Mission state observable",
+            business_value="Support local operations", architecture_review_reference="review-0042",
+            mission_recommendation_reference="recommendation-0042",
+            acceptance_criteria=(criterion,),
+            status=ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
         )
         reference = IntentReference("source", "1", "docs/source.md")
         intent = EngineeringIntent(
@@ -95,11 +100,21 @@ class TestMissionEndpoint(_InstalledFixture):
         state = states.create(mission, (intent,), (action,), occurred_at="2026-09-21T05:00:00Z")
         state = replace(
             state,
-            repository_truth={"revision": "a" * 40},
+            repository_truth={
+                "source_id": "repository-truth-0042", "revision": "a" * 40,
+                "locator": "repository://pcvantol/forge", "content_digest": "sha256:" + "b" * 64,
+            },
             execution_history=({
                 "correlation_id": "correlation-0042", "host_run_id": "run-0042",
-                "receipt_id": "receipt-0042", "outcome": "WAITING",
+                "report_id": "report-0042", "receipt_id": "receipt-0042", "outcome": "WAITING",
                 "retry_of_correlation_id": None,
+                "repository_evidence": {
+                    "mission_id": "MISSION-0042", "intent_id": "INTENT-0042", "intent_revision": "1",
+                    "action_id": "ACTION-0042", "runtime_prompt_id": "prompt-0042",
+                    "correlation_id": "correlation-0042", "host_run_id": "run-0042",
+                    "repository_id": "pcvantol/forge", "repository_revision": "a" * 40,
+                    "report_id": "report-0042", "content_digest": "sha256:" + "c" * 64,
+                },
             },),
         )
         self.database.save_mission_state(state)
@@ -115,6 +130,14 @@ class TestMissionEndpoint(_InstalledFixture):
         self.assertEqual(response.body["mission"]["action_ids"], ["ACTION-0042"])
         self.assertEqual(response.body["mission"]["repository_revision"], "a" * 40)
         self.assertEqual(response.body["mission"]["execution_attempts"][0]["receipt_id"], "receipt-0042")
+        self.assertEqual(response.body["mission"]["criteria"], [criterion])
+        self.assertEqual(response.body["mission"]["actions"], [action.to_dict()])
+        lineage = response.body["mission"]["evidence_lineage"]
+        self.assertEqual(lineage["repository_truth"]["content_digest"], "sha256:" + "b" * 64)
+        self.assertEqual(lineage["execution_attempts"][0]["report_id"], "report-0042")
+        self.assertEqual(
+            lineage["execution_attempts"][0]["repository_evidence"]["action_id"], "ACTION-0042",
+        )
         self.assertEqual(self.snapshot(), before)
 
     def test_missing_and_inconsistent_mission_states_are_explicit(self) -> None:
