@@ -53,7 +53,7 @@ class _InstalledHealthFixture(unittest.TestCase):
 
     def domain_counts(self) -> dict[str, int]:
         connection = sqlite3.connect(
-            (self.root / "forge.db").resolve().as_uri() + "?mode=ro&immutable=1",
+            (self.root / "forge.db").resolve().as_uri() + "?mode=ro",
             uri=True,
         )
         try:
@@ -72,6 +72,37 @@ class _InstalledHealthFixture(unittest.TestCase):
 
 
 class HealthSnapshotTests(_InstalledHealthFixture):
+    def test_live_wal_observation_is_current_and_read_only(self) -> None:
+        database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        try:
+            database._connection.execute("PRAGMA wal_autocheckpoint=0")  # noqa: SLF001
+            database._connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # noqa: SLF001
+            with database._connection:  # noqa: SLF001 - commit a current runtime observation to WAL
+                database._set_metadata({"status": "maintenance"})  # noqa: SLF001
+
+            wal = self.root / "forge.db-wal"
+            shm = self.root / "forge.db-shm"
+            self.assertTrue(wal.is_file())
+            self.assertGreater(wal.stat().st_size, 0)
+            self.assertTrue(shm.is_file())
+            before_domain = self.domain_counts()
+            before_files = self.files()
+
+            snapshot = InstalledHealthSnapshotService(
+                self.root,
+                clock=lambda: NOW,
+            ).snapshot().to_dict()
+
+            storage = next(
+                item for item in snapshot["checks"] if item["check_id"] == "runtime_storage"
+            )
+            self.assertEqual(storage["observation_state"], ObservationState.FAIL.value)
+            self.assertEqual(storage["reason_code"], "RUNTIME_NOT_ACTIVE")
+            self.assertEqual(self.domain_counts(), before_domain)
+            self.assertEqual(self.files(), before_files)
+        finally:
+            database.close()
+
     def test_authoritative_bounded_snapshot(self) -> None:
         before_domain = self.domain_counts()
         before_files = self.files()

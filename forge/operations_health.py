@@ -123,6 +123,7 @@ class InstalledHealthSnapshotService:
         observed_at = observed_at.astimezone(UTC)
         started = self.monotonic()
         database = self.root / "forge.db"
+        wal = self.root / "forge.db-wal"
         marker = self.root / "instance" / "runtime-instance.json"
         if not database.is_file() or not marker.is_file():
             raise InstalledHealthError(
@@ -142,11 +143,22 @@ class InstalledHealthSnapshotService:
             return int(self.monotonic() - started >= self.deadline_seconds)
 
         try:
+            # Immutable access avoids creating WAL bookkeeping for a stopped
+            # installation, but it is safe only while no WAL exists.
+            use_immutable_main_file = not wal.is_file()
             connection = sqlite3.connect(
-                database.resolve().as_uri() + "?mode=ro&immutable=1",
+                database.resolve().as_uri()
+                + ("?mode=ro&immutable=1" if use_immutable_main_file else "?mode=ro"),
                 uri=True,
                 timeout=min(self.deadline_seconds, 1.0),
             )
+            if use_immutable_main_file and wal.is_file():
+                connection.close()
+                connection = sqlite3.connect(
+                    database.resolve().as_uri() + "?mode=ro",
+                    uri=True,
+                    timeout=min(self.deadline_seconds, 1.0),
+                )
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA query_only = ON")
             connection.set_progress_handler(bounded, 1_000)
