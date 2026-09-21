@@ -21,6 +21,7 @@ from urllib.parse import unquote, urlsplit
 
 from .__main__ import _status
 from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
+from .health import InstalledHealthError, InstalledHealthSnapshotService
 from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
 from .runtime.data_root import DataRootResolver
@@ -262,6 +263,13 @@ class InstalledOperationsReadService:
             "mission": projection,
         })
 
+    def installed_health(self) -> dict[str, Any]:
+        """Return the canonical installed-health snapshot without widening it."""
+        try:
+            return _redact(InstalledHealthSnapshotService(self.root, clock=self.clock).snapshot())
+        except InstalledHealthError as error:
+            raise OperationsProjectionError(error.code, str(error), status=503) from None
+
     @contextmanager
     def _runtime_snapshot(self) -> Iterator[tuple[sqlite3.Connection, dict[str, str]]]:
         """Validate the installed identity, then hold one consistent read transaction."""
@@ -325,6 +333,11 @@ class OperationsReadAPI:
                 body = self.service.installed_status()
                 status = 503 if body.get("availability") == "UNAVAILABLE" else 200
                 return APIResponse(status, body, headers)
+            if path == "/v1/health":
+                body = self.service.installed_health()
+                evaluation = body.get("evaluation")
+                state = evaluation.get("state") if isinstance(evaluation, Mapping) else None
+                return APIResponse(200 if state in {"HEALTHY", "DEGRADED"} else 503, body, headers)
             match = _MISSION_PATH.fullmatch(path)
             if match:
                 return APIResponse(200, self.service.mission_detail(unquote(match.group(1))), headers)

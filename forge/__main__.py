@@ -93,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     server_commands = server.add_subparsers(dest="server_command", required=True)
     server_commands.add_parser("init", help="create and validate the configured Forge data root")
     server_commands.add_parser("status", help="print read-only runtime status as JSON")
+    server_commands.add_parser("health", help="print the bounded read-only installed-health snapshot as JSON")
     reset = server_commands.add_parser("reset", help="operate the Forge-owned operational-history reset")
     reset_commands = reset.add_subparsers(dest="reset_command", required=True)
     reset_commands.add_parser("preview", help="inspect a read-only reset plan")
@@ -122,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     finish_reset.add_argument("--verification-digest")
     finish_reset.add_argument("--cancel-before-apply", action="store_true")
     subparsers.add_parser("status", help="print read-only runtime status as JSON")
+    subparsers.add_parser("health", help="print the bounded read-only installed-health snapshot as JSON")
     mission = subparsers.add_parser("mission", help="govern and run one selected Mission")
     mission_commands = mission.add_subparsers(dest="mission_command", required=True)
     for name, description in (
@@ -230,6 +232,14 @@ def main(argv: list[str] | None = None) -> int:
             database.close()
     elif args.command == "status" or (args.command == "server" and args.server_command == "status"):
         print(json.dumps(_status(args.data_root), sort_keys=True))
+    elif args.command == "health" or (args.command == "server" and args.server_command == "health"):
+        try:
+            from .health import InstalledHealthSnapshotService
+            snapshot = InstalledHealthSnapshotService(args.data_root).snapshot()
+            print(json.dumps(snapshot, sort_keys=True))
+            return 0 if snapshot["evaluation"]["state"] in {"HEALTHY", "DEGRADED"} else 1
+        except (OSError, ValueError, sqlite3.Error, RuntimeError) as error:
+            return _failure("health", error)
     elif args.command == "server" and args.server_command == "reset":
         from .runtime.operational_reset import ForgeOperationalResetService, OperationalResetError
         service = ForgeOperationalResetService(args.data_root)

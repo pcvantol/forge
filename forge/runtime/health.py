@@ -18,6 +18,7 @@ from typing import Iterable
 HEALTH_SCHEMA_REVISION = "1.0"
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_.:-]{0,127}$")
+_IDENTITY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
 
@@ -106,8 +107,10 @@ class HealthIdentity:
             raise ValueError("health product or schema revision is unsupported")
         if not isinstance(self.product_version, str) or not _VERSION.fullmatch(self.product_version):
             raise ValueError("product version must be bounded text")
-        _require_identifier(self.runtime_id, "runtime id")
-        _require_identifier(self.installation_id, "installation id")
+        if not isinstance(self.runtime_id, str) or not _IDENTITY.fullmatch(self.runtime_id):
+            raise ValueError("runtime id must be a stable identity")
+        if not isinstance(self.installation_id, str) or not _IDENTITY.fullmatch(self.installation_id):
+            raise ValueError("installation id must be a stable identity")
 
 
 @dataclass(frozen=True)

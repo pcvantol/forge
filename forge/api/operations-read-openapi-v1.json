@@ -36,6 +36,164 @@
         ],
         "type": "object"
       },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment": {
+            "const": "installed_health_snapshot"
+          },
+          "bounded": {
+            "const": true
+          },
+          "evaluated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "evaluation": {
+            "additionalProperties": true,
+            "properties": {
+              "state": {
+                "enum": [
+                  "HEALTHY",
+                  "DEGRADED",
+                  "UNAVAILABLE",
+                  "UNKNOWN"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ],
+            "type": "object"
+          },
+          "identity": {
+            "additionalProperties": false,
+            "properties": {
+              "installation_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "product": {
+                "const": "forge"
+              },
+              "product_version": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "runtime_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "storage_schema": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "product",
+              "product_version",
+              "runtime_id",
+              "installation_id",
+              "storage_schema"
+            ],
+            "type": "object"
+          },
+          "observation_policy": {
+            "additionalProperties": false,
+            "properties": {
+              "integrity_observations": {
+                "const": 1
+              },
+              "mutations": {
+                "const": 0
+              },
+              "peer_invocations": {
+                "const": 0
+              },
+              "provider_invocations": {
+                "const": 0
+              }
+            },
+            "required": [
+              "integrity_observations",
+              "provider_invocations",
+              "peer_invocations",
+              "mutations"
+            ],
+            "type": "object"
+          },
+          "observation_provenance": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "authority": {
+                  "type": "string"
+                },
+                "check_id": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "check_id",
+                "source",
+                "authority"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "profile": {
+            "const": "FULL@1.0"
+          },
+          "read_only": {
+            "const": true
+          },
+          "registry": {
+            "additionalProperties": false,
+            "properties": {
+              "components": {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "schema_version": {
+                "const": "1.0"
+              }
+            },
+            "required": [
+              "schema_version",
+              "digest",
+              "components"
+            ],
+            "type": "object"
+          },
+          "schema_version": {
+            "const": "1.0"
+          }
+        },
+        "required": [
+          "schema_version",
+          "assessment",
+          "profile",
+          "read_only",
+          "bounded",
+          "evaluated_at",
+          "identity",
+          "registry",
+          "observation_policy",
+          "observation_provenance",
+          "evaluation"
+        ],
+        "type": "object"
+      },
       "MissionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -281,6 +439,55 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/health": {
+      "get": {
+        "description": "Read one bounded installed-health snapshot from the canonical registry and authoritative runtime observations.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Installed health is healthy or degraded"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/HealthResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Installed health is unavailable or unknown"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/missions/{mission_id}": {
       "get": {
         "description": "Read one authoritative installed Mission projection without changing it.",

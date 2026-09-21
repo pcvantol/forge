@@ -316,9 +316,12 @@ class TestTransportContract(unittest.TestCase):
         openapi = json.loads((contract_root / "operations-read-openapi-v1.json").read_text(encoding="utf-8"))
         postman = json.loads((contract_root / "operations-read-postman-v1.json").read_text(encoding="utf-8"))
 
-        self.assertEqual(set(openapi["paths"]), {"/v1/status", "/v1/missions/{mission_id}"})
+        self.assertEqual(set(openapi["paths"]), {
+            "/v1/health", "/v1/status", "/v1/missions/{mission_id}",
+        })
         self.assertTrue(all(set(value) == {"get"} for value in openapi["paths"].values()))
         self.assertEqual(set(openapi["paths"]["/v1/status"]["get"]["responses"]), {"200", "401", "503"})
+        self.assertEqual(set(openapi["paths"]["/v1/health"]["get"]["responses"]), {"200", "401", "503"})
         self.assertEqual(
             set(openapi["paths"]["/v1/missions/{mission_id}"]["get"]["responses"]),
             {"200", "400", "401", "404", "409", "503"},
@@ -330,16 +333,24 @@ class TestTransportContract(unittest.TestCase):
             {200, 400, 401, 404, 409, 503},
         )
         self.assertTrue(any(item["request"]["url"].endswith("/v1/status") for item in requests))
+        self.assertTrue(any(item["request"]["url"].endswith("/v1/health") for item in requests))
         self.assertTrue(any("/v1/missions/" in item["request"]["url"] for item in requests))
         schemas = openapi["components"]["schemas"]
         self.assertEqual(
             set(schemas),
-            {"ErrorResponse", "MissionResponse", "StatusResponse"},
+            {"ErrorResponse", "HealthResponse", "MissionResponse", "StatusResponse"},
         )
         for path in openapi["paths"].values():
             for response in path["get"]["responses"].values():
                 media = response["content"]["application/json"]
-                self.assertRegex(media["schema"]["$ref"], r"^#/components/schemas/")
+                references = (
+                    [media["schema"]["$ref"]]
+                    if "$ref" in media["schema"]
+                    else [item["$ref"] for item in media["schema"]["oneOf"]]
+                )
+                self.assertTrue(references)
+                for reference in references:
+                    self.assertRegex(reference, r"^#/components/schemas/")
         self.assertEqual(
             openapi["components"]["schemas"]["MissionResponse"]["required"],
             ["api_version", "availability", "freshness", "source_observed_at", "read_only", "mission"],
