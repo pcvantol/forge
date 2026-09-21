@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
+import math
 from pathlib import Path
 import sqlite3
+import time
 from typing import Callable
 
 from ._version import canonical_version
@@ -25,6 +27,8 @@ from .runtime.health import (
 INSTALLED_HEALTH_SNAPSHOT_VERSION = "1.0"
 INSTALLED_HEALTH_PROFILE = "FULL@1.0"
 INSTALLED_HEALTH_CAPABILITY = "installed_health_snapshot"
+INSTALLED_HEALTH_DEADLINE_SECONDS = 1.0
+_SQLITE_PROGRESS_STEPS = 1_000
 
 
 class InstalledHealthError(RuntimeError):
@@ -58,9 +62,26 @@ class InstalledHealthSnapshotService:
     provider call, peer request, subprocess, or writable connection is used.
     """
 
-    def __init__(self, data_root: str | Path, *, clock: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        data_root: str | Path,
+        *,
+        clock: Callable[[], datetime] | None = None,
+        monotonic_clock: Callable[[], float] | None = None,
+        maximum_seconds: float = INSTALLED_HEALTH_DEADLINE_SECONDS,
+    ) -> None:
+        if (
+            isinstance(maximum_seconds, bool)
+            or not isinstance(maximum_seconds, (int, float))
+            or not math.isfinite(maximum_seconds)
+            or maximum_seconds <= 0
+            or maximum_seconds > INSTALLED_HEALTH_DEADLINE_SECONDS
+        ):
+            raise ValueError("installed health deadline is invalid")
         self.root = DataRootResolver(cli_data_root=data_root).resolve()
         self.clock = clock or (lambda: datetime.now(UTC))
+        self.monotonic_clock = monotonic_clock or time.monotonic
+        self.maximum_seconds = float(maximum_seconds)
 
     def snapshot(self) -> dict[str, object]:
         evaluated_at = self.clock()
@@ -72,17 +93,15 @@ class InstalledHealthSnapshotService:
         if not database.is_file() or not marker.is_file():
             raise InstalledHealthError("INSTALLATION_MISSING", "Forge installation is not initialized")
 
+        deadline = self.monotonic_clock() + self.maximum_seconds
         try:
             uri = database.resolve().as_uri() + "?mode=ro"
-            with closing(sqlite3.connect(uri, uri=True, timeout=1.0)) as connection:
+            with closing(sqlite3.connect(uri, uri=True, timeout=self.maximum_seconds)) as connection:
                 connection.row_factory = sqlite3.Row
                 connection.execute("PRAGMA query_only=ON")
-                connection.execute("PRAGMA busy_timeout=1000")
+                connection.execute(f"PRAGMA busy_timeout={int(self.maximum_seconds * 1000)}")
                 connection.execute("BEGIN")
-                if connection.execute("PRAGMA integrity_check(1)").fetchone()[0] != "ok":
-                    raise InstalledHealthError(
-                        "STORAGE_INTEGRITY_FAILED", "Forge runtime storage integrity is unavailable",
-                    )
+                self._observe_integrity(connection, deadline)
                 metadata = dict(connection.execute("SELECT key, value FROM runtime_metadata"))
                 schema = self._validated_schema(connection, metadata)
                 runtime_id = self._identifier(metadata.get("runtime_id"), "runtime identity")
@@ -91,9 +110,7 @@ class InstalledHealthSnapshotService:
                     raise InstalledHealthError(
                         "INSTALLATION_IDENTITY_MISMATCH", "Forge installation identity is inconsistent",
                     )
-                installation_id = self._identifier(
-                    metadata.get("installation_id") or runtime_id, "installation identity",
-                )
+                installation_id = self._identifier(metadata.get("installation_id"), "installation identity")
                 dispatcher = connection.execute(
                     "SELECT status FROM dispatcher_state WHERE singleton=1"
                 ).fetchone()
@@ -160,6 +177,35 @@ class InstalledHealthSnapshotService:
             ],
             "evaluation": evaluation.to_dict(),
         }
+
+    def _observe_integrity(self, connection: sqlite3.Connection, deadline: float) -> None:
+        """Run the sole integrity observation with an interruptible wall-clock bound."""
+        deadline_expired = False
+
+        def interrupt_when_expired() -> int:
+            nonlocal deadline_expired
+            deadline_expired = self.monotonic_clock() >= deadline
+            return int(deadline_expired)
+
+        connection.set_progress_handler(interrupt_when_expired, _SQLITE_PROGRESS_STEPS)
+        try:
+            result = connection.execute("PRAGMA integrity_check(1)").fetchone()
+            if self.monotonic_clock() >= deadline:
+                raise InstalledHealthError(
+                    "HEALTH_OBSERVATION_TIMED_OUT", "Installed Forge health observation timed out",
+                )
+        except sqlite3.OperationalError:
+            if deadline_expired or self.monotonic_clock() >= deadline:
+                raise InstalledHealthError(
+                    "HEALTH_OBSERVATION_TIMED_OUT", "Installed Forge health observation timed out",
+                ) from None
+            raise
+        finally:
+            connection.set_progress_handler(None, 0)
+        if result is None or result[0] != "ok":
+            raise InstalledHealthError(
+                "STORAGE_INTEGRITY_FAILED", "Forge runtime storage integrity is unavailable",
+            )
 
     @staticmethod
     def _validated_schema(connection: sqlite3.Connection, metadata: dict[str, str]) -> int:

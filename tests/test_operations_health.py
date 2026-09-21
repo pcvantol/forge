@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from forge.__main__ import main
 from forge.health import InstalledHealthError, InstalledHealthSnapshotService
+from forge.operator_identity import InstallationOperatorService
 from forge.operations_read_api import InstalledOperationsReadService, OperationsReadAPI
 from forge.runtime import (
     CheckApplicability,
@@ -38,6 +39,7 @@ class _HealthFixture(unittest.TestCase):
         self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
         with self.database._connection:  # noqa: SLF001 - controlled installed fixture
             self.database._set_metadata({"installation_id": "installation-primary"})  # noqa: SLF001
+        self.installation_id = self.database.metadata["installation_id"]
 
     def tearDown(self) -> None:
         self.database.close()
@@ -83,7 +85,11 @@ class HealthSnapshotTests(_HealthFixture):
         self.assertEqual(snapshot["assessment"], "installed_health_snapshot")
         self.assertEqual(snapshot["profile"], "FULL@1.0")
         self.assertEqual(snapshot["evaluation"]["state"], "HEALTHY")
-        self.assertEqual(snapshot["identity"]["installation_id"], "installation-primary")
+        self.assertEqual(snapshot["identity"]["installation_id"], self.installation_id)
+        self.assertEqual(
+            InstallationOperatorService(self.database, lambda: None).installation_id(),
+            self.installation_id,
+        )
         self.assertEqual(snapshot["identity"]["runtime_id"], self.database.runtime_identity.runtime_id)
         self.assertEqual(snapshot["registry"]["schema_version"], "1.0")
         self.assertEqual(
@@ -104,6 +110,46 @@ class HealthSnapshotTests(_HealthFixture):
             sum("integrity_check" in statement.lower() for statement in statements), 1,
         )
         self.assertEqual(self._state(), before)
+
+    def test_missing_installation_identity_is_not_fabricated(self) -> None:
+        with self.database._connection:  # noqa: SLF001 - controlled invalid fixture
+            self.database._connection.execute(  # noqa: SLF001
+                "DELETE FROM runtime_metadata WHERE key='installation_id'"
+            )
+        with self.assertRaises(InstalledHealthError) as rejected:
+            InstalledHealthSnapshotService(self.root, clock=lambda: NOW).snapshot()
+        self.assertEqual(rejected.exception.code, "INSTALLATION_IDENTITY_INVALID")
+
+    def test_integrity_observation_has_enforceable_deadline(self) -> None:
+        statements: list[str] = []
+        original_connect = __import__("sqlite3").connect
+
+        def observed_connect(*args, **kwargs):
+            connection = original_connect(*args, **kwargs)
+            connection.set_trace_callback(statements.append)
+            return connection
+
+        monotonic_calls = 0
+
+        def expired_clock() -> float:
+            nonlocal monotonic_calls
+            monotonic_calls += 1
+            return 100.0 if monotonic_calls == 1 else 102.0
+
+        service = InstalledHealthSnapshotService(
+            self.root, clock=lambda: NOW, monotonic_clock=expired_clock,
+        )
+        with patch("forge.health.sqlite3.connect", side_effect=observed_connect):
+            with self.assertRaises(InstalledHealthError) as rejected:
+                service.snapshot()
+        self.assertEqual(rejected.exception.code, "HEALTH_OBSERVATION_TIMED_OUT")
+        self.assertLessEqual(
+            sum("integrity_check" in statement.lower() for statement in statements), 1,
+        )
+        for invalid in (0, -1, 1.1, float("inf"), float("nan"), True):
+            with self.subTest(maximum_seconds=invalid):
+                with self.assertRaises(ValueError):
+                    InstalledHealthSnapshotService(self.root, maximum_seconds=invalid)
 
     def test_failed_dispatcher_and_newer_schema_fail_closed(self) -> None:
         with self.database._connection:  # noqa: SLF001 - controlled invalid fixture
@@ -221,7 +267,7 @@ class HealthTransportTests(_HealthFixture):
         self.assertEqual(exit_code, 0)
         self.assertEqual(cli["schema_version"], accepted.body["schema_version"])
         self.assertEqual(cli["registry"]["digest"], accepted.body["registry"]["digest"])
-        self.assertEqual(cli["identity"]["installation_id"], "installation-primary")
+        self.assertEqual(cli["identity"]["installation_id"], self.installation_id)
 
         server_output = StringIO()
         with redirect_stdout(server_output):
