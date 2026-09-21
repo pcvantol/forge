@@ -19,11 +19,20 @@ from threading import BoundedSemaphore
 from typing import Any, Iterator, Mapping
 from urllib.parse import unquote, urlsplit
 
+try:  # macOS/Linux installed runtime path
+    import fcntl
+except ImportError:  # pragma: no cover - fail closed where no lease exists
+    fcntl = None  # type: ignore[assignment]
+
 from .__main__ import _status
 from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
 from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
-from .operations_health import InstalledHealthError, InstalledHealthSnapshotService
+from .operations_health import (
+    FORGE_SERVER_PROCESS_LEASE,
+    InstalledHealthError,
+    InstalledHealthSnapshotService,
+)
 from .runtime.data_root import DataRootResolver
 
 
@@ -361,9 +370,39 @@ class _Server(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 16
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, lease_path: Path, **kwargs: Any) -> None:
+        if fcntl is None:
+            raise RuntimeError("Forge Server process locking is unavailable")
         self._slots = BoundedSemaphore(16)
-        super().__init__(*args, **kwargs)
+        self._lease_handle = None
+        try:
+            lease_handle = lease_path.open("a+b")
+            try:
+                fcntl.flock(lease_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                lease_handle.close()
+                raise RuntimeError("another Forge Server process is active") from error
+            self._lease_handle = lease_handle
+            super().__init__(*args, **kwargs)
+        except Exception:
+            self._release_process_lease()
+            raise
+
+    def server_close(self) -> None:
+        try:
+            super().server_close()
+        finally:
+            self._release_process_lease()
+
+    def _release_process_lease(self) -> None:
+        handle = self._lease_handle
+        if handle is None:
+            return
+        self._lease_handle = None
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
     def get_request(self):
         request, address = super().get_request()
@@ -431,7 +470,11 @@ def make_server(host: str, port: int, api: OperationsReadAPI) -> ThreadingHTTPSe
             if body:
                 self.wfile.write(payload)
 
-    return _Server((host, port), Handler)
+    return _Server(
+        (host, port),
+        Handler,
+        lease_path=api.service.root / FORGE_SERVER_PROCESS_LEASE,
+    )
 
 
 def read_bearer_credential(path: str | Path) -> str:

@@ -37,6 +37,7 @@ from .runtime.health import (
 HEALTH_SNAPSHOT_API_VERSION = "1"
 DEFAULT_HEALTH_DEADLINE_SECONDS = 2.0
 DEFAULT_HEALTH_SQL_STEP_LIMIT = 250_000
+FORGE_SERVER_PROCESS_LEASE = "forge-server.lock"
 HEALTH_CAPABILITY_SCOPE = ("dispatch", "local_work")
 _METADATA_KEYS = (
     "installation_id",
@@ -321,8 +322,8 @@ class InstalledHealthSnapshotService:
         )
 
     def _server_process_observation(self) -> tuple[ObservationState, str | None]:
-        """Observe the foreground Forge controller without creating a lease file."""
-        lease = self.root / "forge-mission-controller.lock"
+        """Observe the installed Forge HTTP server without creating its lease file."""
+        lease = self.root / FORGE_SERVER_PROCESS_LEASE
         if fcntl is None:
             return ObservationState.UNKNOWN, "SERVER_PROCESS_STATE_UNKNOWN"
         if not lease.is_file():

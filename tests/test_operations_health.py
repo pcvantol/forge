@@ -37,7 +37,7 @@ INSTALLATION_ID = "installation-health-primary"
 
 
 @contextmanager
-def _running_server(root: Path):
+def _running_mission_controller(root: Path):
     if fcntl is None:
         raise unittest.SkipTest("foreground controller locking is unavailable")
     lease = root / "forge-mission-controller.lock"
@@ -257,6 +257,21 @@ class HealthSnapshotTests(_InstalledHealthFixture):
         self.assertEqual(self.domain_counts(), before_domain)
         self.assertEqual(self.files(), before_files)
 
+    def test_mission_controller_is_not_reported_as_the_forge_server(self) -> None:
+        with _running_mission_controller(self.root):
+            before_domain = self.domain_counts()
+            before_files = self.files()
+
+            snapshot = InstalledHealthSnapshotService(
+                self.root,
+                clock=lambda: NOW,
+            ).snapshot().to_dict()
+
+            self.assertEqual(snapshot["liveness"]["state"], "NOT_ALIVE")
+            self.assertEqual(snapshot["availability"], "UNAVAILABLE")
+            self.assertEqual(self.domain_counts(), before_domain)
+            self.assertEqual(self.files(), before_files)
+
 
 class HealthSecurityTests(unittest.TestCase):
     def test_noninteractive_redacted_failure_modes(self) -> None:
@@ -311,27 +326,29 @@ class HealthTransportTests(_InstalledHealthFixture):
             InstalledOperationsReadService(self.root, clock=lambda: NOW),
             CREDENTIAL,
         )
-        with _running_server(self.root):
-            server = make_server("127.0.0.1", 0, api)
-            worker = Thread(target=server.serve_forever, daemon=True)
-            worker.start()
-            try:
-                request = Request(
-                    f"http://127.0.0.1:{server.server_port}/v1/health",
-                    headers={"Authorization": "Bearer " + CREDENTIAL},
-                )
-                with urlopen(request, timeout=2) as response:
-                    http_status = response.status
-                    http_document = json.load(response)
-            finally:
-                server.shutdown()
-                server.server_close()
-                worker.join(timeout=2)
-
+        server = make_server("127.0.0.1", 0, api)
+        worker = Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            before_domain = self.domain_counts()
+            before_files = self.files()
+            request = Request(
+                f"http://127.0.0.1:{server.server_port}/v1/health",
+                headers={"Authorization": "Bearer " + CREDENTIAL},
+            )
+            with urlopen(request, timeout=2) as response:
+                http_status = response.status
+                http_document = json.load(response)
             output = StringIO()
             with redirect_stdout(output):
                 cli_status = main(["--data-root", str(self.root), "health"])
             cli_document = json.loads(output.getvalue())
+            self.assertEqual(self.domain_counts(), before_domain)
+            self.assertEqual(self.files(), before_files)
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=2)
 
         self.assertEqual((http_status, cli_status), (200, 0))
         self.assertEqual(http_document["liveness"]["state"], "ALIVE")
