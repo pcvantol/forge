@@ -510,6 +510,44 @@ class ReadOnlyPeerConfiguration:
     stored_document: dict[str, Any] | None
 
 
+def read_peer_configuration_snapshot(
+    connection: sqlite3.Connection,
+    runtime_id: str,
+    storage_schema: int,
+) -> ReadOnlyPeerConfiguration:
+    """Project the peer binding from an already identity-validated snapshot."""
+    from .runtime.database import RUNTIME_SCHEMA_VERSION
+
+    table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='execution_host_peer_configuration'"
+    ).fetchone()
+    if table is None:
+        if storage_schema == RUNTIME_SCHEMA_VERSION:
+            raise PeerConfigurationError("EP peer configuration storage is missing")
+        stored = None
+        configuration = None
+    else:
+        store = EngineeringPlatformPeerConfigurationStore(connection, runtime_id, writable=False)
+        stored = store._stored()
+        configuration = (
+            EngineeringPlatformPeerConfiguration.from_dict(stored.document)
+            if stored is not None and stored.current_contracts else None
+        )
+        if configuration is not None and storage_schema < RUNTIME_SCHEMA_VERSION:
+            raise PeerConfigurationError("EP peer configuration exists under an unqualified storage schema")
+    if stored is None:
+        status, stored_document = "NOT_CONFIGURED", None
+    elif configuration is not None:
+        status, stored_document = "CONFIGURED", configuration.to_dict()
+    elif stored.document["schema_version"] == LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION:
+        status, stored_document = "CONSUMER_IDENTITY_REQUIRED", dict(stored.document)
+    else:
+        status, stored_document = "CONTRACT_UPGRADE_REQUIRED", dict(stored.document)
+    return ReadOnlyPeerConfiguration(
+        configuration, runtime_id, storage_schema, status, stored_document,
+    )
+
+
 def read_peer_configuration(
     data_root: Path | str | None, *, allow_legacy_contract_replacement: bool = False,
 ) -> ReadOnlyPeerConfiguration:
@@ -546,33 +584,10 @@ def read_peer_configuration(
             raise PeerConfigurationError("Forge runtime storage schema is newer than this Forge version")
         if marker.read_text(encoding="utf-8").strip() != runtime_id:
             raise PeerConfigurationError("Forge runtime instance marker does not match storage")
-        table = connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='execution_host_peer_configuration'"
-        ).fetchone()
-        if table is None:
-            if schema == RUNTIME_SCHEMA_VERSION:
-                raise PeerConfigurationError("EP peer configuration storage is missing")
-            stored = None
-            configuration = None
-        else:
-            store = EngineeringPlatformPeerConfigurationStore(connection, runtime_id, writable=False)
-            stored = store._stored()
-            configuration = (
-                EngineeringPlatformPeerConfiguration.from_dict(stored.document)
-                if stored is not None and stored.current_contracts else None
-            )
-            if configuration is not None and schema < RUNTIME_SCHEMA_VERSION:
-                raise PeerConfigurationError("EP peer configuration exists under an unqualified storage schema")
-        if stored is None:
-            status, stored_document = "NOT_CONFIGURED", None
-        elif configuration is not None:
-            status, stored_document = "CONFIGURED", configuration.to_dict()
-        elif stored.document["schema_version"] == LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION:
-            status, stored_document = "CONSUMER_IDENTITY_REQUIRED", dict(stored.document)
-        else:
-            status, stored_document = "CONTRACT_UPGRADE_REQUIRED", dict(stored.document)
-        return ReadOnlyPeerConfiguration(
-            configuration, runtime_id, schema, status, stored_document,
+        return read_peer_configuration_snapshot(
+            connection,
+            runtime_id,
+            schema,
         )
     except sqlite3.Error as error:
         raise PeerConfigurationError("Forge runtime storage is unavailable") from error

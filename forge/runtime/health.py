@@ -14,11 +14,14 @@ from enum import Enum
 import re
 from typing import Iterable
 
+from ..component_registry import component_registry
+
 
 HEALTH_SCHEMA_REVISION = "1.0"
 INSTALLED_HEALTH_CAPABILITIES = ("dispatch", "local_work")
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_.:-]{0,127}$")
+_IDENTITY_IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,127}$")
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
 
@@ -107,8 +110,10 @@ class HealthIdentity:
             raise ValueError("health product or schema revision is unsupported")
         if not isinstance(self.product_version, str) or not _VERSION.fullmatch(self.product_version):
             raise ValueError("product version must be bounded text")
-        _require_identifier(self.runtime_id, "runtime id")
-        _require_identifier(self.installation_id, "installation id")
+        if not isinstance(self.runtime_id, str) or not _IDENTITY_IDENTIFIER.fullmatch(self.runtime_id):
+            raise ValueError("runtime id must be a stable identifier")
+        if not isinstance(self.installation_id, str) or not _IDENTITY_IDENTIFIER.fullmatch(self.installation_id):
+            raise ValueError("installation id must be a stable identifier")
 
 
 @dataclass(frozen=True)
@@ -158,27 +163,21 @@ class HealthCheckDefinition:
             raise ValueError("only optional readiness checks may be disabled")
 
 
-INSTALLED_HEALTH_REGISTRY = (
-    HealthCheckDefinition(
-        "forge_server", "process", CheckPurpose.LIVENESS,
-        CheckApplicability.REQUIRED, timedelta(seconds=30),
-    ),
-    HealthCheckDefinition(
-        "forge_runtime", "storage", CheckPurpose.READINESS,
-        CheckApplicability.REQUIRED, timedelta(minutes=5),
-        INSTALLED_HEALTH_CAPABILITIES,
-    ),
-    HealthCheckDefinition(
-        "engineering_platform", "execution_peer", CheckPurpose.READINESS,
-        CheckApplicability.REQUIRED, timedelta(seconds=30), ("dispatch",),
-    ),
-)
-
-
 def installed_health_registry() -> tuple[HealthCheckDefinition, ...]:
-    """Return the immutable installed-service projection of the component registry."""
-    return INSTALLED_HEALTH_REGISTRY
-
+    """Project health checks from the canonical installed-component registry."""
+    return tuple(
+        HealthCheckDefinition(
+            component.component_id,
+            check.check_id,
+            CheckPurpose(check.purpose),
+            CheckApplicability(check.applicability),
+            timedelta(seconds=check.freshness_seconds),
+            check.capabilities,
+            check.enabled,
+        )
+        for component in component_registry()
+        for check in component.health_checks
+    )
 
 @dataclass(frozen=True)
 class HealthObservation:

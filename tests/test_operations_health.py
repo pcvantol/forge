@@ -14,8 +14,11 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from forge.__main__ import main
+from forge.component_registry import COMPONENT_REGISTRY_VERSION, component_registry
+from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationStore
 from forge.operations_read_api import InstalledOperationsReadService, OperationsReadAPI, make_server
-from forge.runtime import RuntimeBootstrap
+from forge.runtime import RuntimeBootstrap, installed_health_registry
+from forge.secure_store import SecretReference
 
 
 NOW = datetime(2026, 9, 21, 9, 0, tzinfo=UTC)
@@ -73,23 +76,108 @@ class HealthServiceTests(_InstalledHealthFixture):
         self.assertEqual(healthy["state"], "HEALTHY")
         self.assertEqual(degraded["state"], "DEGRADED")
         self.assertEqual(healthy["runtime_id"], runtime_id)
-        self.assertEqual(healthy["installation_id"], "forge-installation")
+        self.assertEqual(healthy["installation_id"], runtime_id)
         self.assertEqual(self.snapshot(), before)
 
         self._metadata(status="maintenance")
         unavailable = self.service.installed_health(("local_work",))
         self.assertEqual(unavailable["state"], "UNAVAILABLE")
 
-        self._metadata(status="active", last_access_at=(NOW - timedelta(minutes=5)).isoformat())
-        stale = self.service.installed_health(("local_work",))
-        self.assertEqual(stale["state"], "UNKNOWN")
-        storage = next(item for item in stale["checks"] if item["check_id"] == "storage")
-        self.assertEqual((storage["freshness"], storage["reason_code"]), ("STALE", "OBSERVATION_STALE"))
-
+        self._metadata(status="active", last_access_at=(NOW - timedelta(days=1)).isoformat())
+        current = self.service.installed_health(("local_work",))
+        storage = next(item for item in current["checks"] if item["check_id"] == "storage")
+        self.assertEqual((current["state"], storage["freshness"], storage["observed_at"]), (
+            "HEALTHY", "FRESH", NOW.isoformat(),
+        ))
         self._metadata(last_access_at=None)
-        missing = self.service.installed_health(("local_work",))
-        storage = next(item for item in missing["checks"] if item["check_id"] == "storage")
-        self.assertEqual((missing["state"], storage["freshness"]), ("UNKNOWN", "MISSING"))
+        self.assertEqual(self.service.installed_health(("local_work",))["state"], "HEALTHY")
+
+        EngineeringPlatformPeerConfigurationStore(
+            self.database._connection, runtime_id, writable=True,
+        ).configure(
+            binding_id="ep-primary",
+            endpoint="https://ep.test",
+            expected_ep_instance_id="ep-instance-1",
+            ep_consumer_id="forge-consumer-1",
+            execution_host_id="engineering-platform",
+            ep_project_id="forge-project",
+            ep_repository_id="forge-repository",
+            repository_identity="forge-source",
+            credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+            operator_id="local-admin",
+            occurred_at="2026-09-21T09:00:00Z",
+        )
+        unknown = self.service.installed_health(("dispatch", "local_work"))
+        self.assertEqual(unknown["state"], "UNKNOWN")
+
+    def test_authoritative_installation_identity_accepts_persisted_uuid(self) -> None:
+        installation_id = "123e4567-e89b-12d3-a456-426614174000"
+        self._metadata(installation_id=installation_id)
+        result = self.service.installed_health(("local_work",))
+        self.assertEqual(result["installation_id"], installation_id)
+
+    def test_health_snapshot_has_one_bounded_integrity_read(self) -> None:
+        statements = []
+        sqlite_connect = __import__("sqlite3").connect
+
+        class RecordingConnection:
+            def __init__(self, *args, **kwargs):
+                self.connection = sqlite_connect(*args, **kwargs)
+
+            @property
+            def row_factory(self):
+                return self.connection.row_factory
+
+            @row_factory.setter
+            def row_factory(self, value):
+                self.connection.row_factory = value
+
+            def __getattr__(self, name):
+                return getattr(self.connection, name)
+
+            def execute(self, statement, *args):
+                statements.append(statement)
+                return self.connection.execute(statement, *args)
+
+        with patch("forge.operations_read_api.sqlite3.connect", side_effect=RecordingConnection):
+            result = self.service.installed_health(("local_work",))
+        self.assertEqual(result["state"], "HEALTHY")
+        checks = [statement for statement in statements if "_check" in statement]
+        self.assertEqual(checks, ["PRAGMA quick_check(1)"])
+
+        calls = 0
+
+        def expired_clock() -> float:
+            nonlocal calls
+            calls += 1
+            return 0.0 if calls == 1 else 2.0
+
+        bounded = InstalledOperationsReadService(
+            self.root, clock=lambda: NOW, query_timeout_seconds=1.0, query_clock=expired_clock,
+        )
+        response = OperationsReadAPI(bounded, CREDENTIAL).handle(
+            "GET", "/v1/health/readiness?capability=local_work", "Bearer " + CREDENTIAL,
+        )
+        self.assertEqual((response.status, response.body["error"]["code"]), (
+            503, "PROJECTION_UNAVAILABLE",
+        ))
+
+    def test_health_projection_reuses_canonical_component_registry(self) -> None:
+        components = component_registry()
+        component_ids = {component.component_id for component in components}
+        self.assertEqual(COMPONENT_REGISTRY_VERSION, "1.0")
+        self.assertEqual(component_ids, {
+            "forge_server", "operations_console", "dashboard_relay", "platform_database",
+            "mission_dispatcher", "planning_provider", "codex_runtime", "python_runtime",
+            "ep_peer", "http_ingress", "cli_ingress", "operational_logging", "tailscale_access",
+        })
+        checks = installed_health_registry()
+        self.assertTrue({check.component_id for check in checks} <= component_ids)
+        self.assertEqual(
+            {(check.component_id, check.check_id) for check in checks},
+            {("forge_server", "process"), ("platform_database", "storage"),
+             ("ep_peer", "execution_peer")},
+        )
 
 
 class HealthHTTPTests(_InstalledHealthFixture):

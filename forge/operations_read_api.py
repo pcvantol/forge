@@ -16,12 +16,13 @@ import re
 import secrets
 import sqlite3
 from threading import BoundedSemaphore
+from time import monotonic
 from typing import Any, Iterator, Mapping
 from urllib.parse import unquote, urlsplit
 
 from .__main__ import _status
 from ._version import canonical_version
-from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
+from .execution_host_configuration import PeerConfigurationError, read_peer_configuration_snapshot
 from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
 from .runtime.data_root import DataRootResolver
@@ -38,6 +39,7 @@ from .runtime.health import (
 
 API_VERSION = "1"
 DEFAULT_STALE_AFTER = timedelta(minutes=5)
+DEFAULT_QUERY_TIMEOUT_SECONDS = 1.0
 _MISSION_PATH = re.compile(r"^/v1/missions/([^/]+)$")
 _LIVENESS_PATH = "/v1/health/live"
 _READINESS_PATH = "/v1/health/readiness"
@@ -194,12 +196,22 @@ class InstalledOperationsReadService:
     """Read the exact installed root with SQLite's read-only connection mode."""
 
     def __init__(self, data_root: str | Path, *, stale_after: timedelta = DEFAULT_STALE_AFTER,
-                 clock=lambda: datetime.now(UTC)) -> None:
+                 clock=lambda: datetime.now(UTC),
+                 query_timeout_seconds: float = DEFAULT_QUERY_TIMEOUT_SECONDS,
+                 query_clock=monotonic) -> None:
         if stale_after.total_seconds() <= 0:
             raise ValueError("stale-after interval must be positive")
+        if (
+            not isinstance(query_timeout_seconds, (int, float))
+            or isinstance(query_timeout_seconds, bool)
+            or not 0 < float(query_timeout_seconds) <= 10
+        ):
+            raise ValueError("query timeout must be greater than zero and at most 10 seconds")
         self.root = DataRootResolver(cli_data_root=data_root).resolve()
         self.stale_after = stale_after
         self.clock = clock
+        self.query_timeout_seconds = float(query_timeout_seconds)
+        self.query_clock = query_clock
 
     def installed_status(self) -> dict[str, Any]:
         projection = _status(str(self.root))
@@ -253,16 +265,17 @@ class InstalledOperationsReadService:
             raise OperationsProjectionError(
                 "HEALTH_SCOPE_INVALID", "Health capability scope is invalid", status=400,
             )
-        evaluated_at = self.clock()
-        if evaluated_at.tzinfo is None or evaluated_at.utcoffset() is None:
-            raise OperationsProjectionError(
-                "HEALTH_CLOCK_INVALID", "Health evaluation clock is invalid", status=503,
-            )
         with self._runtime_snapshot_details() as (_connection, metadata, peer):
+            evaluated_at = self.clock()
+            if evaluated_at.tzinfo is None or evaluated_at.utcoffset() is None:
+                raise OperationsProjectionError(
+                    "HEALTH_CLOCK_INVALID", "Health evaluation clock is invalid", status=503,
+                )
+            runtime_id = metadata.get("runtime_id", "")
             identity = HealthIdentity(
                 canonical_version(),
-                metadata.get("runtime_id", ""),
-                metadata.get("installation_id") or metadata.get("repository_identity", ""),
+                runtime_id,
+                metadata.get("installation_id") or runtime_id,
             )
             observations = [
                 HealthObservation(
@@ -270,19 +283,17 @@ class InstalledOperationsReadService:
                     ObservationState.PASS, evaluated_at,
                 ),
             ]
-            storage_observed_at = _parse_time(metadata.get("last_access_at"))
-            if storage_observed_at is not None:
-                active = metadata.get("status") == "active"
-                observations.append(HealthObservation(
-                    identity, "forge_runtime", "storage", CheckPurpose.READINESS,
-                    INSTALLED_HEALTH_CAPABILITIES,
-                    ObservationState.PASS if active else ObservationState.FAIL,
-                    storage_observed_at,
-                    reason_code=None if active else "RUNTIME_NOT_ACTIVE",
-                ))
+            active = metadata.get("status") == "active"
+            observations.append(HealthObservation(
+                identity, "platform_database", "storage", CheckPurpose.READINESS,
+                INSTALLED_HEALTH_CAPABILITIES,
+                ObservationState.PASS if active else ObservationState.FAIL,
+                evaluated_at,
+                reason_code=None if active else "RUNTIME_NOT_ACTIVE",
+            ))
             peer_configured = peer.configuration is not None and peer.status == "CONFIGURED"
             observations.append(HealthObservation(
-                identity, "engineering_platform", "execution_peer", CheckPurpose.READINESS,
+                identity, "ep_peer", "execution_peer", CheckPurpose.READINESS,
                 ("dispatch",),
                 ObservationState.UNKNOWN if peer_configured else ObservationState.FAIL,
                 evaluated_at,
@@ -348,14 +359,21 @@ class InstalledOperationsReadService:
     @contextmanager
     def _runtime_snapshot_details(self) -> Iterator[tuple[sqlite3.Connection, dict[str, str], Any]]:
         """Hold one identity-validated snapshot, including its peer-registry readback."""
-        readback = read_peer_configuration(self.root)
         database = self.root / "forge.db"
         connection = None
         try:
-            connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+            deadline = self.query_clock() + self.query_timeout_seconds
+            connection = sqlite3.connect(
+                database.resolve().as_uri() + "?mode=ro",
+                uri=True,
+                timeout=self.query_timeout_seconds,
+            )
+            connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA query_only = ON")
+            connection.execute(f"PRAGMA busy_timeout = {int(self.query_timeout_seconds * 1000)}")
+            connection.set_progress_handler(lambda: int(self.query_clock() >= deadline), 1)
             connection.execute("BEGIN")
-            if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            if connection.execute("PRAGMA quick_check(1)").fetchone()[0] != "ok":
                 raise PeerConfigurationError("Forge runtime database integrity check failed")
             metadata = dict(connection.execute("SELECT key, value FROM runtime_metadata"))
             try:
@@ -366,6 +384,7 @@ class InstalledOperationsReadService:
                 raise PeerConfigurationError("Forge runtime storage schema is unreadable") from None
             marker_path = self.root / "instance" / "runtime-instance.json"
             marker = marker_path.read_text(encoding="utf-8").strip()
+            readback = read_peer_configuration_snapshot(connection, metadata.get("runtime_id", ""), schema)
             if (
                 metadata.get("runtime_id") != readback.runtime_id
                 or marker != readback.runtime_id
@@ -379,6 +398,7 @@ class InstalledOperationsReadService:
                 raise PeerConfigurationError("Forge runtime identity changed during readback")
         finally:
             if connection is not None:
+                connection.set_progress_handler(None, 0)
                 connection.close()
 
 class OperationsReadAPI:

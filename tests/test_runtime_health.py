@@ -444,7 +444,7 @@ class RuntimeHealthTests(unittest.TestCase):
 
         self.assertEqual(
             imported_roots,
-            {"__future__", "dataclasses", "datetime", "enum", "re", "typing"},
+            {"__future__", "component_registry", "dataclasses", "datetime", "enum", "re", "typing"},
         )
 
     def test_unknown_optional_observation_degrades_without_becoming_required(self) -> None:
