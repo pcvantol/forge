@@ -253,6 +253,10 @@ class CodexCliSessionTests(unittest.TestCase):
         proposal_properties = runner.schemas[0]["properties"]["result"]["anyOf"][0]["properties"]["proposals"]["items"]["properties"]
         for key in ("dependencies", "expected_evidence", "validation_strategy", "source_evidence_refs"):
             self.assertEqual(proposal_properties[key]["items"]["minLength"], 1)
+        for key in ("expected_evidence", "validation_strategy", "source_evidence_refs"):
+            self.assertEqual(proposal_properties[key]["minItems"], 1)
+        gap_properties = proposal_properties["mission_gap"]["anyOf"][0]["properties"]
+        self.assertEqual(gap_properties["mission_caused_by_action_ids"]["items"]["minLength"], 1)
         evidence = self.invocation_documents()
         self.assertEqual([item["state"] for item in evidence], ["STARTED", "HAPPENED_AND_CONFIRMED"])
         self.assertEqual(evidence[-1]["diagnostic"]["classification"], "COMPLETED_VALID")
@@ -319,6 +323,21 @@ class CodexCliSessionTests(unittest.TestCase):
         self.assertIsNone(response.proposals)
         self.assertEqual(response.evidence.status, "contract_invalid")
         self.assertEqual(self.invocation_documents()[-1]["diagnostic"]["classification"], "COMPLETED_CONTRACT_INVALID")
+
+    def test_schema_valid_repeated_array_values_are_canonicalized(self):
+        self.configure()
+        repeated = document()
+        proposal = repeated["result"]["proposals"][0]
+        proposal["expected_evidence"] = ["unit test", "unit test"]
+        proposal["validation_strategy"] = ["unit test", "unit test"]
+        proposal["source_evidence_refs"] = ["mission_state", "mission_state"]
+        response = self.provider(Runner(repeated)).invoke(
+            self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy,
+        )
+        self.assertEqual(response.evidence.status, "completed")
+        self.assertEqual(response.proposals[0].expected_evidence, ("unit test",))
+        self.assertEqual(response.proposals[0].validation_strategy, ("unit test",))
+        self.assertEqual(response.proposals[0].provenance.source_evidence_refs, ("mission_state",))
 
     def test_object_root_preserves_governance_refinement_without_permitting_mixed_variants(self):
         self.configure()

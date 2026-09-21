@@ -769,13 +769,19 @@ def _proposal(request: ProviderDerivationRequest, item: object,
     if not isinstance(item["postponed"], bool):
         raise ValueError("proposal postponed flag is invalid")
     return DerivedActionProposal(
-        item["logical_action_id"], item["scope"], item["objective"], tuple(item["dependencies"]),
-        tuple(item["write_scopes"]), tuple(item["expected_evidence"]), tuple(item["validation_strategy"]),
-        item["priority"], item["postponed"], tuple(item["human_gates"]), tuple(item["risk_inputs"]),
+        item["logical_action_id"], item["scope"], item["objective"], _unique_strings(item["dependencies"]),
+        _unique_strings(item["write_scopes"]), _unique_strings(item["expected_evidence"]),
+        _unique_strings(item["validation_strategy"]), item["priority"], item["postponed"],
+        _unique_strings(item["human_gates"]), _unique_strings(item["risk_inputs"]),
         ProposalProvenance(request.derivation_id, request.snapshot.id, request.snapshot.digest, adapter_version,
-                           request.provider_id, request.model, tuple(item["source_evidence_refs"])),
+                           request.provider_id, request.model, _unique_strings(item["source_evidence_refs"])),
         _mission_gap(item["mission_gap"]),
     )
+
+
+def _unique_strings(values: list[str]) -> tuple[str, ...]:
+    """Remove repetition without adding authority or changing string content."""
+    return tuple(dict.fromkeys(values))
 
 
 def _refinement(snapshot: PlanningSnapshot, reason: str) -> GovernanceRefinementRequired:
