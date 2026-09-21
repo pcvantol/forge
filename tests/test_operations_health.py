@@ -15,9 +15,19 @@ from urllib.request import Request, urlopen
 
 from forge.__main__ import main
 from forge.component_registry import COMPONENT_REGISTRY_VERSION, component_registry
-from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationStore
+from forge.execution_host_configuration import (
+    EngineeringPlatformExecutionHostFactory,
+    EngineeringPlatformPeerConfigurationStore,
+)
 from forge.operations_read_api import InstalledOperationsReadService, OperationsReadAPI, make_server
-from forge.runtime import RuntimeBootstrap, installed_health_registry
+from forge.runtime import (
+    CheckPurpose,
+    HealthObservation,
+    ObservationState,
+    RUNTIME_SCHEMA_VERSION,
+    RuntimeBootstrap,
+    installed_health_registry,
+)
 from forge.secure_store import SecretReference
 
 
@@ -58,6 +68,38 @@ class _InstalledHealthFixture(unittest.TestCase):
             if path.is_file() and not path.name.endswith(("-shm", "-wal"))
         }
 
+    def configure_peer(self) -> None:
+        EngineeringPlatformPeerConfigurationStore(
+            self.database._connection, self.database.runtime_identity.runtime_id, writable=True,
+        ).configure(
+            binding_id="ep-primary",
+            endpoint="https://ep.test",
+            expected_ep_instance_id="ep-instance-1",
+            ep_consumer_id="forge-consumer-1",
+            execution_host_id="engineering-platform",
+            ep_project_id="forge-project",
+            ep_repository_id="forge-repository",
+            repository_identity="forge-source",
+            credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+            operator_id="local-admin",
+            occurred_at="2026-09-21T09:00:00Z",
+        )
+
+    @staticmethod
+    def peer_observer(state: ObservationState, *, observed_at: datetime = NOW):
+        def observe(identity, _configuration, _requested_at, _timeout):
+            return HealthObservation(
+                identity,
+                "ep_peer",
+                "execution_peer",
+                CheckPurpose.READINESS,
+                ("dispatch",),
+                state,
+                observed_at,
+                reason_code=None if state is ObservationState.PASS else "PEER_OBSERVATION_FAILED",
+            )
+        return observe
+
 
 class HealthServiceTests(_InstalledHealthFixture):
     def test_installed_truth_table_and_no_mutation(self) -> None:
@@ -92,23 +134,71 @@ class HealthServiceTests(_InstalledHealthFixture):
         self._metadata(last_access_at=None)
         self.assertEqual(self.service.installed_health(("local_work",))["state"], "HEALTHY")
 
-        EngineeringPlatformPeerConfigurationStore(
-            self.database._connection, runtime_id, writable=True,
-        ).configure(
-            binding_id="ep-primary",
-            endpoint="https://ep.test",
-            expected_ep_instance_id="ep-instance-1",
-            ep_consumer_id="forge-consumer-1",
-            execution_host_id="engineering-platform",
-            ep_project_id="forge-project",
-            ep_repository_id="forge-repository",
-            repository_identity="forge-source",
-            credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
-            operator_id="local-admin",
-            occurred_at="2026-09-21T09:00:00Z",
+        self.configure_peer()
+        passing = InstalledOperationsReadService(
+            self.root, clock=lambda: NOW,
+            peer_observer=self.peer_observer(ObservationState.PASS),
+        ).installed_health(("dispatch", "local_work"))
+        failed = InstalledOperationsReadService(
+            self.root, clock=lambda: NOW,
+            peer_observer=self.peer_observer(ObservationState.FAIL),
+        ).installed_health(("dispatch", "local_work"))
+        unknown = InstalledOperationsReadService(
+            self.root, clock=lambda: NOW,
+            peer_observer=self.peer_observer(ObservationState.UNKNOWN),
+        ).installed_health(("dispatch", "local_work"))
+        self.assertEqual((passing["state"], failed["state"], unknown["state"]), (
+            "HEALTHY", "DEGRADED", "UNKNOWN",
+        ))
+
+    def test_dispatch_consumes_fresh_stale_and_timed_out_peer_observations(self) -> None:
+        self.configure_peer()
+        stale = InstalledOperationsReadService(
+            self.root, clock=lambda: NOW,
+            peer_observer=self.peer_observer(
+                ObservationState.PASS, observed_at=NOW - timedelta(seconds=30),
+            ),
+        ).installed_health(("dispatch",))
+        timed_out = InstalledOperationsReadService(
+            self.root, clock=lambda: NOW,
+            peer_observer=self.peer_observer(ObservationState.TIMED_OUT),
+        ).installed_health(("dispatch",))
+        stale_check = next(item for item in stale["checks"] if item["check_id"] == "execution_peer")
+        timeout_check = next(
+            item for item in timed_out["checks"] if item["check_id"] == "execution_peer"
         )
-        unknown = self.service.installed_health(("dispatch", "local_work"))
-        self.assertEqual(unknown["state"], "UNKNOWN")
+        self.assertEqual((stale["state"], stale_check["freshness"]), ("UNKNOWN", "STALE"))
+        self.assertEqual(
+            (timed_out["state"], timeout_check["freshness"]), ("UNKNOWN", "TIMED_OUT"),
+        )
+
+    def test_dispatch_runs_existing_bounded_authoritative_peer_preflight(self) -> None:
+        self.configure_peer()
+        with patch.object(
+            EngineeringPlatformExecutionHostFactory,
+            "preflight_configuration",
+            return_value={"authoritative": True},
+        ) as preflight:
+            result = self.service.installed_health(("dispatch",))
+        self.assertEqual(result["state"], "HEALTHY")
+        configuration = preflight.call_args.args[0]
+        self.assertEqual(configuration.expected_ep_instance_id, "ep-instance-1")
+        self.assertEqual(preflight.call_args.kwargs, {"timeout_seconds": 1.0})
+
+    def test_newer_runtime_schema_fails_closed_before_health_projection(self) -> None:
+        future = RUNTIME_SCHEMA_VERSION + 1
+        with self.database._connection:
+            self.database._connection.execute(
+                "UPDATE runtime_metadata SET value=? WHERE key IN ('schema_version','migration_version')",
+                (str(future),),
+            )
+            self.database._connection.execute(f"PRAGMA user_version={future}")
+        response = self.api.handle(
+            "GET", "/v1/health/readiness?capability=local_work", "Bearer " + CREDENTIAL,
+        )
+        self.assertEqual((response.status, response.body["error"]["code"]), (
+            503, "PROJECTION_UNAVAILABLE",
+        ))
 
     def test_authoritative_installation_identity_accepts_persisted_uuid(self) -> None:
         installation_id = "123e4567-e89b-12d3-a456-426614174000"

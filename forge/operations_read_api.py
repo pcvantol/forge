@@ -17,15 +17,23 @@ import secrets
 import sqlite3
 from threading import BoundedSemaphore
 from time import monotonic
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 from urllib.parse import unquote, urlsplit
 
 from .__main__ import _status
 from ._version import canonical_version
-from .execution_host_configuration import PeerConfigurationError, read_peer_configuration_snapshot
+from .execution_host_configuration import (
+    EngineeringPlatformExecutionHostFactory,
+    EngineeringPlatformPeerConfiguration,
+    PeerConfigurationError,
+    PeerObservationTimeout,
+    read_peer_configuration_snapshot,
+)
 from .mission_cli import _status_projection as mission_status_projection
+from .models.execution_host import ExecutionHostTemporaryUnavailable
 from .models.producer import redact_action_summary
 from .runtime.data_root import DataRootResolver
+from .runtime.database import RUNTIME_SCHEMA_VERSION
 from .runtime.health import (
     INSTALLED_HEALTH_CAPABILITIES,
     CheckPurpose,
@@ -35,6 +43,7 @@ from .runtime.health import (
     evaluate_health,
     installed_health_registry,
 )
+from .secure_store import MacOSKeychainSecureStoreAdapter
 
 
 API_VERSION = "1"
@@ -54,6 +63,10 @@ _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b(api[ _-]?key|authorization|bearer|client[ _-]?secret|password|secret|token)\b"
     r"\s*([:=])\s*[^\s,;]+"
 )
+PeerHealthObserver = Callable[
+    [HealthIdentity, EngineeringPlatformPeerConfiguration, datetime, float],
+    HealthObservation,
+]
 
 
 class OperationsProjectionError(RuntimeError):
@@ -198,7 +211,8 @@ class InstalledOperationsReadService:
     def __init__(self, data_root: str | Path, *, stale_after: timedelta = DEFAULT_STALE_AFTER,
                  clock=lambda: datetime.now(UTC),
                  query_timeout_seconds: float = DEFAULT_QUERY_TIMEOUT_SECONDS,
-                 query_clock=monotonic) -> None:
+                 query_clock=monotonic,
+                 peer_observer: PeerHealthObserver | None = None) -> None:
         if stale_after.total_seconds() <= 0:
             raise ValueError("stale-after interval must be positive")
         if (
@@ -212,6 +226,65 @@ class InstalledOperationsReadService:
         self.clock = clock
         self.query_timeout_seconds = float(query_timeout_seconds)
         self.query_clock = query_clock
+        self.peer_observer = peer_observer or self._observe_execution_peer
+
+    @staticmethod
+    def _caused_by_timeout(error: BaseException) -> bool:
+        current: BaseException | None = error
+        while current is not None:
+            if isinstance(current, TimeoutError) or isinstance(getattr(current, "reason", None), TimeoutError):
+                return True
+            current = current.__cause__
+        return False
+
+    @staticmethod
+    def _peer_observation(
+        identity: HealthIdentity,
+        state: ObservationState,
+        observed_at: datetime,
+        reason_code: str | None,
+    ) -> HealthObservation:
+        return HealthObservation(
+            identity,
+            "ep_peer",
+            "execution_peer",
+            CheckPurpose.READINESS,
+            ("dispatch",),
+            state,
+            observed_at,
+            reason_code=reason_code,
+        )
+
+    def _observe_execution_peer(
+        self,
+        identity: HealthIdentity,
+        configuration: EngineeringPlatformPeerConfiguration,
+        _requested_at: datetime,
+        timeout_seconds: float,
+    ) -> HealthObservation:
+        """Collect one bounded authoritative EP compatibility observation."""
+        factory = EngineeringPlatformExecutionHostFactory(
+            MacOSKeychainSecureStoreAdapter(timeout=timeout_seconds),
+        )
+        try:
+            factory.preflight_configuration(configuration, timeout_seconds=timeout_seconds)
+        except PeerObservationTimeout:
+            return self._peer_observation(
+                identity, ObservationState.TIMED_OUT, self.clock(), "PEER_OBSERVATION_TIMED_OUT",
+            )
+        except ExecutionHostTemporaryUnavailable as error:
+            if self._caused_by_timeout(error):
+                return self._peer_observation(
+                    identity, ObservationState.TIMED_OUT, self.clock(), "PEER_OBSERVATION_TIMED_OUT",
+                )
+            return self._peer_observation(
+                identity, ObservationState.FAIL, self.clock(), "PEER_UNAVAILABLE",
+            )
+        except (PeerConfigurationError, OSError, ValueError):
+            return self._peer_observation(
+                identity, ObservationState.FAIL, self.clock(), "PEER_PREFLIGHT_FAILED",
+            )
+        return self._peer_observation(identity, ObservationState.PASS, self.clock(), None)
 
     def installed_status(self) -> dict[str, Any]:
         projection = _status(str(self.root))
@@ -266,8 +339,8 @@ class InstalledOperationsReadService:
                 "HEALTH_SCOPE_INVALID", "Health capability scope is invalid", status=400,
             )
         with self._runtime_snapshot_details() as (_connection, metadata, peer):
-            evaluated_at = self.clock()
-            if evaluated_at.tzinfo is None or evaluated_at.utcoffset() is None:
+            snapshot_observed_at = self.clock()
+            if snapshot_observed_at.tzinfo is None or snapshot_observed_at.utcoffset() is None:
                 raise OperationsProjectionError(
                     "HEALTH_CLOCK_INVALID", "Health evaluation clock is invalid", status=503,
                 )
@@ -280,7 +353,7 @@ class InstalledOperationsReadService:
             observations = [
                 HealthObservation(
                     identity, "forge_server", "process", CheckPurpose.LIVENESS, (),
-                    ObservationState.PASS, evaluated_at,
+                    ObservationState.PASS, snapshot_observed_at,
                 ),
             ]
             active = metadata.get("status") == "active"
@@ -288,24 +361,35 @@ class InstalledOperationsReadService:
                 identity, "platform_database", "storage", CheckPurpose.READINESS,
                 INSTALLED_HEALTH_CAPABILITIES,
                 ObservationState.PASS if active else ObservationState.FAIL,
-                evaluated_at,
+                snapshot_observed_at,
                 reason_code=None if active else "RUNTIME_NOT_ACTIVE",
             ))
-            peer_configured = peer.configuration is not None and peer.status == "CONFIGURED"
-            observations.append(HealthObservation(
-                identity, "ep_peer", "execution_peer", CheckPurpose.READINESS,
-                ("dispatch",),
-                ObservationState.UNKNOWN if peer_configured else ObservationState.FAIL,
-                evaluated_at,
-                reason_code="PEER_READINESS_UNVERIFIED" if peer_configured else "PEER_NOT_CONFIGURED",
-            ))
-            result = evaluate_health(
-                identity,
-                installed_health_registry(),
-                observations,
-                capability_scope=capability_scope,
-                evaluated_at=evaluated_at,
-            ).to_dict()
+            peer_configuration = peer.configuration if peer.status == "CONFIGURED" else None
+        if "dispatch" in capability_scope:
+            observations.append(
+                self.peer_observer(
+                    identity,
+                    peer_configuration,
+                    snapshot_observed_at,
+                    self.query_timeout_seconds,
+                )
+                if peer_configuration is not None
+                else self._peer_observation(
+                    identity, ObservationState.FAIL, snapshot_observed_at, "PEER_NOT_CONFIGURED",
+                )
+            )
+        evaluated_at = self.clock()
+        if evaluated_at.tzinfo is None or evaluated_at.utcoffset() is None:
+            raise OperationsProjectionError(
+                "HEALTH_CLOCK_INVALID", "Health evaluation clock is invalid", status=503,
+            )
+        result = evaluate_health(
+            identity,
+            installed_health_registry(),
+            observations,
+            capability_scope=capability_scope,
+            evaluated_at=evaluated_at,
+        ).to_dict()
         return {"api_version": API_VERSION, "read_only": True, **result}
 
     def mission_detail(self, mission_id: str) -> dict[str, Any]:
@@ -382,6 +466,8 @@ class InstalledOperationsReadService:
                 user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
             except (KeyError, TypeError, ValueError):
                 raise PeerConfigurationError("Forge runtime storage schema is unreadable") from None
+            if schema > RUNTIME_SCHEMA_VERSION:
+                raise PeerConfigurationError("Forge runtime storage schema is newer than this Forge version")
             marker_path = self.root / "instance" / "runtime-instance.json"
             marker = marker_path.read_text(encoding="utf-8").strip()
             readback = read_peer_configuration_snapshot(connection, metadata.get("runtime_id", ""), schema)

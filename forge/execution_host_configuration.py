@@ -48,6 +48,10 @@ class PeerConfigurationConflict(PeerConfigurationError):
     """A configuration write did not match the currently persisted revision."""
 
 
+class PeerObservationTimeout(PeerConfigurationError):
+    """A bounded, read-only peer observation exhausted its time budget."""
+
+
 @dataclass(frozen=True)
 class _StoredPeerConfiguration:
     """A structurally verified selected record, including a legacy contract.
@@ -518,6 +522,8 @@ def read_peer_configuration_snapshot(
     """Project the peer binding from an already identity-validated snapshot."""
     from .runtime.database import RUNTIME_SCHEMA_VERSION
 
+    if storage_schema > RUNTIME_SCHEMA_VERSION:
+        raise PeerConfigurationError("Forge runtime storage schema is newer than this Forge version")
     table = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='execution_host_peer_configuration'"
     ).fetchone()
@@ -616,12 +622,15 @@ class EngineeringPlatformExecutionHostFactory:
     def __init__(self, credential_resolver: CredentialResolver | None = None) -> None:
         self._credential_resolver = credential_resolver or MacOSKeychainSecureStoreAdapter()
 
-    def _build(self, configuration: EngineeringPlatformPeerConfiguration, bindings: object):
+    def _build(self, configuration: EngineeringPlatformPeerConfiguration, bindings: object, *,
+               timeout_seconds: float | None = None):
         from .scheduler.ep_http_adapter import EngineeringPlatformHttpConfiguration, EngineeringPlatformHttpExecutionHost
 
         reference = SecretReference.parse(configuration.credential_reference)
         state, bearer_token = self._credential_resolver.resolve(reference)
         if state is not SecretState.RESOLVABLE or not bearer_token:
+            if state is SecretState.TIMEOUT:
+                raise PeerObservationTimeout("EP credential observation timed out")
             raise PeerConfigurationError(f"EP credential reference is not resolvable: {state.value}")
         transport = EngineeringPlatformHttpConfiguration(
             base_url=configuration.endpoint,
@@ -633,7 +642,9 @@ class EngineeringPlatformExecutionHostFactory:
             repository_identity=configuration.repository_identity,
             allow_loopback_http=configuration.allow_loopback_http,
             host_id=configuration.execution_host_id,
-            timeout=configuration.timeout_seconds,
+            timeout=(configuration.timeout_seconds if timeout_seconds is None else min(
+                configuration.timeout_seconds, timeout_seconds,
+            )),
             peer_binding_id=configuration.binding_id,
             peer_configuration_revision=configuration.configuration_revision,
             peer_configuration_digest=configuration.configuration_digest,
@@ -641,6 +652,22 @@ class EngineeringPlatformExecutionHostFactory:
             terminal_evidence_contract=configuration.terminal_evidence_contract,
         )
         return EngineeringPlatformHttpExecutionHost(transport, bindings)
+
+    def preflight_configuration(
+        self,
+        configuration: EngineeringPlatformPeerConfiguration,
+        *,
+        timeout_seconds: float,
+    ) -> dict[str, Any]:
+        """Run one bounded, read-only compatibility observation for an admitted binding."""
+        if (not isinstance(timeout_seconds, (int, float)) or isinstance(timeout_seconds, bool)
+                or not 0 < float(timeout_seconds) <= 10):
+            raise ValueError("EP health preflight timeout must be greater than zero and at most 10 seconds")
+        return self._build(
+            configuration,
+            _PreflightOnlyBindings(),
+            timeout_seconds=float(timeout_seconds),
+        ).preflight()
 
     def from_database(self, database: object):
         """Runtime composition route using the already-open canonical Runtime Database."""

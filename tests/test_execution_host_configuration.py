@@ -20,6 +20,7 @@ from forge.execution_host_configuration import (
     PeerConfigurationConflict,
     PeerConfigurationError,
     read_peer_configuration,
+    read_peer_configuration_snapshot,
 )
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.database import RUNTIME_SCHEMA_VERSION
@@ -441,6 +442,17 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
             self.assertEqual(migrated.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         finally:
             migrated.close()
+
+    def test_peer_snapshot_rejects_storage_newer_than_current_runtime(self) -> None:
+        connection = sqlite3.connect(self.root / "forge.db")
+        connection.row_factory = sqlite3.Row
+        try:
+            with self.assertRaisesRegex(PeerConfigurationError, "newer than this Forge version"):
+                read_peer_configuration_snapshot(
+                    connection, self.runtime_id, RUNTIME_SCHEMA_VERSION + 1,
+                )
+        finally:
+            connection.close()
 
     def test_schema_32_migration_rejects_an_incompatible_preexisting_peer_table(self) -> None:
         connection = sqlite3.connect(self.root / "forge.db")
