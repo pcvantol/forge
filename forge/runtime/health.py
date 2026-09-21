@@ -16,6 +16,7 @@ from typing import Iterable
 
 
 HEALTH_SCHEMA_REVISION = "1.0"
+INSTALLED_HEALTH_CAPABILITIES = ("dispatch", "local_work")
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_.:-]{0,127}$")
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -155,6 +156,28 @@ class HealthCheckDefinition:
             raise ValueError("readiness checks must name at least one capability")
         elif not self.enabled and self.applicability is not CheckApplicability.OPTIONAL:
             raise ValueError("only optional readiness checks may be disabled")
+
+
+INSTALLED_HEALTH_REGISTRY = (
+    HealthCheckDefinition(
+        "forge_server", "process", CheckPurpose.LIVENESS,
+        CheckApplicability.REQUIRED, timedelta(seconds=30),
+    ),
+    HealthCheckDefinition(
+        "forge_runtime", "storage", CheckPurpose.READINESS,
+        CheckApplicability.REQUIRED, timedelta(minutes=5),
+        INSTALLED_HEALTH_CAPABILITIES,
+    ),
+    HealthCheckDefinition(
+        "engineering_platform", "execution_peer", CheckPurpose.READINESS,
+        CheckApplicability.REQUIRED, timedelta(seconds=30), ("dispatch",),
+    ),
+)
+
+
+def installed_health_registry() -> tuple[HealthCheckDefinition, ...]:
+    """Return the immutable installed-service projection of the component registry."""
+    return INSTALLED_HEALTH_REGISTRY
 
 
 @dataclass(frozen=True)

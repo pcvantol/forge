@@ -36,6 +36,42 @@
         ],
         "type": "object"
       },
+      "HealthResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "api_version": {"const": "1"},
+          "capabilities": {"items": {"type": "object"}, "type": "array"},
+          "capability_scope": {"items": {"enum": ["dispatch", "local_work"]}, "type": "array"},
+          "checks": {"items": {"type": "object"}, "type": "array"},
+          "evaluated_at": {"format": "date-time", "type": "string"},
+          "installation_id": {"minLength": 1, "type": "string"},
+          "liveness": {"type": "object"},
+          "product": {"const": "forge"},
+          "product_version": {"minLength": 1, "type": "string"},
+          "read_only": {"const": true},
+          "runtime_id": {"minLength": 1, "type": "string"},
+          "schema_revision": {"const": "1.0"},
+          "state": {"enum": ["HEALTHY", "DEGRADED", "UNAVAILABLE", "UNKNOWN"]}
+        },
+        "required": ["api_version", "schema_revision", "product", "product_version", "runtime_id", "installation_id", "evaluated_at", "capability_scope", "state", "liveness", "capabilities", "checks", "read_only"],
+        "type": "object"
+      },
+      "LivenessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {"const": "1"},
+          "liveness": {
+            "additionalProperties": false,
+            "properties": {"alive": {"const": true}, "state": {"const": "ALIVE"}},
+            "required": ["state", "alive"],
+            "type": "object"
+          },
+          "product": {"const": "forge"},
+          "read_only": {"const": true}
+        },
+        "required": ["api_version", "product", "liveness", "read_only"],
+        "type": "object"
+      },
       "MissionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -281,6 +317,48 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/health/live": {
+      "get": {
+        "description": "Read the minimal public process-liveness projection.",
+        "responses": {
+          "200": {
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LivenessResponse"}}},
+            "description": "The foreground operations process is alive"
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/health/readiness": {
+      "get": {
+        "description": "Evaluate bounded installed component observations for the requested readiness scope.",
+        "parameters": [{
+          "in": "query",
+          "name": "capability",
+          "required": false,
+          "schema": {"items": {"enum": ["dispatch", "local_work"]}, "type": "array"}
+        }],
+        "responses": {
+          "200": {
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthResponse"}}},
+            "description": "Every requested capability is ready"
+          },
+          "400": {
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}},
+            "description": "The requested capability scope is invalid"
+          },
+          "401": {
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}},
+            "description": "Bearer authentication is missing or invalid"
+          },
+          "503": {
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthResponse"}}},
+            "description": "A requested capability is unavailable or unknown"
+          }
+        },
+        "security": [{"bearerAuth": []}]
+      }
+    },
     "/v1/missions/{mission_id}": {
       "get": {
         "description": "Read one authoritative installed Mission projection without changing it.",

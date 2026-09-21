@@ -9,6 +9,33 @@
   },
   "item": [
     {
+      "auth": {"type": "noauth"},
+      "name": "Process liveness",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/health/live"},
+      "response": [{"code": 200, "name": "Alive"}]
+    },
+    {
+      "name": "Local-work readiness",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/health/readiness?capability=local_work"},
+      "response": [{"code": 200, "name": "Ready"}]
+    },
+    {
+      "name": "Aggregate readiness",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/health/readiness"},
+      "response": [{"code": 503, "name": "Unavailable or unknown"}]
+    },
+    {
+      "auth": {"type": "noauth"},
+      "name": "Readiness requires authentication",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/health/readiness"},
+      "response": [{"code": 401, "name": "Authentication required"}]
+    },
+    {
+      "name": "Readiness scope invalid",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/health/readiness?capability=unsupported"},
+      "response": [{"code": 400, "name": "Invalid"}]
+    },
+    {
       "name": "Installed status",
       "request": {"method": "GET", "url": "{{baseUrl}}/v1/status"},
       "response": [{"code": 200, "name": "Available"}, {"code": 503, "name": "Unavailable"}]

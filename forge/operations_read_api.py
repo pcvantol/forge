@@ -20,15 +20,27 @@ from typing import Any, Iterator, Mapping
 from urllib.parse import unquote, urlsplit
 
 from .__main__ import _status
+from ._version import canonical_version
 from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
 from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
 from .runtime.data_root import DataRootResolver
+from .runtime.health import (
+    INSTALLED_HEALTH_CAPABILITIES,
+    CheckPurpose,
+    HealthIdentity,
+    HealthObservation,
+    ObservationState,
+    evaluate_health,
+    installed_health_registry,
+)
 
 
 API_VERSION = "1"
 DEFAULT_STALE_AFTER = timedelta(minutes=5)
 _MISSION_PATH = re.compile(r"^/v1/missions/([^/]+)$")
+_LIVENESS_PATH = "/v1/health/live"
+_READINESS_PATH = "/v1/health/readiness"
 _SENSITIVE_KEY = re.compile(r"(?:authorization|bearer|credential|password|secret|token)", re.IGNORECASE)
 _BEARER_VALUE = re.compile(r"(?i)\bbearer\s+[^\s,;]+")
 _KEYCHAIN_REFERENCE = re.compile(r"(?i)\bkeychain://[^\s,;]+")
@@ -220,6 +232,71 @@ class InstalledOperationsReadService:
             "runtime": projection,
         })
 
+    @staticmethod
+    def liveness() -> dict[str, Any]:
+        """Return the deliberately minimal public process-liveness projection."""
+        return {
+            "api_version": API_VERSION,
+            "product": "forge",
+            "liveness": {"state": "ALIVE", "alive": True},
+            "read_only": True,
+        }
+
+    def installed_health(self, capability_scope: tuple[str, ...] = INSTALLED_HEALTH_CAPABILITIES) -> dict[str, Any]:
+        """Compose installed observations with the canonical deterministic evaluator."""
+        if (
+            not isinstance(capability_scope, tuple)
+            or not capability_scope
+            or len(capability_scope) != len(set(capability_scope))
+            or not set(capability_scope).issubset(INSTALLED_HEALTH_CAPABILITIES)
+        ):
+            raise OperationsProjectionError(
+                "HEALTH_SCOPE_INVALID", "Health capability scope is invalid", status=400,
+            )
+        evaluated_at = self.clock()
+        if evaluated_at.tzinfo is None or evaluated_at.utcoffset() is None:
+            raise OperationsProjectionError(
+                "HEALTH_CLOCK_INVALID", "Health evaluation clock is invalid", status=503,
+            )
+        with self._runtime_snapshot_details() as (_connection, metadata, peer):
+            identity = HealthIdentity(
+                canonical_version(),
+                metadata.get("runtime_id", ""),
+                metadata.get("installation_id") or metadata.get("repository_identity", ""),
+            )
+            observations = [
+                HealthObservation(
+                    identity, "forge_server", "process", CheckPurpose.LIVENESS, (),
+                    ObservationState.PASS, evaluated_at,
+                ),
+            ]
+            storage_observed_at = _parse_time(metadata.get("last_access_at"))
+            if storage_observed_at is not None:
+                active = metadata.get("status") == "active"
+                observations.append(HealthObservation(
+                    identity, "forge_runtime", "storage", CheckPurpose.READINESS,
+                    INSTALLED_HEALTH_CAPABILITIES,
+                    ObservationState.PASS if active else ObservationState.FAIL,
+                    storage_observed_at,
+                    reason_code=None if active else "RUNTIME_NOT_ACTIVE",
+                ))
+            peer_configured = peer.configuration is not None and peer.status == "CONFIGURED"
+            observations.append(HealthObservation(
+                identity, "engineering_platform", "execution_peer", CheckPurpose.READINESS,
+                ("dispatch",),
+                ObservationState.UNKNOWN if peer_configured else ObservationState.FAIL,
+                evaluated_at,
+                reason_code="PEER_READINESS_UNVERIFIED" if peer_configured else "PEER_NOT_CONFIGURED",
+            ))
+            result = evaluate_health(
+                identity,
+                installed_health_registry(),
+                observations,
+                capability_scope=capability_scope,
+                evaluated_at=evaluated_at,
+            ).to_dict()
+        return {"api_version": API_VERSION, "read_only": True, **result}
+
     def mission_detail(self, mission_id: str) -> dict[str, Any]:
         if not mission_id or len(mission_id) > 128 or any(ord(character) < 33 for character in mission_id):
             raise OperationsProjectionError("MISSION_REFERENCE_INVALID", "Mission reference is invalid", status=400)
@@ -265,6 +342,12 @@ class InstalledOperationsReadService:
     @contextmanager
     def _runtime_snapshot(self) -> Iterator[tuple[sqlite3.Connection, dict[str, str]]]:
         """Validate the installed identity, then hold one consistent read transaction."""
+        with self._runtime_snapshot_details() as (connection, metadata, _peer):
+            yield connection, metadata
+
+    @contextmanager
+    def _runtime_snapshot_details(self) -> Iterator[tuple[sqlite3.Connection, dict[str, str], Any]]:
+        """Hold one identity-validated snapshot, including its peer-registry readback."""
         readback = read_peer_configuration(self.root)
         database = self.root / "forge.db"
         connection = None
@@ -291,7 +374,7 @@ class InstalledOperationsReadService:
                 or schema != readback.storage_schema
             ):
                 raise PeerConfigurationError("Forge runtime identity or storage schema changed during readback")
-            yield connection, metadata
+            yield connection, metadata, readback
             if marker_path.read_text(encoding="utf-8").strip() != readback.runtime_id:
                 raise PeerConfigurationError("Forge runtime identity changed during readback")
         finally:
@@ -313,9 +396,12 @@ class OperationsReadAPI:
             "Content-Type": "application/json; charset=utf-8",
             "X-Content-Type-Options": "nosniff",
         }
+        parsed_target = urlsplit(target)
+        path = parsed_target.path
+        if method == "GET" and path == _LIVENESS_PATH:
+            return APIResponse(200, self.service.liveness(), headers)
         if not self._authenticated(authorization):
             return APIResponse(401, self._error("AUTHENTICATION_REQUIRED", "Authentication is required"), headers)
-        path = urlsplit(target).path
         if method != "GET":
             return APIResponse(405, self._error("METHOD_NOT_ALLOWED", "Only read-only GET is supported"), {
                 **headers, "Allow": "GET",
@@ -325,6 +411,22 @@ class OperationsReadAPI:
                 body = self.service.installed_status()
                 status = 503 if body.get("availability") == "UNAVAILABLE" else 200
                 return APIResponse(status, body, headers)
+            if path == _READINESS_PATH:
+                query = parsed_target.query
+                requested = tuple(
+                    unquote(item.split("=", 1)[1]) for item in query.split("&")
+                    if item.startswith("capability=") and len(item.split("=", 1)) == 2
+                ) if query else INSTALLED_HEALTH_CAPABILITIES
+                if query and any(
+                    not item.startswith("capability=") or len(item.split("=", 1)) != 2
+                    for item in query.split("&")
+                ):
+                    raise OperationsProjectionError(
+                        "HEALTH_SCOPE_INVALID", "Health capability scope is invalid", status=400,
+                    )
+                body = self.service.installed_health(requested)
+                ready = all(item["ready"] for item in body["capabilities"] if item["capability_id"] in requested)
+                return APIResponse(200 if ready else 503, body, headers)
             match = _MISSION_PATH.fullmatch(path)
             if match:
                 return APIResponse(200, self.service.mission_detail(unquote(match.group(1))), headers)

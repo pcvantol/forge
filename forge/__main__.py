@@ -185,7 +185,35 @@ def main(argv: list[str] | None = None) -> int:
     operations_api.add_argument("--credential-file", required=True)
     operations_api.add_argument("--host", default="127.0.0.1")
     operations_api.add_argument("--port", type=int, default=8765)
+    health = subparsers.add_parser("health", help="read installed liveness and readiness projections")
+    health_commands = health.add_subparsers(dest="health_command", required=True)
+    health_commands.add_parser("live", help="print the minimal process-liveness projection")
+    readiness = health_commands.add_parser("readiness", help="print authenticated-equivalent readiness detail")
+    readiness.add_argument(
+        "--capability", action="append", choices=("dispatch", "local_work"),
+        help="limit readiness to a named capability; may be repeated",
+    )
     args = parser.parse_args(argv)
+    if args.command == "health":
+        if args.data_root is None:
+            return _failure("health " + args.health_command, ValueError("--data-root is required for health"))
+        try:
+            from .operations_read_api import InstalledOperationsReadService
+            service = InstalledOperationsReadService(args.data_root)
+            if args.health_command == "live":
+                result = service.liveness()
+                exit_code = 0
+            else:
+                capabilities = tuple(args.capability) if args.capability else ("dispatch", "local_work")
+                result = service.installed_health(capabilities)
+                exit_code = 0 if all(
+                    item["ready"] for item in result["capabilities"]
+                    if item["capability_id"] in capabilities
+                ) else 2
+            print(json.dumps(result, sort_keys=True))
+            return exit_code
+        except (OSError, ValueError, sqlite3.Error, RuntimeError) as error:
+            return _failure("health " + args.health_command, error)
     if args.command == "mission":
         from . import mission_cli
         try:
