@@ -295,7 +295,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 "github_release": {"draft": False},
             },
         }, sort_keys=True), encoding="utf-8")
-        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28"}:
+        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29"}:
             # Captured from the actual installed-composition command used by
             # both workflow stages; only the synthetic wheel binding changes.
             summary = json.loads((Path(__file__).parent / "fixtures" /
@@ -1470,6 +1470,29 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "noncanonical"):
             update.validate_qualified_artifact(changed)
 
+    def test_2728_to_2729_same_schema_release_preserves_history_and_requires_composition(self):
+        before = self._same_schema39_transition(existing_version="2.7.28", target_version="2.7.29")
+        self.assertEqual(update.transition_schemas(self.request), (39, 39))
+        self.assertEqual(update.validate_qualified_artifact(self.request)["release_route"], "NORMAL")
+        controller = self._controller()
+        self.assertEqual(controller.backup_path.name, "forge-schema39.sqlite3")
+        after = self._qualified_schema39_copy(controller, before)
+        for table, evidence in before["tables"].items():
+            if table != "runtime_metadata":
+                self.assertEqual(after["tables"][table], evidence, table)
+        self.assertEqual(after["protected_metadata_digest"], before["protected_metadata_digest"])
+        self.assertEqual(after["schema_digest"], before["schema_digest"])
+        update.verify_preservation(before, after, self.request)
+        receipt = Path(self.request.qualification_receipt)
+        document = json.loads(receipt.read_text())
+        del document["qualification"]["criterion_completion"]
+        receipt.write_text(json.dumps(document, sort_keys=True))
+        changed = update.UpdateRequest(**{
+            **self.request.__dict__, "qualification_receipt_sha256": update.file_digest(receipt),
+        })
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "noncanonical"):
+            update.validate_qualified_artifact(changed)
+
     def test_schema39_same_schema_replay_preserves_database_and_fences_after_activation_boundary(self):
         before = self._same_schema39_transition()
         controller = self._controller()
@@ -1535,9 +1558,10 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         receipt = Path(receipt_value).resolve()
         release = json.loads(receipt.read_text(encoding="utf-8"))
         target_version = release["version"]
-        target_schema = 39 if target_version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28"} else 38
+        target_schema = 39 if target_version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29"} else 38
         previous_version = {
             "2.7.26": "2.7.25", "2.7.27": "2.7.26", "2.7.28": "2.7.27",
+            "2.7.29": "2.7.28",
         }.get(target_version)
         if previous_version is not None:
             RuntimeBootstrap(data_root=self.data_root, forge_version=previous_version).open().close()
