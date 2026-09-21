@@ -1,7 +1,7 @@
 """Installed health qualification: authority, safety, and transport parity."""
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from datetime import UTC, datetime
 from io import StringIO
 import json
@@ -11,6 +11,11 @@ from tempfile import TemporaryDirectory
 from threading import Thread
 import unittest
 from urllib.request import Request, urlopen
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - production support is macOS/Linux
+    fcntl = None  # type: ignore[assignment]
 
 from forge.__main__ import main
 from forge.operations_health import InstalledHealthError, InstalledHealthSnapshotService
@@ -29,6 +34,20 @@ from forge.runtime import (
 NOW = datetime(2026, 9, 21, 12, 0, tzinfo=UTC)
 CREDENTIAL = "synthetic-health-credential"
 INSTALLATION_ID = "installation-health-primary"
+
+
+@contextmanager
+def _running_server(root: Path):
+    if fcntl is None:
+        raise unittest.SkipTest("foreground controller locking is unavailable")
+    lease = root / "forge-mission-controller.lock"
+    lease.touch()
+    with lease.open("rb") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 class _InstalledHealthFixture(unittest.TestCase):
@@ -135,7 +154,10 @@ class HealthSnapshotTests(_InstalledHealthFixture):
             set(checks),
             {"dispatcher_state", "execution_peer_binding", "relay_access", "runtime_storage", "server_process"},
         )
-        self.assertEqual(checks["server_process"]["observation_state"], ObservationState.PASS.value)
+        self.assertEqual(checks["server_process"]["observation_state"], ObservationState.FAIL.value)
+        self.assertEqual(checks["server_process"]["reason_code"], "SERVER_PROCESS_NOT_RUNNING")
+        self.assertEqual(snapshot["liveness"]["state"], "NOT_ALIVE")
+        self.assertEqual(snapshot["availability"], "UNAVAILABLE")
         self.assertEqual(checks["execution_peer_binding"]["observation_state"], ObservationState.FAIL.value)
         self.assertEqual(checks["relay_access"]["state"], "DISABLED")
         self.assertEqual(self.domain_counts(), before_domain)
@@ -181,6 +203,58 @@ class HealthSnapshotTests(_InstalledHealthFixture):
                 monotonic=lambda: next(ticks, 3.0),
             ).snapshot()
         self.assertEqual(timeout.exception.code, "HEALTH_SNAPSHOT_TIMEOUT")
+        self.assertEqual(self.files(), before_files)
+
+    def test_current_schema_is_required_without_snapshot_mutation(self) -> None:
+        for unsupported in (38, 40):
+            with self.subTest(schema=unsupported), TemporaryDirectory() as temporary:
+                root = Path(temporary) / "forge-server"
+                database = RuntimeBootstrap(data_root=root, forge_version="test").open()
+                with database._connection:  # noqa: SLF001 - controlled compatibility fixture
+                    database._set_metadata({  # noqa: SLF001
+                        "installation_id": INSTALLATION_ID,
+                        "schema_version": str(unsupported),
+                        "migration_version": str(unsupported),
+                    })
+                    database._connection.execute(f"PRAGMA user_version={unsupported}")  # noqa: SLF001
+                database.close()
+                before = {
+                    path.relative_to(root).as_posix(): path.read_bytes()
+                    for path in root.rglob("*") if path.is_file()
+                }
+
+                with self.assertRaises(InstalledHealthError) as rejected:
+                    InstalledHealthSnapshotService(root, clock=lambda: NOW).snapshot()
+
+                self.assertEqual(rejected.exception.code, "RUNTIME_SCHEMA_UNSUPPORTED")
+                self.assertEqual(
+                    {
+                        path.relative_to(root).as_posix(): path.read_bytes()
+                        for path in root.rglob("*") if path.is_file()
+                    },
+                    before,
+                )
+
+    def test_stopped_installation_is_not_reported_alive_by_cli_or_service(self) -> None:
+        before_domain = self.domain_counts()
+        before_files = self.files()
+
+        api = OperationsReadAPI(
+            InstalledOperationsReadService(self.root, clock=lambda: NOW),
+            CREDENTIAL,
+        )
+        response = api.handle("GET", "/v1/health", "Bearer " + CREDENTIAL)
+        output = StringIO()
+        with redirect_stdout(output):
+            cli_status = main(["--data-root", str(self.root), "health"])
+        cli_document = json.loads(output.getvalue())
+
+        self.assertEqual(response.status, 503)
+        self.assertEqual(response.body["liveness"]["state"], "NOT_ALIVE")
+        self.assertEqual(cli_status, 0)
+        self.assertEqual(cli_document["liveness"]["state"], "NOT_ALIVE")
+        self.assertEqual(cli_document["availability"], "UNAVAILABLE")
+        self.assertEqual(self.domain_counts(), before_domain)
         self.assertEqual(self.files(), before_files)
 
 
@@ -237,28 +311,31 @@ class HealthTransportTests(_InstalledHealthFixture):
             InstalledOperationsReadService(self.root, clock=lambda: NOW),
             CREDENTIAL,
         )
-        server = make_server("127.0.0.1", 0, api)
-        worker = Thread(target=server.serve_forever, daemon=True)
-        worker.start()
-        try:
-            request = Request(
-                f"http://127.0.0.1:{server.server_port}/v1/health",
-                headers={"Authorization": "Bearer " + CREDENTIAL},
-            )
-            with urlopen(request, timeout=2) as response:
-                http_status = response.status
-                http_document = json.load(response)
-        finally:
-            server.shutdown()
-            server.server_close()
-            worker.join(timeout=2)
+        with _running_server(self.root):
+            server = make_server("127.0.0.1", 0, api)
+            worker = Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                request = Request(
+                    f"http://127.0.0.1:{server.server_port}/v1/health",
+                    headers={"Authorization": "Bearer " + CREDENTIAL},
+                )
+                with urlopen(request, timeout=2) as response:
+                    http_status = response.status
+                    http_document = json.load(response)
+            finally:
+                server.shutdown()
+                server.server_close()
+                worker.join(timeout=2)
 
-        output = StringIO()
-        with redirect_stdout(output):
-            cli_status = main(["--data-root", str(self.root), "health"])
-        cli_document = json.loads(output.getvalue())
+            output = StringIO()
+            with redirect_stdout(output):
+                cli_status = main(["--data-root", str(self.root), "health"])
+            cli_document = json.loads(output.getvalue())
 
         self.assertEqual((http_status, cli_status), (200, 0))
+        self.assertEqual(http_document["liveness"]["state"], "ALIVE")
+        self.assertEqual(cli_document["liveness"]["state"], "ALIVE")
         for field in (
             "api_version",
             "schema_revision",

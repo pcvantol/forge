@@ -8,6 +8,11 @@ import sqlite3
 import time
 from typing import Callable
 
+try:  # macOS/Linux installed runtime path
+    import fcntl
+except ImportError:  # pragma: no cover - fail closed where no lock observation exists
+    fcntl = None  # type: ignore[assignment]
+
 from ._version import canonical_version
 from .execution_host_configuration import (
     EngineeringPlatformPeerConfigurationStore,
@@ -17,6 +22,7 @@ from .runtime.component_registry import (
     CANONICAL_COMPONENT_REGISTRY,
     ComponentRegistry,
 )
+from .runtime.database import RUNTIME_SCHEMA_VERSION
 from .runtime.data_root import DataRootResolver
 from .runtime.health import (
     HealthEvaluation,
@@ -199,6 +205,11 @@ class InstalledHealthSnapshotService:
                     "INSTALLATION_IDENTITY_MISMATCH",
                     "Installed Forge identity is inconsistent",
                 )
+            if schema != RUNTIME_SCHEMA_VERSION:
+                raise InstalledHealthError(
+                    "RUNTIME_SCHEMA_UNSUPPORTED",
+                    "Installed Forge storage schema is unsupported",
+                )
 
             identity = HealthIdentity(
                 canonical_version(),
@@ -231,11 +242,12 @@ class InstalledHealthSnapshotService:
             except PeerConfigurationError:
                 peer_reason = "PEER_CONFIGURATION_INVALID"
 
+            server_state, server_reason = self._server_process_observation()
             observations = (
                 HealthObservation(
                     identity, "forge_server", "server_process",
                     self._definition("server_process").purpose, (),
-                    ObservationState.PASS, observed_at,
+                    server_state, observed_at, reason_code=server_reason,
                 ),
                 HealthObservation(
                     identity, "platform_database", "runtime_storage",
@@ -307,6 +319,25 @@ class InstalledHealthSnapshotService:
             "COMPONENT_REGISTRY_INVALID",
             "Installed Forge component registry is invalid",
         )
+
+    def _server_process_observation(self) -> tuple[ObservationState, str | None]:
+        """Observe the foreground Forge controller without creating a lease file."""
+        lease = self.root / "forge-mission-controller.lock"
+        if fcntl is None:
+            return ObservationState.UNKNOWN, "SERVER_PROCESS_STATE_UNKNOWN"
+        if not lease.is_file():
+            return ObservationState.FAIL, "SERVER_PROCESS_NOT_RUNNING"
+        try:
+            with lease.open("rb") as handle:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return ObservationState.PASS, None
+                else:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                    return ObservationState.FAIL, "SERVER_PROCESS_NOT_RUNNING"
+        except OSError:
+            return ObservationState.UNKNOWN, "SERVER_PROCESS_STATE_UNKNOWN"
 
     @staticmethod
     def _marker_identity(marker: Path) -> str:
