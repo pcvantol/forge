@@ -74,9 +74,23 @@ class TestStatusEndpoint(_InstalledFixture):
         self.assertEqual(unavailable.body["availability"], "UNAVAILABLE")
         self.assertEqual(unavailable.body["freshness"], "UNAVAILABLE")
 
+    def test_failed_installed_runtime_validation_is_unavailable(self) -> None:
+        marker = self.root / "instance" / "runtime-instance.json"
+        marker.write_text("different-runtime\n", encoding="utf-8")
+        before = self.snapshot()
+
+        response = self.api.handle("GET", "/v1/status", "Bearer " + CREDENTIAL)
+
+        self.assertEqual(response.status, 503)
+        self.assertEqual(response.body["availability"], "UNAVAILABLE")
+        self.assertEqual(response.body["freshness"], "UNAVAILABLE")
+        self.assertEqual(response.body["runtime"]["execution_host_peer"]["status"], "ERROR")
+        self.assertEqual(self.snapshot(), before)
+
     def test_absent_runtime_is_unavailable_without_initialization(self) -> None:
         with TemporaryDirectory() as temporary:
-            absent_root = Path(temporary) / "absent-forge-runtime"
+            path_credential = "ghp_" + "syntheticvalue"
+            absent_root = Path(temporary) / path_credential
             api = OperationsReadAPI(InstalledOperationsReadService(absent_root), CREDENTIAL)
 
             response = api.handle("GET", "/v1/status", "Bearer " + CREDENTIAL)
@@ -86,18 +100,25 @@ class TestStatusEndpoint(_InstalledFixture):
             self.assertEqual(response.body["freshness"], "UNAVAILABLE")
             self.assertFalse(response.body["runtime"]["initialized"])
             self.assertEqual(response.body["runtime"]["runtime_status"], "uninitialized")
+            self.assertNotIn(path_credential, json.dumps(response.body, sort_keys=True))
             self.assertFalse(absent_root.exists())
 
 
 class TestMissionEndpoint(_InstalledFixture):
     def test_mission_lineage_read_only(self) -> None:
         criterion = "Report approved criteria, Actions, and evidence lineage"
+        projected_credentials = (
+            "github_pat_" + "syntheticvalue",
+            "ghp_" + "syntheticvalue",
+            "sk-" + "synthetic-value",
+            "https://operator:synthetic-password@example.test/resource",
+        )
         mission = ArchitectureMission(
             id="MISSION-0042", candidate_id="CANDIDATE-0042", title="Read-only projection",
             summary="Expose lineage", business_objective="Make Mission state observable",
             business_value="Support local operations", architecture_review_reference="review-0042",
             mission_recommendation_reference="recommendation-0042",
-            acceptance_criteria=(criterion,),
+            acceptance_criteria=(criterion, "Keep projected values safe: " + " ".join(projected_credentials)),
             status=ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
         )
         reference = IntentReference("source", "1", "docs/source.md")
@@ -107,7 +128,7 @@ class TestMissionEndpoint(_InstalledFixture):
             IntentTraceability((reference,), (reference,), (reference,), (reference,), (reference,)),
         )
         action = EngineeringAction(
-            1, "ACTION-0042", intent.id, "1", "Observe read-only state", ("projection",),
+            1, "ACTION-0042", intent.id, "1", "Observe " + " ".join(projected_credentials), ("projection",),
             status=EngineeringActionStatus.READY,
         )
         states = MissionStateStore(self.database, data_root=str(self.root))
@@ -144,14 +165,24 @@ class TestMissionEndpoint(_InstalledFixture):
         self.assertEqual(response.body["mission"]["action_ids"], ["ACTION-0042"])
         self.assertEqual(response.body["mission"]["repository_revision"], "a" * 40)
         self.assertEqual(response.body["mission"]["execution_attempts"][0]["receipt_id"], "receipt-0042")
-        self.assertEqual(response.body["mission"]["criteria"], [criterion])
-        self.assertEqual(response.body["mission"]["actions"], [action.to_dict()])
+        redacted_values = "[REDACTED] [REDACTED] [REDACTED] https://[REDACTED]@example.test/resource"
+        self.assertCountEqual(
+            response.body["mission"]["criteria"],
+            [criterion, "Keep projected values safe: " + redacted_values],
+        )
+        expected_action = action.to_dict()
+        expected_action["objective"] = "Observe " + redacted_values
+        self.assertEqual(response.body["mission"]["actions"], [expected_action])
         lineage = response.body["mission"]["evidence_lineage"]
         self.assertEqual(lineage["repository_truth"]["content_digest"], "sha256:" + "b" * 64)
         self.assertEqual(lineage["execution_attempts"][0]["report_id"], "report-0042")
         self.assertEqual(
             lineage["execution_attempts"][0]["repository_evidence"]["action_id"], "ACTION-0042",
         )
+        rendered = json.dumps(response.body, sort_keys=True)
+        for credential in projected_credentials:
+            self.assertNotIn(credential, rendered)
+        self.assertIn("https://[REDACTED]@example.test/resource", rendered)
         self.assertEqual(self.snapshot(), before)
 
     def test_missing_and_inconsistent_mission_states_are_explicit(self) -> None:

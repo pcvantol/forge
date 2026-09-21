@@ -28,6 +28,10 @@ _MISSION_PATH = re.compile(r"^/v1/missions/([^/]+)$")
 _SENSITIVE_KEY = re.compile(r"(?:authorization|bearer|credential|password|secret|token)", re.IGNORECASE)
 _BEARER_VALUE = re.compile(r"(?i)\bbearer\s+[^\s,;]+")
 _KEYCHAIN_REFERENCE = re.compile(r"(?i)\bkeychain://[^\s,;]+")
+_URL_CREDENTIALS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@")
+_TOKEN_VALUE = re.compile(
+    r"(?i)\b(?:github_pat_[a-z0-9_]+|gh[pousr]_[a-z0-9]+|sk-[a-z0-9_-]{8,})\b"
+)
 
 
 class OperationsProjectionError(RuntimeError):
@@ -75,7 +79,10 @@ def _redact(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_redact(item) for item in value]
     if isinstance(value, str):
-        return _KEYCHAIN_REFERENCE.sub("[REDACTED_CREDENTIAL_REFERENCE]", _BEARER_VALUE.sub("Bearer [REDACTED]", value))
+        redacted = _BEARER_VALUE.sub("Bearer [REDACTED]", value)
+        redacted = _KEYCHAIN_REFERENCE.sub("[REDACTED_CREDENTIAL_REFERENCE]", redacted)
+        redacted = _URL_CREDENTIALS.sub(r"\1[REDACTED]@", redacted)
+        return _TOKEN_VALUE.sub("[REDACTED]", redacted)
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)
@@ -94,9 +101,15 @@ class InstalledOperationsReadService:
 
     def installed_status(self) -> dict[str, Any]:
         projection = _status(str(self.root))
+        peer = projection.get("execution_host_peer")
+        peer_status = peer.get("status") if isinstance(peer, Mapping) else None
         availability = (
             "AVAILABLE"
-            if projection.get("initialized") is True and projection.get("runtime_status") != "unavailable"
+            if (
+                projection.get("initialized") is True
+                and projection.get("runtime_status") != "unavailable"
+                and peer_status != "ERROR"
+            )
             else "UNAVAILABLE"
         )
         observed_at = self._runtime_observed_at() if projection.get("initialized") else None
