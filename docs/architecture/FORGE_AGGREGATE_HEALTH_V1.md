@@ -1,9 +1,14 @@
 # Aggregate health and HTTP qualification V1
 
-**Owner:** Forge. **Status:** PLANNED refinement of existing F2/FH, NO_BUMP.
+**Owner:** Forge. **Status:** bounded installed snapshot DELIVERED; remaining F2/FH scope PLANNED, NO_BUMP.
 The owner requested an aggregate health endpoint with degraded checks on
 13 September 2026. Source baseline: `1cea418a5fa8f59d303f2a0d6ff27573c4a11752`.
-This is a backlog acceptance contract, not implemented routes or live evidence.
+The authoritative installed snapshot is implemented by the canonical typed
+component registry, the shared `forge health` application service and the
+authenticated `GET /v1/health` projection. It performs one deadline- and
+step-bounded read transaction with at most one bounded integrity observation.
+The broader route inventory, live peer probes, service lifecycle and Console
+qualification remain planned and are not claimed by this source delivery.
 
 ## Reuse rather than a second API programme
 

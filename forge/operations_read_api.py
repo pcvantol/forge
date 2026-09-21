@@ -23,6 +23,7 @@ from .__main__ import _status
 from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
 from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
+from .operations_health import InstalledHealthError, InstalledHealthSnapshotService
 from .runtime.data_root import DataRootResolver
 
 
@@ -188,6 +189,11 @@ class InstalledOperationsReadService:
         self.root = DataRootResolver(cli_data_root=data_root).resolve()
         self.stale_after = stale_after
         self.clock = clock
+        self._health = InstalledHealthSnapshotService(self.root, clock=clock)
+
+    def health_snapshot(self) -> dict[str, Any]:
+        """Return the shared authoritative installed-health projection."""
+        return self._health.snapshot().to_dict()
 
     def installed_status(self) -> dict[str, Any]:
         projection = _status(str(self.root))
@@ -325,12 +331,18 @@ class OperationsReadAPI:
                 body = self.service.installed_status()
                 status = 503 if body.get("availability") == "UNAVAILABLE" else 200
                 return APIResponse(status, body, headers)
+            if path == "/v1/health":
+                body = self.service.health_snapshot()
+                status = 503 if body.get("availability") == "UNAVAILABLE" else 200
+                return APIResponse(status, body, headers)
             match = _MISSION_PATH.fullmatch(path)
             if match:
                 return APIResponse(200, self.service.mission_detail(unquote(match.group(1))), headers)
             return APIResponse(404, self._error("ROUTE_NOT_FOUND", "Route was not found"), headers)
         except OperationsProjectionError as error:
             return APIResponse(error.status, self._error(error.code, str(error)), headers)
+        except InstalledHealthError as error:
+            return APIResponse(503, self._error(error.code, str(error)), headers)
         except Exception:
             return APIResponse(503, self._error("PROJECTION_UNAVAILABLE", "Read-only projection is unavailable"), headers)
 

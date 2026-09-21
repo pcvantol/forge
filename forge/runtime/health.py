@@ -17,7 +17,7 @@ from typing import Iterable
 
 HEALTH_SCHEMA_REVISION = "1.0"
 
-_IDENTIFIER = re.compile(r"^[a-z][a-z0-9_.:-]{0,127}$")
+_IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,127}$")
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$")
 

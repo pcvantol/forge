@@ -215,6 +215,59 @@
         ],
         "type": "object"
       },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {"const": "1"},
+          "availability": {"enum": ["AVAILABLE", "UNAVAILABLE"]},
+          "bounds": {
+            "additionalProperties": false,
+            "properties": {
+              "deadline_seconds": {"exclusiveMinimum": 0, "maximum": 10, "type": "number"},
+              "integrity_observations": {"const": 1},
+              "observation_limit": {"maximum": 16, "minimum": 1, "type": "integer"}
+            },
+            "required": ["deadline_seconds", "observation_limit", "integrity_observations"],
+            "type": "object"
+          },
+          "capabilities": {"items": {"type": "object"}, "type": "array"},
+          "capability_scope": {"items": {"type": "string"}, "type": "array"},
+          "checks": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "check_id": {"type": "string"},
+                "component_id": {"type": "string"},
+                "freshness": {"type": "string"},
+                "observation_state": {"type": ["string", "null"]},
+                "state": {"type": "string"}
+              },
+              "required": ["component_id", "check_id", "state", "freshness", "observation_state"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "component_ids": {"items": {"type": "string"}, "type": "array"},
+          "component_registry_revision": {"const": "1.0"},
+          "evaluated_at": {"format": "date-time", "type": "string"},
+          "installation_id": {"minLength": 1, "type": "string"},
+          "liveness": {"type": "object"},
+          "product": {"const": "forge"},
+          "product_version": {"type": "string"},
+          "read_only": {"const": true},
+          "runtime_id": {"minLength": 1, "type": "string"},
+          "schema_revision": {"const": "1.0"},
+          "source_observed_at": {"format": "date-time", "type": "string"},
+          "state": {"enum": ["HEALTHY", "DEGRADED", "UNAVAILABLE", "UNKNOWN"]}
+        },
+        "required": [
+          "api_version", "availability", "schema_revision", "component_registry_revision",
+          "product", "product_version", "runtime_id", "installation_id", "evaluated_at",
+          "source_observed_at", "capability_scope", "state", "liveness", "capabilities",
+          "checks", "component_ids", "read_only", "bounds"
+        ],
+        "type": "object"
+      },
       "StatusResponse": {
         "additionalProperties": false,
         "properties": {
@@ -281,6 +334,43 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/health": {
+      "get": {
+        "description": "Read one authoritative bounded installed Forge health snapshot.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/HealthResponse"}
+              }
+            },
+            "description": "Installed health is healthy or degraded with usable capability"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+              }
+            },
+            "description": "Bearer authentication is missing or invalid"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "#/components/schemas/HealthResponse"},
+                    {"$ref": "#/components/schemas/ErrorResponse"}
+                  ]
+                }
+              }
+            },
+            "description": "Installed health is unavailable or cannot be assessed safely"
+          }
+        },
+        "security": [{"bearerAuth": []}]
+      }
+    },
     "/v1/missions/{mission_id}": {
       "get": {
         "description": "Read one authoritative installed Mission projection without changing it.",

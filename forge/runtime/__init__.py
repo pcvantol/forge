@@ -45,6 +45,12 @@ from .health import (
     ReadinessState,
     evaluate_health,
 )
+from .component_registry import (
+    CANONICAL_COMPONENT_REGISTRY,
+    COMPONENT_REGISTRY_SCHEMA_REVISION,
+    ComponentDefinition,
+    ComponentRegistry,
+)
 from .runner import BootstrapMissionRunner, MissionRunnerError, RuntimePromptFactory
 from .service import ForgeRuntimeService, RuntimeServiceTick
 
@@ -53,4 +59,5 @@ __all__ = [
     "RUNTIME_SCHEMA_VERSION", "RuntimeDatabase", "RuntimeDatabaseError", "RuntimeIntegrityError", "RuntimeMaintenanceActive", "RuntimeDecisionEvidenceReference", "RuntimeEvidence",
     "RUNTIME_INSTANCE_VERSION", "RUNTIME_INITIALIZATION_VERSION", "RuntimeBootstrap", "RuntimeIdentity", "RuntimeInstance", "RuntimeLocation", "RuntimePlacement", "RuntimeRecovery", "RuntimeResolutionError", "RuntimeResolver", "repository_identity", "repository_uuid", "DataRootError", "DataRootResolver", "RUNTIME_DIRECTORIES",
     "HEALTH_SCHEMA_REVISION", "CapabilityReadiness", "CheckApplicability", "CheckPurpose", "CheckState", "HealthCheckDefinition", "HealthEvaluation", "HealthIdentity", "HealthObservation", "HealthState", "LivenessEvaluation", "LivenessState", "ObservationFreshness", "ObservationState", "ReadinessState", "evaluate_health",
+    "CANONICAL_COMPONENT_REGISTRY", "COMPONENT_REGISTRY_SCHEMA_REVISION", "ComponentDefinition", "ComponentRegistry",
 ]

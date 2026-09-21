@@ -185,7 +185,23 @@ def main(argv: list[str] | None = None) -> int:
     operations_api.add_argument("--credential-file", required=True)
     operations_api.add_argument("--host", default="127.0.0.1")
     operations_api.add_argument("--port", type=int, default=8765)
+    subparsers.add_parser("health", help="print one bounded read-only installed-health snapshot")
     args = parser.parse_args(argv)
+    if args.command == "health":
+        if args.data_root is None:
+            return _failure("health", ValueError("--data-root is required for health"))
+        from .operations_health import InstalledHealthError, InstalledHealthSnapshotService
+        try:
+            print(json.dumps(InstalledHealthSnapshotService(args.data_root).snapshot().to_dict(), sort_keys=True))
+            return 0
+        except InstalledHealthError as error:
+            print(json.dumps({
+                "command": "health",
+                "status": "ERROR",
+                "error": {"code": error.code, "message": str(error)},
+                "read_only": True,
+            }, sort_keys=True))
+            return 1
     if args.command == "mission":
         from . import mission_cli
         try:
