@@ -1,0 +1,416 @@
+{
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "1"
+          },
+          "error": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "message": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "read_only": {
+            "const": true
+          }
+        },
+        "required": [
+          "api_version",
+          "error",
+          "read_only"
+        ],
+        "type": "object"
+      },
+      "MissionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "1"
+          },
+          "availability": {
+            "const": "AVAILABLE"
+          },
+          "freshness": {
+            "enum": [
+              "CURRENT",
+              "STALE",
+              "UNKNOWN"
+            ]
+          },
+          "mission": {
+            "additionalProperties": true,
+            "properties": {
+              "action_ids": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "actions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "dependencies": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "intent_id": {
+                      "type": "string"
+                    },
+                    "intent_revision": {
+                      "type": "string"
+                    },
+                    "objective": {
+                      "type": "string"
+                    },
+                    "order": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "schema_version": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "schema_version",
+                    "order",
+                    "id",
+                    "intent_id",
+                    "intent_revision",
+                    "dependencies",
+                    "status",
+                    "objective",
+                    "expected_evidence"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "criteria": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "evidence_lineage": {
+                "additionalProperties": false,
+                "properties": {
+                  "criterion_assessment": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "criterion_assessment_history": {
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "execution_attempts": {
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "execution_evidence": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "repository_truth": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "execution_evidence",
+                  "execution_attempts",
+                  "repository_truth",
+                  "criterion_assessment",
+                  "criterion_assessment_history"
+                ],
+                "type": "object"
+              },
+              "mission_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "status": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "mission_id",
+              "status",
+              "revision",
+              "action_ids",
+              "criteria",
+              "actions",
+              "evidence_lineage"
+            ],
+            "type": "object"
+          },
+          "read_only": {
+            "const": true
+          },
+          "source_observed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "api_version",
+          "availability",
+          "freshness",
+          "source_observed_at",
+          "read_only",
+          "mission"
+        ],
+        "type": "object"
+      },
+      "StatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "1"
+          },
+          "availability": {
+            "enum": [
+              "AVAILABLE",
+              "UNAVAILABLE"
+            ]
+          },
+          "freshness": {
+            "enum": [
+              "CURRENT",
+              "STALE",
+              "UNKNOWN",
+              "UNAVAILABLE"
+            ]
+          },
+          "read_only": {
+            "const": true
+          },
+          "runtime": {
+            "additionalProperties": true,
+            "required": [
+              "product_version",
+              "data_root",
+              "initialized",
+              "runtime_status",
+              "execution_host_peer"
+            ],
+            "type": "object"
+          },
+          "source_observed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "api_version",
+          "availability",
+          "freshness",
+          "source_observed_at",
+          "read_only",
+          "runtime"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Forge Operations Read API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/missions/{mission_id}": {
+      "get": {
+        "description": "Read one authoritative installed Mission projection without changing it.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mission_id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissionResponse"
+                }
+              }
+            },
+            "description": "Mission projection is available"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Mission reference is invalid"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing or invalid"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Mission is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Mission identity is ambiguous or inconsistent"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Mission projection is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "description": "Read the authoritative installed Forge runtime status projection.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Status projection is available"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing or invalid"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Installed runtime projection is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8765"
+    }
+  ]
+}

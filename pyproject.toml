@@ -38,4 +38,4 @@ exclude = ["tests", "tests.*"]
 version = {attr = "forge._version.__version__"}
 
 [tool.setuptools.package-data]
-forge = ["schemas/*.json"]
+forge = ["schemas/*.json", "api/*.json"]

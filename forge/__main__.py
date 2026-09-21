@@ -181,6 +181,10 @@ def main(argv: list[str] | None = None) -> int:
         default=120.0,
         help="bounded interactive setup timeout in seconds (maximum: 120)",
     )
+    operations_api = subparsers.add_parser("operations-api", help="serve authenticated read-only runtime projections")
+    operations_api.add_argument("--credential-file", required=True)
+    operations_api.add_argument("--host", default="127.0.0.1")
+    operations_api.add_argument("--port", type=int, default=8765)
     args = parser.parse_args(argv)
     if args.command == "mission":
         from . import mission_cli
@@ -338,6 +342,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(service.preflight(), sort_keys=True))
         except (PeerConfigurationError, ValueError) as error:
             return _failure(f"execution-host {args.execution_host_command}", error)
+    elif args.command == "operations-api":
+        if args.data_root is None:
+            return _failure("operations-api", ValueError("--data-root is required for operations-api"))
+        try:
+            from .operations_read_api import serve
+            serve(args.data_root, args.credential_file, host=args.host, port=args.port)
+        except (OSError, ValueError) as error:
+            return _failure("operations-api", error)
     return 0
 
 
