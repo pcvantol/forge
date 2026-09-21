@@ -94,9 +94,11 @@ class InstalledOperationsReadService:
 
     def installed_status(self) -> dict[str, Any]:
         projection = _status(str(self.root))
-        availability = "AVAILABLE"
-        if projection.get("runtime_status") == "unavailable":
-            availability = "UNAVAILABLE"
+        availability = (
+            "AVAILABLE"
+            if projection.get("initialized") is True and projection.get("runtime_status") != "unavailable"
+            else "UNAVAILABLE"
+        )
         observed_at = self._runtime_observed_at() if projection.get("initialized") else None
         return _redact({
             "api_version": API_VERSION,

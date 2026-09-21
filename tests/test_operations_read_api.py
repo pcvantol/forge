@@ -74,6 +74,20 @@ class TestStatusEndpoint(_InstalledFixture):
         self.assertEqual(unavailable.body["availability"], "UNAVAILABLE")
         self.assertEqual(unavailable.body["freshness"], "UNAVAILABLE")
 
+    def test_absent_runtime_is_unavailable_without_initialization(self) -> None:
+        with TemporaryDirectory() as temporary:
+            absent_root = Path(temporary) / "absent-forge-runtime"
+            api = OperationsReadAPI(InstalledOperationsReadService(absent_root), CREDENTIAL)
+
+            response = api.handle("GET", "/v1/status", "Bearer " + CREDENTIAL)
+
+            self.assertEqual(response.status, 503)
+            self.assertEqual(response.body["availability"], "UNAVAILABLE")
+            self.assertEqual(response.body["freshness"], "UNAVAILABLE")
+            self.assertFalse(response.body["runtime"]["initialized"])
+            self.assertEqual(response.body["runtime"]["runtime_status"], "uninitialized")
+            self.assertFalse(absent_root.exists())
+
 
 class TestMissionEndpoint(_InstalledFixture):
     def test_mission_lineage_read_only(self) -> None:
