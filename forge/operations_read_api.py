@@ -6,6 +6,7 @@ and therefore cannot initialize, migrate, dispatch, or otherwise mutate Forge.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,11 +15,14 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
-from typing import Any, Mapping
+from threading import BoundedSemaphore
+from typing import Any, Iterator, Mapping
 from urllib.parse import unquote, urlsplit
 
 from .__main__ import _status
+from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
 from .mission_cli import _status_projection as mission_status_projection
+from .models.producer import redact_action_summary
 from .runtime.data_root import DataRootResolver
 
 
@@ -31,6 +35,10 @@ _KEYCHAIN_REFERENCE = re.compile(r"(?i)\bkeychain://[^\s,;]+")
 _URL_CREDENTIALS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@")
 _TOKEN_VALUE = re.compile(
     r"(?i)\b(?:github_pat_[a-z0-9_]+|gh[pousr]_[a-z0-9]+|sk-[a-z0-9_-]{8,})\b"
+)
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(api[ _-]?key|authorization|bearer|client[ _-]?secret|password|secret|token)\b"
+    r"\s*([:=])\s*[^\s,;]+"
 )
 
 
@@ -66,7 +74,8 @@ def _freshness(observed_at: object, *, now: datetime, stale_after: timedelta) ->
     observed = _parse_time(observed_at)
     if observed is None:
         return "UNKNOWN"
-    return "STALE" if now - observed > stale_after else "CURRENT"
+    age = now - observed
+    return "STALE" if age < timedelta(0) or age > stale_after else "CURRENT"
 
 
 def _redact(value: Any) -> Any:
@@ -82,10 +91,91 @@ def _redact(value: Any) -> Any:
         redacted = _BEARER_VALUE.sub("Bearer [REDACTED]", value)
         redacted = _KEYCHAIN_REFERENCE.sub("[REDACTED_CREDENTIAL_REFERENCE]", redacted)
         redacted = _URL_CREDENTIALS.sub(r"\1[REDACTED]@", redacted)
-        return _TOKEN_VALUE.sub("[REDACTED]", redacted)
+        redacted = _TOKEN_VALUE.sub("[REDACTED]", redacted)
+        return _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", redacted)
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)
+
+
+def _safe_text(value: object) -> str:
+    """Project one governed text field through the bounded producer redactor."""
+    if not isinstance(value, str):
+        return ""
+    return redact_action_summary(value)
+
+
+def _selected(document: object, fields: tuple[str, ...]) -> dict[str, Any] | None:
+    """Copy only named public lineage fields; arbitrary host mappings never cross the API."""
+    if not isinstance(document, Mapping):
+        return None
+    return {field: _redact(document[field]) for field in fields if field in document}
+
+
+_REPOSITORY_TRUTH_FIELDS = ("source_id", "revision", "locator", "content_digest")
+_REPOSITORY_EVIDENCE_FIELDS = (
+    "mission_id", "intent_id", "intent_revision", "action_id", "runtime_prompt_id",
+    "correlation_id", "host_run_id", "repository_id", "repository_revision",
+    "candidate_revision", "report_id", "content_digest",
+)
+_EXECUTION_EVIDENCE_FIELDS = (
+    "host_id", "receipt_id", "host_run_id", "correlation_id", "report_id", "outcome",
+    "retry_of_correlation_id", "execution_started_at", "execution_completed_at", "execution_duration_ms",
+)
+
+
+def _project_repository_evidence(document: object) -> dict[str, Any] | None:
+    return _selected(document, _REPOSITORY_EVIDENCE_FIELDS)
+
+
+def _project_execution_evidence(document: object) -> dict[str, Any] | None:
+    projected = _selected(document, _EXECUTION_EVIDENCE_FIELDS)
+    if projected is None:
+        return None
+    repository = document.get("repository_evidence") if isinstance(document, Mapping) else None
+    projected["repository_evidence"] = _project_repository_evidence(repository)
+    return projected
+
+
+def _project_action(document: object) -> dict[str, Any]:
+    if not isinstance(document, Mapping):
+        return {}
+    projected = _selected(document, (
+        "schema_version", "order", "id", "intent_id", "intent_revision", "dependencies", "status",
+    )) or {}
+    projected["objective"] = _safe_text(document.get("objective"))
+    expected = document.get("expected_evidence", ())
+    projected["expected_evidence"] = [
+        _safe_text(item) for item in expected if isinstance(item, str)
+    ] if isinstance(expected, (list, tuple)) else []
+    return projected
+
+
+def _project_assessment(document: object) -> dict[str, Any] | None:
+    if not isinstance(document, Mapping):
+        return None
+    projected = _selected(document, (
+        "schema_version", "mission_id", "mission_digest", "evidence_digest",
+        "all_required_criteria_proven", "evaluator_version",
+    )) or {}
+    criteria = []
+    for item in document.get("criteria", ()):
+        if not isinstance(item, Mapping):
+            continue
+        criterion = _selected(item, ("criterion_id", "status", "contract_digest")) or {}
+        criterion["criterion"] = _safe_text(item.get("criterion"))
+        criterion["reason"] = _safe_text(item.get("reason"))
+        criterion["execution_evidence"] = [
+            _selected(reference, (
+                "receipt_id", "action_id", "report_id", "repository_revision",
+                "candidate_revision", "repository_evidence_digest",
+            ))
+            for reference in item.get("execution_evidence", ()) if isinstance(reference, Mapping)
+        ]
+        criterion["repository_truth"] = _selected(item.get("repository_truth"), _REPOSITORY_TRUTH_FIELDS)
+        criteria.append(criterion)
+    projected["criteria"] = criteria
+    return projected
 
 
 class InstalledOperationsReadService:
@@ -112,7 +202,13 @@ class InstalledOperationsReadService:
             )
             else "UNAVAILABLE"
         )
-        observed_at = self._runtime_observed_at() if projection.get("initialized") else None
+        observed_at = None
+        if availability == "AVAILABLE":
+            try:
+                with self._runtime_snapshot() as (_connection, metadata):
+                    observed_at = metadata.get("last_access_at")
+            except (PeerConfigurationError, OSError, sqlite3.Error):
+                availability = "UNAVAILABLE"
         return _redact({
             "api_version": API_VERSION,
             "availability": availability,
@@ -127,21 +223,15 @@ class InstalledOperationsReadService:
     def mission_detail(self, mission_id: str) -> dict[str, Any]:
         if not mission_id or len(mission_id) > 128 or any(ord(character) < 33 for character in mission_id):
             raise OperationsProjectionError("MISSION_REFERENCE_INVALID", "Mission reference is invalid", status=400)
-        database = self.root / "forge.db"
-        connection = None
         try:
-            connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-            connection.execute("PRAGMA query_only = ON")
-            projection, state = mission_status_projection(connection, mission_id)
+            with self._runtime_snapshot() as (connection, _metadata):
+                projection, state = mission_status_projection(connection, mission_id)
         except ValueError as error:
             if str(error) == "unknown Mission":
                 raise OperationsProjectionError("MISSION_MISSING", "Mission was not found", status=404) from None
             raise OperationsProjectionError("MISSION_UNAVAILABLE", "Mission projection is unavailable", status=503) from error
-        except (OSError, sqlite3.Error):
+        except (PeerConfigurationError, OSError, sqlite3.Error):
             raise OperationsProjectionError("MISSION_UNAVAILABLE", "Mission projection is unavailable", status=503) from None
-        finally:
-            if connection is not None:
-                connection.close()
         stored_mission_id = state.mission.get("id") if isinstance(state.mission, Mapping) else None
         if state.mission_id != mission_id or stored_mission_id != mission_id or projection.get("mission_id") != mission_id:
             raise OperationsProjectionError(
@@ -153,14 +243,14 @@ class InstalledOperationsReadService:
             valid_times, key=lambda item: _parse_time(item) or datetime.min.replace(tzinfo=UTC),
         ) if valid_times else None
         projection.update({
-            "criteria": list(state.mission.get("acceptance_criteria", ())),
-            "actions": [dict(item) for item in state.actions],
+            "criteria": [_safe_text(item) for item in state.mission.get("acceptance_criteria", ())],
+            "actions": [_project_action(item) for item in state.actions],
             "evidence_lineage": {
-                "execution_evidence": state.execution_evidence,
-                "execution_attempts": [dict(item) for item in state.execution_history],
-                "repository_truth": state.repository_truth,
-                "criterion_assessment": state.completion,
-                "criterion_assessment_history": [dict(item) for item in state.completion_history],
+                "execution_evidence": _project_execution_evidence(state.execution_evidence),
+                "execution_attempts": [_project_execution_evidence(item) for item in state.execution_history],
+                "repository_truth": _selected(state.repository_truth, _REPOSITORY_TRUTH_FIELDS),
+                "criterion_assessment": _project_assessment(state.completion),
+                "criterion_assessment_history": [_project_assessment(item) for item in state.completion_history],
             },
         })
         return _redact({
@@ -172,22 +262,41 @@ class InstalledOperationsReadService:
             "mission": projection,
         })
 
-    def _runtime_observed_at(self) -> str | None:
+    @contextmanager
+    def _runtime_snapshot(self) -> Iterator[tuple[sqlite3.Connection, dict[str, str]]]:
+        """Validate the installed identity, then hold one consistent read transaction."""
+        readback = read_peer_configuration(self.root)
         database = self.root / "forge.db"
-        if not database.is_file():
-            return None
         connection = None
         try:
-            connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-            row = connection.execute(
-                "SELECT value FROM runtime_metadata WHERE key = 'last_access_at'"
-            ).fetchone()
-        except sqlite3.Error:
-            return None
+            connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+            connection.execute("PRAGMA query_only = ON")
+            connection.execute("BEGIN")
+            if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise PeerConfigurationError("Forge runtime database integrity check failed")
+            metadata = dict(connection.execute("SELECT key, value FROM runtime_metadata"))
+            try:
+                schema = int(metadata["schema_version"])
+                migration = int(metadata["migration_version"])
+                user_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            except (KeyError, TypeError, ValueError):
+                raise PeerConfigurationError("Forge runtime storage schema is unreadable") from None
+            marker_path = self.root / "instance" / "runtime-instance.json"
+            marker = marker_path.read_text(encoding="utf-8").strip()
+            if (
+                metadata.get("runtime_id") != readback.runtime_id
+                or marker != readback.runtime_id
+                or schema != migration
+                or schema != user_version
+                or schema != readback.storage_schema
+            ):
+                raise PeerConfigurationError("Forge runtime identity or storage schema changed during readback")
+            yield connection, metadata
+            if marker_path.read_text(encoding="utf-8").strip() != readback.runtime_id:
+                raise PeerConfigurationError("Forge runtime identity changed during readback")
         finally:
             if connection is not None:
                 connection.close()
-        return row[0] if row and isinstance(row[0], str) else None
 
 class OperationsReadAPI:
     """Small transport adapter with constant-time bearer authentication."""
@@ -238,6 +347,30 @@ class OperationsReadAPI:
 
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
+    request_queue_size = 16
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self._slots = BoundedSemaphore(16)
+        super().__init__(*args, **kwargs)
+
+    def get_request(self):
+        request, address = super().get_request()
+        request.settimeout(5.0)
+        return request, address
+
+    def process_request(self, request, client_address) -> None:
+        self._slots.acquire()
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
 
 def make_server(host: str, port: int, api: OperationsReadAPI) -> ThreadingHTTPServer:

@@ -74,6 +74,17 @@ class TestStatusEndpoint(_InstalledFixture):
         self.assertEqual(unavailable.body["availability"], "UNAVAILABLE")
         self.assertEqual(unavailable.body["freshness"], "UNAVAILABLE")
 
+    def test_future_runtime_timestamp_is_fail_closed(self) -> None:
+        with self.database._connection:  # noqa: SLF001 - controlled clock-skew fixture
+            self.database._connection.execute(  # noqa: SLF001
+                "UPDATE runtime_metadata SET value = '2099-01-01T00:00:00Z' WHERE key = 'last_access_at'"
+            )
+
+        response = self.api.handle("GET", "/v1/status", "Bearer " + CREDENTIAL)
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body["freshness"], "STALE")
+
     def test_failed_installed_runtime_validation_is_unavailable(self) -> None:
         marker = self.root / "instance" / "runtime-instance.json"
         marker.write_text("different-runtime\n", encoding="utf-8")
@@ -219,6 +230,57 @@ class TestMissionEndpoint(_InstalledFixture):
         self.assertEqual(ambiguous.status, 409)
         self.assertEqual(ambiguous.body["error"]["code"], "MISSION_AMBIGUOUS")
 
+    def test_mission_requires_the_validated_installed_runtime(self) -> None:
+        marker = self.root / "instance" / "runtime-instance.json"
+        marker.write_text("different-runtime\n", encoding="utf-8")
+
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+
+        self.assertEqual(response.status, 503)
+        self.assertEqual(response.body["error"]["code"], "MISSION_UNAVAILABLE")
+
+    def test_free_text_and_unknown_evidence_fields_cannot_expose_credentials(self) -> None:
+        assignments = "api_key=alpha password:bravo client_secret=charlie token=delta"
+        mission = ArchitectureMission(
+            id="MISSION-0043", candidate_id="CANDIDATE-0043", title="Safe projection",
+            summary="Expose bounded lineage", business_objective="Keep Mission state observable",
+            business_value="Support local operations", architecture_review_reference="review-0043",
+            mission_recommendation_reference="recommendation-0043",
+            acceptance_criteria=("Never expose " + assignments,),
+            status=ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
+        )
+        reference = IntentReference("source", "1", "docs/source.md")
+        intent = EngineeringIntent(
+            "INTENT-0043", "1", "Projection", "Project bounded state",
+            IntentCategory.IMPLEMENTATION,
+            IntentTraceability((reference,), (reference,), (reference,), (reference,), (reference,)),
+        )
+        action = EngineeringAction(
+            1, "ACTION-0043", intent.id, "1", "Observe " + assignments, ("evidence " + assignments,),
+        )
+        store = MissionStateStore(self.database, data_root=str(self.root))
+        state = store.create(mission, (intent,), (action,), occurred_at="2026-09-21T05:00:00Z")
+        state = replace(
+            state,
+            execution_history=({
+                "correlation_id": "correlation-0043", "host_run_id": "run-0043",
+                "report_id": "report-0043", "receipt_id": "receipt-0043", "outcome": "WAITING",
+                "provider_payload": {"unmodelled": assignments},
+            },),
+        )
+        self.database.save_mission_state(state)
+
+        response = self.api.handle("GET", "/v1/missions/MISSION-0043", "Bearer " + CREDENTIAL)
+
+        self.assertEqual(response.status, 200)
+        rendered = json.dumps(response.body, sort_keys=True)
+        for secret in ("alpha", "bravo", "charlie", "delta", "provider_payload", "unmodelled"):
+            self.assertNotIn(secret, rendered)
+        self.assertIn("api_key=[REDACTED]", rendered)
+        self.assertIn("password:[REDACTED]", rendered)
+        self.assertIn("client_secret=[REDACTED]", rendered)
+        self.assertIn("token=[REDACTED]", rendered)
+
     def test_mutating_methods_are_rejected_without_runtime_changes(self) -> None:
         before = self.snapshot()
         response = self.api.handle("POST", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
@@ -269,3 +331,16 @@ class TestTransportContract(unittest.TestCase):
         )
         self.assertTrue(any(item["request"]["url"].endswith("/v1/status") for item in requests))
         self.assertTrue(any("/v1/missions/" in item["request"]["url"] for item in requests))
+        schemas = openapi["components"]["schemas"]
+        self.assertEqual(
+            set(schemas),
+            {"ErrorResponse", "MissionResponse", "StatusResponse"},
+        )
+        for path in openapi["paths"].values():
+            for response in path["get"]["responses"].values():
+                media = response["content"]["application/json"]
+                self.assertRegex(media["schema"]["$ref"], r"^#/components/schemas/")
+        self.assertEqual(
+            openapi["components"]["schemas"]["MissionResponse"]["required"],
+            ["api_version", "availability", "freshness", "source_observed_at", "read_only", "mission"],
+        )
