@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.27",
+  "classification_rationale": "protected main f65e9c8 operations read API hardening",
+  "component": "product",
+  "event_lineage": "protected main f65e9c8 operations read API hardening",
+  "expected_head": "f65e9c8366633b0272f5348ddf32c566b5301fd8",
+  "operation_id": "forge-release-prep-2.7.28-20260921",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.28"
+}
