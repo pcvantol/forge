@@ -101,7 +101,7 @@ class EpSimulatorTests(unittest.TestCase):
                     self.assertEqual(evidence.outcome.value.upper(), outcome)
 
     def test_delayed_terminal_duplicate_readback_and_restart_reconnect_are_idempotent(self) -> None:
-        state = self._state(EpSimulatorScenario(name="delayed", terminal_after_reads=2))
+        state = self._state(EpSimulatorScenario(name="delayed", terminal_after_reads=3))
         request = _request()
         server = EpSimulatorServer(state).start()
         try:
@@ -122,7 +122,7 @@ class EpSimulatorTests(unittest.TestCase):
             self.assertEqual(len(state.submission_ids()), 1)
 
     def test_forge_restart_during_polling_reuses_persisted_correlation_without_resubmit(self) -> None:
-        state = self._state(EpSimulatorScenario(name="polling", terminal_after_reads=1))
+        state = self._state(EpSimulatorScenario(name="polling", terminal_after_reads=2))
         request = _request()
         with EpSimulatorServer(state) as server:
             host = self._host(server)
