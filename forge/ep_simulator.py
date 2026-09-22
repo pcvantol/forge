@@ -255,6 +255,226 @@ class EpSimulatorState:
                 return json.loads(json.dumps(item.terminal_readback))
             return readback
 
+    def complete(
+        self,
+        submission_id: str,
+        *,
+        outcome: str = "COMPLETE",
+        assurance: str = "PASS",
+        quality_review: str = "PASS",
+        security_review: str = "PASS",
+        delivery_revision: str | None = None,
+    ) -> None:
+        """Produce one strict v1.4 terminal result from the accepted Forge envelope.
+
+        This builder is deliberately independent from Forge's terminal parser.
+        It models only the externally versioned EP contract and is therefore
+        suitable for success, provider/validation/assurance/delivery failures.
+        """
+        normalized_outcome = outcome.upper()
+        if normalized_outcome not in {"COMPLETE", "FAILED", "BLOCKED"}:
+            raise ValueError("EP simulator terminal outcome is unsupported")
+        if assurance not in {"PASS", "FAIL", "UNRESOLVED", "NOT_RECORDED"}:
+            raise ValueError("EP simulator assurance result is unsupported")
+        if assurance == "NOT_RECORDED":
+            quality_review = security_review = "NOT_RECORDED"
+        elif quality_review not in {"PASS", "FAIL", "UNRESOLVED"} or security_review not in {
+            "PASS", "FAIL", "UNRESOLVED"
+        }:
+            raise ValueError("EP simulator assurance review result is unsupported")
+
+        with self._lock:
+            item = self._by_id.get(submission_id)
+            if item is None:
+                raise ValueError("EP simulator submission does not exist")
+            payload = item.payload
+            forge_execution = payload["constraints"]["forge_execution"]
+            revision_binding = payload["constraints"]["repository_revision_binding"]
+            requested = revision_binding.get("requested_revision")
+            allowed = revision_binding.get("allowed_baseline_revision")
+            baseline = allowed or requested
+            if not isinstance(baseline, str) or len(baseline) != 40:
+                raise ValueError("EP simulator requires a bound repository baseline")
+            candidate = sha256(("candidate:" + submission_id).encode()).hexdigest()[:40]
+            if normalized_outcome == "COMPLETE":
+                revision = delivery_revision or sha256(("delivery:" + submission_id).encode()).hexdigest()[:40]
+                delivery_qualified = True
+            else:
+                revision = None
+                delivery_qualified = False
+            if assurance == "NOT_RECORDED":
+                candidate_value = None
+                assurance_document = {
+                    "status": "NOT_RECORDED",
+                    "profile": None,
+                    "quality_review": "NOT_RECORDED",
+                    "security_review": "NOT_RECORDED",
+                    "repair_rounds": {"used": 0, "maximum": 3},
+                    "findings": {"open_blocking": 0, "open_non_blocking": 0, "artifact": None},
+                }
+            else:
+                candidate_value = candidate
+                assurance_document = {
+                    "status": assurance,
+                    "profile": {
+                        "version": "simulator-validation-profile@1",
+                        "digest": "sha256:" + sha256(("profile:" + submission_id).encode()).hexdigest(),
+                        "candidate_sha": candidate,
+                    },
+                    "quality_review": quality_review,
+                    "security_review": security_review,
+                    "repair_rounds": {"used": 0, "maximum": 3},
+                    "findings": {
+                        "open_blocking": int(quality_review == "FAIL" or security_review == "FAIL"),
+                        "open_non_blocking": 0,
+                        "artifact": None,
+                    },
+                }
+            started = "2026-09-22T00:00:00+00:00"
+            completed = "2026-09-22T00:00:01+00:00"
+            transition = {
+                "status": "ALLOWED" if allowed is not None else "EXACT",
+                "from": requested,
+                "to": baseline,
+                "allowed_to": allowed,
+            }
+            artifact_id = "terminal-evidence:" + item.run_id
+            artifact_document: dict[str, Any] = {
+                "artifact_type": "EP_TERMINAL_EVIDENCE",
+                "contract_version": "1.4",
+                "submission": {
+                    "id": item.submission_id,
+                    "project_id": self.project_id,
+                    "repository_id": self.repository_id,
+                    "accepted_request_digest": item.accepted_digest,
+                },
+                "producer": dict(payload["producer"]),
+                "correlation": {
+                    "correlation_id": payload["correlation_id"],
+                    "mission_id": payload["mission_id"],
+                    "engineering_action_id": payload["engineering_action_id"],
+                },
+                "provenance": dict(forge_execution),
+                "run": {
+                    "id": item.run_id,
+                    "outcome": normalized_outcome,
+                    "delivery_qualified": delivery_qualified,
+                    "execution_started_at": started,
+                    "execution_completed_at": completed,
+                    "execution_duration_ms": 1000,
+                },
+                "host_execution": {
+                    "contract_version": "1.0",
+                    "start": {
+                        "status": "AVAILABLE",
+                        "target_branch": "main",
+                        "target_commit": baseline,
+                        "checkout_identity_digest": "sha256:" + sha256(
+                            ("checkout:" + submission_id).encode()
+                        ).hexdigest(),
+                        "tracked_file_count": 1,
+                        "inventory_digest": "sha256:" + sha256(
+                            ("inventory:start:" + submission_id).encode()
+                        ).hexdigest(),
+                    },
+                    "terminal": {
+                        "status": "AVAILABLE",
+                        "tracked_file_count": 1,
+                        "inventory_digest": "sha256:" + sha256(
+                            ("inventory:end:" + submission_id).encode()
+                        ).hexdigest(),
+                        "worktree_state": "CLEAN",
+                        "diff": {"modified": 1, "created": 0, "deleted": 0, "renamed": 0},
+                        "activity": {"provider_invocations": 1, "host_validation_actions": 1},
+                    },
+                },
+                "repository": {
+                    "id": self.repository_id,
+                    "requested_revision": requested,
+                    "execution_baseline": baseline,
+                    "baseline_transition": transition,
+                    "candidate": candidate_value,
+                    "revision": revision,
+                    "revision_required": normalized_outcome == "COMPLETE",
+                },
+                "delivery": {
+                    "status": "DELIVERED" if delivery_qualified else "NOT_DELIVERED",
+                    "revision": revision,
+                },
+                "report": {"id": "report:" + item.run_id, "terminal_state": normalized_outcome},
+                "references": {
+                    "finalization": "finalization:" + item.run_id,
+                    "quality": [],
+                    "repair": [],
+                    "validation": [{"command": "simulator:validation", "result": (
+                        "PASS" if assurance == "PASS" else "FAIL"
+                    )}],
+                },
+                "assurance": assurance_document,
+            }
+            raw = _canonical_bytes(artifact_document) + b"\n"
+            readback: dict[str, Any] = {
+                "contract_version": "1.2",
+                "submission": {
+                    "id": item.submission_id,
+                    "project_id": self.project_id,
+                    "repository_id": self.repository_id,
+                    "state": normalized_outcome,
+                    "transport": "HTTP",
+                    "admission": "ADMITTED",
+                    "created_at": "2026-09-22T00:00:00+00:00",
+                    "accepted_request_digest": item.accepted_digest,
+                },
+                "producer": dict(payload["producer"]),
+                "correlation": artifact_document["correlation"],
+                "provenance": {"status": "PERSISTED", "forge_execution": dict(forge_execution)},
+                "disposition": {
+                    "state": normalized_outcome,
+                    "terminal": True,
+                    "execution_eligible": False,
+                    "revision": 1,
+                    "operation_id": None,
+                    "event_reference": None,
+                    "reason": "SIMULATED_TERMINAL",
+                    "actor_reference": "EP_SIMULATOR",
+                    "recorded_at": completed,
+                },
+                "run": {
+                    "id": item.run_id,
+                    "state": normalized_outcome,
+                    "terminal": True,
+                    "operator_resolution": "NONE",
+                    "updated_at": completed,
+                    "execution_started_at": started,
+                    "execution_completed_at": completed,
+                    "execution_duration_ms": 1000,
+                },
+                "result": {
+                    "terminal": True,
+                    "outcome": normalized_outcome,
+                    "delivery_qualified": delivery_qualified,
+                },
+                "evidence": {
+                    "status": "AVAILABLE",
+                    "repository": {"id": self.repository_id, "revision": revision},
+                    "terminal_artifact": {
+                        "id": artifact_id,
+                        "content_type": "application/json",
+                        "digest_algorithm": "sha256",
+                        "digest": "sha256:" + sha256(raw).hexdigest(),
+                    },
+                },
+            }
+            item.terminal_readback = readback
+            item.terminal_artifact = raw
+            item.terminal_artifact_id = artifact_id
+            self.audit.append({
+                "event": "terminal_produced",
+                "submission_id": submission_id,
+                "outcome": normalized_outcome,
+                "assurance": assurance,
+            })
+
     def seed_terminal(self, submission_id: str, readback: Mapping[str, Any], artifact: bytes) -> None:
         """Attach independently constructed terminal EP evidence to one accepted request."""
         if not isinstance(artifact, bytes) or not artifact:
