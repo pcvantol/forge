@@ -36,6 +36,53 @@
         ],
         "type": "object"
       },
+      "HealthResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "api_version": {
+            "const": "1"
+          },
+          "installation_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "observation_provenance": {
+            "type": "object"
+          },
+          "outcome": {
+            "enum": [
+              "HEALTHY",
+              "FAILED",
+              "STALE",
+              "EXPIRED",
+              "MISSING",
+              "TIMED_OUT",
+              "FUTURE",
+              "UNKNOWN"
+            ]
+          },
+          "read_only": {
+            "const": true
+          },
+          "registry": {
+            "type": "object"
+          },
+          "runtime_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_version",
+          "outcome",
+          "runtime_id",
+          "installation_id",
+          "read_only",
+          "registry",
+          "observation_provenance"
+        ],
+        "type": "object"
+      },
       "MissionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -281,6 +328,55 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/health": {
+      "get": {
+        "description": "Assess installed Forge health from the canonical component registry and bounded runtime observations.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "The installed runtime is healthy"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing or invalid"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/HealthResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "The installed runtime is not healthy or cannot be assessed"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/missions/{mission_id}": {
       "get": {
         "description": "Read one authoritative installed Mission projection without changing it.",

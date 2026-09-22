@@ -122,6 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     finish_reset.add_argument("--verification-digest")
     finish_reset.add_argument("--cancel-before-apply", action="store_true")
     subparsers.add_parser("status", help="print read-only runtime status as JSON")
+    health = subparsers.add_parser("health", help="assess installed Forge health without mutation")
+    health_commands = health.add_subparsers(dest="health_command", required=True)
+    health_snapshot = health_commands.add_parser("snapshot", help="print one bounded installed-health snapshot")
+    health_snapshot.add_argument("--timeout-seconds", type=float, default=2.0)
     mission = subparsers.add_parser("mission", help="govern and run one selected Mission")
     mission_commands = mission.add_subparsers(dest="mission_command", required=True)
     for name, description in (
@@ -186,6 +190,23 @@ def main(argv: list[str] | None = None) -> int:
     operations_api.add_argument("--host", default="127.0.0.1")
     operations_api.add_argument("--port", type=int, default=8765)
     args = parser.parse_args(argv)
+    if args.command == "health":
+        if args.data_root is None:
+            return _failure("health snapshot", ValueError("--data-root is required for health snapshot"))
+        try:
+            from .installed_health import InstalledHealthError, installed_health_snapshot
+            result = installed_health_snapshot(args.data_root, timeout_seconds=args.timeout_seconds)
+            print(json.dumps(result, sort_keys=True))
+            return 0 if result["outcome"] == "HEALTHY" else 2
+        except InstalledHealthError as error:
+            print(json.dumps({
+                "command": "health snapshot",
+                "status": "ERROR",
+                "error": {"code": error.code, "message": str(error)},
+            }, sort_keys=True))
+            return 1
+        except (OSError, ValueError) as error:
+            return _failure("health snapshot", error)
     if args.command == "mission":
         from . import mission_cli
         try:

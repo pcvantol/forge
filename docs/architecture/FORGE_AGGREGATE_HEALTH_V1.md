@@ -79,3 +79,23 @@ FSH-SERVICES; it does not wait for Console, Workspace or the universal installer
 Actual service-account startup/reboot evidence remains a separate lifecycle
 requirement. No workflow, runtime, schema, service or live authorization changes
 are made by this documentation.
+
+## Implemented installed snapshot slice
+
+The installed Server now exposes one bounded read-only assessment as
+`forge --data-root ROOT health snapshot` and authenticated `GET /v1/health`.
+Both transports consume the packaged
+`forge/api/installed-health-component-registry-1.0.json` registry and the same
+collector. The response binds registry version and digest, the
+`validation-profile-registry:FULL@1.0` profile, runtime and installation
+identity, observation provenance, and one of the distinct healthy, failed,
+stale, expired, missing, timed-out, future, or unknown outcomes.
+
+The collector reads only the installed identity marker, runtime metadata,
+dispatcher state, schema revisions, and one bounded SQLite integrity result. It
+uses an immutable read when no SQLite sidecars exist and a bounded temporary
+copy when an active WAL snapshot exists, so the installed database, WAL, and SHM
+are not changed. It does not query Mission or execution records or import a
+provider. Registry and runtime schemas newer than the supported reader are
+rejected. This is the installed-health slice only; it does not claim the other
+FH-Q cases or service-account/reboot qualification complete.

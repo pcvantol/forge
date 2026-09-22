@@ -21,6 +21,7 @@ from urllib.parse import unquote, urlsplit
 
 from .__main__ import _status
 from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
+from .installed_health import InstalledHealthError, InstalledHealthSnapshotService
 from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
 from .runtime.data_root import DataRootResolver
@@ -262,6 +263,12 @@ class InstalledOperationsReadService:
             "mission": projection,
         })
 
+    def installed_health_snapshot(self) -> dict[str, Any]:
+        """Return the canonical bounded installed-health assessment."""
+        return InstalledHealthSnapshotService(
+            self.root, clock=self.clock,
+        ).installed_health_snapshot()
+
     @contextmanager
     def _runtime_snapshot(self) -> Iterator[tuple[sqlite3.Connection, dict[str, str]]]:
         """Validate the installed identity, then hold one consistent read transaction."""
@@ -325,12 +332,17 @@ class OperationsReadAPI:
                 body = self.service.installed_status()
                 status = 503 if body.get("availability") == "UNAVAILABLE" else 200
                 return APIResponse(status, body, headers)
+            if path == "/v1/health":
+                body = self.service.installed_health_snapshot()
+                return APIResponse(200 if body.get("outcome") == "HEALTHY" else 503, body, headers)
             match = _MISSION_PATH.fullmatch(path)
             if match:
                 return APIResponse(200, self.service.mission_detail(unquote(match.group(1))), headers)
             return APIResponse(404, self._error("ROUTE_NOT_FOUND", "Route was not found"), headers)
         except OperationsProjectionError as error:
             return APIResponse(error.status, self._error(error.code, str(error)), headers)
+        except InstalledHealthError as error:
+            return APIResponse(503, self._error(error.code, str(error)), headers)
         except Exception:
             return APIResponse(503, self._error("PROJECTION_UNAVAILABLE", "Read-only projection is unavailable"), headers)
 
