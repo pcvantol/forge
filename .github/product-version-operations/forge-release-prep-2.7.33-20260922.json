@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.32",
+  "classification_rationale": "Bounded same-schema installer support for qualified runtime contract changes",
+  "component": "product",
+  "event_lineage": "Forge installed runtime completion before Mission 3 acceptance",
+  "expected_head": "10e9918f5f9fb05fbe3ce81cb385df94a725dea8",
+  "operation_id": "forge-release-prep-2.7.33-20260922",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.33"
+}
