@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.31",
+  "classification_rationale": "Mission 3 authoritative installed-health and readiness delivery",
+  "component": "product",
+  "event_lineage": "Mission 3 authoritative installed-health and readiness delivery",
+  "expected_head": "b5436046659e1edba08ba78077c0e5aa3c9320ed",
+  "operation_id": "forge-release-prep-2.7.32-20260922",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.32"
+}
