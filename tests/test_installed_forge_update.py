@@ -294,7 +294,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 "github_release": {"draft": False},
             },
         }, sort_keys=True), encoding="utf-8")
-        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33"}:
+        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33", "2.7.34"}:
             # Captured from the actual installed-composition command used by
             # both workflow stages; only the synthetic wheel binding changes.
             summary = json.loads((Path(__file__).parent / "fixtures" /
@@ -1598,6 +1598,20 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(after["protected_metadata_digest"], before["protected_metadata_digest"])
         update.verify_preservation(before, after, self.request)
 
+    def test_2733_to_2734_installs_server_runtime_contract_without_schema_change(self):
+        before = self._same_schema39_transition(existing_version="2.7.33", target_version="2.7.34")
+        self.assertEqual(update.validate_qualified_artifact(self.request)["release_route"], "NORMAL")
+        self.assertEqual(update.transition_schemas(self.request), (39, 39))
+        controller = self._controller()
+        qualified = self._qualified_schema39_copy(controller, before)
+        self.assertEqual(qualified["user_version"], 39)
+        self.assertEqual(qualified["protected_metadata_digest"], before["protected_metadata_digest"])
+        self.assertEqual(qualified["writer_state"], before["writer_state"])
+        for table in before["tables"]:
+            if table != "runtime_metadata":
+                self.assertEqual(qualified["tables"][table], before["tables"][table], table)
+        update.verify_preservation(before, qualified, self.request)
+
     def test_2733_same_schema_contract_swap_is_reconciled_after_interruption(self):
         self._same_schema39_transition(existing_version="2.7.31", target_version="2.7.33")
         self._restore_pre_installed_health_identity_trigger()
@@ -1684,11 +1698,11 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         receipt = Path(receipt_value).resolve()
         release = json.loads(receipt.read_text(encoding="utf-8"))
         target_version = release["version"]
-        target_schema = 39 if target_version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33"} else 38
+        target_schema = 39 if target_version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33", "2.7.34"} else 38
         previous_version = {
             "2.7.26": "2.7.25", "2.7.27": "2.7.26", "2.7.28": "2.7.27",
             "2.7.29": "2.7.28", "2.7.30": "2.7.29", "2.7.31": "2.7.30", "2.7.32": "2.7.31",
-            "2.7.33": "2.7.31",
+            "2.7.33": "2.7.31", "2.7.34": "2.7.33",
         }.get(target_version)
         if previous_version is not None:
             RuntimeBootstrap(data_root=self.data_root, forge_version=previous_version).open().close()
