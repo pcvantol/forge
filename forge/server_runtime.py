@@ -55,6 +55,7 @@ from .provider_security import (
     ProviderAuthenticationMode,
 )
 from .runtime import RUNTIME_SCHEMA_VERSION
+from .secure_store import SecretReference
 from .runtime.data_root import DataRootResolver
 from .runtime.dynamic_mission import DynamicMissionRunResult, InstalledDynamicMissionRuntime
 from .runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeServiceLock
@@ -62,6 +63,24 @@ from .runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeSer
 
 SERVER_API_VERSION = "1"
 SERVER_RUNTIME_CONTRACT_VERSION = "1.0"
+SERVER_ROUTE_INVENTORY = (
+    ("GET", "/v1/status"),
+    ("GET", "/v1/health"),
+    ("GET", "/v1/readiness"),
+    ("GET", "/v1/instance"),
+    ("GET", "/v1/version"),
+    ("GET", "/v1/provider-context"),
+    ("POST", "/v1/provider-context"),
+    ("GET", "/v1/execution-host/preflight"),
+    ("POST", "/v1/execution-host/configure"),
+    ("POST", "/v1/missions/inspect"),
+    ("POST", "/v1/missions/approve-business"),
+    ("POST", "/v1/missions/approve-architecture"),
+    ("POST", "/v1/missions/admit"),
+    ("GET", "/v1/missions/{mission_id}"),
+    ("POST", "/v1/missions/{mission_id}/controller/start"),
+    ("POST", "/v1/missions/{mission_id}/controller/reopen"),
+)
 DEFAULT_PROVIDER_ID = "codex-chatgpt-session"
 _MAX_BODY = 1_048_576
 
@@ -349,14 +368,16 @@ class ForgeServerApplicationServices:
         with RuntimeServiceLock(self.root / "forge.db").acquire():
             configured = service.configure(
                 binding_id=document["binding_id"], endpoint=document["endpoint"],
-                expected_instance_id=document["expected_instance_id"], consumer_id=document["consumer_id"],
-                host_id=document["host_id"], project_id=document["project_id"],
-                repository_id=document["repository_id"], repository_identity=document["repository_identity"],
-                credential_reference=document["credential_reference"], operator_id=document["operator_id"],
-                timeout_seconds=document["timeout_seconds"], allow_loopback_http=bool(document["allow_loopback_http"]),
+                expected_ep_instance_id=document["expected_instance_id"],
+                ep_consumer_id=document["consumer_id"],
+                execution_host_id=document["host_id"], ep_project_id=document["project_id"],
+                ep_repository_id=document["repository_id"], repository_identity=document["repository_identity"],
+                credential_reference=SecretReference.parse(document["credential_reference"]),
+                operator_id=document["operator_id"], timeout_seconds=document["timeout_seconds"],
+                allow_loopback_http=bool(document["allow_loopback_http"]),
                 replace=bool(replace), expected_revision=expected_revision, expected_digest=expected_digest,
             )
-        return configured.to_safe_dict()
+        return configured.to_dict()
 
     def configure_provider_context(self, document: Mapping[str, Any]) -> dict[str, Any]:
         required = {
