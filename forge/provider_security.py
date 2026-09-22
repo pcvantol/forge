@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 import uuid
 from .operator_identity import InstallationOperatorService, OperatorContext
+from .provider_context import ProviderExecutionContextError, ProviderExecutionContextService
 from .runtime.database import _timestamp
 from .secure_store import (
     MacOSKeychainSecureStoreAdapter,
@@ -51,6 +52,10 @@ class PlanningProviderInvocationPolicy:
     executable_path: str | None = None
     adapter_version: str | None = None
     profile: str | None = None
+    provider_home: str | None = None
+    provider_config_home: str | None = None
+    instance_id: str | None = None
+    provider_context_digest: str | None = None
 
 class PlanningProviderSecurityService:
     """Runtime-DB-only config authority; all returned views are redacted."""
@@ -195,6 +200,26 @@ class PlanningProviderSecurityService:
                     'authentication_mode':session['authentication_mode'],'provider_type':session['provider_type'],
                     'external_session_type':session['external_session_type'],'executable_path':session['executable_path'],
                     'adapter_version':session['adapter_version'],'profile':session['profile'], 'state':'UNVERIFIED','ready':False}
+            try:
+                context = ProviderExecutionContextService(self.db.path.parent).read(provider_id)
+            except ProviderExecutionContextError:
+                context = None
+            if context is not None:
+                matches = (
+                    context.provider_type == session['provider_type']
+                    and context.executable_path == session['executable_path']
+                    and context.profile == session['profile']
+                )
+                result['instance_context'] = {
+                    'state': 'BOUND' if matches else 'CONFLICT',
+                    'instance_id': context.instance_id,
+                    'configuration_revision': context.configuration_revision,
+                    'configuration_digest': context.configuration_digest,
+                    'provider_home': context.provider_home,
+                    'provider_config_home': context.provider_config_home,
+                }
+            else:
+                result['instance_context'] = {'state':'LEGACY_AMBIENT'}
             if parameters: result.update({'model':parameters[0],'timeout_seconds':parameters[1],'input_token_bound':parameters[2],
                                           'context_token_bound':parameters[3],'output_token_bound':parameters[4]})
             return result
@@ -222,7 +247,28 @@ class PlanningProviderSecurityService:
                     or session['provider_type'] != CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE
                     or session['external_session_type'] != CODEX_CLI_CHATGPT_SESSION_TYPE):
                 raise PermissionError('external session provider policy is not enabled and complete')
-            return PlanningProviderInvocationPolicy(provider_id, parameters[0], None, parameters[1], parameters[2], parameters[3], parameters[4], session['version'], ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION, session['provider_type'], session['external_session_type'], session['executable_path'], session['adapter_version'], session['profile'])
+            context = None
+            try:
+                context = ProviderExecutionContextService(self.db.path.parent).read(provider_id)
+            except ProviderExecutionContextError as error:
+                if str(error) != 'provider context is not configured':
+                    raise PermissionError('instance-owned provider context is invalid') from error
+            if context is not None and (
+                context.provider_type != session['provider_type']
+                or context.executable_path != session['executable_path']
+                or context.profile != session['profile']
+            ):
+                raise PermissionError('instance-owned provider context conflicts with planning provider policy')
+            return PlanningProviderInvocationPolicy(
+                provider_id, parameters[0], None, parameters[1], parameters[2], parameters[3], parameters[4],
+                session['version'], ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION,
+                session['provider_type'], session['external_session_type'], session['executable_path'],
+                session['adapter_version'], session['profile'],
+                None if context is None else context.provider_home,
+                None if context is None else context.provider_config_home,
+                None if context is None else context.instance_id,
+                None if context is None else context.configuration_digest,
+            )
         parameters=self._invocation_parameters(row['model'], row['timeout_seconds'], row['input_token_bound'], row['context_token_bound'], row['output_token_bound'])
         if not row['enabled'] or parameters is None:
             raise PermissionError('planning provider policy is not enabled and complete')
