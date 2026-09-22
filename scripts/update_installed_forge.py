@@ -59,11 +59,13 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.29", "2.7.30"): (39, 39),
     ("2.7.30", "2.7.31"): (39, 39),
     ("2.7.31", "2.7.32"): (39, 39),
+    ("2.7.31", "2.7.33"): (39, 39),
+    ("2.7.32", "2.7.33"): (39, 39),
 }
 SAME_SCHEMA_39_TRANSITIONS = frozenset({
     ("2.7.25", "2.7.26"), ("2.7.26", "2.7.27"), ("2.7.27", "2.7.28"),
     ("2.7.28", "2.7.29"), ("2.7.29", "2.7.30"), ("2.7.30", "2.7.31"),
-    ("2.7.31", "2.7.32"),
+    ("2.7.31", "2.7.32"), ("2.7.31", "2.7.33"), ("2.7.32", "2.7.33"),
 })
 NORMAL_RELEASE_TRANSITIONS = frozenset({
     ("2.7.22", "2.7.23"),
@@ -77,6 +79,8 @@ NORMAL_RELEASE_TRANSITIONS = frozenset({
     ("2.7.29", "2.7.30"),
     ("2.7.30", "2.7.31"),
     ("2.7.31", "2.7.32"),
+    ("2.7.31", "2.7.33"),
+    ("2.7.32", "2.7.33"),
 })
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
@@ -515,7 +519,7 @@ def _normal_release_evidence(
         f"dist/{sdist_name}": sdist_digest,
     }
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
-    composition_keys = {"criterion_completion"} if request.version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32"} else set()
+    composition_keys = {"criterion_completion"} if request.version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33"} else set()
     if (
         (request.existing_version, request.version) not in NORMAL_RELEASE_TRANSITIONS
         or set(receipt) != expected_top
@@ -2006,26 +2010,48 @@ class InstalledForgeUpdateController:
             normalize_isolated_qualification_copy(qualified_copy, operation_root=self.operation_root)
             qualified = database_snapshot(qualified_copy)
             verify_preservation(before, qualified, self.request)
-            # Candidate initialization may update the known volatile metadata in
-            # its isolated copy. Preservation checks bind every historical table
-            # and protected metadata key; only the live database must remain
-            # byte-for-byte logically unchanged before activation.
-            if (current.get("content_digest") != before.get("content_digest")
-                    or qualified.get("schema_digest") != before.get("schema_digest")
+            # Candidate initialization may update known volatile metadata and
+            # may strengthen schema objects without increasing user_version.
+            # Preservation checks bind every historical table and protected
+            # metadata key. The live database must remain byte-for-byte logically
+            # unchanged until the qualified copy is installed under the update
+            # locks.
+            live_is_source = current.get("content_digest") == before.get("content_digest")
+            live_is_qualified = (
+                qualified.get("schema_digest") != before.get("schema_digest")
+                and current.get("schema_digest") == qualified.get("schema_digest")
+                and current.get("writer_state") == qualified.get("writer_state")
+                and set(current.get("metadata", {})) == set(qualified.get("metadata", {}))
+            )
+            if ((not live_is_source and not live_is_qualified)
                     or qualified.get("writer_state") != before.get("writer_state")
                     or set(qualified.get("metadata", {})) != set(before.get("metadata", {}))):
                 raise InstalledForgeUpdateError("same-schema runtime changed outside the bounded operation")
             if state.get("phase") not in {"MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE"}:
                 state = self._fence(state)
+                if qualified.get("schema_digest") == before.get("schema_digest"):
+                    after = current
+                    application_mode = "UNCHANGED_DATABASE"
+                elif live_is_qualified:
+                    after = current
+                    application_mode = "RECONCILED_QUALIFIED_SAME_SCHEMA_COPY"
+                else:
+                    after = self._install_qualified_database(before)
+                    if after.get("schema_digest") != qualified.get("schema_digest"):
+                        raise InstalledForgeUpdateError("qualified same-schema database was not installed")
+                    application_mode = "ATOMIC_QUALIFIED_SAME_SCHEMA_COPY"
                 state = self._advance(
                     state, "MIGRATED", live_migration={
-                        **verify_preservation(before, current, self.request),
-                        "migrated_at": _now(), "application_mode": "UNCHANGED_DATABASE",
+                        **verify_preservation(before, after, self.request),
+                        "migrated_at": _now(), "application_mode": application_mode,
                         "before_snapshot_digest": before["snapshot_digest"],
-                        "after_snapshot_digest": current["snapshot_digest"],
+                        "after_snapshot_digest": after["snapshot_digest"],
                     }, safety_disposition=f"CANDIDATE_REQUIRED_SCHEMA_{schema_after}",
                 )
                 self._interrupt("migration")
+                return state, after
+            if current.get("schema_digest") != qualified.get("schema_digest"):
+                raise InstalledForgeUpdateError("installed same-schema database differs from qualification")
             return state, current
         if (
             current.get("user_version") == schema_before

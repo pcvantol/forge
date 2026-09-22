@@ -294,7 +294,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 "github_release": {"draft": False},
             },
         }, sort_keys=True), encoding="utf-8")
-        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32"}:
+        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33"}:
             # Captured from the actual installed-composition command used by
             # both workflow stages; only the synthetic wheel binding changes.
             summary = json.loads((Path(__file__).parent / "fixtures" /
@@ -1261,6 +1261,19 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.request = self._normal_release_request(target_version, existing_version)
         return before
 
+    def _restore_pre_installed_health_identity_trigger(self) -> None:
+        with sqlite3.connect(self.data_root / "forge.db") as connection:
+            connection.executescript("""
+                DROP TRIGGER IF EXISTS runtime_identity_immutable;
+                DROP TRIGGER IF EXISTS runtime_identity_immutable_delete;
+                DROP TRIGGER IF EXISTS runtime_identity_immutable_insert;
+                CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
+                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root',
+                                     'repository_uuid', 'created_at', 'initialization_version')
+                         AND NEW.value <> OLD.value
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
+            """)
+
     def test_2725_to_2726_normal_release_preserves_schema39_history(self):
         before = self._same_schema39_transition()
         self.assertEqual(update.validate_qualified_artifact(self.request)["release_route"], "NORMAL")
@@ -1561,6 +1574,47 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(update.InstalledForgeUpdateError, "noncanonical"):
             update.validate_qualified_artifact(changed)
 
+    def test_2731_to_2733_installs_qualified_same_schema_contract_change(self):
+        self._same_schema39_transition(existing_version="2.7.31", target_version="2.7.33")
+        self._restore_pre_installed_health_identity_trigger()
+        before = update.database_snapshot(self.data_root / "forge.db")
+        controller = self._controller()
+        qualified = self._qualified_schema39_copy(controller, before)
+        self.assertNotEqual(qualified["schema_digest"], before["schema_digest"])
+        self.assertEqual(qualified["writer_state"], before["writer_state"])
+        with patch.object(update, "installed_identity", return_value={"version": "2.7.31"}):
+            state = controller._adopt_resolver(controller._state())
+        migrated, after = controller._migrate_live(state, before)
+        self.assertEqual(migrated["phase"], "MIGRATED")
+        self.assertEqual(
+            migrated["live_migration"]["application_mode"],
+            "ATOMIC_QUALIFIED_SAME_SCHEMA_COPY",
+        )
+        self.assertEqual(after["schema_digest"], qualified["schema_digest"])
+        self.assertEqual(after["protected_metadata_digest"], before["protected_metadata_digest"])
+        update.verify_preservation(before, after, self.request)
+
+    def test_2733_same_schema_contract_swap_is_reconciled_after_interruption(self):
+        self._same_schema39_transition(existing_version="2.7.31", target_version="2.7.33")
+        self._restore_pre_installed_health_identity_trigger()
+        before = update.database_snapshot(self.data_root / "forge.db")
+        controller = self._controller()
+        qualified = self._qualified_schema39_copy(controller, before)
+        with patch.object(update, "installed_identity", return_value={"version": "2.7.31"}):
+            state = controller._adopt_resolver(controller._state())
+        controller.interrupt_after = "database_swap"
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "database_swap"):
+            controller._migrate_live(state, before)
+        resumed = self._controller()
+        reconciled, after = resumed._migrate_live(state, before)
+        self.assertEqual(reconciled["phase"], "MIGRATED")
+        self.assertEqual(
+            reconciled["live_migration"]["application_mode"],
+            "RECONCILED_QUALIFIED_SAME_SCHEMA_COPY",
+        )
+        self.assertEqual(after["schema_digest"], qualified["schema_digest"])
+        update.verify_preservation(before, after, self.request)
+
     def test_schema39_same_schema_replay_preserves_database_and_fences_after_activation_boundary(self):
         before = self._same_schema39_transition()
         controller = self._controller()
@@ -1626,10 +1680,11 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         receipt = Path(receipt_value).resolve()
         release = json.loads(receipt.read_text(encoding="utf-8"))
         target_version = release["version"]
-        target_schema = 39 if target_version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32"} else 38
+        target_schema = 39 if target_version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33"} else 38
         previous_version = {
             "2.7.26": "2.7.25", "2.7.27": "2.7.26", "2.7.28": "2.7.27",
             "2.7.29": "2.7.28", "2.7.30": "2.7.29", "2.7.31": "2.7.30", "2.7.32": "2.7.31",
+            "2.7.33": "2.7.31",
         }.get(target_version)
         if previous_version is not None:
             RuntimeBootstrap(data_root=self.data_root, forge_version=previous_version).open().close()
