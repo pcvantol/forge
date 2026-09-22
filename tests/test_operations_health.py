@@ -5,10 +5,13 @@ from contextlib import redirect_stdout
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 import json
+import os
 from pathlib import Path
+import re
 import sqlite3
 from tempfile import TemporaryDirectory
 from threading import Thread
+from time import monotonic
 import unittest
 from urllib.request import Request, urlopen
 
@@ -37,21 +40,56 @@ INSTALLATION_ID = "99ede979-e8b8-48ca-9174-3257778c680f"
 NOW = datetime(2026, 9, 22, 10, 0, tzinfo=UTC)
 
 
-def _assert_closed_schema(testcase: unittest.TestCase, value: object, schema: dict[str, object]) -> None:
+def _assert_contract_schema(testcase: unittest.TestCase, value: object, schema: dict[str, object]) -> None:
+    if "const" in schema:
+        testcase.assertEqual(value, schema["const"])
+    if "enum" in schema:
+        testcase.assertIn(value, schema["enum"])
     kind = schema.get("type")
+    kinds = (kind,) if isinstance(kind, str) else tuple(kind or ())
+    if kinds:
+        matches = {
+            "array": lambda item: isinstance(item, list),
+            "boolean": lambda item: isinstance(item, bool),
+            "integer": lambda item: isinstance(item, int) and not isinstance(item, bool),
+            "null": lambda item: item is None,
+            "number": lambda item: isinstance(item, (int, float)) and not isinstance(item, bool),
+            "object": lambda item: isinstance(item, dict),
+            "string": lambda item: isinstance(item, str),
+        }
+        testcase.assertTrue(any(matches[name](value) for name in kinds))
+    if value is None:
+        return
     if kind == "object":
-        testcase.assertIsInstance(value, dict)
         properties = schema["properties"]
         required = schema["required"]
         testcase.assertFalse(schema["additionalProperties"])
         testcase.assertEqual(set(value), set(required))
         testcase.assertEqual(set(required), set(properties))
         for key, child_schema in properties.items():
-            _assert_closed_schema(testcase, value[key], child_schema)
+            _assert_contract_schema(testcase, value[key], child_schema)
     elif kind == "array":
-        testcase.assertIsInstance(value, list)
+        testcase.assertGreaterEqual(len(value), schema.get("minItems", 0))
+        if schema.get("uniqueItems"):
+            testcase.assertEqual(
+                len(value), len({json.dumps(item, sort_keys=True) for item in value}),
+            )
         for item in value:
-            _assert_closed_schema(testcase, item, schema["items"])
+            _assert_contract_schema(testcase, item, schema["items"])
+    elif isinstance(value, str):
+        testcase.assertGreaterEqual(len(value), schema.get("minLength", 0))
+        if "pattern" in schema:
+            testcase.assertIsNotNone(re.fullmatch(schema["pattern"], value))
+        if schema.get("format") == "date-time":
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            testcase.assertIsNotNone(parsed.utcoffset())
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema:
+            testcase.assertGreaterEqual(value, schema["minimum"])
+        if "maximum" in schema:
+            testcase.assertLessEqual(value, schema["maximum"])
+        if "exclusiveMinimum" in schema:
+            testcase.assertGreater(value, schema["exclusiveMinimum"])
 
 
 class _HealthFixture(unittest.TestCase):
@@ -65,6 +103,9 @@ class _HealthFixture(unittest.TestCase):
             database._connection.execute(  # noqa: SLF001
                 "UPDATE runtime_metadata SET value=? WHERE key='last_access_at'",
                 (self.observed_at.isoformat(),),
+            )
+            database._connection.execute(  # noqa: SLF001
+                "INSERT INTO dispatcher_state VALUES (1, 'IDLE', NULL, '[]', '{}')"
             )
         self.runtime_id = database.runtime_identity.runtime_id
         self.installation_id = database.metadata["installation_id"]
@@ -144,6 +185,7 @@ class HealthSnapshotTests(_HealthFixture):
         connection.rollback()
         with connection:
             connection.execute("DROP TRIGGER runtime_identity_immutable")
+            connection.execute("DROP TRIGGER runtime_identity_immutable_delete")
             connection.execute(
                 "INSERT INTO installation_operator_binding VALUES (?,?,?,?,?,?)",
                 ("different-installation", "operator", 1, 1, "ACTIVE", self.observed_at.isoformat()),
@@ -157,6 +199,7 @@ class HealthSnapshotTests(_HealthFixture):
         connection = sqlite3.connect(self.root / "forge.db")
         with connection:
             connection.execute("DROP TRIGGER runtime_identity_immutable")
+            connection.execute("DROP TRIGGER runtime_identity_immutable_delete")
             connection.execute(
                 "CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata "
                 "WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'created_at') "
@@ -177,20 +220,39 @@ class HealthSnapshotTests(_HealthFixture):
                 reopened._connection.execute(  # noqa: SLF001 - controlled persistence assertion
                     "UPDATE runtime_metadata SET value='forged-installation' WHERE key='installation_id'"
                 )
+            reopened._connection.rollback()  # noqa: SLF001 - controlled persistence assertion
+            with self.assertRaises(sqlite3.IntegrityError):
+                reopened._connection.execute(  # noqa: SLF001 - controlled persistence assertion
+                    "DELETE FROM runtime_metadata WHERE key='installation_id'"
+                )
+            reopened._connection.rollback()  # noqa: SLF001 - controlled persistence assertion
+            with self.assertRaises(sqlite3.IntegrityError):
+                reopened._connection.execute(  # noqa: SLF001 - controlled persistence assertion
+                    "INSERT OR REPLACE INTO runtime_metadata(key, value) "
+                    "VALUES ('installation_id', 'forged-installation')"
+                )
         finally:
             reopened.close()
 
     def test_timeout_and_file_limits_cover_pre_database_reads_and_copy_chunks(self) -> None:
-        ticks = iter((0.0, 0.0, 6.0))
-        with self.assertRaises(InstalledHealthError) as timed_out:
-            InstalledHealthSnapshotService(
-                self.root,
-                timeout_seconds=5,
-                monotonic_clock=lambda: next(ticks),
-            ).installed_health_snapshot()
-        self.assertEqual(timed_out.exception.code, "HEALTH_SNAPSHOT_TIMED_OUT")
-
+        started = monotonic()
         marker = self.root / "instance" / "runtime-instance.json"
+        saved_marker = marker.with_suffix(".saved")
+        marker.rename(saved_marker)
+        os.mkfifo(marker)
+        try:
+            with self.assertRaises(InstalledHealthError) as timed_out:
+                InstalledHealthSnapshotService(
+                    self.root,
+                    timeout_seconds=0.25,
+                    integrity_timeout_seconds=0.05,
+                ).installed_health_snapshot()
+        finally:
+            marker.unlink()
+            saved_marker.rename(marker)
+        self.assertEqual(timed_out.exception.code, "HEALTH_SNAPSHOT_TIMED_OUT")
+        self.assertLess(monotonic() - started, 1.5)
+
         marker.write_bytes(b"x" * 1025)
         with self.assertRaises(InstalledHealthError) as marker_limit:
             InstalledHealthSnapshotService(self.root).installed_health_snapshot()
@@ -304,6 +366,50 @@ class HealthSnapshotTests(_HealthFixture):
         }
         self.assertEqual(cases, {name: name for name in cases})
 
+    def test_collector_reaches_every_advertised_outcome(self) -> None:
+        cases = {
+            "HEALTHY": (NOW, "active", "IDLE", 0.25),
+            "FAILED": (NOW, "inactive", "IDLE", 0.25),
+            "STALE": (NOW - timedelta(seconds=301), "active", "IDLE", 0.25),
+            "EXPIRED": (NOW - timedelta(seconds=601), "active", "IDLE", 0.25),
+            "MISSING": (NOW, "active", None, 0.25),
+            "TIMED_OUT": (NOW, "active", "IDLE", 1e-9),
+            "FUTURE": (NOW + timedelta(seconds=1), "active", "IDLE", 0.25),
+            "UNKNOWN": (NOW, "active", "UNRECOGNIZED", 0.25),
+        }
+        for expected, (observed_at, runtime_status, dispatcher_status, integrity_timeout) in cases.items():
+            with self.subTest(expected=expected):
+                connection = sqlite3.connect(self.root / "forge.db")
+                with connection:
+                    connection.execute(
+                        "UPDATE runtime_metadata SET value=? WHERE key='last_access_at'",
+                        (observed_at.isoformat(),),
+                    )
+                    connection.execute(
+                        "UPDATE runtime_metadata SET value=? WHERE key='status'",
+                        (runtime_status,),
+                    )
+                    connection.execute("DELETE FROM dispatcher_state WHERE singleton=1")
+                    if dispatcher_status is not None:
+                        connection.execute(
+                            "INSERT INTO dispatcher_state VALUES (1, ?, NULL, '[]', '{}')",
+                            (dispatcher_status,),
+                        )
+                connection.close()
+
+                snapshot = InstalledHealthSnapshotService(
+                    self.root,
+                    clock=lambda: NOW,
+                    integrity_timeout_seconds=integrity_timeout,
+                ).installed_health_snapshot()
+                self.assertEqual(snapshot["outcome"], expected)
+                if expected == "MISSING":
+                    dispatcher = next(
+                        item for item in snapshot["checks"]
+                        if item["check_id"] == "dispatcher_state"
+                    )
+                    self.assertEqual(dispatcher["freshness"], "MISSING")
+
 
 class HealthSecurityTests(_HealthFixture):
     def test_noninteractive_redacted_failure_modes(self) -> None:
@@ -356,7 +462,24 @@ class HealthTransportTests(_HealthFixture):
                 (Path(__file__).parents[1] / "forge" / "api" / "operations-read-openapi-v1.json")
                 .read_text(encoding="utf-8")
             )["components"]["schemas"]["HealthResponse"]
-            _assert_closed_schema(self, http, schema)
+            _assert_contract_schema(self, http, schema)
+
+            invalid = json.loads(json.dumps(http))
+            invalid["outcome"] = "NOT_AN_OUTCOME"
+            with self.assertRaises(AssertionError):
+                _assert_contract_schema(self, invalid, schema)
+            invalid = json.loads(json.dumps(http))
+            invalid["evaluated_at"] = "not-a-date"
+            with self.assertRaises((AssertionError, ValueError)):
+                _assert_contract_schema(self, invalid, schema)
+            invalid = json.loads(json.dumps(http))
+            invalid["observation_provenance"]["bounded"] = False
+            with self.assertRaises(AssertionError):
+                _assert_contract_schema(self, invalid, schema)
+            invalid = json.loads(json.dumps(http))
+            invalid["unexpected"] = True
+            with self.assertRaises(AssertionError):
+                _assert_contract_schema(self, invalid, schema)
         finally:
             server.shutdown()
             server.server_close()

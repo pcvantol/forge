@@ -12,6 +12,8 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from importlib.resources import files
 import json
+from multiprocessing import get_context
+from multiprocessing.connection import Connection
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
@@ -45,7 +47,7 @@ _REGISTRY_FIELDS = frozenset((
 ))
 _CHECK_FIELDS = frozenset((
     "component_id", "check_id", "purpose", "applicability", "freshness_timeout_seconds",
-    "capabilities", "enabled", "observation_source",
+    "observation_ttl_seconds", "capabilities", "enabled", "observation_source",
 ))
 
 
@@ -64,6 +66,7 @@ class InstalledHealthRegistry:
     profile_reference: str
     definitions: tuple[HealthCheckDefinition, ...]
     observation_sources: Mapping[str, str]
+    observation_ttls: Mapping[str, int | None]
     digest: str
 
     @classmethod
@@ -109,6 +112,7 @@ class InstalledHealthRegistry:
             raise InstalledHealthError("HEALTH_REGISTRY_INVALID", "Installed health registry is invalid")
         definitions: list[HealthCheckDefinition] = []
         sources: dict[str, str] = {}
+        ttls: dict[str, int | None] = {}
         try:
             for item in checks:
                 if not isinstance(item, Mapping) or set(item) != _CHECK_FIELDS:
@@ -116,6 +120,13 @@ class InstalledHealthRegistry:
                 timeout = item["freshness_timeout_seconds"]
                 if not isinstance(timeout, int) or isinstance(timeout, bool) or not 0 < timeout <= 300:
                     raise ValueError("invalid timeout")
+                ttl = item["observation_ttl_seconds"]
+                if ttl is not None and (
+                    not isinstance(ttl, int)
+                    or isinstance(ttl, bool)
+                    or not timeout < ttl <= 3600
+                ):
+                    raise ValueError("invalid observation ttl")
                 source = item["observation_source"]
                 if source not in {
                     "installed_process", "runtime_metadata", "sqlite_integrity_check", "dispatcher_state",
@@ -133,6 +144,7 @@ class InstalledHealthRegistry:
                 )
                 definitions.append(definition)
                 sources[definition.check_id] = source
+                ttls[definition.check_id] = ttl
         except (KeyError, TypeError, ValueError) as error:
             raise InstalledHealthError("HEALTH_REGISTRY_INVALID", "Installed health registry is invalid") from error
         canonical = json.dumps(dict(document), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -142,6 +154,7 @@ class InstalledHealthRegistry:
             str(document["profile_reference"]),
             tuple(definitions),
             sources,
+            ttls,
             "sha256:" + sha256(canonical.encode("utf-8")).hexdigest(),
         )
 
@@ -165,6 +178,7 @@ class InstalledHealthSnapshotService:
         registry: InstalledHealthRegistry | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         timeout_seconds: float = 2.0,
+        integrity_timeout_seconds: float | None = None,
         statement_observer: Callable[[str], None] | None = None,
         monotonic_clock: Callable[[], float] = monotonic,
     ) -> None:
@@ -174,14 +188,80 @@ class InstalledHealthSnapshotService:
             or not 0 < float(timeout_seconds) <= 5
         ):
             raise ValueError("health snapshot timeout must be greater than zero and at most five seconds")
+        if integrity_timeout_seconds is None:
+            integrity_timeout_seconds = min(0.25, float(timeout_seconds) / 2)
+        elif (
+            not isinstance(integrity_timeout_seconds, (int, float))
+            or isinstance(integrity_timeout_seconds, bool)
+            or not 0 < float(integrity_timeout_seconds) < float(timeout_seconds)
+        ):
+            raise ValueError("integrity timeout must be greater than zero and less than the snapshot timeout")
         self.data_root = data_root
         self.supplied_registry = registry
         self.clock = clock
         self.timeout_seconds = float(timeout_seconds)
+        self.integrity_timeout_seconds = float(integrity_timeout_seconds)
         self.statement_observer = statement_observer
         self.monotonic_clock = monotonic_clock
 
     def installed_health_snapshot(self) -> dict[str, Any]:
+        """Run the complete snapshot behind a wall-clock-enforced process boundary."""
+        wall_started = monotonic()
+        evaluated_at = self.clock()
+        context = get_context("spawn")
+        receiver, sender = context.Pipe(duplex=False)
+        scratch = TemporaryDirectory(prefix="forge-installed-health-")
+        process = context.Process(
+            target=_snapshot_worker,
+            args=(
+                self.data_root,
+                self.supplied_registry,
+                evaluated_at,
+                self.timeout_seconds,
+                self.integrity_timeout_seconds,
+                Path(scratch.name),
+                sender,
+            ),
+            daemon=True,
+        )
+        started = False
+        try:
+            process.start()
+            started = True
+            sender.close()
+            remaining = max(0.0, self.timeout_seconds - (monotonic() - wall_started))
+            if not receiver.poll(remaining):
+                _stop_snapshot_process(process)
+                raise InstalledHealthError(
+                    "HEALTH_SNAPSHOT_TIMED_OUT", "Installed health snapshot timed out",
+                )
+            payload = receiver.recv()
+            process.join(timeout=0.2)
+            if process.is_alive():
+                _stop_snapshot_process(process)
+            kind = payload[0]
+            statements = payload[-1]
+            if self.statement_observer is not None:
+                for statement in statements:
+                    self.statement_observer(statement)
+            if kind == "result":
+                return payload[1]
+            if kind == "installed_error":
+                raise InstalledHealthError(payload[1], payload[2])
+            if kind == "value_error":
+                raise ValueError(payload[1])
+            raise InstalledHealthError(
+                "HEALTH_SNAPSHOT_UNAVAILABLE", "Installed health snapshot is unavailable",
+            )
+        finally:
+            receiver.close()
+            sender.close()
+            if started and process.is_alive():
+                _stop_snapshot_process(process)
+            process.close()
+            scratch.cleanup()
+
+    def _collect_snapshot(self, scratch: Path) -> tuple[dict[str, Any], tuple[str, ...]]:
         deadline = self.monotonic_clock() + self.timeout_seconds
         root = DataRootResolver(cli_data_root=self.data_root).resolve()
         _require_before_deadline(deadline, self.monotonic_clock)
@@ -201,7 +281,7 @@ class InstalledHealthSnapshotService:
         _require_before_deadline(deadline, self.monotonic_clock)
 
         connection: sqlite3.Connection | None = None
-        snapshot_copy: TemporaryDirectory[str] | None = None
+        statements: list[str] = []
         integrity_observations = 0
         source_snapshot = "direct_immutable"
         try:
@@ -217,8 +297,7 @@ class InstalledHealthSnapshotService:
                     raise InstalledHealthError(
                         "HEALTH_SNAPSHOT_LIMIT", "Installed Forge storage exceeds the health snapshot limit",
                     )
-                snapshot_copy = TemporaryDirectory(prefix="forge-installed-health-")
-                copied_database = Path(snapshot_copy.name) / "forge.db"
+                copied_database = scratch / "forge.db"
                 _bounded_copy(database, copied_database, deadline, self.monotonic_clock)
                 if wal.exists():
                     _bounded_copy(wal, Path(str(copied_database) + "-wal"), deadline, self.monotonic_clock)
@@ -231,16 +310,14 @@ class InstalledHealthSnapshotService:
                 uri = database.resolve().as_uri() + "?mode=ro&immutable=1"
             connection = sqlite3.connect(uri, uri=True, timeout=0)
             _require_before_deadline(deadline, self.monotonic_clock)
-            if self.statement_observer is not None:
-                connection.set_trace_callback(self.statement_observer)
-            connection.set_progress_handler(lambda: int(monotonic() >= deadline), 1000)
+            connection.set_trace_callback(statements.append)
             connection.execute("PRAGMA query_only = ON")
             connection.execute("BEGIN")
             metadata = dict(connection.execute("SELECT key, value FROM runtime_metadata"))
             dispatcher_row = connection.execute(
                 "SELECT status FROM dispatcher_state WHERE singleton = 1"
             ).fetchone()
-            dispatcher = "IDLE" if dispatcher_row is None else str(dispatcher_row[0])
+            dispatcher = None if dispatcher_row is None else str(dispatcher_row[0])
             maintenance_row = connection.execute(
                 "SELECT active_operation_id, state FROM operational_reset_state WHERE singleton = 1"
             ).fetchone()
@@ -290,6 +367,12 @@ class InstalledHealthSnapshotService:
             identity = HealthIdentity(canonical_version(), runtime_id, installation_id)
 
             integrity_observations += 1
+            integrity_deadline = min(
+                deadline, self.monotonic_clock() + self.integrity_timeout_seconds,
+            )
+            connection.set_progress_handler(
+                lambda: int(self.monotonic_clock() >= integrity_deadline), 1,
+            )
             try:
                 integrity = connection.execute("PRAGMA integrity_check(1)").fetchone()
                 integrity_state = (
@@ -315,6 +398,7 @@ class InstalledHealthSnapshotService:
                 evaluated_at,
                 integrity_state,
                 integrity_reason,
+                registry.observation_ttls,
             )
             evaluation = evaluate_health(
                 identity,
@@ -341,8 +425,6 @@ class InstalledHealthSnapshotService:
         finally:
             if connection is not None:
                 connection.close()
-            if snapshot_copy is not None:
-                snapshot_copy.cleanup()
 
         result = evaluation.to_dict()
         result.update({
@@ -362,7 +444,7 @@ class InstalledHealthSnapshotService:
                 "sources": dict(sorted(registry.observation_sources.items())),
             },
         })
-        return result
+        return result, tuple(statements)
 
     def _observations(
         self,
@@ -374,6 +456,7 @@ class InstalledHealthSnapshotService:
         evaluated_at: datetime,
         integrity_state: ObservationState,
         integrity_reason: str | None,
+        observation_ttls: Mapping[str, int | None],
     ) -> tuple[HealthObservation, ...]:
         observations = [HealthObservation(
             identity,
@@ -395,19 +478,22 @@ class InstalledHealthSnapshotService:
                 HEALTH_CAPABILITY_SCOPE,
                 runtime_state,
                 observed_at,
+                _observation_expiry(observed_at, observation_ttls.get("runtime_state")),
                 reason_code=None if runtime_state is ObservationState.PASS else "RUNTIME_NOT_ACTIVE",
             ))
-            dispatcher_state = ObservationState.PASS if dispatcher in {"IDLE", "ACTIVE"} else ObservationState.UNKNOWN
-            observations.append(HealthObservation(
-                identity,
-                "forge_dispatcher",
-                "dispatcher_state",
-                CheckPurpose.READINESS,
-                HEALTH_CAPABILITY_SCOPE,
-                dispatcher_state,
-                observed_at,
-                reason_code=None if dispatcher_state is ObservationState.PASS else "DISPATCHER_STATE_UNKNOWN",
-            ))
+            if dispatcher is not None:
+                dispatcher_state = ObservationState.PASS if dispatcher in {"IDLE", "ACTIVE"} else ObservationState.UNKNOWN
+                observations.append(HealthObservation(
+                    identity,
+                    "forge_dispatcher",
+                    "dispatcher_state",
+                    CheckPurpose.READINESS,
+                    HEALTH_CAPABILITY_SCOPE,
+                    dispatcher_state,
+                    observed_at,
+                    _observation_expiry(observed_at, observation_ttls.get("dispatcher_state")),
+                    reason_code=None if dispatcher_state is ObservationState.PASS else "DISPATCHER_STATE_UNKNOWN",
+                ))
         observations.append(HealthObservation(
             identity,
             "forge_runtime",
@@ -433,6 +519,48 @@ class InstalledHealthSnapshotService:
             reason_code=integrity_reason,
         ))
         return tuple(observations)
+
+
+def _snapshot_worker(
+    data_root: str | Path,
+    registry: InstalledHealthRegistry | None,
+    evaluated_at: datetime,
+    timeout_seconds: float,
+    integrity_timeout_seconds: float,
+    scratch: Path,
+    sender: Connection,
+) -> None:
+    statements: tuple[str, ...] = ()
+    try:
+        service = InstalledHealthSnapshotService(
+            data_root,
+            registry=registry,
+            clock=lambda: evaluated_at,
+            timeout_seconds=timeout_seconds,
+            integrity_timeout_seconds=integrity_timeout_seconds,
+        )
+        result, statements = service._collect_snapshot(scratch)
+        sender.send(("result", result, statements))
+    except InstalledHealthError as error:
+        sender.send(("installed_error", error.code, str(error), statements))
+    except ValueError as error:
+        sender.send(("value_error", str(error), statements))
+    except BaseException:
+        sender.send(("unavailable", statements))
+    finally:
+        sender.close()
+
+
+def _stop_snapshot_process(process: Any) -> None:
+    process.terminate()
+    process.join(timeout=0.2)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=0.2)
+
+
+def _observation_expiry(observed_at: datetime, ttl_seconds: int | None) -> datetime | None:
+    return None if ttl_seconds is None else observed_at + timedelta(seconds=ttl_seconds)
 
 
 def _parse_observed_at(value: object) -> datetime | None:

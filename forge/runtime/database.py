@@ -600,6 +600,13 @@ class RuntimeDatabase:
                     WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
+                    CREATE TRIGGER runtime_identity_immutable_delete BEFORE DELETE ON runtime_metadata
+                    WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
+                    CREATE TRIGGER runtime_identity_immutable_insert BEFORE INSERT ON runtime_metadata
+                    WHEN NEW.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
+                         AND EXISTS (SELECT 1 FROM runtime_metadata WHERE key = NEW.key AND value <> NEW.value)
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                     CREATE TABLE mission_state (
                         mission_id TEXT PRIMARY KEY, lifecycle TEXT NOT NULL,
                         status TEXT NOT NULL, current_intent TEXT, current_action TEXT,
@@ -1088,6 +1095,13 @@ class RuntimeDatabase:
                     CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
                     WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'created_at')
                          AND NEW.value <> OLD.value
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
+                    CREATE TRIGGER runtime_identity_immutable_delete BEFORE DELETE ON runtime_metadata
+                    WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'created_at')
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
+                    CREATE TRIGGER runtime_identity_immutable_insert BEFORE INSERT ON runtime_metadata
+                    WHEN NEW.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'created_at')
+                         AND EXISTS (SELECT 1 FROM runtime_metadata WHERE key = NEW.key AND value <> NEW.value)
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                 """)
                 self._set_metadata({"schema_version": "7", "migration_version": "7", "last_migration": "7", "instance_version": "1"})
@@ -1894,6 +1908,37 @@ class RuntimeDatabase:
                     CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
                     WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
                          AND NEW.value <> OLD.value
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END
+                """)
+            delete_trigger = self._connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' "
+                "AND name='runtime_identity_immutable_delete'"
+            ).fetchone()
+            immutable_keys = (
+                "runtime_id", "installation_id", "repository_identity", "repository_root",
+                "repository_uuid", "created_at", "initialization_version",
+            )
+            if delete_trigger is None or any(
+                key not in str(delete_trigger[0]) for key in immutable_keys
+            ):
+                self._connection.execute("DROP TRIGGER IF EXISTS runtime_identity_immutable_delete")
+                self._connection.execute("""
+                    CREATE TRIGGER runtime_identity_immutable_delete BEFORE DELETE ON runtime_metadata
+                    WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END
+                """)
+            insert_trigger = self._connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' "
+                "AND name='runtime_identity_immutable_insert'"
+            ).fetchone()
+            if insert_trigger is None or any(
+                key not in str(insert_trigger[0]) for key in immutable_keys
+            ):
+                self._connection.execute("DROP TRIGGER IF EXISTS runtime_identity_immutable_insert")
+                self._connection.execute("""
+                    CREATE TRIGGER runtime_identity_immutable_insert BEFORE INSERT ON runtime_metadata
+                    WHEN NEW.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
+                         AND EXISTS (SELECT 1 FROM runtime_metadata WHERE key = NEW.key AND value <> NEW.value)
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END
                 """)
             self._set_metadata(values)

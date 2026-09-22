@@ -7,6 +7,7 @@
       "component_id": "forge_server",
       "enabled": true,
       "freshness_timeout_seconds": 30,
+      "observation_ttl_seconds": null,
       "observation_source": "installed_process",
       "purpose": "LIVENESS"
     },
@@ -19,6 +20,7 @@
       "component_id": "forge_runtime",
       "enabled": true,
       "freshness_timeout_seconds": 300,
+      "observation_ttl_seconds": 600,
       "observation_source": "runtime_metadata",
       "purpose": "READINESS"
     },
@@ -31,6 +33,7 @@
       "component_id": "forge_runtime",
       "enabled": true,
       "freshness_timeout_seconds": 30,
+      "observation_ttl_seconds": null,
       "observation_source": "operational_reset_state",
       "purpose": "READINESS"
     },
@@ -43,6 +46,7 @@
       "component_id": "forge_storage",
       "enabled": true,
       "freshness_timeout_seconds": 30,
+      "observation_ttl_seconds": null,
       "observation_source": "sqlite_integrity_check",
       "purpose": "READINESS"
     },
@@ -55,6 +59,7 @@
       "component_id": "forge_dispatcher",
       "enabled": true,
       "freshness_timeout_seconds": 300,
+      "observation_ttl_seconds": 600,
       "observation_source": "dispatcher_state",
       "purpose": "READINESS"
     }

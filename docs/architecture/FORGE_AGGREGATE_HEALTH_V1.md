@@ -103,3 +103,14 @@ are not changed. It does not query Mission or execution records or import a
 provider. Registry and runtime schemas newer than the supported reader are
 rejected. This is the installed-health slice only; it does not claim the other
 FH-Q cases or service-account/reboot qualification complete.
+
+The wall-clock timeout covers resolution, registry and marker reads, snapshot
+copying, SQLite observation, response construction, and cleanup through a
+terminable collector-process boundary. Integrity observation has a smaller
+sub-deadline so a timed-out integrity check can still be returned and the
+snapshot can complete within its outer bound. The canonical registry supplies
+observation expiry policy separately from freshness timeout, allowing stale and
+expired evidence to remain distinct. A missing dispatcher row produces a
+missing required observation; it is never synthesized as an idle dispatcher.
+Runtime installation identity is reconciled with any durable operator binding
+and protected against both update and deletion.
