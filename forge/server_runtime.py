@@ -155,6 +155,25 @@ class ServerInstanceLease:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+class _ServerLog:
+    """Append secret-free Server lifecycle diagnostics below the instance data root."""
+
+    def __init__(self, data_root: Path) -> None:
+        self.path = data_root / "logs" / "server-runtime.jsonl"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(self.path.parent, 0o700)
+
+    def write(self, event: str, **details: Any) -> None:
+        document = {"at": _now(), "event": event, **details}
+        payload = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+        descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(descriptor, payload)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+
 class ServerRuntimeState:
     """Thread-safe, secret-free lifecycle/readiness projection."""
 
@@ -633,6 +652,7 @@ class ForgeServerRuntime:
         self.state.update(listener={"host": address, "port": actual_port}, lifecycle="STARTING")
         self._stop = Event()
         self._lease = ServerInstanceLease(self.root)
+        self._log = _ServerLog(self.root)
 
     def stop(self) -> None:
         self._stop.set()
@@ -651,6 +671,11 @@ class ForgeServerRuntime:
     def serve_forever(self) -> None:
         """Run in the foreground and terminate cleanly on SIGINT/SIGTERM."""
         with self._lease.acquire():
+            self._log.write(
+                "server_starting", instance_id=self.instance.instance_id,
+                host=self.server.server_address[0], port=self.server.server_address[1],
+                product_version=self.instance.product_version, storage_schema=self.instance.storage_schema,
+            )
             thread = Thread(target=self.server.serve_forever, name="forge-server-http", daemon=True)
             thread.start()
             previous_int = signal.getsignal(signal.SIGINT)
@@ -662,6 +687,7 @@ class ForgeServerRuntime:
             signal.signal(signal.SIGINT, request_stop)
             signal.signal(signal.SIGTERM, request_stop)
             self.state.update(lifecycle="RUNNING")
+            self._log.write("server_running", instance_id=self.instance.instance_id)
             try:
                 while not self._stop.is_set():
                     try:
@@ -670,6 +696,10 @@ class ForgeServerRuntime:
                         self.state.scheduler("BUSY")
                     except Exception as error:
                         self.state.scheduler("NOT_READY", error=type(error).__name__)
+                        self._log.write(
+                            "scheduler_not_ready", instance_id=self.instance.instance_id,
+                            error_type=type(error).__name__,
+                        )
                     self._stop.wait(self.tick_interval)
             finally:
                 self.state.update(lifecycle="STOPPING")
@@ -677,5 +707,6 @@ class ForgeServerRuntime:
                 self.server.server_close()
                 thread.join(timeout=5)
                 self.state.update(lifecycle="STOPPED")
+                self._log.write("server_stopped", instance_id=self.instance.instance_id)
                 signal.signal(signal.SIGINT, previous_int)
                 signal.signal(signal.SIGTERM, previous_term)
