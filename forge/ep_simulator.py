@@ -514,6 +514,14 @@ class EpSimulatorState:
         with self._lock:
             return tuple(sorted(self._by_id))
 
+    def terminal_documents(self, submission_id: str) -> tuple[dict[str, Any], bytes]:
+        """Return copies for negative qualification without exposing request payloads."""
+        with self._lock:
+            item = self._by_id.get(submission_id)
+            if item is None or item.terminal_readback is None or item.terminal_artifact is None:
+                raise ValueError("EP simulator terminal evidence is not available")
+            return json.loads(json.dumps(item.terminal_readback)), bytes(item.terminal_artifact)
+
 
 class EpSimulatorServer:
     """Real loopback HTTP server around :class:`EpSimulatorState`."""
