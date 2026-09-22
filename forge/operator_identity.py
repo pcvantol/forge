@@ -11,8 +11,11 @@ class InstallationOperatorService:
  def __init__(self, db, resolver): self.db,self.resolver=db,resolver
  def installation_id(self):
   value=self.db.metadata.get('installation_id')
+  rows=self.db._connection.execute('SELECT DISTINCT installation_id FROM installation_operator_binding ORDER BY installation_id LIMIT 2').fetchall()
+  binding_ids=tuple(row[0] for row in rows)
+  if len(binding_ids)>1 or (value and binding_ids and value!=binding_ids[0]):raise RuntimeError('installation identity is inconsistent')
   if value:return value
-  value=str(uuid.uuid4())
+  value=binding_ids[0] if binding_ids else str(uuid.uuid4())
   with self.db._connection:self.db._set_metadata({'installation_id':value})
   return value
  def first_bind(self):

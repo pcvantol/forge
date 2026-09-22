@@ -1,0 +1,71 @@
+{
+  "checks": [
+    {
+      "applicability": "REQUIRED",
+      "capabilities": [],
+      "check_id": "installed_api",
+      "component_id": "forge_server",
+      "enabled": true,
+      "freshness_timeout_seconds": 30,
+      "observation_ttl_seconds": null,
+      "observation_source": "installed_process",
+      "purpose": "LIVENESS"
+    },
+    {
+      "applicability": "REQUIRED",
+      "capabilities": [
+        "installed_health"
+      ],
+      "check_id": "runtime_state",
+      "component_id": "forge_runtime",
+      "enabled": true,
+      "freshness_timeout_seconds": 300,
+      "observation_ttl_seconds": 600,
+      "observation_source": "runtime_metadata",
+      "purpose": "READINESS"
+    },
+    {
+      "applicability": "REQUIRED",
+      "capabilities": [
+        "installed_health"
+      ],
+      "check_id": "operational_reset_maintenance",
+      "component_id": "forge_runtime",
+      "enabled": true,
+      "freshness_timeout_seconds": 30,
+      "observation_ttl_seconds": null,
+      "observation_source": "operational_reset_state",
+      "purpose": "READINESS"
+    },
+    {
+      "applicability": "REQUIRED",
+      "capabilities": [
+        "installed_health"
+      ],
+      "check_id": "sqlite_integrity",
+      "component_id": "forge_storage",
+      "enabled": true,
+      "freshness_timeout_seconds": 30,
+      "observation_ttl_seconds": null,
+      "observation_source": "sqlite_integrity_check",
+      "purpose": "READINESS"
+    },
+    {
+      "applicability": "REQUIRED",
+      "capabilities": [
+        "installed_health"
+      ],
+      "check_id": "dispatcher_state",
+      "component_id": "forge_dispatcher",
+      "enabled": true,
+      "freshness_timeout_seconds": 300,
+      "observation_ttl_seconds": 600,
+      "observation_source": "dispatcher_state",
+      "purpose": "READINESS"
+    }
+  ],
+  "profile_reference": "validation-profile-registry:FULL@1.0",
+  "registry_id": "forge-installed-health",
+  "registry_version": "1.0",
+  "schema_version": "1.0"
+}

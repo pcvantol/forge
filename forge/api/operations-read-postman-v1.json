@@ -9,6 +9,17 @@
   },
   "item": [
     {
+      "name": "Installed health",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/health"},
+      "response": [{"code": 200, "name": "Healthy"}, {"code": 503, "name": "Not healthy"}]
+    },
+    {
+      "auth": {"type": "noauth"},
+      "name": "Installed health requires authentication",
+      "request": {"method": "GET", "url": "{{baseUrl}}/v1/health"},
+      "response": [{"code": 401, "name": "Authentication required"}]
+    },
+    {
       "name": "Installed status",
       "request": {"method": "GET", "url": "{{baseUrl}}/v1/status"},
       "response": [{"code": 200, "name": "Available"}, {"code": 503, "name": "Unavailable"}]
