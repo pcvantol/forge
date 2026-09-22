@@ -56,7 +56,7 @@ class EpSimulatorRollingPlanningTests(unittest.TestCase):
         self.addCleanup(self.runtime.close)
         self.store = MissionStateStore(self.runtime)
         seed_pending(
-            self.store, mission(), DynamicMissionCapabilityTests.truth(None, None),
+            self.store, mission(), self._truth(None, None),
             occurred_at="2026-09-22T12:00:00Z",
         )
         self.dispatcher = Dispatcher()
@@ -111,6 +111,18 @@ class EpSimulatorRollingPlanningTests(unittest.TestCase):
             "sha256:" + "f" * 64,
         )
 
+    @staticmethod
+    def _truth(_state, evidence):
+        if evidence is None:
+            return DynamicMissionCapabilityTests.truth(None, None)
+        repository = evidence.repository_evidence
+        return {
+            "source_id": "forge-repository-truth",
+            "revision": repository.repository_revision,
+            "locator": f"repository://forge/{repository.repository_revision}",
+            "content_digest": repository.content_digest,
+        }
+
     def _loop(self, provider: DerivationProvider, *, complete_all_from_a: bool = False) -> ExecutionLoop:
         def correlation() -> str:
             self.counter += 1
@@ -129,7 +141,7 @@ class EpSimulatorRollingPlanningTests(unittest.TestCase):
             self.host,
             DynamicMissionCapabilityTests.planning,
             self._prompt,
-            DynamicMissionCapabilityTests.truth,
+            self._truth,
             host_id="engineering-platform",
             workspace_id="forge",
             repository_id="forge",

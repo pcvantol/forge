@@ -555,7 +555,10 @@ class EpSimulatorServer:
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
-                self.wfile.write(payload)
+                try:
+                    self.wfile.write(payload)
+                except (BrokenPipeError, ConnectionResetError):
+                    self.close_connection = True
 
             def _error(self, status: int, code: str) -> None:
                 self._send_json(status, {"error": {"code": code}})
@@ -625,7 +628,10 @@ class EpSimulatorServer:
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(payload)))
                     self.end_headers()
-                    self.wfile.write(payload)
+                    try:
+                        self.wfile.write(payload)
+                    except (BrokenPipeError, ConnectionResetError):
+                        self.close_connection = True
                     return
                 self._error(404, "ROUTE_NOT_FOUND")
 

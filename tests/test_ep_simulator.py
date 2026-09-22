@@ -28,7 +28,13 @@ class EpSimulatorTests(unittest.TestCase):
             scenario=scenario,
         )
 
-    def _host(self, server: EpSimulatorServer, database: RuntimeDatabase | None = None):
+    def _host(
+        self,
+        server: EpSimulatorServer,
+        database: RuntimeDatabase | None = None,
+        *,
+        timeout: float = 10,
+    ):
         return EngineeringPlatformHttpExecutionHost(
             EngineeringPlatformHttpConfiguration(
                 server.base_url, "forge", "sim-token",
@@ -37,6 +43,7 @@ class EpSimulatorTests(unittest.TestCase):
                 peer_binding_id="sim-peer", peer_configuration_revision=1,
                 peer_configuration_digest="sha256:" + "d" * 64,
                 allow_loopback_http=True,
+                timeout=timeout,
             ),
             database or self.database,
         )
@@ -119,6 +126,8 @@ class EpSimulatorTests(unittest.TestCase):
             dispatch = host.recover_dispatch(request)
             evidence = host.retrieve_evidence(dispatch)
             self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+            duplicate = host.retrieve_evidence(dispatch)
+            self.assertEqual(duplicate.receipt_id, evidence.receipt_id)
             self.assertEqual(len(state.submission_ids()), 1)
 
     def test_forge_restart_during_polling_reuses_persisted_correlation_without_resubmit(self) -> None:
@@ -143,6 +152,10 @@ class EpSimulatorTests(unittest.TestCase):
         mutations = (
             ("wrong-mission", lambda r, a: (
                 r["correlation"].__setitem__("mission_id", "other-mission"),
+                json.loads(a.decode()).get("correlation"),
+            )),
+            ("wrong-correlation", lambda r, a: (
+                r["correlation"].__setitem__("correlation_id", "other-correlation"),
                 json.loads(a.decode()).get("correlation"),
             )),
             ("stale-baseline", lambda r, a: (
@@ -174,6 +187,9 @@ class EpSimulatorTests(unittest.TestCase):
                     if label == "wrong-mission":
                         readback["correlation"]["mission_id"] = "other-mission"
                         artifact["correlation"]["mission_id"] = "other-mission"
+                    elif label == "wrong-correlation":
+                        readback["correlation"]["correlation_id"] = "other-correlation"
+                        artifact["correlation"]["correlation_id"] = "other-correlation"
                     elif label == "stale-baseline":
                         artifact["repository"]["requested_revision"] = "b" * 40
                         artifact["repository"]["baseline_transition"]["from"] = "b" * 40
@@ -203,6 +219,13 @@ class EpSimulatorTests(unittest.TestCase):
         with EpSimulatorServer(failed) as server:
             with self.assertRaises(ExecutionHostTemporaryUnavailable):
                 self._host(server).preflight()
+
+        timed_out = self._state(EpSimulatorScenario(
+            name="timeout", response_delay_seconds=0.05,
+        ))
+        with EpSimulatorServer(timed_out) as server:
+            with self.assertRaises(ExecutionHostTemporaryUnavailable):
+                self._host(server, timeout=0.01).preflight()
 
         dropped = self._state(EpSimulatorScenario(
             name="connection-loss", connection_loss_at=frozenset({"preflight"}),

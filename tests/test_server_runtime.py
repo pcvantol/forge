@@ -156,7 +156,8 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                 self.assertIsNotNone(response, process.stderr.read() if process.poll() is not None else "")
                 self.assertEqual(response["storage_schema"], 39)
                 process.terminate()
-                self.assertEqual(process.wait(timeout=8), 0)
+                process.communicate(timeout=8)
+                self.assertEqual(process.returncode, 0)
                 log = (root / "logs" / "server-runtime.jsonl").read_text(encoding="utf-8")
                 self.assertIn('"event":"server_running"', log)
                 self.assertIn('"event":"server_stopped"', log)
@@ -164,7 +165,7 @@ class ForgeServerRuntimeTests(unittest.TestCase):
             finally:
                 if process.poll() is None:
                     process.kill()
-                    process.wait(timeout=5)
+                process.communicate(timeout=5)
 
     def test_instance_owned_codex_context_is_used_for_headless_readiness(self) -> None:
         with TemporaryDirectory() as temporary:

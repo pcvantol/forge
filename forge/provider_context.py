@@ -211,6 +211,14 @@ class ProviderExecutionContextService:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
+            directory = os.open(
+                self.context_root,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
         finally:
             temporary.unlink(missing_ok=True)
         return self.read(provider_id)
