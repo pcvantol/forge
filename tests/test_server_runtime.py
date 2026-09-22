@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+import socket
+import subprocess
+import sys
+import time
+from urllib.request import Request, urlopen
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -106,6 +112,59 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                 self.assertEqual(accepted.body["instance_id"], existing_instance(root).instance_id)
             finally:
                 server.server.server_close()
+
+    def test_foreground_server_starts_without_login_home_and_stops_cleanly_on_sigterm(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "headless")
+            credential = self._credential(root)
+            probe = socket.socket()
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+            probe.close()
+            environment = os.environ.copy()
+            for name in ("HOME", "USER", "LOGNAME", "CODEX_HOME"):
+                environment.pop(name, None)
+            process = subprocess.Popen(
+                [
+                    sys.executable, "-m", "forge", "--data-root", str(root),
+                    "server", "run", "--credential-file", str(credential),
+                    "--host", "127.0.0.1", "--port", str(port),
+                    "--tick-interval", "0.05",
+                ],
+                cwd=Path(__file__).parents[1],
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                response = None
+                deadline = time.monotonic() + 8
+                while time.monotonic() < deadline:
+                    if process.poll() is not None:
+                        break
+                    try:
+                        request = Request(
+                            f"http://127.0.0.1:{port}/v1/version",
+                            headers={"Authorization": "Bearer server-test-credential"},
+                        )
+                        with urlopen(request, timeout=0.5) as handle:
+                            response = json.loads(handle.read())
+                        break
+                    except OSError:
+                        time.sleep(0.05)
+                self.assertIsNotNone(response, process.stderr.read() if process.poll() is not None else "")
+                self.assertEqual(response["storage_schema"], 39)
+                process.terminate()
+                self.assertEqual(process.wait(timeout=8), 0)
+                log = (root / "logs" / "server-runtime.jsonl").read_text(encoding="utf-8")
+                self.assertIn('"event":"server_running"', log)
+                self.assertIn('"event":"server_stopped"', log)
+                self.assertNotIn("server-test-credential", log)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
 
     def test_instance_owned_codex_context_is_used_for_headless_readiness(self) -> None:
         with TemporaryDirectory() as temporary:
