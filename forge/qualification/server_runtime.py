@@ -194,7 +194,10 @@ def run() -> dict[str, object]:
 
     with tempfile.TemporaryDirectory(prefix="forge-server-installed-") as temporary:
         root = Path(temporary)
-        roots = (root / "instance-a", root / "instance-b")
+        roots = tuple(
+            (root / name).resolve()
+            for name in ("instance-a", "instance-b")
+        )
         for item in roots:
             RuntimeBootstrap(data_root=item, forge_version=version).open().close()
         ports = (_port(), _port())
