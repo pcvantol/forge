@@ -385,7 +385,14 @@ class OpenAIResponsesPlanningProvider:
             secret = None
             self.configuration.policy_service._release_generation_permit(permit)
         try:
-            proposals, refinement = self._parse(request, document)
+            write_scopes, human_gates, risk_inputs = (
+                self.configuration.preflight_authority.approved_derivation_policy_for(
+                    request.snapshot.mission_id
+                )
+            )
+            proposals, refinement = self._parse(
+                request, document, DerivationPolicy(write_scopes, human_gates, risk_inputs)
+            )
             return ProviderDerivationResponse(self._evidence(request, document, ProviderSideEffectState.HAPPENED_AND_CONFIRMED, started, str(document.get("status", "completed"))), proposals=proposals, governance_refinement=refinement)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             # A confirmed invalid response is never passed to deterministic validation.
@@ -541,7 +548,8 @@ class OpenAIResponsesPlanningProvider:
         if input_tokens + output_tokens > policy.context_token_bound:
             raise ValueError("bounded planning request exceeds canonical G011 context token bound")
 
-    def _parse(self, request: ProviderDerivationRequest, document: dict[str, object]) -> tuple[tuple[DerivedActionProposal, ...] | None, GovernanceRefinementRequired | None]:
+    def _parse(self, request: ProviderDerivationRequest, document: dict[str, object],
+               derivation_policy: DerivationPolicy) -> tuple[tuple[DerivedActionProposal, ...] | None, GovernanceRefinementRequired | None]:
         if document.get("status") != "completed": raise ValueError("response was not completed")
         text = _structured_output_text(document)
         parsed = json.loads(text)
@@ -553,7 +561,10 @@ class OpenAIResponsesPlanningProvider:
             str(item["logical_action_id"]), str(item["scope"]), str(item["objective"]),
             tuple(item["dependencies"]), tuple(item["write_scopes"]), tuple(item["expected_evidence"]),
             tuple(item["validation_strategy"]), int(item["priority"]), bool(item["postponed"]),
-            tuple(item["human_gates"]), tuple(item["risk_inputs"]),
+            _canonical_required_policy_values(item["human_gates"], derivation_policy.required_human_gates,
+                                              field="human_gates"),
+            _canonical_required_policy_values(item["risk_inputs"], derivation_policy.required_risk_inputs,
+                                              field="risk_inputs"),
             ProposalProvenance(request.derivation_id, request.snapshot.id, request.snapshot.digest,
                                self.adapter_version, request.provider_id, request.model,
                                tuple(item["source_evidence_refs"])),
@@ -731,3 +742,20 @@ def _required_enum_array(values: tuple[str, ...]) -> dict[str, object]:
         raise ValueError("canonical derivation constraint set is invalid")
     return {"type": "array", "items": {"type": "string", "enum": list(values)},
             "minItems": len(values), "maxItems": len(values)}
+
+
+def _canonical_required_policy_values(raw: object, required: tuple[str, ...], *, field: str) -> tuple[str, ...]:
+    """Bind required governance annotations to the canonical approved policy.
+
+    The supported strict schemas can constrain array length and enum members,
+    but cannot require every enum member exactly once.  A provider can
+    therefore repeat one allowed member and omit another while still
+    satisfying the transport schema.  The provider does not own these
+    annotations: after checking the same bounded shape and allow-list, bind
+    the proposal to the complete approved set.  The downstream validator
+    remains the final fail-closed authority check.
+    """
+    if (not isinstance(raw, list) or len(raw) != len(required)
+            or any(not isinstance(value, str) or value not in required for value in raw)):
+        raise ValueError(f"proposal {field} does not match the approved policy shape")
+    return required

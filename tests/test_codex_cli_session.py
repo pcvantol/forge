@@ -339,6 +339,43 @@ class CodexCliSessionTests(unittest.TestCase):
         self.assertEqual(response.proposals[0].validation_strategy, ("unit test",))
         self.assertEqual(response.proposals[0].provenance.source_evidence_refs, ("mission_state",))
 
+    def test_required_governance_arrays_bind_to_complete_approved_policy(self):
+        self.configure()
+        policy = DerivationPolicy(
+            self.policy.allowed_write_scopes,
+            ("architecture-review", "security-review"),
+            ("provider-ambiguity", "scope-drift"),
+        )
+        repeated = document()
+        proposal = repeated["result"]["proposals"][0]
+        proposal["human_gates"] = ["architecture-review", "architecture-review"]
+        proposal["risk_inputs"] = ["scope-drift", "scope-drift"]
+        response = self.provider(Runner(repeated)).invoke(
+            self.request(), approved_scopes=("planner-contract",), derivation_policy=policy,
+        )
+        self.assertEqual(response.evidence.status, "completed")
+        self.assertEqual(
+            response.proposals[0].human_gates,
+            ("architecture-review", "security-review"),
+        )
+        self.assertEqual(
+            response.proposals[0].risk_inputs,
+            ("provider-ambiguity", "scope-drift"),
+        )
+        ActionDerivationValidator().validate(
+            response.proposals or (), self.snapshot, self.input, policy,
+        )
+
+    def test_required_governance_arrays_reject_values_outside_approved_policy(self):
+        self.configure()
+        outside = document()
+        outside["result"]["proposals"][0]["risk_inputs"] = ["invented-risk"]
+        response = self.provider(Runner(outside)).invoke(
+            self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy,
+        )
+        self.assertIsNone(response.proposals)
+        self.assertEqual(response.evidence.status, "contract_invalid")
+
     def test_object_root_preserves_governance_refinement_without_permitting_mixed_variants(self):
         self.configure()
         refinement = {"result": {"kind": "governance_refinement", "reason": "needs architecture"}}
