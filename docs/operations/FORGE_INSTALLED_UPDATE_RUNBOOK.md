@@ -11,7 +11,8 @@ schema-39-to-39 planner-contract correction, and the selected 2.7.29 to 2.7.30
 planner-contract cardinality correction, plus the selected 2.7.30 to 2.7.31
 planner governance-policy binding correction, the selected 2.7.31 to 2.7.32
 authoritative installed-health and readiness delivery, and the selected 2.7.31/2.7.32
-to 2.7.33 same-schema installer correction. Support for those routes is not a
+to 2.7.33 same-schema installer correction, and the selected 2.7.33 to 2.7.34
+Forge Server Runtime V1 same-schema delivery. Support for those routes is not a
 claim that its release is published or an installation has been activated.
 
 This controller closes one concrete product provisioning gap. It is not the
@@ -51,7 +52,8 @@ interpreter, version, and bytes.
    canonical RECORD, purelib tag, package metadata, member allowlist, and the
    exact terminal release receipt without importing it. The historical
    2.7.22 reconciliation receipt retains its dedicated validation; 2.7.23 and
-   2.7.24, 2.7.25, 2.7.26, 2.7.27, 2.7.28, 2.7.29, 2.7.30, 2.7.31, 2.7.32 and 2.7.33 must have the normal protected release-complete
+   2.7.24, 2.7.25, 2.7.26, 2.7.27, 2.7.28, 2.7.29, 2.7.30, 2.7.31, 2.7.32,
+   2.7.33 and 2.7.34 must have the normal protected release-complete
    publication/readback/cleanup shape and cannot be presented to an
    unsupported transition.
 2. Create an isolated versioned runtime slot outside the source checkout with
@@ -157,7 +159,8 @@ active or unrelated Mission. The installation controller's protected source
 revision is reported separately from the released wheel's product source.
 
 For 2.7.25 the only newly supported source version is 2.7.24; for 2.7.26 it
-is 2.7.25; for 2.7.27 it is 2.7.26; for 2.7.28 it is 2.7.27; for 2.7.29 it is 2.7.28; for 2.7.30 it is 2.7.29; for 2.7.31 it is 2.7.30; for 2.7.32 it is 2.7.31; for 2.7.33 it is 2.7.31 or 2.7.32. Other version jumps are rejected. After schema 39 has been
+is 2.7.25; for 2.7.27 it is 2.7.26; for 2.7.28 it is 2.7.27; for 2.7.29 it is 2.7.28; for 2.7.30 it is 2.7.29; for 2.7.31 it is 2.7.30; for 2.7.32 it is 2.7.31; for 2.7.33 it is 2.7.31 or 2.7.32; for 2.7.34 it is 2.7.33. Other version
+jumps are rejected. After schema 39 has been
 observed during the 2.7.25 update, interruption recovery keeps the qualified
 candidate or explicit maintenance fence selected; it never launches the retained
 schema-38 binary against the migrated store. The 2.7.26 route does not swap an

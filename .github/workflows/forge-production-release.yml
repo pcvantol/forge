@@ -93,6 +93,10 @@ jobs:
           test "$("$RUNNER_TEMP/forge-wheel/bin/forge" --version)" = "$VERSION"
           "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-wheel"
           cp "$RUNNER_TEMP/forge-criterion-wheel/criterion-completion.public.json" "$GITHUB_WORKSPACE/dist/criterion-completion-qualified.json"
+          if test "$VERSION" = "2.7.34"; then
+            "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.server_runtime --output-dir "$RUNNER_TEMP/forge-server-wheel"
+            cp "$RUNNER_TEMP/forge-server-wheel/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/dist/server-runtime-v1-qualified.json"
+          fi
       - name: Rebuild from an isolated source distribution
         env:
           VERSION: ${{ needs.release-context.outputs.version }}
@@ -124,12 +128,16 @@ jobs:
           for line in Path(sys.argv[2]).read_text(encoding="utf-8").splitlines():
               digest, filename = line.split(maxsplit=1)
               digests[filename] = "sha256:" + digest
-          print(json.dumps({
+          evidence = {
               "exact_main_sha": sys.argv[1],
               "artifact_digests": digests,
               "qualification": "forge-production-distribution",
               "criterion_completion": json.loads(Path("dist/criterion-completion-qualified.json").read_text()),
-          }, sort_keys=True))
+          }
+          server = Path("dist/server-runtime-v1-qualified.json")
+          if server.exists():
+              evidence["server_runtime"] = json.loads(server.read_text())
+          print(json.dumps(evidence, sort_keys=True))
           PY
           python3 scripts/release_operation.py \
             --prepare-qualified \
@@ -352,6 +360,10 @@ jobs:
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-pypi/bin/python" -I -c 'import forge, pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
           "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-published"
           cp "$RUNNER_TEMP/forge-criterion-published/criterion-completion.public.json" "$GITHUB_WORKSPACE/release-input/dist/criterion-completion-published.json"
+          if test "$VERSION" = "2.7.34"; then
+            "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.server_runtime --output-dir "$RUNNER_TEMP/forge-server-published"
+            cp "$RUNNER_TEMP/forge-server-published/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/release-input/dist/server-runtime-v1-published.json"
+          fi
           test "$("$RUNNER_TEMP/forge-pypi/bin/forge" --version)" = "$VERSION"
       - name: Persist immutable PyPI readback as PUBLISHED evidence
         env:
@@ -370,7 +382,11 @@ jobs:
 
           observed = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           composition = json.loads(Path("release-input/dist/criterion-completion-published.json").read_text())
-          print(json.dumps({**observed, "readback": "PASS", "criterion_completion": composition}, sort_keys=True))
+          evidence = {**observed, "readback": "PASS", "criterion_completion": composition}
+          server = Path("release-input/dist/server-runtime-v1-published.json")
+          if server.exists():
+              evidence["server_runtime"] = json.loads(server.read_text())
+          print(json.dumps(evidence, sort_keys=True))
           PY
           python3 scripts/release_operation.py \
             --mark-published \

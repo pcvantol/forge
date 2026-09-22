@@ -1,0 +1,406 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Forge Server Runtime API",
+    "version": "1.0.0",
+    "description": "Authenticated loopback API for one explicit Forge Server instance. Forge business semantics remain owned by application services."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "variables": {
+        "port": {
+          "default": "8765"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/status": {
+      "get": {
+        "summary": "Read installed runtime status",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        }
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "summary": "Read aggregate health",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        }
+      }
+    },
+    "/v1/readiness": {
+      "get": {
+        "summary": "Read Server/provider/peer/scheduler readiness",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        }
+      }
+    },
+    "/v1/instance": {
+      "get": {
+        "summary": "Read instance identity and deployment bindings",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        }
+      }
+    },
+    "/v1/version": {
+      "get": {
+        "summary": "Read product version and storage schema",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        }
+      }
+    },
+    "/v1/provider-context": {
+      "get": {
+        "summary": "Read secret-free instance provider context",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        }
+      },
+      "post": {
+        "summary": "Configure secret-free instance provider context",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/execution-host/preflight": {
+      "get": {
+        "summary": "Perform authenticated EP compatibility preflight",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        }
+      }
+    },
+    "/v1/execution-host/configure": {
+      "post": {
+        "summary": "Configure the Forge-owned EP peer binding",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/missions/inspect": {
+      "post": {
+        "summary": "Inspect a Mission document",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/missions/approve-business": {
+      "post": {
+        "summary": "Record Business approval through existing governance services",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/missions/approve-architecture": {
+      "post": {
+        "summary": "Record Architecture approval through existing governance services",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/missions/admit": {
+      "post": {
+        "summary": "Admit a fully governed Mission",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/missions/{mission_id}": {
+      "get": {
+        "summary": "Read Mission lifecycle and evidence lineage",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
+      }
+    },
+    "/v1/missions/{mission_id}/controller/start": {
+      "post": {
+        "summary": "Start one admitted zero-Action Mission",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/missions/{mission_id}/controller/reopen": {
+      "post": {
+        "summary": "Resume the same durable Mission",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "JsonObject": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  }
+}

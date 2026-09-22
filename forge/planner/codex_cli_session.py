@@ -164,8 +164,26 @@ def _digest(value: object) -> str:
     return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
 
-def _safe_environment() -> dict[str, str]:
-    """Pass only Codex runtime location variables, never API credentials."""
+def _safe_environment(policy: PlanningProviderInvocationPolicy | None = None) -> dict[str, str]:
+    """Build the provider process environment without ever forwarding credentials.
+
+    Legacy interactive CLI use retains the historical ambient-location subset.
+    An instance-owned context instead pins HOME/CODEX_HOME and a deterministic
+    executable PATH so a system service does not inherit the installer user's
+    login environment.
+    """
+    if policy is not None and policy.provider_home and policy.provider_config_home and policy.instance_id:
+        executable = Path(policy.executable_path or "")
+        environment = {
+            "HOME": policy.provider_home,
+            "CODEX_HOME": policy.provider_config_home,
+            "PATH": os.pathsep.join((str(executable.parent), "/usr/bin", "/bin")),
+            "FORGE_PROVIDER_INSTANCE_ID": policy.instance_id,
+        }
+        for name in ("TMPDIR", "LANG", "LC_CTYPE"):
+            if name in os.environ:
+                environment[name] = os.environ[name]
+        return environment
     allowed = ("HOME", "USER", "LOGNAME", "PATH", "TMPDIR", "LANG", "LC_CTYPE", "CODEX_HOME")
     return {name: os.environ[name] for name in allowed if name in os.environ}
 
@@ -200,7 +218,7 @@ class CodexCliSessionReadinessChecker:
         try:
             version_result = self._runner(prefix + ["--version"], stdin=subprocess.DEVNULL,
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                          timeout=5, check=False, env=_safe_environment())
+                                          timeout=5, check=False, env=_safe_environment(policy))
         except (OSError, subprocess.SubprocessError):
             return CodexCliSessionReadiness(CodexCliSessionReadinessState.UNVERIFIED, policy.executable_path,
                                             model=policy.model, profile=policy.profile)
@@ -216,7 +234,7 @@ class CodexCliSessionReadinessChecker:
         try:
             login_result = self._runner(prefix + ["login", "status"], stdin=subprocess.DEVNULL,
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                        timeout=5, check=False, env=_safe_environment())
+                                        timeout=5, check=False, env=_safe_environment(policy))
         except (OSError, subprocess.SubprocessError):
             return CodexCliSessionReadiness(CodexCliSessionReadinessState.UNVERIFIED, policy.executable_path,
                                             shown_version, policy.model, policy.profile)
@@ -480,7 +498,7 @@ class CodexCliChatGPTSessionPlanningProvider:
                     result = self._runner(command, input=json.dumps(_prompt(request), separators=(",", ":")),
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                           text=True, timeout=policy.timeout_seconds, check=False, cwd=str(root),
-                                          env=_safe_environment())
+                                          env=_safe_environment(policy))
                 except subprocess.TimeoutExpired as error:
                     outcome = _CodexCliRunResult(None, _diagnostic(
                         CodexCliInvocationClassification.MAY_HAVE_HAPPENED, process_started=True,
@@ -684,7 +702,11 @@ def _policy_digest(policy: PlanningProviderInvocationPolicy) -> str:
                     "model": policy.model, "profile": policy.profile, "adapter_version": policy.adapter_version,
                     "version": policy.version, "timeout_seconds": policy.timeout_seconds,
                     "input_token_bound": policy.input_token_bound, "context_token_bound": policy.context_token_bound,
-                    "output_token_bound": policy.output_token_bound})
+                    "output_token_bound": policy.output_token_bound,
+                    "instance_id": policy.instance_id,
+                    "provider_context_digest": policy.provider_context_digest,
+                    "provider_home": policy.provider_home,
+                    "provider_config_home": policy.provider_config_home})
 
 
 def _request_material(request: ProviderDerivationRequest, policy: PlanningProviderInvocationPolicy,

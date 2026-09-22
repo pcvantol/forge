@@ -148,7 +148,7 @@ class EngineeringPlatformHttpExecutionHost:
             if error.code >= 500:
                 raise ExecutionHostTemporaryUnavailable("EP temporarily unavailable") from error
             raise ValueError(f"EP rejected request: {error.code}") from error
-        except (URLError, TimeoutError) as error:
+        except (URLError, TimeoutError, ConnectionError) as error:
             raise ExecutionHostTemporaryUnavailable("EP transport unavailable") from error
 
     def _bytes(self, path: str) -> bytes:
@@ -164,7 +164,7 @@ class EngineeringPlatformHttpExecutionHost:
             if error.code >= 500:
                 raise ExecutionHostTemporaryUnavailable("EP artifact temporarily unavailable") from error
             raise ValueError(f"EP artifact request rejected: {error.code}") from error
-        except (URLError, TimeoutError) as error:
+        except (URLError, TimeoutError, ConnectionError) as error:
             raise ExecutionHostTemporaryUnavailable("EP artifact transport unavailable") from error
 
     @staticmethod
