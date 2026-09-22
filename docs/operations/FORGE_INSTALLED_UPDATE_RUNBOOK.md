@@ -8,7 +8,8 @@ vertical-Mission delivery, and the selected 2.7.26 to 2.7.27 schema-39-to-39
 baseline/rolling-planning correction, plus the selected 2.7.27 to 2.7.28
 schema-39-to-39 Operations-read correction, the selected 2.7.28 to 2.7.29
 schema-39-to-39 planner-contract correction, and the selected 2.7.29 to 2.7.30
-planner-contract cardinality correction. Support for those routes is not a
+planner-contract cardinality correction, plus the selected 2.7.30 to 2.7.31
+planner governance-policy binding correction. Support for those routes is not a
 claim that its release is published or an installation has been activated.
 
 This controller closes one concrete product provisioning gap. It is not the
@@ -48,7 +49,7 @@ interpreter, version, and bytes.
    canonical RECORD, purelib tag, package metadata, member allowlist, and the
    exact terminal release receipt without importing it. The historical
    2.7.22 reconciliation receipt retains its dedicated validation; 2.7.23 and
-   2.7.24, 2.7.25, 2.7.26, 2.7.27, 2.7.28, 2.7.29 and 2.7.30 must have the normal protected release-complete
+   2.7.24, 2.7.25, 2.7.26, 2.7.27, 2.7.28, 2.7.29, 2.7.30 and 2.7.31 must have the normal protected release-complete
    publication/readback/cleanup shape and cannot be presented to an
    unsupported transition.
 2. Create an isolated versioned runtime slot outside the source checkout with
@@ -92,7 +93,7 @@ interpreter, version, and bytes.
    take an exclusive SQLite writer boundary, prove the live database still
    matches the backup, and atomically install the Forge-migrated copy. That
    replacement remains read-only until activation and final receipt persistence.
-   For 2.7.25-to-2.7.26, 2.7.26-to-2.7.27, 2.7.27-to-2.7.28, 2.7.28-to-2.7.29 and 2.7.29-to-2.7.30, verify the qualified schema-39 copy and unchanged live
+   For 2.7.25-to-2.7.26, 2.7.26-to-2.7.27, 2.7.27-to-2.7.28, 2.7.28-to-2.7.29, 2.7.29-to-2.7.30 and 2.7.30-to-2.7.31, verify the qualified schema-39 copy and unchanged live
    snapshot under the fence, then retain the original database file.
 9. Atomically select the candidate slot and read back the exact installed CLI,
    module, interpreter, version, runtime identity, data root, schema, and peer
@@ -135,7 +136,7 @@ separate authority and compatibility proof.
 ## Qualification boundary
 
 `tests/test_installed_forge_update.py` covers exact release binding, target and
-writer rejection, the bounded 37-to-38, 38-to-38, 38-to-39 and four 39-to-39 transitions, preservation
+writer rejection, the bounded 37-to-38, 38-to-38, 38-to-39 and 39-to-39 transitions, preservation
 of Missions, allocations, reviews, execution receipts, governance grants,
 configuration and identity, concurrent-operation exclusion, resolver adoption,
 prior-operation fence normalization and tamper rejection, canonical receipt
@@ -150,7 +151,7 @@ active or unrelated Mission. The installation controller's protected source
 revision is reported separately from the released wheel's product source.
 
 For 2.7.25 the only newly supported source version is 2.7.24; for 2.7.26 it
-is 2.7.25; for 2.7.27 it is 2.7.26; for 2.7.28 it is 2.7.27; for 2.7.29 it is 2.7.28; for 2.7.30 it is 2.7.29. A jump from an older version is rejected. After schema 39 has been
+is 2.7.25; for 2.7.27 it is 2.7.26; for 2.7.28 it is 2.7.27; for 2.7.29 it is 2.7.28; for 2.7.30 it is 2.7.29; for 2.7.31 it is 2.7.30. A jump from an older version is rejected. After schema 39 has been
 observed during the 2.7.25 update, interruption recovery keeps the qualified
 candidate or explicit maintenance fence selected; it never launches the retained
 schema-38 binary against the migrated store. The 2.7.26 route does not swap an

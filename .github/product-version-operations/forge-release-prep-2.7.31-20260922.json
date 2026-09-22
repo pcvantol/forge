@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.30",
+  "classification_rationale": "Mission 3 planner governance-policy binding correction",
+  "component": "product",
+  "event_lineage": "Mission 3 planner governance-policy binding correction",
+  "expected_head": "4b6e9218843d1c7fd07d5b3d65ce71db8e3f77d7",
+  "operation_id": "forge-release-prep-2.7.31-20260922",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.31"
+}

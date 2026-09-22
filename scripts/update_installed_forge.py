@@ -57,10 +57,11 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.27", "2.7.28"): (39, 39),
     ("2.7.28", "2.7.29"): (39, 39),
     ("2.7.29", "2.7.30"): (39, 39),
+    ("2.7.30", "2.7.31"): (39, 39),
 }
 SAME_SCHEMA_39_TRANSITIONS = frozenset({
     ("2.7.25", "2.7.26"), ("2.7.26", "2.7.27"), ("2.7.27", "2.7.28"),
-    ("2.7.28", "2.7.29"), ("2.7.29", "2.7.30"),
+    ("2.7.28", "2.7.29"), ("2.7.29", "2.7.30"), ("2.7.30", "2.7.31"),
 })
 NORMAL_RELEASE_TRANSITIONS = frozenset({
     ("2.7.22", "2.7.23"),
@@ -72,6 +73,7 @@ NORMAL_RELEASE_TRANSITIONS = frozenset({
     ("2.7.27", "2.7.28"),
     ("2.7.28", "2.7.29"),
     ("2.7.29", "2.7.30"),
+    ("2.7.30", "2.7.31"),
 })
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
@@ -510,7 +512,7 @@ def _normal_release_evidence(
         f"dist/{sdist_name}": sdist_digest,
     }
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
-    composition_keys = {"criterion_completion"} if request.version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30"} else set()
+    composition_keys = {"criterion_completion"} if request.version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31"} else set()
     if (
         (request.existing_version, request.version) not in NORMAL_RELEASE_TRANSITIONS
         or set(receipt) != expected_top
