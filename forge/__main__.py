@@ -93,6 +93,28 @@ def main(argv: list[str] | None = None) -> int:
     server_commands = server.add_subparsers(dest="server_command", required=True)
     server_commands.add_parser("init", help="create and validate the configured Forge data root")
     server_commands.add_parser("status", help="print read-only runtime status as JSON")
+    server_run = server_commands.add_parser("run", help="run the persistent foreground Forge Server")
+    server_run.add_argument("--credential-file", required=True)
+    server_run.add_argument("--host", default="127.0.0.1")
+    server_run.add_argument("--port", required=True, type=int)
+    server_run.add_argument("--provider-id", default="codex-chatgpt-session")
+    server_run.add_argument("--tick-interval", type=float, default=0.25)
+    provider_context = server_commands.add_parser(
+        "provider-context", help="manage the instance-owned provider execution context"
+    )
+    provider_context_commands = provider_context.add_subparsers(dest="provider_context_command", required=True)
+    provider_context_show = provider_context_commands.add_parser("show", help="read one secret-free provider context")
+    provider_context_show.add_argument("--provider-id", default="codex-chatgpt-session")
+    provider_context_configure = provider_context_commands.add_parser(
+        "configure", help="write one guarded, secret-free provider context"
+    )
+    provider_context_configure.add_argument("--provider-id", default="codex-chatgpt-session")
+    provider_context_configure.add_argument("--provider-type", required=True)
+    provider_context_configure.add_argument("--executable-path", required=True)
+    provider_context_configure.add_argument("--provider-home", required=True)
+    provider_context_configure.add_argument("--provider-config-home", required=True)
+    provider_context_configure.add_argument("--profile")
+    provider_context_configure.add_argument("--expected-digest")
     reset = server_commands.add_parser("reset", help="operate the Forge-owned operational-history reset")
     reset_commands = reset.add_subparsers(dest="reset_command", required=True)
     reset_commands.add_parser("preview", help="inspect a read-only reset plan")
@@ -190,6 +212,41 @@ def main(argv: list[str] | None = None) -> int:
     operations_api.add_argument("--host", default="127.0.0.1")
     operations_api.add_argument("--port", type=int, default=8765)
     args = parser.parse_args(argv)
+    if args.command == "server" and args.server_command == "run":
+        if args.data_root is None:
+            return _failure("server run", ValueError("--data-root is required for Forge Server"))
+        try:
+            from .server_runtime import ForgeServerRuntime
+            ForgeServerRuntime(
+                data_root=args.data_root, credential_file=args.credential_file,
+                host=args.host, port=args.port, provider_id=args.provider_id,
+                tick_interval=args.tick_interval,
+            ).serve_forever()
+            return 0
+        except (OSError, ValueError, RuntimeError, PermissionError) as error:
+            return _failure("server run", error)
+    if args.command == "server" and args.server_command == "provider-context":
+        if args.data_root is None:
+            return _failure("server provider-context", ValueError("--data-root is required for provider-context"))
+        try:
+            from .provider_context import ProviderExecutionContextService
+            from .runtime.service import RuntimeServiceLock
+            service = ProviderExecutionContextService(args.data_root)
+            if args.provider_context_command == "show":
+                result = service.read(args.provider_id).to_safe_dict()
+            else:
+                root = DataRootResolver(cli_data_root=args.data_root).resolve()
+                with RuntimeServiceLock(root / "forge.db").acquire():
+                    result = service.configure(
+                        provider_id=args.provider_id, provider_type=args.provider_type,
+                        executable_path=args.executable_path, provider_home=args.provider_home,
+                        provider_config_home=args.provider_config_home, profile=args.profile,
+                        expected_digest=args.expected_digest,
+                    ).to_safe_dict()
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        except (OSError, ValueError, RuntimeError, PermissionError) as error:
+            return _failure("server provider-context", error)
     if args.command == "health":
         if args.data_root is None:
             return _failure("health snapshot", ValueError("--data-root is required for health snapshot"))
