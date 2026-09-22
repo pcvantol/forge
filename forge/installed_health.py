@@ -276,7 +276,11 @@ class InstalledHealthSnapshotService:
         _require_before_deadline(deadline, self.monotonic_clock)
         database = root / "forge.db"
         marker_path = root / "instance" / "runtime-instance.json"
-        if not database.is_file() or not marker_path.is_file():
+        # Presence is checked here; marker type and contents are assessed by
+        # _bounded_marker behind the wall-clock-enforced worker boundary.  An
+        # eager is_file() check would classify a blocking special file as a
+        # missing runtime and bypass the snapshot timeout entirely.
+        if not database.is_file() or not marker_path.exists():
             raise InstalledHealthError("HEALTH_RUNTIME_MISSING", "Installed Forge runtime is unavailable")
         _require_before_deadline(deadline, self.monotonic_clock)
 
