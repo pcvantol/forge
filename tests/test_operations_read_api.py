@@ -355,3 +355,10 @@ class TestTransportContract(unittest.TestCase):
             openapi["components"]["schemas"]["MissionResponse"]["required"],
             ["api_version", "availability", "freshness", "source_observed_at", "read_only", "mission"],
         )
+        health = openapi["components"]["schemas"]["HealthResponse"]
+        self.assertFalse(health["additionalProperties"])
+        self.assertEqual(set(health["required"]), set(health["properties"]))
+        for name in ("liveness", "registry", "observation_provenance"):
+            self.assertFalse(health["properties"][name]["additionalProperties"])
+        for name in ("capabilities", "checks"):
+            self.assertFalse(health["properties"][name]["items"]["additionalProperties"])

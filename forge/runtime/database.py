@@ -597,7 +597,7 @@ class RuntimeDatabase:
                         key TEXT PRIMARY KEY, value TEXT NOT NULL
                     );
                     CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
-                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
+                    WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                     CREATE TABLE mission_state (
@@ -1086,7 +1086,7 @@ class RuntimeDatabase:
             with self._connection:
                 self._connection.executescript("""
                     CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
-                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'created_at')
+                    WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'created_at')
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                 """)
@@ -1134,7 +1134,7 @@ class RuntimeDatabase:
                 self._connection.executescript("""
                     DROP TRIGGER runtime_identity_immutable;
                     CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
-                    WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
+                    WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
                 """)
@@ -1847,6 +1847,14 @@ class RuntimeDatabase:
 
     def _initialize_runtime_identity(self) -> None:
         metadata = self.metadata
+        binding_ids = tuple(row[0] for row in self._connection.execute(
+            "SELECT DISTINCT installation_id FROM installation_operator_binding ORDER BY installation_id LIMIT 2"
+        ))
+        if len(binding_ids) > 1:
+            raise RuntimeIntegrityError("runtime installation identity is inconsistent")
+        if metadata.get("installation_id") and binding_ids and metadata["installation_id"] != binding_ids[0]:
+            raise RuntimeIntegrityError("runtime installation identity is inconsistent")
+        installation_id = metadata.get("installation_id") or (binding_ids[0] if binding_ids else str(uuid.uuid4()))
         was_uninitialized = not metadata.get("runtime_id")
         now = _timestamp()
         created_at = metadata.get("created_at")
@@ -1854,7 +1862,7 @@ class RuntimeDatabase:
             created_at = now
         values = {
             "runtime_id": metadata.get("runtime_id") or f"forge-runtime-{uuid.uuid4()}",
-            "installation_id": metadata.get("installation_id") or str(uuid.uuid4()),
+            "installation_id": installation_id,
             "repository_identity": metadata.get("repository_identity") or (
                 "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)),
             "repository_root": metadata.get("repository_root") or (
@@ -1875,6 +1883,19 @@ class RuntimeDatabase:
         elif current_repository_uuid:
             values["repository_uuid"] = current_repository_uuid
         with self._connection:
+            trigger = self._connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='runtime_identity_immutable'"
+            ).fetchone()
+            if trigger is None:
+                raise RuntimeIntegrityError("runtime identity immutability control is missing")
+            if "installation_id" not in str(trigger[0]):
+                self._connection.execute("DROP TRIGGER runtime_identity_immutable")
+                self._connection.execute("""
+                    CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata
+                    WHEN OLD.key IN ('runtime_id', 'installation_id', 'repository_identity', 'repository_root', 'repository_uuid', 'created_at', 'initialization_version')
+                         AND NEW.value <> OLD.value
+                    BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END
+                """)
             self._set_metadata(values)
             if was_uninitialized:
                 self._append_operational_event(

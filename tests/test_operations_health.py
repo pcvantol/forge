@@ -18,6 +18,7 @@ from forge.installed_health import (
     InstalledHealthError,
     InstalledHealthRegistry,
     InstalledHealthSnapshotService,
+    _bounded_copy,
     _outcome,
 )
 from forge.operations_read_api import InstalledOperationsReadService, OperationsReadAPI, make_server
@@ -34,6 +35,23 @@ from forge.runtime.health import (
 CREDENTIAL = "synthetic-health-credential"
 INSTALLATION_ID = "99ede979-e8b8-48ca-9174-3257778c680f"
 NOW = datetime(2026, 9, 22, 10, 0, tzinfo=UTC)
+
+
+def _assert_closed_schema(testcase: unittest.TestCase, value: object, schema: dict[str, object]) -> None:
+    kind = schema.get("type")
+    if kind == "object":
+        testcase.assertIsInstance(value, dict)
+        properties = schema["properties"]
+        required = schema["required"]
+        testcase.assertFalse(schema["additionalProperties"])
+        testcase.assertEqual(set(value), set(required))
+        testcase.assertEqual(set(required), set(properties))
+        for key, child_schema in properties.items():
+            _assert_closed_schema(testcase, value[key], child_schema)
+    elif kind == "array":
+        testcase.assertIsInstance(value, list)
+        for item in value:
+            _assert_closed_schema(testcase, item, schema["items"])
 
 
 class _HealthFixture(unittest.TestCase):
@@ -77,6 +95,10 @@ class HealthSnapshotTests(_HealthFixture):
         self.assertRegex(snapshot["registry"]["digest"], r"^sha256:[0-9a-f]{64}$")
         provenance = snapshot["observation_provenance"]
         self.assertEqual(provenance["integrity_observation_count"], 1)
+        self.assertEqual(provenance["timeout_seconds"], 2.0)
+        self.assertEqual(provenance["registry_byte_limit"], 64 * 1024)
+        self.assertEqual(provenance["snapshot_byte_limit"], 128 * 1024 * 1024)
+        self.assertEqual(provenance["runtime_marker_byte_limit"], 1024)
         self.assertEqual(provenance["source_snapshot"], "bounded_sidecar_copy")
         self.assertEqual(
             set(provenance["sources"]),
@@ -113,6 +135,74 @@ class HealthSnapshotTests(_HealthFixture):
             self.assertNotEqual(second.metadata["installation_id"], self.installation_id)
         finally:
             second.close()
+
+        connection = sqlite3.connect(self.root / "forge.db")
+        with self.assertRaises(sqlite3.IntegrityError):
+            connection.execute(
+                "UPDATE runtime_metadata SET value='forged-installation' WHERE key='installation_id'"
+            )
+        connection.rollback()
+        with connection:
+            connection.execute("DROP TRIGGER runtime_identity_immutable")
+            connection.execute(
+                "INSERT INTO installation_operator_binding VALUES (?,?,?,?,?,?)",
+                ("different-installation", "operator", 1, 1, "ACTIVE", self.observed_at.isoformat()),
+            )
+        connection.close()
+        with self.assertRaises(InstalledHealthError) as inconsistent:
+            InstalledHealthSnapshotService(self.root).installed_health_snapshot()
+        self.assertEqual(inconsistent.exception.code, "HEALTH_IDENTITY_INCONSISTENT")
+
+    def test_existing_operator_binding_restores_and_protects_installation_identity(self) -> None:
+        connection = sqlite3.connect(self.root / "forge.db")
+        with connection:
+            connection.execute("DROP TRIGGER runtime_identity_immutable")
+            connection.execute(
+                "CREATE TRIGGER runtime_identity_immutable BEFORE UPDATE ON runtime_metadata "
+                "WHEN OLD.key IN ('runtime_id', 'repository_identity', 'repository_root', 'created_at') "
+                "AND NEW.value <> OLD.value "
+                "BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END"
+            )
+            connection.execute(
+                "INSERT INTO installation_operator_binding VALUES (?,?,?,?,?,?)",
+                (self.installation_id, "operator", 1, 1, "ACTIVE", self.observed_at.isoformat()),
+            )
+            connection.execute("DELETE FROM runtime_metadata WHERE key='installation_id'")
+        connection.close()
+
+        reopened = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        try:
+            self.assertEqual(reopened.metadata["installation_id"], self.installation_id)
+            with self.assertRaises(sqlite3.IntegrityError):
+                reopened._connection.execute(  # noqa: SLF001 - controlled persistence assertion
+                    "UPDATE runtime_metadata SET value='forged-installation' WHERE key='installation_id'"
+                )
+        finally:
+            reopened.close()
+
+    def test_timeout_and_file_limits_cover_pre_database_reads_and_copy_chunks(self) -> None:
+        ticks = iter((0.0, 0.0, 6.0))
+        with self.assertRaises(InstalledHealthError) as timed_out:
+            InstalledHealthSnapshotService(
+                self.root,
+                timeout_seconds=5,
+                monotonic_clock=lambda: next(ticks),
+            ).installed_health_snapshot()
+        self.assertEqual(timed_out.exception.code, "HEALTH_SNAPSHOT_TIMED_OUT")
+
+        marker = self.root / "instance" / "runtime-instance.json"
+        marker.write_bytes(b"x" * 1025)
+        with self.assertRaises(InstalledHealthError) as marker_limit:
+            InstalledHealthSnapshotService(self.root).installed_health_snapshot()
+        self.assertEqual(marker_limit.exception.code, "HEALTH_IDENTITY_LIMIT")
+
+        source = Path(self.temporary.name) / "bounded-copy-source"
+        target = Path(self.temporary.name) / "bounded-copy-target"
+        source.write_bytes(b"must-not-be-copied")
+        with self.assertRaises(InstalledHealthError) as copy_timeout:
+            _bounded_copy(source, target, 1.0, iter((0.0, 2.0)).__next__)
+        self.assertEqual(copy_timeout.exception.code, "HEALTH_SNAPSHOT_TIMED_OUT")
+        self.assertEqual(target.read_bytes(), b"")
 
     def test_operational_reset_maintenance_blocks_readiness_without_snapshot_mutation(self) -> None:
         connection = sqlite3.connect(self.root / "forge.db")
@@ -262,6 +352,11 @@ class HealthTransportTests(_HealthFixture):
             self.assertEqual(http["installation_id"], cli["installation_id"])
             self.assertEqual(http["registry"], cli["registry"])
             self.assertEqual(http["observation_provenance"], cli["observation_provenance"])
+            schema = json.loads(
+                (Path(__file__).parents[1] / "forge" / "api" / "operations-read-openapi-v1.json")
+                .read_text(encoding="utf-8")
+            )["components"]["schemas"]["HealthResponse"]
+            _assert_closed_schema(self, http, schema)
         finally:
             server.shutdown()
             server.server_close()

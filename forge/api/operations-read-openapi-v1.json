@@ -37,16 +37,301 @@
         "type": "object"
       },
       "HealthResponse": {
-        "additionalProperties": true,
+        "additionalProperties": false,
         "properties": {
           "api_version": {
             "const": "1"
+          },
+          "capabilities": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "blocking_check_ids": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "capability_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "degraded": {
+                  "type": "boolean"
+                },
+                "degraded_check_ids": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "ready": {
+                  "type": "boolean"
+                },
+                "required_check_ids": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "state": {
+                  "enum": [
+                    "READY",
+                    "UNAVAILABLE",
+                    "UNKNOWN"
+                  ]
+                }
+              },
+              "required": [
+                "capability_id",
+                "state",
+                "ready",
+                "degraded",
+                "required_check_ids",
+                "blocking_check_ids",
+                "degraded_check_ids"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "capability_scope": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "checks": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "age_seconds": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "applicability": {
+                  "enum": [
+                    "REQUIRED",
+                    "OPTIONAL"
+                  ]
+                },
+                "capabilities": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "check_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "component_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "expires_at": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "freshness": {
+                  "enum": [
+                    "FRESH",
+                    "MISSING",
+                    "STALE",
+                    "EXPIRED",
+                    "TIMED_OUT",
+                    "FUTURE",
+                    "NOT_APPLICABLE"
+                  ]
+                },
+                "observation_state": {
+                  "enum": [
+                    "PASS",
+                    "FAIL",
+                    "UNKNOWN",
+                    "TIMED_OUT",
+                    null
+                  ]
+                },
+                "observed_at": {
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "purpose": {
+                  "enum": [
+                    "LIVENESS",
+                    "READINESS"
+                  ]
+                },
+                "reason_code": {
+                  "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "enum": [
+                    "PASS",
+                    "FAIL",
+                    "UNKNOWN",
+                    "DISABLED"
+                  ]
+                },
+                "timeout_seconds": {
+                  "exclusiveMinimum": 0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "component_id",
+                "check_id",
+                "purpose",
+                "applicability",
+                "enabled",
+                "capabilities",
+                "state",
+                "freshness",
+                "observation_state",
+                "observed_at",
+                "expires_at",
+                "age_seconds",
+                "timeout_seconds",
+                "reason_code"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "evaluated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "installation_id": {
             "minLength": 1,
             "type": "string"
           },
+          "liveness": {
+            "additionalProperties": false,
+            "properties": {
+              "alive": {
+                "type": "boolean"
+              },
+              "check_ids": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "state": {
+                "enum": [
+                  "ALIVE",
+                  "NOT_ALIVE",
+                  "UNKNOWN"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "alive",
+              "check_ids"
+            ],
+            "type": "object"
+          },
           "observation_provenance": {
+            "additionalProperties": false,
+            "properties": {
+              "bounded": {
+                "const": true
+              },
+              "collector": {
+                "const": "installed-runtime-read-only"
+              },
+              "integrity_observation_count": {
+                "const": 1
+              },
+              "registry_byte_limit": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "runtime_marker_byte_limit": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "snapshot_byte_limit": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "source_snapshot": {
+                "enum": [
+                  "direct_immutable",
+                  "bounded_sidecar_copy"
+                ]
+              },
+              "sources": {
+                "additionalProperties": false,
+                "properties": {
+                  "dispatcher_state": {
+                    "const": "dispatcher_state"
+                  },
+                  "installed_api": {
+                    "const": "installed_process"
+                  },
+                  "operational_reset_maintenance": {
+                    "const": "operational_reset_state"
+                  },
+                  "runtime_state": {
+                    "const": "runtime_metadata"
+                  },
+                  "sqlite_integrity": {
+                    "const": "sqlite_integrity_check"
+                  }
+                },
+                "required": [
+                  "dispatcher_state",
+                  "installed_api",
+                  "operational_reset_maintenance",
+                  "runtime_state",
+                  "sqlite_integrity"
+                ],
+                "type": "object"
+              },
+              "timeout_seconds": {
+                "exclusiveMinimum": 0,
+                "maximum": 5,
+                "type": "number"
+              }
+            },
+            "required": [
+              "collector",
+              "bounded",
+              "integrity_observation_count",
+              "timeout_seconds",
+              "registry_byte_limit",
+              "snapshot_byte_limit",
+              "runtime_marker_byte_limit",
+              "source_snapshot",
+              "sources"
+            ],
             "type": "object"
           },
           "outcome": {
@@ -65,18 +350,71 @@
             "const": true
           },
           "registry": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "profile_reference": {
+                "const": "validation-profile-registry:FULL@1.0"
+              },
+              "registry_id": {
+                "const": "forge-installed-health"
+              },
+              "registry_version": {
+                "const": "1.0"
+              },
+              "schema_version": {
+                "const": "1.0"
+              }
+            },
+            "required": [
+              "registry_id",
+              "registry_version",
+              "schema_version",
+              "profile_reference",
+              "digest"
+            ],
             "type": "object"
           },
           "runtime_id": {
             "minLength": 1,
             "type": "string"
+          },
+          "product": {
+            "const": "forge"
+          },
+          "product_version": {
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+            "type": "string"
+          },
+          "schema_revision": {
+            "const": "1.0"
+          },
+          "state": {
+            "enum": [
+              "HEALTHY",
+              "DEGRADED",
+              "UNAVAILABLE",
+              "UNKNOWN"
+            ]
           }
         },
         "required": [
           "api_version",
-          "outcome",
+          "schema_revision",
+          "product",
+          "product_version",
           "runtime_id",
           "installation_id",
+          "evaluated_at",
+          "capability_scope",
+          "state",
+          "liveness",
+          "capabilities",
+          "checks",
+          "outcome",
           "read_only",
           "registry",
           "observation_provenance"
