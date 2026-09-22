@@ -304,6 +304,21 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             document = json.loads(receipt.read_text())
             document["qualification"]["criterion_completion"] = summary
             document["publication_receipt"]["criterion_completion"] = summary
+            if version == "2.7.34":
+                server_runtime = {
+                    "qualification": "FORGE_SERVER_RUNTIME_V1_INSTALLED_ARTIFACT",
+                    "version": version,
+                    "server_instances": 2,
+                    "multi_instance": "PASS",
+                    "headless_foreground": "PASS",
+                    "clean_sigterm": "PASS",
+                    "ep_simulator_real_http_boundary": "PASS",
+                    "ep_simulator_submissions": 1,
+                    "production_ep_contacted": False,
+                    "production_provider_contacted": False,
+                }
+                document["qualification"]["server_runtime"] = server_runtime
+                document["publication_receipt"]["server_runtime"] = server_runtime
             receipt.write_text(json.dumps(document, sort_keys=True))
         request = update.UpdateRequest(**{
             **self.request.__dict__,
@@ -1597,6 +1612,42 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(after["schema_digest"], qualified["schema_digest"])
         self.assertEqual(after["protected_metadata_digest"], before["protected_metadata_digest"])
         update.verify_preservation(before, after, self.request)
+
+    def test_2734_requires_exact_installed_server_runtime_evidence(self):
+        request = self._normal_release_request("2.7.34", "2.7.33")
+        self.assertEqual(update.validate_qualified_artifact(request)["release_route"], "NORMAL")
+        receipt = Path(request.qualification_receipt)
+        original = json.loads(receipt.read_text())
+        for section in ("qualification", "publication_receipt"):
+            for mutation in (
+                "missing", "wrong-version", "single-instance", "headless-fail",
+                "simulator-fail", "production-contact", "extra-field",
+            ):
+                with self.subTest(section=section, mutation=mutation):
+                    document = json.loads(json.dumps(original))
+                    report = document[section]["server_runtime"]
+                    if mutation == "missing":
+                        del document[section]["server_runtime"]
+                    elif mutation == "wrong-version":
+                        report["version"] = "2.7.33"
+                    elif mutation == "single-instance":
+                        report["server_instances"] = 1
+                    elif mutation == "headless-fail":
+                        report["headless_foreground"] = "FAIL"
+                    elif mutation == "simulator-fail":
+                        report["ep_simulator_real_http_boundary"] = "FAIL"
+                    elif mutation == "production-contact":
+                        report["production_ep_contacted"] = True
+                    else:
+                        report["unchecked_claim"] = "PASS"
+                    receipt.write_text(json.dumps(document, sort_keys=True))
+                    changed = update.UpdateRequest(**{
+                        **request.__dict__,
+                        "qualification_receipt_sha256": update.file_digest(receipt),
+                    })
+                    with self.assertRaises(update.InstalledForgeUpdateError):
+                        update.validate_qualified_artifact(changed)
+                    receipt.write_text(json.dumps(original, sort_keys=True))
 
     def test_2733_to_2734_installs_server_runtime_contract_without_schema_change(self):
         before = self._same_schema39_transition(existing_version="2.7.33", target_version="2.7.34")
