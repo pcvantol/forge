@@ -41,7 +41,7 @@ from .mission_cli import (
     inspect as mission_inspect,
     status as mission_status,
 )
-from .models.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
+from .repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from .operations_read_api import APIResponse, InstalledOperationsReadService, OperationsReadAPI, read_bearer_credential
 from .planner import (
     CodexCliSessionReadinessChecker,
