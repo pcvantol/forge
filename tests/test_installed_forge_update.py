@@ -131,13 +131,12 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         database = self._open_schema38(self.data_root)
         connection = database._connection
         self.runtime_id = database.runtime_identity.runtime_id
+        self.installation_id = database.metadata["installation_id"]
         self.request = update.UpdateRequest(**{
-            **self.request.__dict__, "runtime_id": self.runtime_id,
+            **self.request.__dict__,
+            "runtime_id": self.runtime_id,
+            "installation_id": self.installation_id,
         })
-        connection.execute(
-            "INSERT INTO runtime_metadata(key,value) VALUES ('installation_id',?)",
-            (self.installation_id,),
-        )
         peer_document = json.dumps({"credential_reference": "keychain://forge.ep/consumer"}, sort_keys=True)
         connection.execute(
             "INSERT INTO execution_host_peer_configuration VALUES (1,'forge-ep-primary',5,?,?)",

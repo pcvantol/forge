@@ -92,7 +92,11 @@ identity, observation provenance, and one of the distinct healthy, failed,
 stale, expired, missing, timed-out, future, or unknown outcomes.
 
 The collector reads only the installed identity marker, runtime metadata,
-dispatcher state, schema revisions, and one bounded SQLite integrity result. It
+durable operational-reset maintenance state, dispatcher state, schema revisions,
+and one bounded SQLite integrity result. Installation bootstrap persists a
+distinct installation identity before operator binding, and the collector never
+substitutes shared repository identity. Active maintenance is a required failing
+readiness observation while liveness remains visible. The collector
 uses an immutable read when no SQLite sidecars exist and a bounded temporary
 copy when an active WAL snapshot exists, so the installed database, WAL, and SHM
 are not changed. It does not query Mission or execution records or import a

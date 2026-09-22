@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from io import StringIO
 import json
 from pathlib import Path
+import sqlite3
 from tempfile import TemporaryDirectory
 from threading import Thread
 import unittest
@@ -44,14 +45,11 @@ class _HealthFixture(unittest.TestCase):
         database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
         with database._connection:  # noqa: SLF001 - controlled installed fixture
             database._connection.execute(  # noqa: SLF001
-                "INSERT INTO runtime_metadata(key,value) VALUES ('installation_id',?)",
-                (INSTALLATION_ID,),
-            )
-            database._connection.execute(  # noqa: SLF001
                 "UPDATE runtime_metadata SET value=? WHERE key='last_access_at'",
                 (self.observed_at.isoformat(),),
             )
         self.runtime_id = database.runtime_identity.runtime_id
+        self.installation_id = database.metadata["installation_id"]
         database.close()
 
     def files(self) -> dict[Path, bytes]:
@@ -74,7 +72,7 @@ class HealthSnapshotTests(_HealthFixture):
 
         self.assertEqual(snapshot["outcome"], "HEALTHY")
         self.assertEqual(snapshot["runtime_id"], self.runtime_id)
-        self.assertEqual(snapshot["installation_id"], INSTALLATION_ID)
+        self.assertEqual(snapshot["installation_id"], self.installation_id)
         self.assertEqual(snapshot["registry"]["profile_reference"], HEALTH_PROFILE_REFERENCE)
         self.assertRegex(snapshot["registry"]["digest"], r"^sha256:[0-9a-f]{64}$")
         provenance = snapshot["observation_provenance"]
@@ -82,7 +80,10 @@ class HealthSnapshotTests(_HealthFixture):
         self.assertEqual(provenance["source_snapshot"], "bounded_sidecar_copy")
         self.assertEqual(
             set(provenance["sources"]),
-            {"installed_api", "runtime_state", "sqlite_integrity", "dispatcher_state"},
+            {
+                "installed_api", "runtime_state", "operational_reset_maintenance",
+                "sqlite_integrity", "dispatcher_state",
+            },
         )
         normalized = tuple(statement.upper() for statement in statements)
         self.assertEqual(sum("PRAGMA INTEGRITY_CHECK" in item for item in normalized), 1)
@@ -104,7 +105,51 @@ class HealthSnapshotTests(_HealthFixture):
         snapshot = InstalledHealthSnapshotService(
             self.root, clock=lambda: self.observed_at,
         ).installed_health_snapshot()
-        self.assertEqual(snapshot["installation_id"], INSTALLATION_ID)
+        self.assertEqual(snapshot["installation_id"], self.installation_id)
+
+        second_root = Path(self.temporary.name) / "second-forge-server"
+        second = RuntimeBootstrap(data_root=second_root, forge_version="test").open()
+        try:
+            self.assertNotEqual(second.metadata["installation_id"], self.installation_id)
+        finally:
+            second.close()
+
+    def test_operational_reset_maintenance_blocks_readiness_without_snapshot_mutation(self) -> None:
+        connection = sqlite3.connect(self.root / "forge.db")
+        connection.create_function("forge_maintenance_write_permitted", 0, lambda: 1)
+        with connection:
+            connection.execute(
+                "UPDATE operational_reset_state "
+                "SET active_operation_id='forge-reset-health-test',state='PREPARED',updated_at=? "
+                "WHERE singleton=1",
+                (self.observed_at.isoformat(),),
+            )
+        connection.close()
+        before = self.files()
+
+        snapshot = InstalledHealthSnapshotService(
+            self.root, clock=lambda: self.observed_at,
+        ).installed_health_snapshot()
+
+        self.assertEqual(snapshot["outcome"], "FAILED")
+        self.assertTrue(snapshot["liveness"]["alive"])
+        self.assertFalse(snapshot["capabilities"][0]["ready"])
+        maintenance = next(
+            item for item in snapshot["checks"]
+            if item["check_id"] == "operational_reset_maintenance"
+        )
+        self.assertEqual(maintenance["state"], "FAIL")
+        self.assertEqual(maintenance["reason_code"], "OPERATIONAL_RESET_MAINTENANCE_ACTIVE")
+        self.assertEqual(self.files(), before)
+
+        api = OperationsReadAPI(InstalledOperationsReadService(self.root), CREDENTIAL)
+        response = api.handle("GET", "/v1/health", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 503)
+        output = StringIO()
+        with redirect_stdout(output):
+            result = main(["--data-root", str(self.root), "health", "snapshot"])
+        self.assertEqual(result, 2)
+        self.assertEqual(json.loads(output.getvalue())["outcome"], "FAILED")
 
     def test_forward_runtime_schema_is_rejected(self) -> None:
         import sqlite3
@@ -135,6 +180,9 @@ class HealthSnapshotTests(_HealthFixture):
                                   (), ObservationState.PASS, NOW),
                 HealthObservation(identity, "forge_storage", "sqlite_integrity", CheckPurpose.READINESS,
                                   ("installed_health",), ObservationState.PASS, NOW),
+                HealthObservation(identity, "forge_runtime", "operational_reset_maintenance",
+                                  CheckPurpose.READINESS, ("installed_health",),
+                                  ObservationState.PASS, NOW),
                 HealthObservation(identity, "forge_dispatcher", "dispatcher_state", CheckPurpose.READINESS,
                                   ("installed_health",), ObservationState.PASS, NOW),
             ]

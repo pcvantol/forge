@@ -27,6 +27,18 @@
       "capabilities": [
         "installed_health"
       ],
+      "check_id": "operational_reset_maintenance",
+      "component_id": "forge_runtime",
+      "enabled": true,
+      "freshness_timeout_seconds": 30,
+      "observation_source": "operational_reset_state",
+      "purpose": "READINESS"
+    },
+    {
+      "applicability": "REQUIRED",
+      "capabilities": [
+        "installed_health"
+      ],
       "check_id": "sqlite_integrity",
       "component_id": "forge_storage",
       "enabled": true,

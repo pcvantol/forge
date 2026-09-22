@@ -101,6 +101,7 @@ class InstalledHealthRegistry:
                 source = item["observation_source"]
                 if source not in {
                     "installed_process", "runtime_metadata", "sqlite_integrity_check", "dispatcher_state",
+                    "operational_reset_state",
                 }:
                     raise ValueError("invalid source")
                 definition = HealthCheckDefinition(
@@ -209,6 +210,15 @@ class InstalledHealthSnapshotService:
                 "SELECT status FROM dispatcher_state WHERE singleton = 1"
             ).fetchone()
             dispatcher = "IDLE" if dispatcher_row is None else str(dispatcher_row[0])
+            maintenance_row = connection.execute(
+                "SELECT active_operation_id, state FROM operational_reset_state WHERE singleton = 1"
+            ).fetchone()
+            if maintenance_row is None:
+                raise InstalledHealthError(
+                    "HEALTH_MAINTENANCE_UNREADABLE", "Installed Forge maintenance state is unavailable",
+                )
+            maintenance_active = maintenance_row[0] is not None
+            maintenance_state = str(maintenance_row[1])
             try:
                 schema = int(metadata["schema_version"])
                 migration = int(metadata["migration_version"])
@@ -231,7 +241,7 @@ class InstalledHealthSnapshotService:
                 raise InstalledHealthError(
                     "HEALTH_IDENTITY_INCONSISTENT", "Installed Forge runtime identity is inconsistent",
                 )
-            installation_id = metadata.get("installation_id") or metadata.get("repository_identity")
+            installation_id = metadata.get("installation_id")
             if not installation_id:
                 raise InstalledHealthError(
                     "HEALTH_IDENTITY_INCOMPLETE", "Installed Forge installation identity is unavailable",
@@ -259,6 +269,8 @@ class InstalledHealthSnapshotService:
                 identity,
                 metadata,
                 dispatcher,
+                maintenance_active,
+                maintenance_state,
                 evaluated_at,
                 integrity_state,
                 integrity_reason,
@@ -307,6 +319,8 @@ class InstalledHealthSnapshotService:
         identity: HealthIdentity,
         metadata: Mapping[str, str],
         dispatcher: str | None,
+        maintenance_active: bool,
+        maintenance_state: str,
         evaluated_at: datetime,
         integrity_state: ObservationState,
         integrity_reason: str | None,
@@ -344,6 +358,20 @@ class InstalledHealthSnapshotService:
                 observed_at,
                 reason_code=None if dispatcher_state is ObservationState.PASS else "DISPATCHER_STATE_UNKNOWN",
             ))
+        observations.append(HealthObservation(
+            identity,
+            "forge_runtime",
+            "operational_reset_maintenance",
+            CheckPurpose.READINESS,
+            HEALTH_CAPABILITY_SCOPE,
+            ObservationState.FAIL if maintenance_active or maintenance_state != "IDLE" else ObservationState.PASS,
+            evaluated_at,
+            reason_code=(
+                "OPERATIONAL_RESET_MAINTENANCE_ACTIVE"
+                if maintenance_active or maintenance_state != "IDLE"
+                else None
+            ),
+        ))
         observations.append(HealthObservation(
             identity,
             "forge_storage",

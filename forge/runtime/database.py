@@ -26,7 +26,7 @@ RUNTIME_SCHEMA_VERSION = 39
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
-    "runtime_id", "repository_identity", "repository_root", "database_version",
+    "runtime_id", "installation_id", "repository_identity", "repository_root", "database_version",
     "database_location", "last_access_at", "status", "instance_version", "initialization_version",
 ))
 _TABLES = frozenset((
@@ -1854,6 +1854,7 @@ class RuntimeDatabase:
             created_at = now
         values = {
             "runtime_id": metadata.get("runtime_id") or f"forge-runtime-{uuid.uuid4()}",
+            "installation_id": metadata.get("installation_id") or str(uuid.uuid4()),
             "repository_identity": metadata.get("repository_identity") or (
                 "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)),
             "repository_root": metadata.get("repository_root") or (
