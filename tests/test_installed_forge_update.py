@@ -1262,7 +1262,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         return before
 
     def _restore_pre_installed_health_identity_trigger(self) -> None:
-        with sqlite3.connect(self.data_root / "forge.db") as connection:
+        connection = sqlite3.connect(self.data_root / "forge.db")
+        try:
             connection.executescript("""
                 DROP TRIGGER IF EXISTS runtime_identity_immutable;
                 DROP TRIGGER IF EXISTS runtime_identity_immutable_delete;
@@ -1273,6 +1274,9 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                          AND NEW.value <> OLD.value
                     BEGIN SELECT RAISE(ABORT, 'runtime identity is immutable'); END;
             """)
+            connection.commit()
+        finally:
+            connection.close()
 
     def test_2725_to_2726_normal_release_preserves_schema39_history(self):
         before = self._same_schema39_transition()
