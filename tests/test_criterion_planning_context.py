@@ -210,7 +210,10 @@ class CriterionPlanningContextTests(unittest.TestCase):
                 "triggering_evidence_refs": ["receipt-a"], "planning_snapshot_digest": snapshot.digest,
                 "causal_objective": "Realize K2 from the missing artifact assertion.", "mission_caused_by_action_ids": []},
         }]}}
-        proposals, refinement = _parse_response(request, response, "1.0")
+        proposals, refinement = _parse_response(
+            request, response, "1.0",
+            DerivationPolicy(("evidence",), ("protected delivery",), ("scope-drift",)),
+        )
         self.assertIsNone(refinement)
         class ParsedProvider:
             def derive(self, actual_snapshot):

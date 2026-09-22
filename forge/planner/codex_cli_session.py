@@ -32,7 +32,10 @@ from forge.provider_security import (
     ProviderAuthenticationMode,
 )
 from forge.runtime.database import _timestamp
-from .openai_responses import ProviderSubmissionAmbiguous, _mission_gap, _schema_for_approved_contract
+from .openai_responses import (
+    ProviderSubmissionAmbiguous, _canonical_required_policy_values, _mission_gap,
+    _schema_for_approved_contract,
+)
 from .provider_adapter import BoundedActionDerivationProvider, ProviderDerivationRequest, ProviderDerivationResponse
 
 
@@ -407,7 +410,9 @@ class CodexCliChatGPTSessionPlanningProvider:
             diagnostic = _replace_diagnostic(run.diagnostic, CodexCliInvocationClassification.COMPLETED_CONTRACT_INVALID)
         else:
             try:
-                proposals, refinement = _parse_response(request, document, self.adapter_version)
+                proposals, refinement = _parse_response(
+                    request, document, self.adapter_version, derivation_policy
+                )
                 status = "completed"
                 diagnostic = _replace_diagnostic(run.diagnostic, CodexCliInvocationClassification.COMPLETED_VALID)
             except (KeyError, TypeError, ValueError, json.JSONDecodeError):
@@ -737,7 +742,7 @@ def _output_schema(scopes: tuple[str, ...], policy: DerivationPolicy,
 
 
 def _parse_response(request: ProviderDerivationRequest, document: object,
-                    adapter_version: str) -> tuple[tuple[DerivedActionProposal, ...] | None, GovernanceRefinementRequired | None]:
+                    adapter_version: str, derivation_policy: DerivationPolicy) -> tuple[tuple[DerivedActionProposal, ...] | None, GovernanceRefinementRequired | None]:
     if not isinstance(document, dict) or set(document) != {"result"} or not isinstance(document.get("result"), dict):
         raise ValueError("structured response is not an object")
     document = document["result"]
@@ -750,12 +755,12 @@ def _parse_response(request: ProviderDerivationRequest, document: object,
     items = document.get("proposals")
     if not isinstance(items, list) or not items:
         raise ValueError("structured response lacks proposals")
-    proposals = tuple(_proposal(request, item, adapter_version) for item in items)
+    proposals = tuple(_proposal(request, item, adapter_version, derivation_policy) for item in items)
     return proposals, None
 
 
 def _proposal(request: ProviderDerivationRequest, item: object,
-              adapter_version: str) -> DerivedActionProposal:
+              adapter_version: str, derivation_policy: DerivationPolicy) -> DerivedActionProposal:
     if not isinstance(item, dict) or set(item) != _PROPOSAL_FIELDS:
         raise ValueError("proposal contains missing or extra fields")
     for key in ("logical_action_id", "scope", "objective"):
@@ -772,7 +777,12 @@ def _proposal(request: ProviderDerivationRequest, item: object,
         item["logical_action_id"], item["scope"], item["objective"], _unique_strings(item["dependencies"]),
         _unique_strings(item["write_scopes"]), _unique_strings(item["expected_evidence"]),
         _unique_strings(item["validation_strategy"]), item["priority"], item["postponed"],
-        _unique_strings(item["human_gates"]), _unique_strings(item["risk_inputs"]),
+        _canonical_required_policy_values(
+            item["human_gates"], derivation_policy.required_human_gates, field="human_gates"
+        ),
+        _canonical_required_policy_values(
+            item["risk_inputs"], derivation_policy.required_risk_inputs, field="risk_inputs"
+        ),
         ProposalProvenance(request.derivation_id, request.snapshot.id, request.snapshot.digest, adapter_version,
                            request.provider_id, request.model, _unique_strings(item["source_evidence_refs"])),
         _mission_gap(item["mission_gap"]),

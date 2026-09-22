@@ -34,6 +34,16 @@ materializer. A need for authority outside the Mission becomes
 Provider, CLI, Workspace, MCP, chat and raw provider output are not planning
 authority. A provider's identity/model are provenance only.
 
+Required human gates and risk inputs are approved policy, not provider-owned
+choices. The transport schema limits their array length and members, but the
+supported strict-schema subset cannot express that every enum member occurs
+exactly once. After parsing, Forge therefore verifies the bounded shape and
+allow-list and binds each proposal to the complete canonical required set.
+Unknown values and malformed cardinality fail closed. Deterministic validation
+then checks the canonical binding again before graph materialization. This
+prevents repeated allowed values from silently omitting an approved gate or
+risk without granting the provider any new authority.
+
 ## Durable provider-return boundary
 
 The installed dynamic runtime records an Action-Derivation attempt before it
