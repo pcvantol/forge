@@ -500,6 +500,30 @@ def _validate_criterion_qualification(report: object, request: UpdateRequest) ->
             raise InstalledForgeUpdateError("installed criterion outcome does not qualify the release")
 
 
+def _validate_server_runtime_qualification(report: object, request: UpdateRequest) -> None:
+    """Require the exact fresh-installed Server Runtime V1 evidence for 2.7.34."""
+    expected_keys = {
+        "qualification", "version", "server_instances", "multi_instance",
+        "headless_foreground", "clean_sigterm", "ep_simulator_real_http_boundary",
+        "ep_simulator_submissions", "production_ep_contacted", "production_provider_contacted",
+    }
+    if (
+        not isinstance(report, Mapping)
+        or set(report) != expected_keys
+        or report.get("qualification") != "FORGE_SERVER_RUNTIME_V1_INSTALLED_ARTIFACT"
+        or report.get("version") != request.version
+        or report.get("server_instances") != 2
+        or report.get("multi_instance") != "PASS"
+        or report.get("headless_foreground") != "PASS"
+        or report.get("clean_sigterm") != "PASS"
+        or report.get("ep_simulator_real_http_boundary") != "PASS"
+        or report.get("ep_simulator_submissions") != 1
+        or report.get("production_ep_contacted") is not False
+        or report.get("production_provider_contacted") is not False
+    ):
+        raise InstalledForgeUpdateError("installed Server Runtime qualification is noncanonical")
+
+
 def _normal_release_evidence(
     request: UpdateRequest, receipt: Mapping[str, Any], manifest: Mapping[str, str],
     receipt_path: Path,
@@ -522,7 +546,16 @@ def _normal_release_evidence(
         f"dist/{sdist_name}": sdist_digest,
     }
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
-    composition_keys = {"criterion_completion"} if request.version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33", "2.7.34"} else set()
+    composition_keys = (
+        {"criterion_completion", "server_runtime"}
+        if request.version == "2.7.34"
+        else {"criterion_completion"}
+        if request.version in {
+            "2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29",
+            "2.7.30", "2.7.31", "2.7.32", "2.7.33",
+        }
+        else set()
+    )
     if (
         (request.existing_version, request.version) not in NORMAL_RELEASE_TRANSITIONS
         or set(receipt) != expected_top
@@ -562,6 +595,9 @@ def _normal_release_evidence(
     if composition_keys:
         _validate_criterion_qualification(qualification["criterion_completion"], request)
         _validate_criterion_qualification(publication["criterion_completion"], request)
+        if request.version == "2.7.34":
+            _validate_server_runtime_qualification(qualification["server_runtime"], request)
+            _validate_server_runtime_qualification(publication["server_runtime"], request)
     return {
         "wheel": str(Path(request.wheel)),
         "wheel_sha256": request.wheel_sha256,
