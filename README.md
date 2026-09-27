@@ -108,14 +108,16 @@ cryptographic peer identity; preflight reports the latter as `NOT_ASSERTED`.
 
 ## Bounded installed maintenance
 
-The product-owned external controller for the selected Forge 2.7.21 to 2.7.22
-installation transition is documented in the
+The product-owned external update controller is documented in the
 [installed update runbook](docs/operations/FORGE_INSTALLED_UPDATE_RUNBOOK.md) and
 [sanitized Forge 2.7.22 release/installation completion record](docs/operations/FORGE_2_7_22_RELEASE_INSTALLATION_COMPLETION.md).
 It stages an exact qualified wheel, backs up and migrates the selected runtime,
-and atomically activates a versioned slot. It is not packaged as a Forge
-Runtime command and does not replace Forge Platform's normal installer/update
-composition boundary.
+and atomically activates a versioned slot. The packaged
+[Forge Server Runtime lifecycle V1 contract](docs/architecture/FORGE_SERVER_RUNTIME_LIFECYCLE_V1.md)
+adds the separate read-only exact-candidate update decision and the durable,
+idempotent exact-instance uninstall dispatcher. Forge Platform still owns
+service supervision and immutable runtime-slot layout; it may not replace
+either product decision with version comparison or filesystem deletion.
 
 The later [MISSION-0017 vertical release and installation completion](docs/operations/MISSION_0017_VERTICAL_RELEASE_INSTALLATION_COMPLETION.md)
 records the isolated two-Action qualification, protected Forge and EP product

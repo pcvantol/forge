@@ -21,6 +21,12 @@ from urllib.request import Request, urlopen
 
 from forge._version import canonical_version
 from forge.ep_simulator import EpSimulatorServer, EpSimulatorState
+from forge.installed_lifecycle import (
+    InstalledUninstallDispatcher,
+    UninstallRequest,
+    UpdateAssessmentRequest,
+    assess_update,
+)
 from forge.models import (
     ExecutionEvidenceOutcome,
     ExecutionRequest,
@@ -187,7 +193,7 @@ def _wait(port: int, process: subprocess.Popen[str]) -> dict[str, object]:
     raise RuntimeError("installed Forge Server did not become reachable")
 
 
-def run() -> dict[str, object]:
+def run(*, candidate_wheel: Path | None = None, source_revision: str | None = None) -> dict[str, object]:
     version = canonical_version()
     if distribution("forge-autonomy").version != version:
         raise RuntimeError("installed distribution version differs from canonical Forge version")
@@ -198,8 +204,11 @@ def run() -> dict[str, object]:
             (root / name).resolve()
             for name in ("instance-a", "instance-b")
         )
+        installation_ids = []
         for item in roots:
-            RuntimeBootstrap(data_root=item, forge_version=version).open().close()
+            database = RuntimeBootstrap(data_root=item, forge_version=version).open()
+            installation_ids.append(database.metadata["installation_id"])
+            database.close()
         ports = (_port(), _port())
         if ports[0] == ports[1]:
             ports = (ports[0], _port())
@@ -225,6 +234,35 @@ def run() -> dict[str, object]:
                     process.communicate(timeout=5)
                 if process.returncode != 0:
                     raise RuntimeError("installed Forge Server did not stop cleanly")
+
+        lifecycle: dict[str, object] = {
+            "update_assessment": "NOT_REQUESTED",
+            "uninstall_dispatcher": "PASS",
+            "uninstall_replay": "PASS",
+        }
+        if candidate_wheel is not None:
+            if source_revision is None or len(source_revision) != 40:
+                raise RuntimeError("installed lifecycle qualification requires an exact source revision")
+            wheel_digest = _digest(candidate_wheel.read_bytes())
+            assessment = assess_update(UpdateAssessmentRequest(
+                data_root=str(roots[0]), runtime_id=identities[0], installation_id=installation_ids[0],
+                installed_version=version, installed_source=source_revision,
+                installed_artifact_digest=wheel_digest, candidate_version=version,
+                candidate_source=source_revision, candidate_wheel=str(candidate_wheel.resolve()),
+                candidate_artifact_digest=wheel_digest,
+            ))
+            if assessment.get("state") != "UP_TO_DATE" or assessment.get("mutating") is not False:
+                raise RuntimeError("installed lifecycle update assessment did not bind the exact artifact")
+            lifecycle["update_assessment"] = "PASS"
+        uninstall_request = UninstallRequest(
+            operation_id="forge-server-runtime-installed-uninstall",
+            instance_id=identities[1], runtime_id=identities[1], installation_id=installation_ids[1],
+            data_root=str(roots[1]), instances_root=str(root.resolve()),
+        )
+        uninstall = InstalledUninstallDispatcher(uninstall_request)
+        receipt = uninstall.run()
+        if receipt != uninstall.run() or roots[1].exists() or receipt.get("state") != "COMPLETE":
+            raise RuntimeError("installed lifecycle uninstall did not complete idempotently")
 
         state = EpSimulatorState(
             project_id="forge",
@@ -280,14 +318,19 @@ def run() -> dict[str, object]:
             "ep_simulator_submissions": len(state.submission_ids()),
             "production_ep_contacted": False,
             "production_provider_contacted": False,
+            "lifecycle_update_assessment": lifecycle["update_assessment"],
+            "lifecycle_uninstall_dispatcher": lifecycle["uninstall_dispatcher"],
+            "lifecycle_uninstall_replay": lifecycle["uninstall_replay"],
         }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--candidate-wheel", type=Path)
+    parser.add_argument("--source-revision")
     args = parser.parse_args(argv)
-    result = run()
+    result = run(candidate_wheel=args.candidate_wheel, source_revision=args.source_revision)
     if args.output_dir is not None:
         args.output_dir.mkdir(parents=True, exist_ok=False)
         (args.output_dir / "forge-server-runtime-v1.public.json").write_text(
