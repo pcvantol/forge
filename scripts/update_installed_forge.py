@@ -39,6 +39,12 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 import uuid
 import zipfile
 
+from forge.installed_lifecycle import (
+    NORMAL_RELEASE_TRANSITIONS,
+    SAME_SCHEMA_39_TRANSITIONS,
+    SUPPORTED_TRANSITIONS,
+)
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - supported installation target is POSIX.
@@ -46,45 +52,6 @@ except ImportError:  # pragma: no cover - supported installation target is POSIX
 
 
 CONTRACT_VERSION = "forge-installed-update/v1"
-SUPPORTED_TRANSITIONS = {
-    ("2.7.21", "2.7.22"): (37, 38),
-    ("2.7.22", "2.7.23"): (38, 38),
-    ("2.7.22", "2.7.24"): (38, 38),
-    ("2.7.23", "2.7.24"): (38, 38),
-    ("2.7.24", "2.7.25"): (38, 39),
-    ("2.7.25", "2.7.26"): (39, 39),
-    ("2.7.26", "2.7.27"): (39, 39),
-    ("2.7.27", "2.7.28"): (39, 39),
-    ("2.7.28", "2.7.29"): (39, 39),
-    ("2.7.29", "2.7.30"): (39, 39),
-    ("2.7.30", "2.7.31"): (39, 39),
-    ("2.7.31", "2.7.32"): (39, 39),
-    ("2.7.31", "2.7.33"): (39, 39),
-    ("2.7.32", "2.7.33"): (39, 39),
-    ("2.7.33", "2.7.34"): (39, 39),
-}
-SAME_SCHEMA_39_TRANSITIONS = frozenset({
-    ("2.7.25", "2.7.26"), ("2.7.26", "2.7.27"), ("2.7.27", "2.7.28"),
-    ("2.7.28", "2.7.29"), ("2.7.29", "2.7.30"), ("2.7.30", "2.7.31"),
-    ("2.7.31", "2.7.32"), ("2.7.31", "2.7.33"), ("2.7.32", "2.7.33"),
-    ("2.7.33", "2.7.34"),
-})
-NORMAL_RELEASE_TRANSITIONS = frozenset({
-    ("2.7.22", "2.7.23"),
-    ("2.7.22", "2.7.24"),
-    ("2.7.23", "2.7.24"),
-    ("2.7.24", "2.7.25"),
-    ("2.7.25", "2.7.26"),
-    ("2.7.26", "2.7.27"),
-    ("2.7.27", "2.7.28"),
-    ("2.7.28", "2.7.29"),
-    ("2.7.29", "2.7.30"),
-    ("2.7.30", "2.7.31"),
-    ("2.7.31", "2.7.32"),
-    ("2.7.31", "2.7.33"),
-    ("2.7.32", "2.7.33"),
-    ("2.7.33", "2.7.34"),
-})
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
         "PREPARED", "STAGED", "ADOPTED", "BACKED_UP", "MIGRATION_QUALIFIED",
@@ -501,12 +468,17 @@ def _validate_criterion_qualification(report: object, request: UpdateRequest) ->
 
 
 def _validate_server_runtime_qualification(report: object, request: UpdateRequest) -> None:
-    """Require the exact fresh-installed Server Runtime V1 evidence for 2.7.34."""
+    """Require the exact fresh-installed Server Runtime evidence for its release."""
     expected_keys = {
         "qualification", "version", "server_instances", "multi_instance",
         "headless_foreground", "clean_sigterm", "ep_simulator_real_http_boundary",
         "ep_simulator_submissions", "production_ep_contacted", "production_provider_contacted",
     }
+    if request.version == "2.7.35":
+        expected_keys |= {
+            "lifecycle_update_assessment", "lifecycle_uninstall_dispatcher",
+            "lifecycle_uninstall_replay",
+        }
     if (
         not isinstance(report, Mapping)
         or set(report) != expected_keys
@@ -520,6 +492,11 @@ def _validate_server_runtime_qualification(report: object, request: UpdateReques
         or report.get("ep_simulator_submissions") != 1
         or report.get("production_ep_contacted") is not False
         or report.get("production_provider_contacted") is not False
+        or request.version == "2.7.35" and (
+            report.get("lifecycle_update_assessment") != "PASS"
+            or report.get("lifecycle_uninstall_dispatcher") != "PASS"
+            or report.get("lifecycle_uninstall_replay") != "PASS"
+        )
     ):
         raise InstalledForgeUpdateError("installed Server Runtime qualification is noncanonical")
 
@@ -548,7 +525,7 @@ def _normal_release_evidence(
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
     composition_keys = (
         {"criterion_completion", "server_runtime"}
-        if request.version == "2.7.34"
+        if request.version in {"2.7.34", "2.7.35"}
         else {"criterion_completion"}
         if request.version in {
             "2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29",
@@ -595,7 +572,7 @@ def _normal_release_evidence(
     if composition_keys:
         _validate_criterion_qualification(qualification["criterion_completion"], request)
         _validate_criterion_qualification(publication["criterion_completion"], request)
-        if request.version == "2.7.34":
+        if request.version in {"2.7.34", "2.7.35"}:
             _validate_server_runtime_qualification(qualification["server_runtime"], request)
             _validate_server_runtime_qualification(publication["server_runtime"], request)
     return {

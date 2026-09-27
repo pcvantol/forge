@@ -187,6 +187,12 @@ The normal Forge wheel remains the distributable unit. The external owning Forge
 
 Before an installed update Forge Platform must use the product-owned readbacks to identify the exact instance, stop/quiesce the Server via the service supervisor, and invoke the qualified updater. It must not copy or rewrite Forge databases or instance IDs.
 
+The compatible installed-lifecycle extension is frozen separately in
+[`FORGE_SERVER_RUNTIME_LIFECYCLE_V1.md`](FORGE_SERVER_RUNTIME_LIFECYCLE_V1.md).
+It adds a packaged, read-only exact-candidate update assessment and a packaged,
+durable exact-instance uninstall dispatcher. It does not move LaunchDaemon,
+service-account or immutable runtime-slot ownership into Forge.
+
 ### Required Forge-owned provisioner operations/readbacks
 
 For future Forge Platform consumption:
@@ -196,7 +202,9 @@ For future Forge Platform consumption:
 3. `execution-host configure/show/preflight` — Forge-owned EP peer binding;
 4. `server run` — foreground service process;
 5. `/v1/instance`, `/v1/version`, `/v1/health`, `/v1/readiness` — installed identity/health/readiness;
-6. normal external Forge updater — qualified version transition.
+6. `server update-assess` — product-owned read-only `UPDATE_AVAILABLE` decision;
+7. normal external Forge updater — qualified version transition;
+8. `server uninstall` / `server uninstall-status` — durable product-owned mutable-instance removal.
 
 Provider login/fan-out, service account creation, filesystem provisioning and launchd definitions remain Forge Platform responsibilities.
 
