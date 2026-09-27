@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.34",
+  "classification_rationale": "L2-FORGE-SERVER-RUNTIME-LIFECYCLE-V1-20260927 protected Forge Server lifecycle release",
+  "component": "product",
+  "event_lineage": "L2-FORGE-SERVER-RUNTIME-LIFECYCLE-V1-20260927 protected Forge Server lifecycle release",
+  "expected_head": "67da1c93b580866469380006bf7502e7312e7b51",
+  "operation_id": "forge-release-prep-2.7.35-20260927",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.35"
+}
