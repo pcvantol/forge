@@ -205,10 +205,10 @@ def _assert_private_owned_tree(root: Path) -> None:
         metadata = path.lstat()
         if metadata.st_uid != expected_owner:
             raise InstalledForgeUpdateError(f"instance tree contains a foreign-owned entry: {path}")
-        if metadata.st_mode & 0o022:
-            raise InstalledForgeUpdateError(f"instance tree contains a group/world-writable entry: {path}")
         if stat.S_ISLNK(metadata.st_mode):
             raise InstalledForgeUpdateError(f"instance tree contains a symbolic link: {path}")
+        if metadata.st_mode & 0o022:
+            raise InstalledForgeUpdateError(f"instance tree contains a group/world-writable entry: {path}")
         if stat.S_ISREG(metadata.st_mode):
             if metadata.st_nlink != 1:
                 raise InstalledForgeUpdateError(f"instance tree contains a hardlinked regular file: {path}")
