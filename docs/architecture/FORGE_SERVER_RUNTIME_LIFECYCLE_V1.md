@@ -56,6 +56,10 @@ does not import the staged candidate or a source checkout. It validates the
 target wheel and terminal release receipt, reads the selected runtime and peer
 binding, and emits `forge-installed-update-assessment/v1` with the same exact
 request/operation/old/controller/target binding consumed by mutation.
+SQLite inspection uses a stable, private copy of double-read database/WAL
+bytes and verifies database, WAL and SHM source bytes again afterwards. The
+selected instance is never opened as SQLite by assessment; concurrent byte
+change fails closed as `UNKNOWN` without source locks, state or sidecars.
 
 The direct declared schema-39 paths are `2.7.35 -> 2.7.38`, `2.7.36 ->
 2.7.38`, and `2.7.37 -> 2.7.38`. They become usable only after the 2.7.38

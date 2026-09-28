@@ -396,6 +396,31 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(result["candidate"]["version"], "2.7.38")
         self.assertEqual(before, after)
 
+    def test_2738_assessment_does_not_change_live_wal_or_shm_bytes(self):
+        request = self._assessment_request_2738()
+        database = self.data_root / "forge.db"
+        with sqlite3.connect(database) as connection:
+            connection.execute("SELECT COUNT(*) FROM runtime_metadata").fetchone()
+            selected = [
+                database, database.with_name("forge.db-wal"), database.with_name("forge.db-shm"),
+            ]
+            before = {path.name: path.read_bytes() for path in selected if path.exists()}
+            assessment = update.assess_update(request)
+            after = {path.name: path.read_bytes() for path in selected if path.exists()}
+        self.assertEqual(assessment["state"], "UPDATE_AVAILABLE")
+        self.assertEqual(after, before)
+
+    def test_2738_assessment_fails_closed_when_database_bytes_do_not_stabilize(self):
+        request = self._assessment_request_2738()
+        changing = [
+            {"": value.encode("ascii")}
+            for value in ("a", "b", "c", "d", "e", "f")
+        ]
+        with patch.object(update, "_database_source_bytes", side_effect=changing):
+            assessment = update.assess_update(request)
+        self.assertEqual(assessment["state"], "UNKNOWN")
+        self.assertIn("changed during read-only assessment", assessment["evidence"]["error"])
+
     def test_2738_fresh_initialized_empty_dispatcher_is_canonical_idle(self):
         request = self._assessment_request_2738()
         database = self.data_root / "forge.db"
