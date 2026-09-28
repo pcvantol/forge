@@ -175,6 +175,12 @@ Source and fresh-installed-wheel tests must cover:
 
 No qualification may contact production EP, a production provider or mutate Forge Platform, EP or Workspace.
 
+The revision-25 published-artifact qualification is recorded in
+[Forge Server update compatibility completion](../operations/FORGE_SERVER_UPDATE_COMPATIBILITY_2026_09_28.md).
+It binds the public 2.7.38 wheel and release source separately from the final
+protected external controller source and digest; neither one substitutes for
+the other.
+
 
 ## Product-owned preserved instance lifecycle extension
 
