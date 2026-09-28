@@ -27,6 +27,13 @@ from forge.installed_lifecycle import (
     UpdateAssessmentRequest,
     assess_update,
 )
+from forge.preserved_lifecycle import (
+    InstalledPreserveDispatcher,
+    InstalledPurgeDispatcher,
+    InstalledRestoreDispatcher,
+    InstanceLifecycleRequest,
+    RestoreRequest,
+)
 from forge.models import (
     ExecutionEvidenceOutcome,
     ExecutionRequest,
@@ -239,6 +246,9 @@ def run(*, candidate_wheel: Path | None = None, source_revision: str | None = No
             "update_assessment": "NOT_REQUESTED",
             "uninstall_dispatcher": "PASS",
             "uninstall_replay": "PASS",
+            "preserve": "NOT_REQUESTED",
+            "restore": "NOT_REQUESTED",
+            "purge": "NOT_REQUESTED",
         }
         if candidate_wheel is not None:
             if source_revision is None or len(source_revision) != 40:
@@ -254,6 +264,71 @@ def run(*, candidate_wheel: Path | None = None, source_revision: str | None = No
             if assessment.get("state") != "UP_TO_DATE" or assessment.get("mutating") is not False:
                 raise RuntimeError("installed lifecycle update assessment did not bind the exact artifact")
             lifecycle["update_assessment"] = "PASS"
+
+            preserve_request = InstanceLifecycleRequest(
+                operation_id="forge-server-runtime-installed-preserve",
+                instance_id=identities[0],
+                runtime_id=identities[0],
+                installation_id=installation_ids[0],
+                installed_version=version,
+                installed_source=source_revision,
+                installed_artifact_digest=wheel_digest,
+                data_root=str(roots[0]),
+                instances_root=str(root.resolve()),
+            )
+            preserve = InstalledPreserveDispatcher(preserve_request).run()
+            if (
+                preserve.get("lifecycle_state") != "UNINSTALLED_DATA_PRESERVED"
+                or preserve.get("instance_identity") != "PRESERVED"
+                or preserve.get("mutable_instance_data") != "PRESERVED"
+                or preserve.get("restorable") is not True
+                or preserve.get("provider_auth_state") != "PRESERVED_REQUIRES_REVERIFICATION"
+                or not roots[0].is_dir()
+            ):
+                raise RuntimeError("installed lifecycle preserve semantics are unavailable")
+            lifecycle["preserve"] = "PASS"
+
+            restore_request = RestoreRequest(
+                operation_id="forge-server-runtime-installed-restore",
+                instance_id=identities[0],
+                runtime_id=identities[0],
+                installation_id=installation_ids[0],
+                installed_version=version,
+                installed_source=source_revision,
+                installed_artifact_digest=wheel_digest,
+                data_root=str(roots[0]),
+                instances_root=str(root.resolve()),
+                preserve_operation_id="forge-server-runtime-installed-preserve",
+            )
+            restored = InstalledRestoreDispatcher(restore_request).run()
+            if (
+                restored.get("lifecycle_state") != "RESTORE_VALIDATED"
+                or restored.get("instance_identity") != "PRESERVED"
+                or restored.get("provider_auth_state") != "PRESERVED_REQUIRES_REVERIFICATION"
+                or restored.get("ready") is not False
+            ):
+                raise RuntimeError("installed lifecycle restore semantics are unavailable")
+            lifecycle["restore"] = "PASS"
+
+            purge_request = InstanceLifecycleRequest(
+                operation_id="forge-server-runtime-installed-purge",
+                instance_id=identities[0],
+                runtime_id=identities[0],
+                installation_id=installation_ids[0],
+                installed_version=version,
+                installed_source=source_revision,
+                installed_artifact_digest=wheel_digest,
+                data_root=str(roots[0]),
+                instances_root=str(root.resolve()),
+            )
+            purged = InstalledPurgeDispatcher(purge_request).run()
+            if (
+                purged.get("lifecycle_state") != "PURGED"
+                or purged.get("restorable") is not False
+                or roots[0].exists()
+            ):
+                raise RuntimeError("installed lifecycle purge semantics are unavailable")
+            lifecycle["purge"] = "PASS"
         uninstall_request = UninstallRequest(
             operation_id="forge-server-runtime-installed-uninstall",
             instance_id=identities[1], runtime_id=identities[1], installation_id=installation_ids[1],
@@ -321,6 +396,9 @@ def run(*, candidate_wheel: Path | None = None, source_revision: str | None = No
             "lifecycle_update_assessment": lifecycle["update_assessment"],
             "lifecycle_uninstall_dispatcher": lifecycle["uninstall_dispatcher"],
             "lifecycle_uninstall_replay": lifecycle["uninstall_replay"],
+            "lifecycle_preserve": lifecycle["preserve"],
+            "lifecycle_restore": lifecycle["restore"],
+            "lifecycle_purge": lifecycle["purge"],
         }
 
 
