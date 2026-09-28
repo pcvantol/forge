@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.35",
+  "classification_rationale": "L2-PRODUCT-PRESERVE-PURGE-RESTORE-V1-20260928 protected product lifecycle release",
+  "component": "product",
+  "event_lineage": "L2-PRODUCT-PRESERVE-PURGE-RESTORE-V1-20260928 protected product lifecycle release",
+  "expected_head": "df70f37b77facbc67127228b17d7bd05f44fa74a",
+  "operation_id": "forge-release-prep-2.7.36-20260928",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.36"
+}
