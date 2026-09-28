@@ -70,8 +70,8 @@ operation or controller fails closed.
 The controller remains `forge-installed-update/v1`; there is no second updater.
 It validates target wheel metadata/RECORD and terminal release evidence without
 importing target code, then stages the admitted wheel in a private immutable
-slot. It holds the installation-update, Mission-controller, runtime-mutation
-and bootstrap locks while using the existing backup, isolated migration
+slot. It holds the installation-update, Server-writer, Mission-controller,
+runtime-mutation and bootstrap locks in the canonical order while using the existing backup, isolated migration
 qualification, fencing, activation, readiness and receipt sequence.
 
 The instance tree must remain same-owner, non-permissive, free of symlinks and

@@ -830,6 +830,22 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertFalse(controller.state_path.exists())
         self.assertFalse(controller.slot.exists())
 
+    def test_2738_server_writer_lease_precedes_operation_state_and_staging(self) -> None:
+        request = self._assessment_request_2738()
+        assessment = update.assess_update(request)
+        controller = update.InstalledForgeUpdateController(
+            update.UpdateRequest(**{
+                **request.__dict__, "assessment_digest": assessment["assessment_digest"],
+            }),
+            process_reader=lambda: (),
+        )
+        server_lock = self.data_root / "locks" / "forge-server-runtime.lock"
+        with update.exclusive_lock(server_lock):
+            with self.assertRaisesRegex(update.InstalledForgeUpdateError, "concurrent maintenance"):
+                controller.run()
+        self.assertFalse(controller.state_path.exists())
+        self.assertFalse(controller.slot.exists())
+
     def test_candidate_venv_is_created_at_its_final_non_relocated_slot(self) -> None:
         controller = self._controller()
         state = controller._state()
