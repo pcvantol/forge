@@ -152,6 +152,9 @@ def main(argv: list[str] | None = None) -> int:
         lifecycle.add_argument("--instance-id", required=True)
         lifecycle.add_argument("--runtime-id", required=True)
         lifecycle.add_argument("--installation-id", required=True)
+        lifecycle.add_argument("--installed-version", required=True)
+        lifecycle.add_argument("--installed-source", required=True)
+        lifecycle.add_argument("--installed-artifact-digest", required=True)
         if lifecycle_name == "restore":
             lifecycle.add_argument("--preserve-operation-id", required=True)
     lifecycle_status_parser = server_commands.add_parser(
@@ -354,6 +357,9 @@ def main(argv: list[str] | None = None) -> int:
                 "instance_id": args.instance_id,
                 "runtime_id": args.runtime_id,
                 "installation_id": args.installation_id,
+                "installed_version": args.installed_version,
+                "installed_source": args.installed_source,
+                "installed_artifact_digest": args.installed_artifact_digest,
                 "data_root": args.data_root,
                 "instances_root": args.instances_root,
             }
