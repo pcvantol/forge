@@ -30,6 +30,8 @@ from .installed_lifecycle import (
     _read_regular_bytes,
     _runtime_snapshot,
     _validate_identifier,
+    _DIGEST,
+    _SOURCE,
 )
 
 
@@ -76,6 +78,9 @@ class InstanceLifecycleRequest:
     instance_id: str
     runtime_id: str
     installation_id: str
+    installed_version: str
+    installed_source: str
+    installed_artifact_digest: str
     data_root: str
     instances_root: str
 
@@ -89,6 +94,10 @@ class InstanceLifecycleRequest:
             _validate_identifier(label, value)
         if self.instance_id != self.runtime_id:
             raise InstalledLifecycleError("deployment instance does not bind the selected Forge runtime")
+        if _SOURCE.fullmatch(self.installed_source) is None or _DIGEST.fullmatch(self.installed_artifact_digest) is None:
+            raise InstalledLifecycleError("installed Forge artifact identity is invalid")
+        if not isinstance(self.installed_version, str) or not self.installed_version:
+            raise InstalledLifecycleError("installed Forge version is invalid")
         data_root, instances_root = Path(self.data_root), Path(self.instances_root)
         if not data_root.is_absolute() or not instances_root.is_absolute():
             raise InstalledLifecycleError("lifecycle paths must be absolute")
@@ -179,14 +188,27 @@ class _LifecycleOperation:
             "runtime_id": self.request.runtime_id,
             "installation_id": self.request.installation_id,
             "request_digest": self.request.digest,
+            "selected_artifact": {
+                "version": self.request.installed_version,
+                "source_revision": self.request.installed_source,
+                "artifact_digest": self.request.installed_artifact_digest,
+            },
             "state": "COMPLETE",
             **payload,
             "completed_at": self.clock(),
         }
         receipt["receipt_digest"] = _digest_bytes(_json_bytes(receipt))
         if self.receipt_path.exists():
-            if _read_json(self.receipt_path) != receipt:
+            existing = _read_json(self.receipt_path)
+            unsigned = {key: value for key, value in existing.items() if key != "receipt_digest"}
+            if (
+                existing.get("contract") != INSTANCE_LIFECYCLE_CONTRACT
+                or existing.get("operation") != self.operation
+                or existing.get("request_digest") != self.request.digest
+                or existing.get("receipt_digest") != _digest_bytes(_json_bytes(unsigned))
+            ):
                 raise InstalledLifecycleError("terminal lifecycle receipt conflicts with existing evidence")
+            receipt = existing
         else:
             _atomic_json(self.receipt_path, receipt)
         self._save(state, "COMPLETE", receipt_digest=receipt["receipt_digest"])
@@ -223,6 +245,7 @@ class _LifecycleOperation:
                 snapshot,
                 runtime_id=self.request.runtime_id,
                 installation_id=self.request.installation_id,
+                installed_version=self.request.installed_version,
             )
             _assert_quiescent(snapshot)
             tree_digest = _content_tree_digest(self.data_root)
