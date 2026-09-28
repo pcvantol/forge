@@ -94,12 +94,11 @@ jobs:
           test "$("$RUNNER_TEMP/forge-wheel/bin/forge" --version)" = "$VERSION"
           "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-wheel"
           cp "$RUNNER_TEMP/forge-criterion-wheel/criterion-completion.public.json" "$GITHUB_WORKSPACE/dist/criterion-completion-qualified.json"
-          if test "$VERSION" = "2.7.34" || test "$VERSION" = "2.7.35"; then
-            lifecycle_args=()
-            if test "$VERSION" = "2.7.35"; then lifecycle_args=(--candidate-wheel "$GITHUB_WORKSPACE/dist/forge_autonomy-$VERSION-py3-none-any.whl" --source-revision "$SOURCE_SHA"); fi
-            "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.server_runtime --output-dir "$RUNNER_TEMP/forge-server-wheel" "${lifecycle_args[@]}"
-            cp "$RUNNER_TEMP/forge-server-wheel/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/dist/server-runtime-v1-qualified.json"
-          fi
+          "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.server_runtime \
+            --output-dir "$RUNNER_TEMP/forge-server-wheel" \
+            --candidate-wheel "$GITHUB_WORKSPACE/dist/forge_autonomy-$VERSION-py3-none-any.whl" \
+            --source-revision "$SOURCE_SHA"
+          cp "$RUNNER_TEMP/forge-server-wheel/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/dist/server-runtime-v1-qualified.json"
       - name: Rebuild from an isolated source distribution
         env:
           VERSION: ${{ needs.release-context.outputs.version }}
