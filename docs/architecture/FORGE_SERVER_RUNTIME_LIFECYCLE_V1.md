@@ -57,7 +57,10 @@ forge --data-root <absolute-instance-root> server uninstall \
   --instances-root <absolute-managed-instances-root> \
   --instance-id <opaque-instance-id> \
   --runtime-id <same-opaque-runtime-id> \
-  --installation-id <opaque-installation-id>
+  --installation-id <opaque-installation-id> \
+  --installed-version <exact-selected-version> \
+  --installed-source <exact-40-char-source-revision> \
+  --installed-artifact-digest <sha256:...>
 
 forge server uninstall-status \
   --operation-id <same-operation-id> \
@@ -114,3 +117,114 @@ Source and fresh-installed-wheel tests must cover:
 - installed-distribution execution before and after registry publication.
 
 No qualification may contact production EP, a production provider or mutate Forge Platform, EP or Workspace.
+
+
+## Product-owned preserved instance lifecycle extension
+
+**Assignment:** `L2-PRODUCT-PRESERVE-PURGE-RESTORE-V1-20260928`
+
+**Extension contract:** `forge-server-instance-lifecycle/v1`
+
+This extension is additive. The existing `server uninstall` /
+`server uninstall-status` contract above remains destructive and unchanged.
+A caller that needs data preservation must use the explicit preserved-instance
+commands and must not reinterpret an old uninstall receipt.
+
+Packaged commands:
+
+```bash
+forge --data-root <absolute-instance-root> server preserve \
+  --operation-id <opaque-operation-id> \
+  --instances-root <absolute-managed-instances-root> \
+  --instance-id <opaque-instance-id> \
+  --runtime-id <same-opaque-runtime-id> \
+  --installation-id <opaque-installation-id>
+
+forge --data-root <absolute-instance-root> server restore \
+  --operation-id <opaque-operation-id> \
+  --preserve-operation-id <exact-preserve-operation-id> \
+  --instances-root <absolute-managed-instances-root> \
+  --instance-id <same-opaque-instance-id> \
+  --runtime-id <same-opaque-runtime-id> \
+  --installation-id <same-opaque-installation-id> \
+  --installed-version <same-exact-selected-version> \
+  --installed-source <same-exact-source-revision> \
+  --installed-artifact-digest <same-sha256:...>
+
+forge --data-root <absolute-instance-root> server purge <same exact-instance arguments>
+forge server lifecycle-status --operation-id <id> --instances-root <root> --instance-id <id>
+```
+
+### PRESERVE
+
+Forge first proves the same identity, integrity and quiescence requirements used
+by destructive uninstall, then hashes every regular byte in the exact link-free
+instance tree. The data root is not detached or deleted. Durable evidence lives
+under the product lifecycle control root outside mutable instance data.
+
+Terminal evidence expresses at least:
+
+```text
+lifecycle_state = UNINSTALLED_DATA_PRESERVED
+instance_identity = PRESERVED
+mutable_instance_data = PRESERVED
+restorable = true
+service_state = REMOVED_OR_INACTIVE
+service_definition = DEPLOYMENT_OWNER
+immutable_runtime_slots = PRESERVED
+provider_auth_state = PRESERVED_REQUIRES_REVERIFICATION
+```
+
+The deployment owner remains responsible for the LaunchDaemon and immutable
+runtime layout. Forge's receipt proves that the selected data/config belongs to
+the same quiescent product instance; it does not claim that an external service
+definition was deleted.
+
+### PURGE
+
+`server purge` is the explicit product-owned permanent lifecycle projection.
+It delegates the actual mutable-data deletion to the existing destructive V1
+uninstall dispatcher and persists a separate purge tombstone only after that
+dispatcher is terminal. This preserves legacy uninstall command and receipt
+meaning while making `lifecycle_state = PURGED` and `restorable = false`
+machine-readable.
+
+A crash after destructive uninstall but before the purge projection is recovered
+by the same operation ID. The purge tombstone blocks later restore from any
+older preserve receipt for that instance identity. It does not delete shared
+immutable runtime slots or deployment-owned service definitions.
+
+### RESTORE
+
+Restore names one exact prior preserve operation. Forge rejects missing,
+foreign, tampered or purged evidence and revalidates the same runtime and
+installation identities, schema/integrity/quiescence evidence, and the complete
+preserved tree digest. It never creates a replacement identity and never
+initializes a new data root over preserved state.
+
+Because the macOS service definition remains deployment-owner state, Forge
+terminal restore evidence is a product admission for reinstall/activation, not
+a LaunchDaemon mutation:
+
+```text
+lifecycle_state = RESTORE_VALIDATED
+instance_identity = PRESERVED
+mutable_instance_data = PRESERVED
+service_state = DEPLOYMENT_OWNER_REINSTALL_REQUIRED
+provider_auth_state = PRESERVED_REQUIRES_REVERIFICATION
+ready = false
+```
+
+Provider context/config/auth bytes may be preserved only as product-owned
+instance data. Restore never promotes them to `VERIFIED`; any consumer must
+complete the normal provider verification/readiness route before treating the
+restored service as ready.
+
+### Extension qualification
+
+In addition to the original V1 matrix, qualification covers exact-instance
+preserve/restore, byte-level tamper rejection, permanent purge invalidation,
+interruption/replay for all three operations, operation-ID rebinding rejection,
+symlink/foreign-root rejection, sibling-instance non-interference and packaged
+CLI execution. Product qualification uses isolated fixtures only and performs
+no Forge Platform, Engineering Platform, Workspace or production mutation.
