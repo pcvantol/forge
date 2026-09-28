@@ -2436,11 +2436,13 @@ class InstalledForgeUpdateController:
             _assert_private_owned_tree(self.data_root)
             self._validate_initial_assessment(database_snapshot(self.database))
         update_lock = self.runtime_root / "locks" / "installation-update.lock"
+        server_lock = self.data_root / "locks" / "forge-server-runtime.lock"
         controller_lock = self.data_root / "forge-mission-controller.lock"
         runtime_lock = self.data_root / "forge-runtime-mutation.lock"
         bootstrap_lock = self.data_root / "locks" / "runtime.lock"
         with (
             exclusive_lock(update_lock),
+            exclusive_lock(server_lock),
             exclusive_lock(controller_lock),
             exclusive_lock(runtime_lock),
             exclusive_lock(bootstrap_lock),

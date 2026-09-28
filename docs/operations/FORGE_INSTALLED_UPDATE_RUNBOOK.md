@@ -54,7 +54,7 @@ binds:
 - exact read-only assessment digest for transitions that postdate the installed wheel.
 
 It rejects a changed target, artifact, receipt, assessment, resolver, peer binding, writer
-state, or concurrent maintenance owner. Unknown historical installer
+state, active Server-writer lease, or concurrent preserve/restore/purge/update owner. Unknown historical installer
 provenance remains unknown; adoption records only the observed entry point,
 interpreter, version, and bytes.
 
