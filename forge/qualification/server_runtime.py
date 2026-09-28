@@ -22,6 +22,7 @@ from urllib.request import Request, urlopen
 from forge._version import canonical_version
 from forge.ep_simulator import EpSimulatorServer, EpSimulatorState
 from forge.installed_lifecycle import (
+    InstalledLifecycleError,
     InstalledUninstallDispatcher,
     UninstallRequest,
     UpdateAssessmentRequest,
@@ -249,6 +250,7 @@ def run(*, candidate_wheel: Path | None = None, source_revision: str | None = No
             "preserve": "NOT_REQUESTED",
             "restore": "NOT_REQUESTED",
             "purge": "NOT_REQUESTED",
+            "filesystem_security": "NOT_REQUESTED",
         }
         if candidate_wheel is not None:
             if source_revision is None or len(source_revision) != 40:
@@ -264,6 +266,50 @@ def run(*, candidate_wheel: Path | None = None, source_revision: str | None = No
             if assessment.get("state") != "UP_TO_DATE" or assessment.get("mutating") is not False:
                 raise RuntimeError("installed lifecycle update assessment did not bind the exact artifact")
             lifecycle["update_assessment"] = "PASS"
+
+            def unsafe_lifecycle_request(data_root: Path, operation_id: str) -> InstanceLifecycleRequest:
+                database = RuntimeBootstrap(data_root=data_root, forge_version=version).open()
+                try:
+                    runtime_id = database.runtime_identity.runtime_id
+                    installation_id = database.metadata["installation_id"]
+                finally:
+                    database.close()
+                return InstanceLifecycleRequest(
+                    operation_id=operation_id,
+                    instance_id=runtime_id,
+                    runtime_id=runtime_id,
+                    installation_id=installation_id,
+                    installed_version=version,
+                    installed_source=source_revision,
+                    installed_artifact_digest=wheel_digest,
+                    data_root=str(data_root),
+                    instances_root=str(root.resolve()),
+                )
+
+            hardlink_root = root / "unsafe-hardlink-instance"
+            hardlink_request = unsafe_lifecycle_request(hardlink_root, "installed-hardlink-negative")
+            foreign = root / "foreign-hardlink-source"
+            foreign.write_text("foreign", encoding="utf-8")
+            (hardlink_root / "unsafe-hardlink").hardlink_to(foreign)
+            try:
+                InstalledPreserveDispatcher(hardlink_request).run()
+            except InstalledLifecycleError as error:
+                if "hardlinked" not in str(error):
+                    raise RuntimeError("installed lifecycle rejected hardlink for an unexpected reason") from error
+            else:
+                raise RuntimeError("installed lifecycle accepted a foreign hardlink")
+
+            permissive_root = root / "unsafe-permissive-instance"
+            permissive_request = unsafe_lifecycle_request(permissive_root, "installed-permissive-negative")
+            permissive_root.chmod(0o777)
+            try:
+                InstalledPreserveDispatcher(permissive_request).run()
+            except InstalledLifecycleError as error:
+                if "group/world writable" not in str(error):
+                    raise RuntimeError("installed lifecycle rejected permissive root for an unexpected reason") from error
+            else:
+                raise RuntimeError("installed lifecycle accepted a group/world writable root")
+            lifecycle["filesystem_security"] = "PASS"
 
             preserve_request = InstanceLifecycleRequest(
                 operation_id="forge-server-runtime-installed-preserve",
@@ -399,6 +445,7 @@ def run(*, candidate_wheel: Path | None = None, source_revision: str | None = No
             "lifecycle_preserve": lifecycle["preserve"],
             "lifecycle_restore": lifecycle["restore"],
             "lifecycle_purge": lifecycle["purge"],
+            "lifecycle_filesystem_security": lifecycle["filesystem_security"],
         }
 
 

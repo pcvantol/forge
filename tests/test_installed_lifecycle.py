@@ -251,6 +251,35 @@ class UninstallDispatcherTests(InstalledLifecycleFixture):
             InstalledUninstallDispatcher(self.uninstall_request()).run()
         self.assertTrue(self.data_root.exists())
 
+    def test_hardlinked_file_fails_closed(self) -> None:
+        foreign = self.root / "foreign-hardlink-source"
+        foreign.write_text("foreign", encoding="utf-8")
+        (self.data_root / "unsafe-hardlink").hardlink_to(foreign)
+        self.assertEqual((self.data_root / "unsafe-hardlink").stat().st_nlink, 2)
+        with self.assertRaisesRegex(InstalledLifecycleError, "hardlinked"):
+            InstalledUninstallDispatcher(self.uninstall_request()).run()
+        self.assertTrue(self.data_root.exists())
+
+    def test_group_or_world_writable_tree_fails_closed(self) -> None:
+        self.data_root.chmod(0o777)
+        with self.assertRaisesRegex(InstalledLifecycleError, "group/world writable"):
+            InstalledUninstallDispatcher(self.uninstall_request(operation_id="unsafe-root")).run()
+        self.data_root.chmod(0o700)
+
+        unsafe_directory = self.data_root / "unsafe-directory"
+        unsafe_directory.mkdir(mode=0o700)
+        unsafe_directory.chmod(0o772)
+        with self.assertRaisesRegex(InstalledLifecycleError, "group/world writable"):
+            InstalledUninstallDispatcher(self.uninstall_request(operation_id="unsafe-directory")).run()
+        unsafe_directory.chmod(0o700)
+
+        unsafe_file = self.data_root / "unsafe-file"
+        unsafe_file.write_text("unsafe", encoding="utf-8")
+        unsafe_file.chmod(0o666)
+        with self.assertRaisesRegex(InstalledLifecycleError, "group/world writable"):
+            InstalledUninstallDispatcher(self.uninstall_request(operation_id="unsafe-file")).run()
+        self.assertTrue(self.data_root.exists())
+
     @unittest.skipIf(fcntl is None, "POSIX lock qualification")
     def test_live_server_lock_blocks_uninstall(self) -> None:
         lock = (self.data_root / "locks" / "forge-server-runtime.lock").open("a+")
