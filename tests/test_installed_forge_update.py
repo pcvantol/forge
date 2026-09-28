@@ -294,7 +294,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 "github_release": {"draft": False},
             },
         }, sort_keys=True), encoding="utf-8")
-        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33", "2.7.34"}:
+        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33", "2.7.34", "2.7.35"}:
             # Captured from the actual installed-composition command used by
             # both workflow stages; only the synthetic wheel binding changes.
             summary = json.loads((Path(__file__).parent / "fixtures" /
@@ -304,7 +304,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             document = json.loads(receipt.read_text())
             document["qualification"]["criterion_completion"] = summary
             document["publication_receipt"]["criterion_completion"] = summary
-            if version == "2.7.34":
+            if version in {"2.7.34", "2.7.35"}:
                 server_runtime = {
                     "qualification": "FORGE_SERVER_RUNTIME_V1_INSTALLED_ARTIFACT",
                     "version": version,
@@ -317,6 +317,12 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                     "production_ep_contacted": False,
                     "production_provider_contacted": False,
                 }
+                if version == "2.7.35":
+                    server_runtime.update({
+                        "lifecycle_update_assessment": "PASS",
+                        "lifecycle_uninstall_dispatcher": "PASS",
+                        "lifecycle_uninstall_replay": "PASS",
+                    })
                 document["qualification"]["server_runtime"] = server_runtime
                 document["publication_receipt"]["server_runtime"] = server_runtime
             receipt.write_text(json.dumps(document, sort_keys=True))
@@ -1648,6 +1654,19 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                     with self.assertRaises(update.InstalledForgeUpdateError):
                         update.validate_qualified_artifact(changed)
                     receipt.write_text(json.dumps(original, sort_keys=True))
+
+    def test_2735_requires_exact_installed_lifecycle_evidence(self):
+        request = self._normal_release_request("2.7.35", "2.7.34")
+        self.assertEqual(update.validate_qualified_artifact(request)["release_route"], "NORMAL")
+        receipt = Path(request.qualification_receipt)
+        document = json.loads(receipt.read_text())
+        document["publication_receipt"]["server_runtime"]["lifecycle_uninstall_replay"] = "NOT_RUN"
+        receipt.write_text(json.dumps(document, sort_keys=True))
+        changed = update.UpdateRequest(**{
+            **request.__dict__, "qualification_receipt_sha256": update.file_digest(receipt),
+        })
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "noncanonical"):
+            update.validate_qualified_artifact(changed)
 
     def test_2733_to_2734_installs_server_runtime_contract_without_schema_change(self):
         before = self._same_schema39_transition(existing_version="2.7.33", target_version="2.7.34")

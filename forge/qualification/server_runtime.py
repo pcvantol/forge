@@ -21,6 +21,19 @@ from urllib.request import Request, urlopen
 
 from forge._version import canonical_version
 from forge.ep_simulator import EpSimulatorServer, EpSimulatorState
+from forge.installed_lifecycle import (
+    InstalledUninstallDispatcher,
+    UninstallRequest,
+    UpdateAssessmentRequest,
+    assess_update,
+)
+from forge.preserved_lifecycle import (
+    InstalledPreserveDispatcher,
+    InstalledPurgeDispatcher,
+    InstalledRestoreDispatcher,
+    InstanceLifecycleRequest,
+    RestoreRequest,
+)
 from forge.models import (
     ExecutionEvidenceOutcome,
     ExecutionRequest,
@@ -187,7 +200,7 @@ def _wait(port: int, process: subprocess.Popen[str]) -> dict[str, object]:
     raise RuntimeError("installed Forge Server did not become reachable")
 
 
-def run() -> dict[str, object]:
+def run(*, candidate_wheel: Path | None = None, source_revision: str | None = None) -> dict[str, object]:
     version = canonical_version()
     if distribution("forge-autonomy").version != version:
         raise RuntimeError("installed distribution version differs from canonical Forge version")
@@ -198,8 +211,11 @@ def run() -> dict[str, object]:
             (root / name).resolve()
             for name in ("instance-a", "instance-b")
         )
+        installation_ids = []
         for item in roots:
-            RuntimeBootstrap(data_root=item, forge_version=version).open().close()
+            database = RuntimeBootstrap(data_root=item, forge_version=version).open()
+            installation_ids.append(database.metadata["installation_id"])
+            database.close()
         ports = (_port(), _port())
         if ports[0] == ports[1]:
             ports = (ports[0], _port())
@@ -225,6 +241,103 @@ def run() -> dict[str, object]:
                     process.communicate(timeout=5)
                 if process.returncode != 0:
                     raise RuntimeError("installed Forge Server did not stop cleanly")
+
+        lifecycle: dict[str, object] = {
+            "update_assessment": "NOT_REQUESTED",
+            "uninstall_dispatcher": "PASS",
+            "uninstall_replay": "PASS",
+            "preserve": "NOT_REQUESTED",
+            "restore": "NOT_REQUESTED",
+            "purge": "NOT_REQUESTED",
+        }
+        if candidate_wheel is not None:
+            if source_revision is None or len(source_revision) != 40:
+                raise RuntimeError("installed lifecycle qualification requires an exact source revision")
+            wheel_digest = _digest(candidate_wheel.read_bytes())
+            assessment = assess_update(UpdateAssessmentRequest(
+                data_root=str(roots[0]), runtime_id=identities[0], installation_id=installation_ids[0],
+                installed_version=version, installed_source=source_revision,
+                installed_artifact_digest=wheel_digest, candidate_version=version,
+                candidate_source=source_revision, candidate_wheel=str(candidate_wheel.resolve()),
+                candidate_artifact_digest=wheel_digest,
+            ))
+            if assessment.get("state") != "UP_TO_DATE" or assessment.get("mutating") is not False:
+                raise RuntimeError("installed lifecycle update assessment did not bind the exact artifact")
+            lifecycle["update_assessment"] = "PASS"
+
+            preserve_request = InstanceLifecycleRequest(
+                operation_id="forge-server-runtime-installed-preserve",
+                instance_id=identities[0],
+                runtime_id=identities[0],
+                installation_id=installation_ids[0],
+                installed_version=version,
+                installed_source=source_revision,
+                installed_artifact_digest=wheel_digest,
+                data_root=str(roots[0]),
+                instances_root=str(root.resolve()),
+            )
+            preserve = InstalledPreserveDispatcher(preserve_request).run()
+            if (
+                preserve.get("lifecycle_state") != "UNINSTALLED_DATA_PRESERVED"
+                or preserve.get("instance_identity") != "PRESERVED"
+                or preserve.get("mutable_instance_data") != "PRESERVED"
+                or preserve.get("restorable") is not True
+                or preserve.get("provider_auth_state") != "PRESERVED_REQUIRES_REVERIFICATION"
+                or not roots[0].is_dir()
+            ):
+                raise RuntimeError("installed lifecycle preserve semantics are unavailable")
+            lifecycle["preserve"] = "PASS"
+
+            restore_request = RestoreRequest(
+                operation_id="forge-server-runtime-installed-restore",
+                instance_id=identities[0],
+                runtime_id=identities[0],
+                installation_id=installation_ids[0],
+                installed_version=version,
+                installed_source=source_revision,
+                installed_artifact_digest=wheel_digest,
+                data_root=str(roots[0]),
+                instances_root=str(root.resolve()),
+                preserve_operation_id="forge-server-runtime-installed-preserve",
+            )
+            restored = InstalledRestoreDispatcher(restore_request).run()
+            if (
+                restored.get("lifecycle_state") != "RESTORE_VALIDATED"
+                or restored.get("instance_identity") != "PRESERVED"
+                or restored.get("provider_auth_state") != "PRESERVED_REQUIRES_REVERIFICATION"
+                or restored.get("ready") is not False
+            ):
+                raise RuntimeError("installed lifecycle restore semantics are unavailable")
+            lifecycle["restore"] = "PASS"
+
+            purge_request = InstanceLifecycleRequest(
+                operation_id="forge-server-runtime-installed-purge",
+                instance_id=identities[0],
+                runtime_id=identities[0],
+                installation_id=installation_ids[0],
+                installed_version=version,
+                installed_source=source_revision,
+                installed_artifact_digest=wheel_digest,
+                data_root=str(roots[0]),
+                instances_root=str(root.resolve()),
+            )
+            purged = InstalledPurgeDispatcher(purge_request).run()
+            if (
+                purged.get("lifecycle_state") != "PURGED"
+                or purged.get("restorable") is not False
+                or roots[0].exists()
+            ):
+                raise RuntimeError("installed lifecycle purge semantics are unavailable")
+            lifecycle["purge"] = "PASS"
+        uninstall_request = UninstallRequest(
+            operation_id="forge-server-runtime-installed-uninstall",
+            instance_id=identities[1], runtime_id=identities[1], installation_id=installation_ids[1],
+            data_root=str(roots[1]), instances_root=str(root.resolve()),
+        )
+        uninstall = InstalledUninstallDispatcher(uninstall_request)
+        receipt = uninstall.run()
+        if receipt != uninstall.run() or roots[1].exists() or receipt.get("state") != "COMPLETE":
+            raise RuntimeError("installed lifecycle uninstall did not complete idempotently")
 
         state = EpSimulatorState(
             project_id="forge",
@@ -280,14 +393,22 @@ def run() -> dict[str, object]:
             "ep_simulator_submissions": len(state.submission_ids()),
             "production_ep_contacted": False,
             "production_provider_contacted": False,
+            "lifecycle_update_assessment": lifecycle["update_assessment"],
+            "lifecycle_uninstall_dispatcher": lifecycle["uninstall_dispatcher"],
+            "lifecycle_uninstall_replay": lifecycle["uninstall_replay"],
+            "lifecycle_preserve": lifecycle["preserve"],
+            "lifecycle_restore": lifecycle["restore"],
+            "lifecycle_purge": lifecycle["purge"],
         }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--candidate-wheel", type=Path)
+    parser.add_argument("--source-revision")
     args = parser.parse_args(argv)
-    result = run()
+    result = run(candidate_wheel=args.candidate_wheel, source_revision=args.source_revision)
     if args.output_dir is not None:
         args.output_dir.mkdir(parents=True, exist_ok=False)
         (args.output_dir / "forge-server-runtime-v1.public.json").write_text(

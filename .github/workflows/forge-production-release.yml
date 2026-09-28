@@ -83,6 +83,7 @@ jobs:
       - name: Qualify the wheel away from the checkout
         env:
           VERSION: ${{ needs.release-context.outputs.version }}
+          SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
         run: |
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/forge-wheel"
@@ -93,10 +94,11 @@ jobs:
           test "$("$RUNNER_TEMP/forge-wheel/bin/forge" --version)" = "$VERSION"
           "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-wheel"
           cp "$RUNNER_TEMP/forge-criterion-wheel/criterion-completion.public.json" "$GITHUB_WORKSPACE/dist/criterion-completion-qualified.json"
-          if test "$VERSION" = "2.7.34"; then
-            "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.server_runtime --output-dir "$RUNNER_TEMP/forge-server-wheel"
-            cp "$RUNNER_TEMP/forge-server-wheel/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/dist/server-runtime-v1-qualified.json"
-          fi
+          "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.server_runtime \
+            --output-dir "$RUNNER_TEMP/forge-server-wheel" \
+            --candidate-wheel "$GITHUB_WORKSPACE/dist/forge_autonomy-$VERSION-py3-none-any.whl" \
+            --source-revision "$SOURCE_SHA"
+          cp "$RUNNER_TEMP/forge-server-wheel/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/dist/server-runtime-v1-qualified.json"
       - name: Rebuild from an isolated source distribution
         env:
           VERSION: ${{ needs.release-context.outputs.version }}
@@ -294,6 +296,7 @@ jobs:
         env:
           READBACK_CACHE_TOKEN: ${{ github.run_id }}-${{ github.run_attempt }}
           VERSION: ${{ needs.release-context.outputs.version }}
+          SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
         run: |
           set -euo pipefail
           wheel="forge_autonomy-$VERSION-py3-none-any.whl"; sdist="forge_autonomy-$VERSION.tar.gz"
@@ -360,8 +363,10 @@ jobs:
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-pypi/bin/python" -I -c 'import forge, pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
           "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-published"
           cp "$RUNNER_TEMP/forge-criterion-published/criterion-completion.public.json" "$GITHUB_WORKSPACE/release-input/dist/criterion-completion-published.json"
-          if test "$VERSION" = "2.7.34"; then
-            "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.server_runtime --output-dir "$RUNNER_TEMP/forge-server-published"
+          if test "$VERSION" = "2.7.34" || test "$VERSION" = "2.7.35"; then
+            lifecycle_args=()
+            if test "$VERSION" = "2.7.35"; then lifecycle_args=(--candidate-wheel "$GITHUB_WORKSPACE/registry-readback/$wheel" --source-revision "$SOURCE_SHA"); fi
+            "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.server_runtime --output-dir "$RUNNER_TEMP/forge-server-published" "${lifecycle_args[@]}"
             cp "$RUNNER_TEMP/forge-server-published/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/release-input/dist/server-runtime-v1-published.json"
           fi
           test "$("$RUNNER_TEMP/forge-pypi/bin/forge" --version)" = "$VERSION"

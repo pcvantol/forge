@@ -115,6 +115,54 @@ def main(argv: list[str] | None = None) -> int:
     provider_context_configure.add_argument("--provider-config-home", required=True)
     provider_context_configure.add_argument("--profile")
     provider_context_configure.add_argument("--expected-digest")
+    update_assess = server_commands.add_parser(
+        "update-assess", help="assess one exact installed update without mutation"
+    )
+    update_assess.add_argument("--runtime-id", required=True)
+    update_assess.add_argument("--installation-id", required=True)
+    update_assess.add_argument("--installed-version", required=True)
+    update_assess.add_argument("--installed-source", required=True)
+    update_assess.add_argument("--installed-artifact-digest", required=True)
+    update_assess.add_argument("--candidate-version", required=True)
+    update_assess.add_argument("--candidate-source", required=True)
+    update_assess.add_argument("--candidate-wheel", required=True)
+    update_assess.add_argument("--candidate-artifact-digest", required=True)
+    uninstall = server_commands.add_parser(
+        "uninstall", help="durably remove one exact quiescent Forge instance"
+    )
+    uninstall.add_argument("--operation-id", required=True)
+    uninstall.add_argument("--instances-root", required=True)
+    uninstall.add_argument("--instance-id", required=True)
+    uninstall.add_argument("--runtime-id", required=True)
+    uninstall.add_argument("--installation-id", required=True)
+    uninstall_status = server_commands.add_parser(
+        "uninstall-status", help="read one durable uninstall operation"
+    )
+    uninstall_status.add_argument("--operation-id", required=True)
+    uninstall_status.add_argument("--instances-root", required=True)
+    uninstall_status.add_argument("--instance-id", required=True)
+    for lifecycle_name, lifecycle_help in (
+        ("preserve", "preserve one exact quiescent Forge instance data root"),
+        ("purge", "permanently purge one exact Forge instance"),
+        ("restore", "validate one preserved Forge instance for same-identity restore"),
+    ):
+        lifecycle = server_commands.add_parser(lifecycle_name, help=lifecycle_help)
+        lifecycle.add_argument("--operation-id", required=True)
+        lifecycle.add_argument("--instances-root", required=True)
+        lifecycle.add_argument("--instance-id", required=True)
+        lifecycle.add_argument("--runtime-id", required=True)
+        lifecycle.add_argument("--installation-id", required=True)
+        lifecycle.add_argument("--installed-version", required=True)
+        lifecycle.add_argument("--installed-source", required=True)
+        lifecycle.add_argument("--installed-artifact-digest", required=True)
+        if lifecycle_name == "restore":
+            lifecycle.add_argument("--preserve-operation-id", required=True)
+    lifecycle_status_parser = server_commands.add_parser(
+        "lifecycle-status", help="read one preserve/purge/restore lifecycle operation"
+    )
+    lifecycle_status_parser.add_argument("--operation-id", required=True)
+    lifecycle_status_parser.add_argument("--instances-root", required=True)
+    lifecycle_status_parser.add_argument("--instance-id", required=True)
     reset = server_commands.add_parser("reset", help="operate the Forge-owned operational-history reset")
     reset_commands = reset.add_subparsers(dest="reset_command", required=True)
     reset_commands.add_parser("preview", help="inspect a read-only reset plan")
@@ -247,6 +295,94 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         except (OSError, ValueError, RuntimeError, PermissionError) as error:
             return _failure("server provider-context", error)
+    if args.command == "server" and args.server_command == "update-assess":
+        if args.data_root is None:
+            return _failure("server update-assess", ValueError("--data-root is required for update assessment"))
+        from .installed_lifecycle import UpdateAssessmentRequest, assess_update
+        result = assess_update(UpdateAssessmentRequest(
+            data_root=args.data_root,
+            runtime_id=args.runtime_id,
+            installation_id=args.installation_id,
+            installed_version=args.installed_version,
+            installed_source=args.installed_source,
+            installed_artifact_digest=args.installed_artifact_digest,
+            candidate_version=args.candidate_version,
+            candidate_source=args.candidate_source,
+            candidate_wheel=args.candidate_wheel,
+            candidate_artifact_digest=args.candidate_artifact_digest,
+        ))
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if args.command == "server" and args.server_command == "uninstall":
+        if args.data_root is None:
+            return _failure("server uninstall", ValueError("--data-root is required for uninstall"))
+        try:
+            from .installed_lifecycle import InstalledLifecycleError, InstalledUninstallDispatcher, UninstallRequest
+            result = InstalledUninstallDispatcher(UninstallRequest(
+                operation_id=args.operation_id,
+                instance_id=args.instance_id,
+                runtime_id=args.runtime_id,
+                installation_id=args.installation_id,
+                data_root=args.data_root,
+                instances_root=args.instances_root,
+            )).run()
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        except (InstalledLifecycleError, OSError, sqlite3.Error, PermissionError, ValueError) as error:
+            return _failure("server uninstall", error)
+    if args.command == "server" and args.server_command == "uninstall-status":
+        try:
+            from .installed_lifecycle import InstalledLifecycleError, uninstall_status
+            result = uninstall_status(args.instances_root, args.instance_id, args.operation_id)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        except (InstalledLifecycleError, OSError, PermissionError, ValueError) as error:
+            return _failure("server uninstall-status", error)
+    if args.command == "server" and args.server_command in {"preserve", "purge", "restore"}:
+        if args.data_root is None:
+            return _failure(
+                "server " + args.server_command,
+                ValueError("--data-root is required for instance lifecycle mutation"),
+            )
+        try:
+            from .preserved_lifecycle import (
+                InstalledPreserveDispatcher,
+                InstalledPurgeDispatcher,
+                InstalledRestoreDispatcher,
+                InstanceLifecycleRequest,
+                RestoreRequest,
+            )
+            common = {
+                "operation_id": args.operation_id,
+                "instance_id": args.instance_id,
+                "runtime_id": args.runtime_id,
+                "installation_id": args.installation_id,
+                "installed_version": args.installed_version,
+                "installed_source": args.installed_source,
+                "installed_artifact_digest": args.installed_artifact_digest,
+                "data_root": args.data_root,
+                "instances_root": args.instances_root,
+            }
+            if args.server_command == "preserve":
+                result = InstalledPreserveDispatcher(InstanceLifecycleRequest(**common)).run()
+            elif args.server_command == "purge":
+                result = InstalledPurgeDispatcher(InstanceLifecycleRequest(**common)).run()
+            else:
+                result = InstalledRestoreDispatcher(RestoreRequest(
+                    **common, preserve_operation_id=args.preserve_operation_id,
+                )).run()
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        except (InstalledLifecycleError, OSError, sqlite3.Error, PermissionError, ValueError) as error:
+            return _failure("server " + args.server_command, error)
+    if args.command == "server" and args.server_command == "lifecycle-status":
+        try:
+            from .preserved_lifecycle import InstalledLifecycleError, lifecycle_status
+            result = lifecycle_status(args.instances_root, args.instance_id, args.operation_id)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        except (InstalledLifecycleError, OSError, PermissionError, ValueError) as error:
+            return _failure("server lifecycle-status", error)
     if args.command == "health":
         if args.data_root is None:
             return _failure("health snapshot", ValueError("--data-root is required for health snapshot"))
