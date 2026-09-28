@@ -83,7 +83,11 @@ qualification, fencing, activation, readiness and receipt sequence.
 The instance tree must remain same-owner, non-permissive, free of symlinks and
 special entries, and every regular file must have one hardlink. No rejection is
 repaired by automatic chmod, chown or unlink. Schema-39-to-39 qualification
-preserves identity, configuration and domain tables. Provider configuration
+preserves identity, configuration and domain tables while advancing only the
+mutable `runtime_metadata.forge_version` inventory binding from the exact old
+version to the target. The target value is qualified on the isolated copy,
+installed atomically under the writer locks, and required on resume/replay.
+Provider configuration
 remains bound to the selected instance and credential/auth state is preserved
 without promotion to verified. Same-operation resume and terminal replay retain
 the existing durable phase machine; an operation cannot be rebound to new bytes.
