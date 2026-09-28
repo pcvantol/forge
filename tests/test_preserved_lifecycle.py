@@ -31,6 +31,8 @@ class PreservedLifecycleTests(unittest.TestCase):
         self.runtime_id = database.runtime_identity.runtime_id
         self.installation_id = database.metadata["installation_id"]
         database.close()
+        self.installed_source = "a" * 40
+        self.installed_artifact_digest = "sha256:" + "b" * 64
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -41,6 +43,9 @@ class PreservedLifecycleTests(unittest.TestCase):
             instance_id=self.runtime_id,
             runtime_id=self.runtime_id,
             installation_id=self.installation_id,
+            installed_version="2.7.35",
+            installed_source=self.installed_source,
+            installed_artifact_digest=self.installed_artifact_digest,
             data_root=str(self.data_root),
             instances_root=str(self.instances_root),
         )
@@ -51,6 +56,9 @@ class PreservedLifecycleTests(unittest.TestCase):
             instance_id=self.runtime_id,
             runtime_id=self.runtime_id,
             installation_id=self.installation_id,
+            installed_version="2.7.35",
+            installed_source=self.installed_source,
+            installed_artifact_digest=self.installed_artifact_digest,
             data_root=str(self.data_root),
             instances_root=str(self.instances_root),
             preserve_operation_id=preserve,
@@ -157,6 +165,9 @@ class PreservedLifecycleTests(unittest.TestCase):
             "--instance-id", self.runtime_id,
             "--runtime-id", self.runtime_id,
             "--installation-id", self.installation_id,
+            "--installed-version", "2.7.35",
+            "--installed-source", self.installed_source,
+            "--installed-artifact-digest", self.installed_artifact_digest,
         ]
         output = io.StringIO()
         with redirect_stdout(output):
