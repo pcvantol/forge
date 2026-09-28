@@ -96,6 +96,18 @@ class PreservedLifecycleTests(unittest.TestCase):
                 self.restore_request("restore-0001", "preserve-0001")
             ).run()
 
+    def test_restore_rejects_source_or_artifact_identity_drift(self) -> None:
+        InstalledPreserveDispatcher(self.request("preserve-0001")).run()
+        request = self.restore_request("restore-drift", "preserve-0001")
+        changed = RestoreRequest(
+            **{
+                **request.__dict__,
+                "installed_source": "c" * 40,
+            }
+        )
+        with self.assertRaisesRegex(InstalledLifecycleError, "does not authorize"):
+            InstalledRestoreDispatcher(changed).run()
+
     def test_purge_is_destructive_and_invalidates_preserve(self) -> None:
         InstalledPreserveDispatcher(self.request("preserve-0001")).run()
         purge = InstalledPurgeDispatcher(self.request("purge-0001")).run()
