@@ -1014,10 +1014,10 @@ def assert_quiescent(snapshot: Mapping[str, Any]) -> None:
     if not isinstance(writer, Mapping):
         raise InstalledForgeUpdateError("writer-state readback is missing")
     dispatcher = writer.get("dispatcher")
-    if not isinstance(dispatcher, list) or len(dispatcher) != 1 or any(
+    if not isinstance(dispatcher, list) or len(dispatcher) > 1 or any(
         row.get("status") != "IDLE" or row.get("active_mission_id") is not None
         for row in dispatcher if isinstance(row, Mapping)
-    ):
+    ) or any(not isinstance(row, Mapping) for row in dispatcher):
         raise InstalledForgeUpdateError("Forge dispatcher is not durably idle")
     missions = writer.get("missions") or []
     if any(not isinstance(row, Mapping) or row.get("status") not in SAFE_MISSION_STATES for row in missions):
@@ -1183,8 +1183,13 @@ def reconcile_terminal_dispatcher_for_update(
     if not isinstance(writer, Mapping):
         raise InstalledForgeUpdateError("writer-state readback is missing")
     dispatcher = writer.get("dispatcher")
-    if not isinstance(dispatcher, list) or len(dispatcher) != 1 or not isinstance(dispatcher[0], Mapping):
+    if not isinstance(dispatcher, list) or len(dispatcher) > 1 or any(
+        not isinstance(row, Mapping) for row in dispatcher
+    ):
         raise InstalledForgeUpdateError("Forge dispatcher state is malformed")
+    if not dispatcher:
+        assert_quiescent(snapshot)
+        return dict(snapshot)
     current = dispatcher[0]
     if current.get("status") == "IDLE":
         assert_quiescent(snapshot)

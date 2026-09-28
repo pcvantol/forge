@@ -65,6 +65,12 @@ and recomputes it before operation state or runtime-slot effects. A stale
 assessment or changed source, artifact, schema, identity, peer binding, request,
 operation or controller fails closed.
 
+A freshly initialized Server Runtime can canonically have no
+`dispatcher_state` row before its first dispatcher use. The installed CLI
+projects that exact absence as not-started and `IDLE`; the updater accepts only
+that empty projection or one explicit `IDLE` row as quiescent. Multiple,
+malformed or active rows still fail closed.
+
 ## Durable installed update controller
 
 The controller remains `forge-installed-update/v1`; there is no second updater.
@@ -146,6 +152,7 @@ Source and fresh-installed-wheel tests must cover:
 - corrupt/ambiguous wheel rejection;
 - wrong runtime/installation identity rejection;
 - live Server lock, active dispatcher/Mission and unsafe filesystem rejection;
+- fresh-initialized empty dispatcher projection as canonical not-started/IDLE;
 - exact-instance deletion with a sibling instance preserved;
 - interruption after verification, detach and removal plus same-operation recovery;
 - idempotent terminal replay and operation-ID rebinding rejection;
