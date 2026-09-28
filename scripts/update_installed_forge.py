@@ -1295,6 +1295,11 @@ def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], req
     ):
         if before_metadata.get(key) != expected or after_metadata.get(key) != expected:
             raise InstalledForgeUpdateError(f"migration changed selected {key}")
+    if (request.existing_version, request.version) in ASSESSMENT_REQUIRED_TRANSITIONS and (
+        before_metadata.get("forge_version") != request.existing_version
+        or after_metadata.get("forge_version") != request.version
+    ):
+        raise InstalledForgeUpdateError("migration did not advance the selected Forge inventory version")
     if after.get("protected_metadata_digest") != before.get("protected_metadata_digest"):
         raise InstalledForgeUpdateError("migration changed protected runtime metadata")
     if after.get("peer") != before.get("peer"):
@@ -1328,6 +1333,30 @@ def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], req
         "protected_metadata_digest": after.get("protected_metadata_digest"),
         "peer_configuration_digest": request.peer_configuration_digest,
     }
+
+
+def advance_inventory_version(database: Path, request: UpdateRequest) -> None:
+    """Advance only the qualified mutable product-version inventory binding."""
+    try:
+        with sqlite3.connect(database) as connection:
+            connection.execute("PRAGMA busy_timeout=0")
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT value FROM runtime_metadata WHERE key='forge_version'"
+            ).fetchone()
+            current = row[0] if row is not None else None
+            if current == request.existing_version:
+                changed = connection.execute(
+                    "UPDATE runtime_metadata SET value=? WHERE key='forge_version' AND value=?",
+                    (request.version, request.existing_version),
+                ).rowcount
+                if changed != 1:
+                    raise InstalledForgeUpdateError("Forge inventory version changed during qualification")
+            elif current != request.version:
+                raise InstalledForgeUpdateError("Forge inventory version is outside the selected transition")
+            connection.commit()
+    except sqlite3.Error as error:
+        raise InstalledForgeUpdateError("Forge inventory version could not be advanced") from error
 
 
 @contextmanager
@@ -2098,6 +2127,8 @@ class InstalledForgeUpdateController:
         # Candidate initialization may leave this isolated copy in WAL mode.
         # Checkpoint it only after the candidate subprocess has exited.
         normalize_isolated_qualification_copy(database, operation_root=self.operation_root)
+        if (self.request.existing_version, self.request.version) in ASSESSMENT_REQUIRED_TRANSITIONS:
+            advance_inventory_version(database, self.request)
         copy_after = database_snapshot(database)
         qualification = verify_preservation(copy_before, copy_after, self.request)
         qualification.update({
@@ -2194,6 +2225,9 @@ class InstalledForgeUpdateController:
         schema_before, schema_after = transition_schemas(self.request)
         current = database_snapshot(self.database)
         if (self.request.existing_version, self.request.version) in SAME_SCHEMA_39_TRANSITIONS:
+            inventory_transition = (
+                self.request.existing_version, self.request.version
+            ) in ASSESSMENT_REQUIRED_TRANSITIONS
             qualified_copy = self.operation_root / "qualification-copy" / "forge.db"
             normalize_isolated_qualification_copy(qualified_copy, operation_root=self.operation_root)
             qualified = database_snapshot(qualified_copy)
@@ -2206,10 +2240,14 @@ class InstalledForgeUpdateController:
             # locks.
             live_is_source = current.get("content_digest") == before.get("content_digest")
             live_is_qualified = (
-                qualified.get("schema_digest") != before.get("schema_digest")
-                and current.get("schema_digest") == qualified.get("schema_digest")
-                and current.get("writer_state") == qualified.get("writer_state")
-                and set(current.get("metadata", {})) == set(qualified.get("metadata", {}))
+                current.get("content_digest") == qualified.get("content_digest")
+                if inventory_transition
+                else (
+                    qualified.get("schema_digest") != before.get("schema_digest")
+                    and current.get("schema_digest") == qualified.get("schema_digest")
+                    and current.get("writer_state") == qualified.get("writer_state")
+                    and set(current.get("metadata", {})) == set(qualified.get("metadata", {}))
+                )
             )
             if ((not live_is_source and not live_is_qualified)
                     or qualified.get("writer_state") != before.get("writer_state")
@@ -2217,7 +2255,12 @@ class InstalledForgeUpdateController:
                 raise InstalledForgeUpdateError("same-schema runtime changed outside the bounded operation")
             if state.get("phase") not in {"MIGRATED", "ACTIVATING", "ACTIVATED", "COMPLETE"}:
                 state = self._fence(state)
-                if qualified.get("schema_digest") == before.get("schema_digest"):
+                qualified_is_source = (
+                    qualified.get("content_digest") == before.get("content_digest")
+                    if inventory_transition
+                    else qualified.get("schema_digest") == before.get("schema_digest")
+                )
+                if qualified_is_source:
                     after = current
                     application_mode = "UNCHANGED_DATABASE"
                 elif live_is_qualified:
@@ -2238,7 +2281,12 @@ class InstalledForgeUpdateController:
                 )
                 self._interrupt("migration")
                 return state, after
-            if current.get("schema_digest") != qualified.get("schema_digest"):
+            installed_matches = (
+                current.get("content_digest") == qualified.get("content_digest")
+                if inventory_transition
+                else current.get("schema_digest") == qualified.get("schema_digest")
+            )
+            if not installed_matches:
                 raise InstalledForgeUpdateError("installed same-schema database differs from qualification")
             return state, current
         if (

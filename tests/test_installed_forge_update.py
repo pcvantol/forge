@@ -647,6 +647,11 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             replayed = controller._qualify_copy(qualified, before)
         self.assertEqual(qualified["phase"], "MIGRATION_QUALIFIED")
         self.assertEqual(qualified["migration_qualification"]["status"], "PASS")
+        qualified_snapshot = update.database_snapshot(
+            controller.operation_root / "qualification-copy" / "forge.db"
+        )
+        self.assertEqual(qualified_snapshot["metadata"]["forge_version"], "2.7.38")
+        self.assertEqual(before["metadata"]["forge_version"], "2.7.35")
         self.assertEqual(replayed, qualified)
 
     def test_2738_activation_uses_exact_candidate_and_readiness_identity(self):
