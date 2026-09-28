@@ -47,6 +47,16 @@ FOC-Q -> FCP-Q -> FSH-Q in addition to every pre-existing node's own evidence.
 
 ## Milestones and evidence
 
+The Server-only installed lifecycle subset of `FSH-SERVICES` has a bounded
+`SOURCE_IMPLEMENTED` update-compatibility increment under assignment
+`L2-FORGE-SERVER-UPDATE-COMPATIBILITY-V1-20260928`. It adds exact direct
+2.7.35/2.7.36/2.7.37 to 2.7.38 assessment/controller paths through the existing
+`forge-installed-update/v1` recovery state machine. This subset does not change
+the parent `FSH-SERVICES` status: Console/relay/service-account provisioning,
+boot/logout and full installed-host qualification remain `PLANNED`. Protected
+merge, release inclusion and published-artifact qualification are separate
+states and must not be inferred from this source marker.
+
 Read-only delivery includes the complete declared component registry, component
 modals, explicit central-root status and relay unconfigured/disabled/missing
 states. It does not claim working remote access, launchd provision or restart

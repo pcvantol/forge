@@ -137,6 +137,23 @@ class UpdateAssessmentTests(InstalledLifecycleFixture):
     def test_valid_unsupported_transition_is_incompatible(self) -> None:
         self.assertEqual(self.assessment("3.0.0")["state"], "INCOMPATIBLE")
 
+    def test_declared_server_baselines_assess_directly_to_2738(self) -> None:
+        wheel, digest = _write_wheel(self.root, "2.7.38")
+        for installed in ("2.7.35", "2.7.36", "2.7.37"):
+            data_root = self.instances_root / installed
+            database = RuntimeBootstrap(data_root=data_root, forge_version=installed).open()
+            runtime_id = database.runtime_identity.runtime_id
+            installation_id = database.metadata["installation_id"]
+            database.close()
+            result = assess_update(UpdateAssessmentRequest(
+                data_root=str(data_root), runtime_id=runtime_id, installation_id=installation_id,
+                installed_version=installed, installed_source="a" * 40,
+                installed_artifact_digest="sha256:" + "b" * 64,
+                candidate_version="2.7.38", candidate_source="c" * 40,
+                candidate_wheel=str(wheel), candidate_artifact_digest=digest,
+            ))
+            self.assertEqual(result["state"], "UPDATE_AVAILABLE", installed)
+
     def test_identity_or_artifact_uncertainty_fails_closed(self) -> None:
         self.assertEqual(self.assessment(runtime_id="runtime-wrong")["state"], "UNKNOWN")
         result = self.assessment(candidate_artifact_digest="sha256:" + "0" * 64)

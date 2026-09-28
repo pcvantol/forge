@@ -363,12 +363,11 @@ jobs:
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-pypi/bin/python" -I -c 'import forge, pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
           "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-published"
           cp "$RUNNER_TEMP/forge-criterion-published/criterion-completion.public.json" "$GITHUB_WORKSPACE/release-input/dist/criterion-completion-published.json"
-          if test "$VERSION" = "2.7.34" || test "$VERSION" = "2.7.35"; then
-            lifecycle_args=()
-            if test "$VERSION" = "2.7.35"; then lifecycle_args=(--candidate-wheel "$GITHUB_WORKSPACE/registry-readback/$wheel" --source-revision "$SOURCE_SHA"); fi
-            "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.server_runtime --output-dir "$RUNNER_TEMP/forge-server-published" "${lifecycle_args[@]}"
-            cp "$RUNNER_TEMP/forge-server-published/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/release-input/dist/server-runtime-v1-published.json"
-          fi
+          "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.server_runtime \
+            --output-dir "$RUNNER_TEMP/forge-server-published" \
+            --candidate-wheel "$GITHUB_WORKSPACE/registry-readback/$wheel" \
+            --source-revision "$SOURCE_SHA"
+          cp "$RUNNER_TEMP/forge-server-published/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/release-input/dist/server-runtime-v1-published.json"
           test "$("$RUNNER_TEMP/forge-pypi/bin/forge" --version)" = "$VERSION"
       - name: Persist immutable PyPI readback as PUBLISHED evidence
         env:

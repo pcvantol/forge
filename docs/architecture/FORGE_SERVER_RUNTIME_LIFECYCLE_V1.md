@@ -9,10 +9,11 @@
 
 ## Boundary
 
-Forge publishes two lifecycle decisions that a deployment owner may consume:
+Forge publishes three lifecycle decisions that a deployment owner may consume:
 
 1. a read-only decision for one exact installed artifact and one exact staged candidate;
-2. a durable uninstall dispatcher for one exact, already-quiesced Forge Server Runtime instance.
+2. a durable installed-update controller for one exact admitted decision and candidate;
+3. a durable uninstall dispatcher for one exact, already-quiesced Forge Server Runtime instance.
 
 These are Forge product decisions. A caller must not infer `UPDATE_AVAILABLE` from version ordering or delete a Forge data root itself. Forge Platform remains responsible for service-account provisioning, LaunchDaemon definition/removal, immutable runtime-slot layout, artifact staging and service stop/start choreography. Engineering Platform and Workspace are not participants in this contract.
 
@@ -46,6 +47,40 @@ The command:
 `UNKNOWN` and `INCOMPATIBLE` never authorize mutation. The response contains the selected installation, candidate correlation, reason codes, evidence digests, `mutating: false`, and an `assessment_digest`. It contains no credential or ambient-home information.
 
 The assessment may use private scratch storage to read a consistent WAL-backed snapshot. It must leave every selected instance and candidate artifact byte unchanged and must reject a source snapshot that changes during the read.
+
+An older installed distribution cannot know a transition introduced after its
+publication. For `2.7.35`, `2.7.36`, and `2.7.37` to `2.7.38`, the deployment
+owner therefore executes the exact protected `scripts/update_installed_forge.py`
+controller with `--assess-only`. That controller is standard-library-only and
+does not import the staged candidate or a source checkout. It validates the
+target wheel and terminal release receipt, reads the selected runtime and peer
+binding, and emits `forge-installed-update-assessment/v1` with the same exact
+request/operation/old/controller/target binding consumed by mutation.
+
+The direct declared schema-39 paths are `2.7.35 -> 2.7.38`, `2.7.36 ->
+2.7.38`, and `2.7.37 -> 2.7.38`. They become usable only after the 2.7.38
+wheel and `RELEASE_COMPLETE` receipt are actually published and their exact
+controller source is protected-merged. Mutation requires the assessment digest
+and recomputes it before operation state or runtime-slot effects. A stale
+assessment or changed source, artifact, schema, identity, peer binding, request,
+operation or controller fails closed.
+
+## Durable installed update controller
+
+The controller remains `forge-installed-update/v1`; there is no second updater.
+It validates target wheel metadata/RECORD and terminal release evidence without
+importing target code, then stages the admitted wheel in a private immutable
+slot. It holds the installation-update, Mission-controller, runtime-mutation
+and bootstrap locks while using the existing backup, isolated migration
+qualification, fencing, activation, readiness and receipt sequence.
+
+The instance tree must remain same-owner, non-permissive, free of symlinks and
+special entries, and every regular file must have one hardlink. No rejection is
+repaired by automatic chmod, chown or unlink. Schema-39-to-39 qualification
+preserves identity, configuration and domain tables. Provider configuration
+remains bound to the selected instance and credential/auth state is preserved
+without promotion to verified. Same-operation resume and terminal replay retain
+the existing durable phase machine; an operation cannot be rebound to new bytes.
 
 ## Durable uninstall dispatcher
 
@@ -115,6 +150,13 @@ Source and fresh-installed-wheel tests must cover:
 - interruption after verification, detach and removal plus same-operation recovery;
 - idempotent terminal replay and operation-ID rebinding rejection;
 - installed-distribution execution before and after registry publication.
+- direct 2.7.35/2.7.36/2.7.37 assessment and installed-controller execution
+  to the published 2.7.38 artifact;
+- stale assessment/request rejection before operation or resolver effects;
+- interruption/resume/replay, sibling isolation and preserve/restore/purge
+  concurrency exclusion under the shared Forge writer locks;
+- foreign hardlink, permissive tree, symlink/special entry and artifact/receipt
+  tamper negatives without auth promotion.
 
 No qualification may contact production EP, a production provider or mutate Forge Platform, EP or Workspace.
 

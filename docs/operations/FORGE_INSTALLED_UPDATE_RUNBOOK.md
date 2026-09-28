@@ -11,8 +11,9 @@ schema-39-to-39 planner-contract correction, and the selected 2.7.29 to 2.7.30
 planner-contract cardinality correction, plus the selected 2.7.30 to 2.7.31
 planner governance-policy binding correction, the selected 2.7.31 to 2.7.32
 authoritative installed-health and readiness delivery, and the selected 2.7.31/2.7.32
-to 2.7.33 same-schema installer correction, and the selected 2.7.33 to 2.7.34
-Forge Server Runtime V1 same-schema delivery. Support for those routes is not a
+to 2.7.33 same-schema installer correction, the selected 2.7.33 to 2.7.34
+Forge Server Runtime V1 same-schema delivery, and direct 2.7.35/2.7.36/2.7.37
+to 2.7.38 schema-39 compatibility. Support for those routes is not a
 claim that its release is published or an installation has been activated.
 
 This controller closes one concrete product provisioning gap. It is not the
@@ -25,7 +26,17 @@ semantics that the platform must eventually invoke through a qualified adapter.
 The external entry point is
 [`scripts/update_installed_forge.py`](../../scripts/update_installed_forge.py).
 It is deliberately excluded from the `forge-autonomy` wheel and therefore
-cannot be called by the installed runtime as a second self-installer.
+cannot be called by the installed runtime as a second self-installer. It is a
+standard-library-only protected controller artifact: invoke its exact source
+file with isolated Python, never by importing a checkout or the staged wheel.
+
+For the direct 2.7.35/2.7.36/2.7.37 to 2.7.38 paths, first invoke the same full
+request with `--assess-only`, retain the returned
+`forge-installed-update-assessment/v1` digest, then supply it as
+`--assessment-digest` to mutation. Supply the exact published old binding as
+`--installed-source` and `--installed-artifact-digest`. The controller
+recomputes the assessment before any operation state, slot or resolver effect
+and under the shared writer fences. Only `UPDATE_AVAILABLE` admits mutation.
 
 ## Supported operation
 
@@ -36,12 +47,13 @@ binds:
 - operation, runtime, installation, and peer-configuration identities;
 - data root, runtime root, current command resolver, legacy interpreter, and
   candidate Python interpreter;
-- product version and original product source;
+- product version, original product source and installed artifact digest;
 - wheel and terminal release-qualification receipt, including their SHA-256
   digests;
-- protected installation-controller source and file digest.
+- protected installation-controller source and file digest;
+- exact read-only assessment digest for transitions that postdate the installed wheel.
 
-It rejects a changed target, artifact, receipt, resolver, peer binding, writer
+It rejects a changed target, artifact, receipt, assessment, resolver, peer binding, writer
 state, or concurrent maintenance owner. Unknown historical installer
 provenance remains unknown; adoption records only the observed entry point,
 interpreter, version, and bytes.
@@ -53,7 +65,7 @@ interpreter, version, and bytes.
    exact terminal release receipt without importing it. The historical
    2.7.22 reconciliation receipt retains its dedicated validation; 2.7.23 and
    2.7.24, 2.7.25, 2.7.26, 2.7.27, 2.7.28, 2.7.29, 2.7.30, 2.7.31, 2.7.32,
-   2.7.33 and 2.7.34 must have the normal protected release-complete
+   2.7.33, 2.7.34, 2.7.35 and 2.7.38 must have the normal protected release-complete
    publication/readback/cleanup shape and cannot be presented to an
    unsupported transition.
 2. Create an isolated versioned runtime slot outside the source checkout with
@@ -159,7 +171,7 @@ active or unrelated Mission. The installation controller's protected source
 revision is reported separately from the released wheel's product source.
 
 For 2.7.25 the only newly supported source version is 2.7.24; for 2.7.26 it
-is 2.7.25; for 2.7.27 it is 2.7.26; for 2.7.28 it is 2.7.27; for 2.7.29 it is 2.7.28; for 2.7.30 it is 2.7.29; for 2.7.31 it is 2.7.30; for 2.7.32 it is 2.7.31; for 2.7.33 it is 2.7.31 or 2.7.32; for 2.7.34 it is 2.7.33. Other version
+is 2.7.25; for 2.7.27 it is 2.7.26; for 2.7.28 it is 2.7.27; for 2.7.29 it is 2.7.28; for 2.7.30 it is 2.7.29; for 2.7.31 it is 2.7.30; for 2.7.32 it is 2.7.31; for 2.7.33 it is 2.7.31 or 2.7.32; for 2.7.34 it is 2.7.33. Forge 2.7.38 accepts only direct 2.7.35, 2.7.36 or 2.7.37 schema-39 baselines. Other version
 jumps are rejected. After schema 39 has been
 observed during the 2.7.25 update, interruption recovery keeps the qualified
 candidate or explicit maintenance fence selected; it never launches the retained
