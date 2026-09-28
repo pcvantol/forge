@@ -57,7 +57,10 @@ forge --data-root <absolute-instance-root> server uninstall \
   --instances-root <absolute-managed-instances-root> \
   --instance-id <opaque-instance-id> \
   --runtime-id <same-opaque-runtime-id> \
-  --installation-id <opaque-installation-id>
+  --installation-id <opaque-installation-id> \
+  --installed-version <exact-selected-version> \
+  --installed-source <exact-40-char-source-revision> \
+  --installed-artifact-digest <sha256:...>
 
 forge server uninstall-status \
   --operation-id <same-operation-id> \
@@ -143,7 +146,10 @@ forge --data-root <absolute-instance-root> server restore \
   --instances-root <absolute-managed-instances-root> \
   --instance-id <same-opaque-instance-id> \
   --runtime-id <same-opaque-runtime-id> \
-  --installation-id <same-opaque-installation-id>
+  --installation-id <same-opaque-installation-id> \
+  --installed-version <same-exact-selected-version> \
+  --installed-source <same-exact-source-revision> \
+  --installed-artifact-digest <same-sha256:...>
 
 forge --data-root <absolute-instance-root> server purge <same exact-instance arguments>
 forge server lifecycle-status --operation-id <id> --instances-root <root> --instance-id <id>
