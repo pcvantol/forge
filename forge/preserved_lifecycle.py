@@ -221,6 +221,11 @@ class _LifecycleOperation:
             receipt.get("contract") != INSTANCE_LIFECYCLE_CONTRACT
             or receipt.get("operation") != self.operation
             or receipt.get("request_digest") != self.request.digest
+            or receipt.get("selected_artifact") != {
+                "version": self.request.installed_version,
+                "source_revision": self.request.installed_source,
+                "artifact_digest": self.request.installed_artifact_digest,
+            }
             or receipt.get("state") != "COMPLETE"
             or receipt.get("receipt_digest") != _digest_bytes(_json_bytes(unsigned))
             or state.get("receipt_digest") != receipt.get("receipt_digest")
@@ -312,6 +317,11 @@ class InstalledRestoreDispatcher(_LifecycleOperation):
             or receipt.get("instance_id") != self.request.instance_id
             or receipt.get("runtime_id") != self.request.runtime_id
             or receipt.get("installation_id") != self.request.installation_id
+            or receipt.get("selected_artifact") != {
+                "version": self.request.installed_version,
+                "source_revision": self.request.installed_source,
+                "artifact_digest": self.request.installed_artifact_digest,
+            }
             or receipt.get("lifecycle_state") != "UNINSTALLED_DATA_PRESERVED"
             or receipt.get("restorable") is not True
             or receipt.get("receipt_digest") != _digest_bytes(_json_bytes(unsigned))
