@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.36",
+  "classification_rationale": "L2-INSTALLER-LIFECYCLE-PRODUCER-CONFORMANCE-V1-20260928 Forge lifecycle ownership security remediation",
+  "component": "product",
+  "event_lineage": "L2-INSTALLER-LIFECYCLE-PRODUCER-CONFORMANCE-V1-20260928 Forge lifecycle ownership security remediation",
+  "expected_head": "455b738e20124dba5e588e19cfb026fc8a1e33df",
+  "operation_id": "forge-release-prep-2.7.37-20260928",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.37"
+}
