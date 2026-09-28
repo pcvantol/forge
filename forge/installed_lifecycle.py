@@ -498,6 +498,13 @@ def _exclusive_locks(paths: tuple[Path, ...]) -> Iterator[None]:
 
 
 def _assert_tree_has_no_links(root: Path) -> str:
+    """Prove one mutable instance tree is exclusively product-owned and safe."""
+    _assert_no_symlink_components(root)
+    root_info = root.lstat()
+    if not stat.S_ISDIR(root_info.st_mode):
+        raise InstalledLifecycleError("instance root is not a directory")
+    if stat.S_IMODE(root_info.st_mode) & 0o022:
+        raise InstalledLifecycleError("instance root is group/world writable")
     entries: list[dict[str, object]] = []
     for directory, names, files in os.walk(root, topdown=True, followlinks=False):
         parent = Path(directory)
@@ -508,8 +515,14 @@ def _assert_tree_has_no_links(root: Path) -> str:
                 raise InstalledLifecycleError(f"instance tree contains an unsafe symbolic link: {path}")
             if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
                 raise InstalledLifecycleError(f"instance tree contains an unsupported filesystem entry: {path}")
+            if stat.S_IMODE(info.st_mode) & 0o022:
+                raise InstalledLifecycleError(f"instance tree contains a group/world writable entry: {path}")
+            if stat.S_ISREG(info.st_mode) and info.st_nlink != 1:
+                raise InstalledLifecycleError(f"instance tree contains a non-exclusive hardlinked file: {path}")
             entries.append({
                 "path": str(path.relative_to(root)), "mode": stat.S_IFMT(info.st_mode),
+                "permissions": stat.S_IMODE(info.st_mode),
+                "links": info.st_nlink if stat.S_ISREG(info.st_mode) else None,
                 "size": info.st_size if stat.S_ISREG(info.st_mode) else None,
             })
     return _digest_bytes(_json_bytes(entries))

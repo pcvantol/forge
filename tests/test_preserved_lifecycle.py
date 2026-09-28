@@ -96,6 +96,48 @@ class PreservedLifecycleTests(unittest.TestCase):
                 self.restore_request("restore-0001", "preserve-0001")
             ).run()
 
+    def test_preserve_rejects_hardlinks_and_insecure_modes(self) -> None:
+        foreign = self.root / "foreign-hardlink-source"
+        foreign.write_text("foreign", encoding="utf-8")
+        (self.data_root / "unsafe-hardlink").hardlink_to(foreign)
+        with self.assertRaisesRegex(InstalledLifecycleError, "hardlinked"):
+            InstalledPreserveDispatcher(self.request("preserve-hardlink")).run()
+        (self.data_root / "unsafe-hardlink").unlink()
+
+        self.data_root.chmod(0o777)
+        with self.assertRaisesRegex(InstalledLifecycleError, "group/world writable"):
+            InstalledPreserveDispatcher(self.request("preserve-root-mode")).run()
+        self.data_root.chmod(0o700)
+
+        unsafe_directory = self.data_root / "unsafe-directory"
+        unsafe_directory.mkdir(mode=0o700)
+        unsafe_directory.chmod(0o772)
+        with self.assertRaisesRegex(InstalledLifecycleError, "group/world writable"):
+            InstalledPreserveDispatcher(self.request("preserve-directory-mode")).run()
+        unsafe_directory.chmod(0o700)
+
+        unsafe_file = self.data_root / "unsafe-file"
+        unsafe_file.write_text("unsafe", encoding="utf-8")
+        unsafe_file.chmod(0o666)
+        with self.assertRaisesRegex(InstalledLifecycleError, "group/world writable"):
+            InstalledPreserveDispatcher(self.request("preserve-file-mode")).run()
+
+    def test_restore_rejects_insecure_mode_drift_after_preserve(self) -> None:
+        InstalledPreserveDispatcher(self.request("preserve-mode-drift")).run()
+        self.data_root.chmod(0o777)
+        with self.assertRaisesRegex(InstalledLifecycleError, "group/world writable"):
+            InstalledRestoreDispatcher(
+                self.restore_request("restore-mode-drift", "preserve-mode-drift")
+            ).run()
+
+    def test_purge_rejects_unsafe_tree_before_destructive_boundary(self) -> None:
+        unsafe = self.data_root / "unsafe-file"
+        unsafe.write_text("unsafe", encoding="utf-8")
+        unsafe.chmod(0o666)
+        with self.assertRaisesRegex(InstalledLifecycleError, "group/world writable"):
+            InstalledPurgeDispatcher(self.request("purge-unsafe")).run()
+        self.assertTrue(self.data_root.exists())
+
     def test_restore_rejects_source_or_artifact_identity_drift(self) -> None:
         InstalledPreserveDispatcher(self.request("preserve-0001")).run()
         request = self.restore_request("restore-drift", "preserve-0001")

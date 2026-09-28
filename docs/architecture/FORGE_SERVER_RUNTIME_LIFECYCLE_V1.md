@@ -158,8 +158,11 @@ forge server lifecycle-status --operation-id <id> --instances-root <root> --inst
 ### PRESERVE
 
 Forge first proves the same identity, integrity and quiescence requirements used
-by destructive uninstall, then hashes every regular byte in the exact link-free
-instance tree. The data root is not detached or deleted. Durable evidence lives
+by destructive uninstall, then proves exclusive filesystem ownership before
+hashing every regular byte in the exact instance tree. The selected root and
+every traversed mutable entry must not be group/world writable; regular files
+must have exactly one hardlink; symbolic links and special entries remain
+invalid. The data root is not detached or deleted. Durable evidence lives
 under the product lifecycle control root outside mutable instance data.
 
 Terminal evidence expresses at least:
@@ -225,6 +228,7 @@ restored service as ready.
 In addition to the original V1 matrix, qualification covers exact-instance
 preserve/restore, byte-level tamper rejection, permanent purge invalidation,
 interruption/replay for all three operations, operation-ID rebinding rejection,
-symlink/foreign-root rejection, sibling-instance non-interference and packaged
-CLI execution. Product qualification uses isolated fixtures only and performs
+symlink/hardlink/special-entry rejection, group/world-writable root/tree
+rejection, foreign-root rejection, sibling-instance non-interference and
+packaged CLI execution. Product qualification uses isolated fixtures only and performs
 no Forge Platform, Engineering Platform, Workspace or production mutation.

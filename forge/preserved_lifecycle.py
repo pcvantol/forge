@@ -22,6 +22,7 @@ from .installed_lifecycle import (
     _assert_identity,
     _assert_no_symlink_components,
     _assert_quiescent,
+    _assert_tree_has_no_links,
     _atomic_json,
     _digest_bytes,
     _exclusive_locks,
@@ -41,8 +42,8 @@ PROVIDER_AUTH_PRESERVED = "PRESERVED_REQUIRES_REVERIFICATION"
 
 
 def _content_tree_digest(root: Path) -> str:
-    """Bind every regular byte in one exact, link-free instance tree."""
-    _assert_no_symlink_components(root)
+    """Bind every regular byte after shared exclusive-ownership admission."""
+    _assert_tree_has_no_links(root)
     entries: list[dict[str, object]] = []
     for directory, names, files in os.walk(root, topdown=True, followlinks=False):
         parent = Path(directory)
