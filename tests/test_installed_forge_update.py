@@ -396,6 +396,23 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(result["candidate"]["version"], "2.7.38")
         self.assertEqual(before, after)
 
+    def test_2738_fresh_initialized_empty_dispatcher_is_canonical_idle(self):
+        request = self._assessment_request_2738()
+        database = self.data_root / "forge.db"
+        with sqlite3.connect(database) as connection:
+            connection.execute("DELETE FROM dispatcher_state")
+        before = update.database_snapshot(database)
+
+        self.assertEqual(before["writer_state"]["dispatcher"], [])
+        update.assert_quiescent(before)
+        reconciled = update.reconcile_terminal_dispatcher_for_update(
+            request, before, database,
+        )
+        self.assertEqual(reconciled, before)
+        assessment = update.assess_update(request, snapshot=before)
+        self.assertEqual(assessment["state"], "UPDATE_AVAILABLE")
+        self.assertFalse(assessment["mutating"])
+
     def test_2738_stale_assessment_fails_before_operation_or_resolver_effect(self):
         request = self._assessment_request_2738()
         assessment = update.assess_update(request)
