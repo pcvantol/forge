@@ -874,6 +874,42 @@ def database_snapshot(path: Path, *, existing_connection: sqlite3.Connection | N
     return snapshot
 
 
+def _database_source_bytes(path: Path) -> dict[str, bytes]:
+    source: dict[str, bytes] = {}
+    for suffix in ("", "-wal", "-shm"):
+        candidate = path.with_name(path.name + suffix)
+        if candidate.exists() or candidate.is_symlink():
+            source[suffix] = _read_regular_bytes(candidate)
+    return source
+
+
+def readonly_database_snapshot(path: Path) -> dict[str, Any]:
+    """Inspect a stable private copy without opening the selected SQLite files."""
+    for _attempt in range(3):
+        source = _database_source_bytes(path)
+        if "" not in source or source != _database_source_bytes(path):
+            continue
+        with tempfile.TemporaryDirectory(prefix="forge-update-assessment-") as directory:
+            copy = Path(directory) / "forge.db"
+            for suffix in ("", "-wal"):
+                if suffix not in source:
+                    continue
+                target = copy.with_name(copy.name + suffix)
+                descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(source[suffix])
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            snapshot = database_snapshot(copy)
+        if source != _database_source_bytes(path):
+            continue
+        snapshot.pop("snapshot_digest", None)
+        snapshot["database"] = str(path)
+        snapshot["snapshot_digest"] = _digest_bytes(_json_bytes(snapshot))
+        return snapshot
+    raise InstalledForgeUpdateError("runtime database changed during read-only assessment")
+
+
 def normalize_isolated_qualification_copy(path: Path, *, operation_root: Path) -> None:
     """Checkpoint a completed candidate copy before read-only readback/replay."""
     if path != operation_root / "qualification-copy" / "forge.db":
@@ -967,7 +1003,10 @@ def assess_update(request: UpdateRequest, *, snapshot: Mapping[str, Any] | None 
         request.validate_structure()
         artifact = validate_qualified_artifact(request)
         _assert_private_owned_tree(Path(request.data_root))
-        observed = dict(snapshot) if snapshot is not None else database_snapshot(Path(request.data_root) / "forge.db")
+        observed = (
+            dict(snapshot) if snapshot is not None
+            else readonly_database_snapshot(Path(request.data_root) / "forge.db")
+        )
         _assert_assessment_installation(request, observed)
         exact_current = (
             request.existing_version == request.version
@@ -2487,7 +2526,7 @@ class InstalledForgeUpdateController:
         _safe_directory(self.runtime_root)
         if not self.state_path.exists():
             _assert_private_owned_tree(self.data_root)
-            self._validate_initial_assessment(database_snapshot(self.database))
+            self._validate_initial_assessment(readonly_database_snapshot(self.database))
         update_lock = self.runtime_root / "locks" / "installation-update.lock"
         server_lock = self.data_root / "locks" / "forge-server-runtime.lock"
         controller_lock = self.data_root / "forge-mission-controller.lock"
