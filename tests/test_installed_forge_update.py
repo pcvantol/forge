@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
+from contextlib import redirect_stdout
 import importlib.util
 from hashlib import sha256
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -18,6 +20,7 @@ import zipfile
 
 from forge.runtime import RuntimeBootstrap
 import forge.runtime.database as runtime_database
+from forge.installed_lifecycle import SUPPORTED_TRANSITIONS as PACKAGED_TRANSITIONS
 from forge.runtime.operational_reset import MAINTENANCE_TABLES
 
 
@@ -294,7 +297,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                 "github_release": {"draft": False},
             },
         }, sort_keys=True), encoding="utf-8")
-        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33", "2.7.34", "2.7.35"}:
+        if version in {"2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29", "2.7.30", "2.7.31", "2.7.32", "2.7.33", "2.7.34", "2.7.35", "2.7.38"}:
             # Captured from the actual installed-composition command used by
             # both workflow stages; only the synthetic wheel binding changes.
             summary = json.loads((Path(__file__).parent / "fixtures" /
@@ -304,7 +307,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             document = json.loads(receipt.read_text())
             document["qualification"]["criterion_completion"] = summary
             document["publication_receipt"]["criterion_completion"] = summary
-            if version in {"2.7.34", "2.7.35"}:
+            if version in {"2.7.34", "2.7.35", "2.7.38"}:
                 server_runtime = {
                     "qualification": "FORGE_SERVER_RUNTIME_V1_INSTALLED_ARTIFACT",
                     "version": version,
@@ -317,11 +320,18 @@ class InstalledForgeUpdateTests(unittest.TestCase):
                     "production_ep_contacted": False,
                     "production_provider_contacted": False,
                 }
-                if version == "2.7.35":
+                if version in {"2.7.35", "2.7.38"}:
                     server_runtime.update({
                         "lifecycle_update_assessment": "PASS",
                         "lifecycle_uninstall_dispatcher": "PASS",
                         "lifecycle_uninstall_replay": "PASS",
+                    })
+                if version == "2.7.38":
+                    server_runtime.update({
+                        "lifecycle_preserve": "PASS",
+                        "lifecycle_restore": "PASS",
+                        "lifecycle_purge": "PASS",
+                        "lifecycle_filesystem_security": "PASS",
                     })
                 document["qualification"]["server_runtime"] = server_runtime
                 document["publication_receipt"]["server_runtime"] = server_runtime
@@ -338,6 +348,364 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             "existing_version": existing_version,
         })
         return request
+
+    def test_standalone_transition_registry_matches_packaged_policy(self):
+        self.assertEqual(update.SUPPORTED_TRANSITIONS, PACKAGED_TRANSITIONS)
+
+    def test_2735_2736_and_2737_have_direct_same_schema_paths_to_2738(self):
+        for existing in ("2.7.35", "2.7.36", "2.7.37"):
+            with self.subTest(existing=existing):
+                request = self._normal_release_request("2.7.38", existing)
+                request = update.UpdateRequest(**{
+                    **request.__dict__,
+                    "installed_source": "d" * 40,
+                    "installed_artifact_digest": "sha256:" + "e" * 64,
+                    "assessment_digest": "sha256:" + "f" * 64,
+                })
+                self.assertEqual(update.transition_schemas(request), (39, 39))
+                self.assertEqual(update.validate_qualified_artifact(request)["release_route"], "NORMAL")
+
+    def _assessment_request_2738(self, existing_version="2.7.35"):
+        self._same_schema39_transition(
+            existing_version=existing_version,
+            target_version="2.7.38",
+        )
+        self.request = update.UpdateRequest(**{
+            **self.request.__dict__,
+            "installed_source": "d" * 40,
+            "installed_artifact_digest": "sha256:" + "e" * 64,
+        })
+        return self.request
+
+    def test_2738_standalone_assessment_is_read_only_and_exactly_bound(self):
+        request = self._assessment_request_2738()
+        before = {
+            path.relative_to(self.data_root).as_posix(): update.file_digest(path)
+            for path in self.data_root.rglob("*") if path.is_file()
+        }
+        result = update.assess_update(request)
+        after = {
+            path.relative_to(self.data_root).as_posix(): update.file_digest(path)
+            for path in self.data_root.rglob("*") if path.is_file()
+        }
+        self.assertEqual(result["state"], "UPDATE_AVAILABLE")
+        self.assertFalse(result["mutating"])
+        self.assertEqual(result["operation_id"], request.operation_id)
+        self.assertEqual(result["request_digest"], request.assessment_request_digest)
+        self.assertEqual(result["selected_installation"]["source_revision"], "d" * 40)
+        self.assertEqual(result["candidate"]["version"], "2.7.38")
+        self.assertEqual(before, after)
+
+    def test_2738_stale_assessment_fails_before_operation_or_resolver_effect(self):
+        request = self._assessment_request_2738()
+        assessment = update.assess_update(request)
+        stale = update.UpdateRequest(**{
+            **request.__dict__,
+            "installed_source": "f" * 40,
+            "assessment_digest": assessment["assessment_digest"],
+        })
+        resolver_before = self.resolver.read_bytes()
+        controller = update.InstalledForgeUpdateController(stale, process_reader=lambda: ())
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "assessment"):
+            controller.run()
+        self.assertFalse(controller.operation_root.exists())
+        self.assertEqual(self.resolver.read_bytes(), resolver_before)
+
+    def test_2738_assessment_rejects_permissive_and_hardlinked_instance_entries(self):
+        request = self._assessment_request_2738()
+        unsafe = self.data_root / "unsafe-file"
+        unsafe.write_text("unsafe", encoding="utf-8")
+        unsafe.chmod(0o666)
+        result = update.assess_update(request)
+        self.assertEqual(result["state"], "UNKNOWN")
+        self.assertIn("group/world-writable", result["evidence"]["error"])
+        unsafe.chmod(0o600)
+        foreign = self.root / "foreign"
+        foreign.write_text("foreign", encoding="utf-8")
+        unsafe.unlink()
+        unsafe.hardlink_to(foreign)
+        result = update.assess_update(request)
+        self.assertEqual(result["state"], "UNKNOWN")
+        self.assertIn("hardlinked", result["evidence"]["error"])
+
+    def test_2738_assessment_schema_and_foreign_artifact_controls_fail_closed(self):
+        request = self._assessment_request_2738()
+        with sqlite3.connect(self.data_root / "forge.db") as connection:
+            connection.execute("PRAGMA user_version=38")
+        schema = update.assess_update(request)
+        self.assertEqual(schema["state"], "INCOMPATIBLE")
+        self.assertEqual(schema["reason_codes"], ["RUNTIME_SCHEMA_OUTSIDE_BOUNDED_TRANSITION"])
+        changed = update.UpdateRequest(**{
+            **request.__dict__,
+            "wheel_sha256": "sha256:" + "0" * 64,
+        })
+        foreign = update.assess_update(changed)
+        self.assertEqual(foreign["state"], "UNKNOWN")
+        self.assertIn("wheel digest", foreign["evidence"]["error"])
+
+    def test_2738_run_orchestration_binds_assessment_and_terminal_receipt(self):
+        request = self._assessment_request_2738()
+        assessment = update.assess_update(request)
+        request = update.UpdateRequest(**{
+            **request.__dict__, "assessment_digest": assessment["assessment_digest"],
+        })
+        controller = update.InstalledForgeUpdateController(request, process_reader=lambda: ())
+        before = update.database_snapshot(self.data_root / "forge.db")
+
+        def advance(state, phase, **evidence):
+            return {**state, **evidence, "phase": phase}
+
+        with (
+            patch.object(update, "reconcile_terminal_dispatcher_for_update",
+                         side_effect=lambda _request, snapshot, _database: snapshot),
+            patch.object(controller, "_stage", side_effect=lambda state: advance(state, "STAGED")),
+            patch.object(controller, "_adopt_resolver",
+                         side_effect=lambda state: advance(state, "ADOPTED", before=before)),
+            patch.object(controller, "_backup", side_effect=lambda state, _before: advance(
+                state, "BACKED_UP", backup={"status": "PASS", "path": str(controller.backup_path)},
+            )),
+            patch.object(controller, "_qualify_copy", side_effect=lambda state, _before: advance(
+                state, "MIGRATION_QUALIFIED", migration_qualification={"status": "PASS"},
+            )),
+            patch.object(controller, "_migrate_live", side_effect=lambda state, _before: (
+                advance(state, "MIGRATED", live_migration={"status": "PASS"}), before,
+            )),
+            patch.object(controller, "_activate", side_effect=lambda state, _after: advance(
+                state, "ACTIVATED", installed_readback={
+                    "preservation": {"status": "PASS"},
+                    "database_snapshot_digest": before["snapshot_digest"],
+                },
+            )),
+        ):
+            receipt = controller.run()
+
+        self.assertEqual(receipt["state"], "COMPLETE")
+        self.assertEqual(receipt["assessment_digest"], assessment["assessment_digest"])
+        self.assertEqual(receipt["installed_source"], request.installed_source)
+        self.assertEqual(receipt["installed_artifact_digest"], request.installed_artifact_digest)
+        self.assertEqual(receipt["credential_disposition"], "PRESERVED_UNCHANGED")
+        self.assertEqual(update._read_json(controller.receipt_path), receipt)
+        self.assertEqual(update._read_json(controller.state_path)["phase"], "COMPLETE")
+
+    def test_cli_assessment_success_mutation_success_and_error_are_machine_readable(self):
+        request = self._assessment_request_2738()
+        options = {
+            "operation-id": request.operation_id,
+            "version": request.version,
+            "product-source": request.product_source,
+            "wheel": request.wheel,
+            "wheel-sha256": request.wheel_sha256,
+            "qualification-receipt": request.qualification_receipt,
+            "qualification-receipt-sha256": request.qualification_receipt_sha256,
+            "controller-source": request.controller_source,
+            "controller-sha256": request.controller_sha256,
+            "data-root": request.data_root,
+            "runtime-root": request.runtime_root,
+            "runtime-id": request.runtime_id,
+            "installation-id": request.installation_id,
+            "peer-configuration-digest": request.peer_configuration_digest,
+            "resolver": request.resolver,
+            "resolver-sha256": request.resolver_sha256,
+            "existing-interpreter": request.existing_interpreter,
+            "existing-version": request.existing_version,
+            "base-python": request.base_python,
+            "installed-source": request.installed_source,
+            "installed-artifact-digest": request.installed_artifact_digest,
+        }
+        argv = [item for key, value in options.items() for item in (f"--{key}", value)]
+        assessment = update.assess_update(request)
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(update.main([*argv, "--assess-only"]), 0)
+        self.assertEqual(json.loads(output.getvalue()), assessment)
+
+        mutation_argv = [*argv, "--assessment-digest", assessment["assessment_digest"]]
+        completed = {"state": "COMPLETE", "operation_id": request.operation_id}
+        output = StringIO()
+        with (
+            patch.object(update.InstalledForgeUpdateController, "run", return_value=completed),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(update.main(mutation_argv), 0)
+        self.assertEqual(json.loads(output.getvalue()), completed)
+
+        output = StringIO()
+        with (
+            patch.object(update.InstalledForgeUpdateController, "run",
+                         side_effect=update.InstalledForgeUpdateError("blocked")),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(update.main([*mutation_argv, "--reconcile-staged-controller"]), 1)
+        self.assertEqual(json.loads(output.getvalue()), {"status": "ERROR", "error": "blocked"})
+
+    def test_controller_input_and_utility_failures_are_fail_closed(self):
+        invalid = (
+            ({"operation_id": "../escape"}, "filesystem-safe"),
+            ({"wheel_sha256": "bad"}, "wheel digest"),
+            ({"product_source": "short"}, "source revisions"),
+            ({"wheel": "relative.whl"}, "absolute"),
+            ({"version": "2.7.38", "installed_source": "short",
+              "installed_artifact_digest": "sha256:" + "e" * 64}, "installed source"),
+            ({"version": "2.7.38", "installed_source": "d" * 40,
+              "installed_artifact_digest": "bad"}, "installed artifact"),
+        )
+        for changes, message in invalid:
+            with self.subTest(changes=changes):
+                request = update.UpdateRequest(**{**self.request.__dict__, **changes})
+                with self.assertRaisesRegex(update.InstalledForgeUpdateError, message):
+                    request.validate_structure()
+
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "absolute"):
+            update._safe_directory(Path("relative"))
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "unavailable"):
+            update._safe_directory(self.root / "missing")
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "not a symlink"):
+            update._resolved_link(self.resolver)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "required regular file"):
+            update.file_digest(self.root / "missing.bin")
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "required regular file"):
+            update._read_regular_bytes(self.root)
+
+        guarded = self.root / "guarded-tree"
+        guarded.mkdir()
+        (guarded / "link").symlink_to(self.resolver)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "symbolic link"):
+            update._assert_private_owned_tree(guarded)
+        (guarded / "link").unlink()
+        os.mkfifo(guarded / "special")
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "special entry"):
+            update._assert_private_owned_tree(guarded)
+
+        malformed = self.root / "malformed.json"
+        malformed.write_text("{", encoding="utf-8")
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "unreadable"):
+            update._read_json(malformed)
+        malformed.write_text("[]", encoding="utf-8")
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "not an object"):
+            update._read_json(malformed)
+
+        failure = update.subprocess.CalledProcessError(
+            1, ["tool"], output="bounded stdout", stderr="bounded stderr",
+        )
+        with patch.object(update.subprocess, "run", side_effect=failure):
+            with self.assertRaisesRegex(update.InstalledForgeUpdateError, "bounded stderr"):
+                update._run(("tool",), cwd=self.root)
+        with patch.object(update, "_run", return_value=SimpleNamespace(stdout="not-json")):
+            with self.assertRaisesRegex(update.InstalledForgeUpdateError, "malformed"):
+                update.installed_identity(Path(sys.executable), cwd=self.root)
+        with patch.object(update, "_run", return_value=SimpleNamespace(stdout="[]")):
+            with self.assertRaisesRegex(update.InstalledForgeUpdateError, "malformed"):
+                update.installed_identity(Path(sys.executable), cwd=self.root)
+
+    def test_validated_wheel_installation_is_exact_and_tamper_evident(self):
+        wheel_bytes, manifest = update._validated_wheel(self.request)
+        slot = self.root / "candidate-slot"
+        site_packages = slot / "lib" / "python3.14" / "site-packages"
+        site_packages.mkdir(parents=True)
+        (slot / "bin").mkdir()
+        update._install_validated_wheel(slot, wheel_bytes, manifest)
+        evidence = update._verify_candidate_files(slot, manifest)
+        self.assertEqual(evidence["installed_file_count"], len(manifest))
+        self.assertEqual((slot / "bin" / "forge").stat().st_mode & 0o777, 0o700)
+        (site_packages / "forge" / "__init__.py").write_text("tampered", encoding="utf-8")
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "changed="):
+            update._verify_candidate_files(slot, manifest)
+
+    def test_2738_qualification_copy_is_durable_and_replayable(self):
+        request = self._assessment_request_2738()
+        controller = update.InstalledForgeUpdateController(
+            update.UpdateRequest(**{
+                **request.__dict__,
+                "assessment_digest": update.assess_update(request)["assessment_digest"],
+            }),
+            process_reader=lambda: (),
+        )
+        before = update.database_snapshot(self.data_root / "forge.db")
+        update._copy_sqlite_backup(self.data_root / "forge.db", controller.backup_path)
+        state = controller._state()
+        with patch.object(update, "_candidate_migrate", return_value={
+            "initialized": True, "storage_schema": "39", "product_version": "2.7.38",
+        }):
+            qualified = controller._qualify_copy(state, before)
+            replayed = controller._qualify_copy(qualified, before)
+        self.assertEqual(qualified["phase"], "MIGRATION_QUALIFIED")
+        self.assertEqual(qualified["migration_qualification"]["status"], "PASS")
+        self.assertEqual(replayed, qualified)
+
+    def test_2738_activation_uses_exact_candidate_and_readiness_identity(self):
+        request = self._assessment_request_2738()
+        request = update.UpdateRequest(**{
+            **request.__dict__,
+            "assessment_digest": update.assess_update(request)["assessment_digest"],
+        })
+        controller = update.InstalledForgeUpdateController(request, process_reader=lambda: ())
+        candidate = controller.slot / "bin" / "forge"
+        candidate.parent.mkdir(parents=True)
+        candidate.write_text("candidate", encoding="utf-8")
+        python = controller.slot / "bin" / "python"
+        python.write_text("python", encoding="utf-8")
+        controller.stable_resolver.parent.mkdir(parents=True)
+        controller.stable_resolver.symlink_to("../current")
+        self.resolver.unlink()
+        self.resolver.symlink_to(controller.stable_resolver)
+        before = update.database_snapshot(self.data_root / "forge.db")
+        state = {"phase": "MIGRATED", "before": before}
+        identity = {
+            "version": "2.7.38",
+            "distribution_version": "2.7.38",
+            "sys_executable": str(python),
+            "module": str(controller.slot / "forge" / "__init__.py"),
+        }
+        status = {
+            "product_version": "2.7.38",
+            "data_root": str(self.data_root),
+            "instance_id": self.runtime_id,
+            "storage_schema": "39",
+        }
+        with (
+            patch.object(update, "installed_identity", return_value=identity),
+            patch.object(update, "_run", side_effect=(
+                SimpleNamespace(stdout="2.7.38\n"),
+                SimpleNamespace(stdout=json.dumps(status)),
+            )),
+            patch.object(update, "verify_preservation", return_value={"status": "PASS"}),
+        ):
+            activated = controller._activate(state, before)
+        self.assertEqual(activated["phase"], "ACTIVATED")
+        self.assertEqual(activated["installed_readback"]["status"], status)
+        self.assertEqual(self.resolver.resolve(), candidate.resolve())
+
+    def test_completed_replay_rechecks_receipt_backup_and_slot_evidence(self):
+        request = self._assessment_request_2738()
+        request = update.UpdateRequest(**{
+            **request.__dict__,
+            "assessment_digest": update.assess_update(request)["assessment_digest"],
+        })
+        controller = update.InstalledForgeUpdateController(request, process_reader=lambda: ())
+        update._copy_sqlite_backup(self.data_root / "forge.db", controller.backup_path)
+        receipt = {
+            "state": "COMPLETE",
+            "request_digest": request.digest,
+            "backup": {
+                "path": str(controller.backup_path),
+                "sha256": update.file_digest(controller.backup_path),
+            },
+        }
+        update._atomic_json(controller.receipt_path, receipt)
+        state = {
+            "phase": "COMPLETE",
+            "request_digest": request.digest,
+            "receipt_sha256": update.file_digest(controller.receipt_path),
+        }
+        with patch.object(update, "_qualified_artifact", return_value=(
+            {"wheel_manifest_digest": "sha256:" + "a" * 64}, b"", {},
+        )):
+            with self.assertRaisesRegex(update.InstalledForgeUpdateError, "required regular file"):
+                controller._verify_complete(state, receipt)
+
+        controller.database = self.root / "missing-forge.db"
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "database is unavailable"):
+            controller._restore_database_writable()
 
     def test_2725_requires_exact_qualifying_and_published_installed_composition(self):
         request = self._normal_release_request("2.7.25", "2.7.24")
@@ -395,8 +763,12 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         wrong_transition = update.UpdateRequest(**{
             **request.__dict__, "existing_version": "2.7.21",
         })
+        self.assertEqual(
+            update.validate_qualified_artifact(wrong_transition)["release_route"],
+            "NORMAL",
+        )
         with self.assertRaises(update.InstalledForgeUpdateError):
-            update.validate_qualified_artifact(wrong_transition)
+            wrong_transition.validate()
 
     def test_real_schema37_to_38_migration_preserves_history_and_bindings(self) -> None:
         self._installed_schema37()

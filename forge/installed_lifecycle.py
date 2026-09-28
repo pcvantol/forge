@@ -52,6 +52,9 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.32", "2.7.33"): (39, 39),
     ("2.7.33", "2.7.34"): (39, 39),
     ("2.7.34", "2.7.35"): (39, 39),
+    ("2.7.35", "2.7.38"): (39, 39),
+    ("2.7.36", "2.7.38"): (39, 39),
+    ("2.7.37", "2.7.38"): (39, 39),
 }
 SAME_SCHEMA_39_TRANSITIONS = frozenset(
     transition for transition, schemas in SUPPORTED_TRANSITIONS.items() if schemas == (39, 39)

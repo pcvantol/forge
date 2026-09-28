@@ -189,7 +189,9 @@ Before an installed update Forge Platform must use the product-owned readbacks t
 
 The compatible installed-lifecycle extension is frozen separately in
 [`FORGE_SERVER_RUNTIME_LIFECYCLE_V1.md`](FORGE_SERVER_RUNTIME_LIFECYCLE_V1.md).
-It adds a packaged, read-only exact-candidate update assessment and a packaged,
+It adds packaged read-only assessment for transitions already known to the
+installed distribution, a standalone exact-controller assessment for later
+declared targets, the existing durable installed updater, and a packaged
 durable exact-instance uninstall dispatcher. It does not move LaunchDaemon,
 service-account or immutable runtime-slot ownership into Forge.
 
@@ -202,8 +204,8 @@ For future Forge Platform consumption:
 3. `execution-host configure/show/preflight` — Forge-owned EP peer binding;
 4. `server run` — foreground service process;
 5. `/v1/instance`, `/v1/version`, `/v1/health`, `/v1/readiness` — installed identity/health/readiness;
-6. `server update-assess` — product-owned read-only `UPDATE_AVAILABLE` decision;
-7. normal external Forge updater — qualified version transition;
+6. `server update-assess` or exact controller `--assess-only` — product-owned read-only `UPDATE_AVAILABLE` decision;
+7. normal external Forge updater — assessment-bound qualified version transition;
 8. `server uninstall` / `server uninstall-status` — durable product-owned mutable-instance removal.
 
 Provider login/fan-out, service account creation, filesystem provisioning and launchd definitions remain Forge Platform responsibilities.

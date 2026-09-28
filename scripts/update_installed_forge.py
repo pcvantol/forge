@@ -39,12 +39,6 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 import uuid
 import zipfile
 
-from forge.installed_lifecycle import (
-    NORMAL_RELEASE_TRANSITIONS,
-    SAME_SCHEMA_39_TRANSITIONS,
-    SUPPORTED_TRANSITIONS,
-)
-
 try:
     import fcntl
 except ImportError:  # pragma: no cover - supported installation target is POSIX.
@@ -52,6 +46,40 @@ except ImportError:  # pragma: no cover - supported installation target is POSIX
 
 
 CONTRACT_VERSION = "forge-installed-update/v1"
+ASSESSMENT_CONTRACT = "forge-installed-update-assessment/v1"
+SUPPORTED_TRANSITIONS = {
+    ("2.7.21", "2.7.22"): (37, 38),
+    ("2.7.22", "2.7.23"): (38, 38),
+    ("2.7.22", "2.7.24"): (38, 38),
+    ("2.7.23", "2.7.24"): (38, 38),
+    ("2.7.24", "2.7.25"): (38, 39),
+    ("2.7.25", "2.7.26"): (39, 39),
+    ("2.7.26", "2.7.27"): (39, 39),
+    ("2.7.27", "2.7.28"): (39, 39),
+    ("2.7.28", "2.7.29"): (39, 39),
+    ("2.7.29", "2.7.30"): (39, 39),
+    ("2.7.30", "2.7.31"): (39, 39),
+    ("2.7.31", "2.7.32"): (39, 39),
+    ("2.7.31", "2.7.33"): (39, 39),
+    ("2.7.32", "2.7.33"): (39, 39),
+    ("2.7.33", "2.7.34"): (39, 39),
+    ("2.7.34", "2.7.35"): (39, 39),
+    ("2.7.35", "2.7.38"): (39, 39),
+    ("2.7.36", "2.7.38"): (39, 39),
+    ("2.7.37", "2.7.38"): (39, 39),
+}
+SAME_SCHEMA_39_TRANSITIONS = frozenset(
+    transition for transition, schemas in SUPPORTED_TRANSITIONS.items() if schemas == (39, 39)
+)
+NORMAL_RELEASE_TRANSITIONS = frozenset(
+    transition for transition in SUPPORTED_TRANSITIONS if transition != ("2.7.21", "2.7.22")
+)
+NORMAL_RELEASE_VERSIONS = frozenset(target for _source, target in NORMAL_RELEASE_TRANSITIONS)
+ASSESSMENT_REQUIRED_TRANSITIONS = frozenset({
+    ("2.7.35", "2.7.38"),
+    ("2.7.36", "2.7.38"),
+    ("2.7.37", "2.7.38"),
+})
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
         "PREPARED", "STAGED", "ADOPTED", "BACKED_UP", "MIGRATION_QUALIFIED",
@@ -167,6 +195,25 @@ def _safe_directory(path: Path, *, create: bool = False) -> Path:
     if not path.is_dir():
         raise InstalledForgeUpdateError(f"directory is unavailable or unsafe: {path}")
     return path
+
+
+def _assert_private_owned_tree(root: Path) -> None:
+    """Reject foreign, permissive, linked, or special instance-tree entries."""
+    _assert_no_symlink_components(root)
+    expected_owner = os.geteuid()
+    for path in (root, *root.rglob("*")):
+        metadata = path.lstat()
+        if metadata.st_uid != expected_owner:
+            raise InstalledForgeUpdateError(f"instance tree contains a foreign-owned entry: {path}")
+        if stat.S_ISLNK(metadata.st_mode):
+            raise InstalledForgeUpdateError(f"instance tree contains a symbolic link: {path}")
+        if metadata.st_mode & 0o022:
+            raise InstalledForgeUpdateError(f"instance tree contains a group/world-writable entry: {path}")
+        if stat.S_ISREG(metadata.st_mode):
+            if metadata.st_nlink != 1:
+                raise InstalledForgeUpdateError(f"instance tree contains a hardlinked regular file: {path}")
+        elif not stat.S_ISDIR(metadata.st_mode):
+            raise InstalledForgeUpdateError(f"instance tree contains a special entry: {path}")
 
 
 def _atomic_json(path: Path, value: object) -> None:
@@ -307,8 +354,11 @@ class UpdateRequest:
     existing_interpreter: str
     existing_version: str
     base_python: str
+    installed_source: str = ""
+    installed_artifact_digest: str = ""
+    assessment_digest: str = ""
 
-    def validate(self) -> None:
+    def validate_structure(self) -> None:
         identifiers = (self.operation_id, self.runtime_id, self.installation_id)
         if any(
             re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value) is None
@@ -316,7 +366,6 @@ class UpdateRequest:
             for value in identifiers
         ):
             raise InstalledForgeUpdateError("operation and installation identities must be filesystem-safe")
-        transition_schemas(self)
         for label, digest in (
             ("wheel", self.wheel_sha256), ("qualification receipt", self.qualification_receipt_sha256),
             ("controller", self.controller_sha256), ("resolver", self.resolver_sha256),
@@ -332,6 +381,28 @@ class UpdateRequest:
         )
         if any(not Path(value).is_absolute() for value in paths):
             raise InstalledForgeUpdateError("all installation paths must be absolute")
+        if self.version == "2.7.38":
+            if re.fullmatch(r"[0-9a-f]{40}", self.installed_source) is None:
+                raise InstalledForgeUpdateError("installed source revision must be exact")
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", self.installed_artifact_digest) is None:
+                raise InstalledForgeUpdateError("installed artifact digest is invalid")
+
+    def validate(self) -> None:
+        self.validate_structure()
+        transition_schemas(self)
+        if (self.existing_version, self.version) in ASSESSMENT_REQUIRED_TRANSITIONS:
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", self.assessment_digest) is None:
+                raise InstalledForgeUpdateError("exact fresh assessment digest is required")
+
+    @property
+    def assessment_binding(self) -> dict[str, object]:
+        binding = asdict(self)
+        binding.pop("assessment_digest")
+        return binding
+
+    @property
+    def assessment_request_digest(self) -> str:
+        return _digest_bytes(_json_bytes(self.assessment_binding))
 
     @property
     def digest(self) -> str:
@@ -474,11 +545,15 @@ def _validate_server_runtime_qualification(report: object, request: UpdateReques
         "headless_foreground", "clean_sigterm", "ep_simulator_real_http_boundary",
         "ep_simulator_submissions", "production_ep_contacted", "production_provider_contacted",
     }
-    if request.version == "2.7.35":
+    if request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38"}:
         expected_keys |= {
             "lifecycle_update_assessment", "lifecycle_uninstall_dispatcher",
             "lifecycle_uninstall_replay",
         }
+    if request.version in {"2.7.36", "2.7.37", "2.7.38"}:
+        expected_keys |= {"lifecycle_preserve", "lifecycle_restore", "lifecycle_purge"}
+    if request.version in {"2.7.37", "2.7.38"}:
+        expected_keys.add("lifecycle_filesystem_security")
     if (
         not isinstance(report, Mapping)
         or set(report) != expected_keys
@@ -492,11 +567,18 @@ def _validate_server_runtime_qualification(report: object, request: UpdateReques
         or report.get("ep_simulator_submissions") != 1
         or report.get("production_ep_contacted") is not False
         or report.get("production_provider_contacted") is not False
-        or request.version == "2.7.35" and (
+        or request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38"} and (
             report.get("lifecycle_update_assessment") != "PASS"
             or report.get("lifecycle_uninstall_dispatcher") != "PASS"
             or report.get("lifecycle_uninstall_replay") != "PASS"
         )
+        or request.version in {"2.7.36", "2.7.37", "2.7.38"} and (
+            report.get("lifecycle_preserve") != "PASS"
+            or report.get("lifecycle_restore") != "PASS"
+            or report.get("lifecycle_purge") != "PASS"
+        )
+        or request.version in {"2.7.37", "2.7.38"}
+        and report.get("lifecycle_filesystem_security") != "PASS"
     ):
         raise InstalledForgeUpdateError("installed Server Runtime qualification is noncanonical")
 
@@ -525,7 +607,7 @@ def _normal_release_evidence(
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
     composition_keys = (
         {"criterion_completion", "server_runtime"}
-        if request.version in {"2.7.34", "2.7.35"}
+        if request.version in {"2.7.34", "2.7.35", "2.7.36", "2.7.37", "2.7.38"}
         else {"criterion_completion"}
         if request.version in {
             "2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29",
@@ -534,7 +616,7 @@ def _normal_release_evidence(
         else set()
     )
     if (
-        (request.existing_version, request.version) not in NORMAL_RELEASE_TRANSITIONS
+        request.version not in NORMAL_RELEASE_VERSIONS
         or set(receipt) != expected_top
         or receipt.get("state") != "RELEASE_COMPLETE"
         or receipt.get("product") != "forge"
@@ -572,7 +654,7 @@ def _normal_release_evidence(
     if composition_keys:
         _validate_criterion_qualification(qualification["criterion_completion"], request)
         _validate_criterion_qualification(publication["criterion_completion"], request)
-        if request.version in {"2.7.34", "2.7.35"}:
+        if request.version in {"2.7.34", "2.7.35", "2.7.36", "2.7.37", "2.7.38"}:
             _validate_server_runtime_qualification(qualification["server_runtime"], request)
             _validate_server_runtime_qualification(publication["server_runtime"], request)
     return {
@@ -600,7 +682,7 @@ def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, 
         raise InstalledForgeUpdateError("qualification receipt is malformed") from error
     if not isinstance(receipt, dict):
         raise InstalledForgeUpdateError("qualification receipt is malformed")
-    if (request.existing_version, request.version) in NORMAL_RELEASE_TRANSITIONS:
+    if request.version in NORMAL_RELEASE_VERSIONS:
         return (
             _normal_release_evidence(request, receipt, manifest, receipt_path),
             wheel_bytes,
@@ -840,6 +922,91 @@ def assert_selected_installation(request: UpdateRequest, snapshot: Mapping[str, 
     marker = Path(request.data_root) / "instance" / "runtime-instance.json"
     if marker.is_symlink() or not marker.is_file() or marker.read_text(encoding="utf-8").strip() != request.runtime_id:
         raise InstalledForgeUpdateError("runtime instance marker does not bind the selected runtime")
+
+
+def _assert_assessment_installation(request: UpdateRequest, snapshot: Mapping[str, Any]) -> None:
+    metadata = snapshot.get("metadata")
+    peer = snapshot.get("peer")
+    if not isinstance(metadata, Mapping):
+        raise InstalledForgeUpdateError("runtime metadata readback is missing")
+    if metadata.get("runtime_id") != request.runtime_id:
+        raise InstalledForgeUpdateError("selected data root belongs to a different runtime")
+    if metadata.get("installation_id") != request.installation_id:
+        raise InstalledForgeUpdateError("selected data root belongs to a different installation")
+    if metadata.get("forge_version") != request.existing_version:
+        raise InstalledForgeUpdateError("installed inventory version does not match runtime metadata")
+    if not isinstance(peer, Mapping) or peer.get("configuration_digest") != request.peer_configuration_digest:
+        raise InstalledForgeUpdateError("selected peer configuration changed")
+    marker = Path(request.data_root) / "instance" / "runtime-instance.json"
+    _assert_no_symlink_components(marker)
+    if not marker.is_file() or marker.read_text(encoding="utf-8").strip() != request.runtime_id:
+        raise InstalledForgeUpdateError("runtime instance marker does not bind the selected runtime")
+    if snapshot.get("integrity_check") != "ok" or snapshot.get("foreign_key_check") != []:
+        raise InstalledForgeUpdateError("selected runtime storage integrity is unavailable")
+
+
+def assess_update(request: UpdateRequest, *, snapshot: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Assess one exact controller request without importing or mutating candidate bytes."""
+    selected = {
+        "runtime_id": request.runtime_id,
+        "installation_id": request.installation_id,
+        "version": request.existing_version,
+        "source_revision": request.installed_source,
+        "artifact_digest": request.installed_artifact_digest,
+    }
+    candidate = {
+        "version": request.version,
+        "source_revision": request.product_source,
+        "artifact_digest": request.wheel_sha256,
+    }
+    controller = {
+        "source_revision": request.controller_source,
+        "artifact_digest": request.controller_sha256,
+    }
+    try:
+        request.validate_structure()
+        artifact = validate_qualified_artifact(request)
+        _assert_private_owned_tree(Path(request.data_root))
+        observed = dict(snapshot) if snapshot is not None else database_snapshot(Path(request.data_root) / "forge.db")
+        _assert_assessment_installation(request, observed)
+        exact_current = (
+            request.existing_version == request.version
+            and request.installed_source == request.product_source
+            and request.installed_artifact_digest == request.wheel_sha256
+        )
+        transition = (request.existing_version, request.version)
+        if exact_current:
+            state, reasons = "UP_TO_DATE", ["EXACT_ARTIFACT_ALREADY_SELECTED"]
+        elif transition in SUPPORTED_TRANSITIONS:
+            before_schema, _after_schema = SUPPORTED_TRANSITIONS[transition]
+            if observed.get("user_version") != before_schema:
+                state, reasons = "INCOMPATIBLE", ["RUNTIME_SCHEMA_OUTSIDE_BOUNDED_TRANSITION"]
+            else:
+                state, reasons = "UPDATE_AVAILABLE", ["EXACT_SUPPORTED_TRANSITION"]
+        else:
+            state, reasons = "INCOMPATIBLE", ["UNSUPPORTED_VERSION_TRANSITION"]
+        evidence: dict[str, object] = {
+            "runtime_snapshot_digest": observed["snapshot_digest"],
+            "candidate_admission": artifact,
+        }
+    except (InstalledForgeUpdateError, OSError, UnicodeError, ValueError) as error:
+        state, reasons = "UNKNOWN", ["ASSESSMENT_FAILED_CLOSED"]
+        evidence = {"error": str(error)}
+    payload = {
+        "contract": ASSESSMENT_CONTRACT,
+        "operation": "UPDATE_ASSESSMENT",
+        "operation_id": request.operation_id,
+        "request_digest": request.assessment_request_digest,
+        "state": state,
+        "mutating": False,
+        "selected_installation": selected,
+        "candidate": candidate,
+        "controller": controller,
+        "evidence": evidence,
+        "reason_codes": reasons,
+    }
+    payload["assessment_digest"] = _digest_bytes(_json_bytes(payload))
+    return payload
 
 
 def assert_quiescent(snapshot: Mapping[str, Any]) -> None:
@@ -2252,68 +2419,91 @@ class InstalledForgeUpdateController:
             raise InstalledForgeUpdateError("installed database is unavailable after activation")
         os.chmod(self.database, 0o600)
 
+    def _validate_initial_assessment(self, live: Mapping[str, Any]) -> None:
+        if (self.request.existing_version, self.request.version) not in ASSESSMENT_REQUIRED_TRANSITIONS:
+            return
+        assessment = assess_update(self.request, snapshot=live)
+        if (
+            assessment.get("state") != "UPDATE_AVAILABLE"
+            or assessment.get("assessment_digest") != self.request.assessment_digest
+        ):
+            raise InstalledForgeUpdateError("fresh exact update assessment does not authorize this request")
+
     def run(self) -> dict[str, Any]:
         _safe_directory(self.data_root)
         _safe_directory(self.runtime_root)
+        if not self.state_path.exists():
+            _assert_private_owned_tree(self.data_root)
+            self._validate_initial_assessment(database_snapshot(self.database))
         update_lock = self.runtime_root / "locks" / "installation-update.lock"
         controller_lock = self.data_root / "forge-mission-controller.lock"
         runtime_lock = self.data_root / "forge-runtime-mutation.lock"
         bootstrap_lock = self.data_root / "locks" / "runtime.lock"
-        with exclusive_lock(update_lock), exclusive_lock(controller_lock):
+        with (
+            exclusive_lock(update_lock),
+            exclusive_lock(controller_lock),
+            exclusive_lock(runtime_lock),
+            exclusive_lock(bootstrap_lock),
+        ):
+            self._assert_no_runtime_process()
+            _assert_private_owned_tree(self.data_root)
+            if self.state_path.exists():
+                state = self._state(allow_request_mismatch=self.reconcile_staged_controller)
+                if state.get("phase") == "COMPLETE":
+                    receipt = _read_json(self.receipt_path)
+                    self._verify_complete(state, receipt)
+                    self._restore_database_writable()
+                    return receipt
+            live = database_snapshot(self.database)
+            if not self.state_path.exists():
+                self._validate_initial_assessment(live)
             _safe_directory(self.operation_root, create=True)
             os.chmod(self.operation_root, 0o700)
             state = self._state(allow_request_mismatch=self.reconcile_staged_controller)
             if state.get("request") != asdict(self.request):
-                with exclusive_lock(runtime_lock), exclusive_lock(bootstrap_lock):
-                    self._assert_no_runtime_process()
-                    live = database_snapshot(self.database)
-                    state = self._reconcile_staged_controller(state, live)
-            if state.get("phase") == "COMPLETE":
-                receipt = _read_json(self.receipt_path)
-                self._verify_complete(state, receipt)
-                self._restore_database_writable()
-                return receipt
-
+                state = self._reconcile_staged_controller(state, live)
             state = self._stage(state)
             self._interrupt("stage")
-            with exclusive_lock(runtime_lock), exclusive_lock(bootstrap_lock):
-                self._assert_no_runtime_process()
-                live = database_snapshot(self.database)
-                assert_selected_installation(self.request, live)
-                live = reconcile_terminal_dispatcher_for_update(self.request, live, self.database)
-                try:
-                    schema_before, _schema_after = transition_schemas(self.request)
-                    state = self._adopt_resolver(state)
-                    self._interrupt("adoption")
-                    before = state.get("before")
-                    if not isinstance(before, Mapping):
-                        if live.get("user_version") != schema_before:
-                            raise InstalledForgeUpdateError(
-                                "selected schema lacks this operation's pre-migration snapshot"
-                            )
-                        before = live
-                    assert_selected_installation(self.request, before)
-                    if before.get("user_version") != schema_before:
+            live = database_snapshot(self.database)
+            assert_selected_installation(self.request, live)
+            live = reconcile_terminal_dispatcher_for_update(self.request, live, self.database)
+            try:
+                schema_before, _schema_after = transition_schemas(self.request)
+                state = self._adopt_resolver(state)
+                self._interrupt("adoption")
+                before = state.get("before")
+                if not isinstance(before, Mapping):
+                    if live.get("user_version") != schema_before:
                         raise InstalledForgeUpdateError(
-                            "durable pre-migration snapshot has the wrong source schema"
+                            "selected schema lacks this operation's pre-migration snapshot"
                         )
-                    state = self._backup(state, before)
-                    self._interrupt("backup")
-                    state = self._qualify_copy(state, before)
-                    self._interrupt("qualification")
-                    state, after = self._migrate_live(state, before)
-                    state = self._activate(state, after)
-                    receipt = {
+                    before = live
+                assert_selected_installation(self.request, before)
+                if before.get("user_version") != schema_before:
+                    raise InstalledForgeUpdateError(
+                        "durable pre-migration snapshot has the wrong source schema"
+                    )
+                state = self._backup(state, before)
+                self._interrupt("backup")
+                state = self._qualify_copy(state, before)
+                self._interrupt("qualification")
+                state, after = self._migrate_live(state, before)
+                state = self._activate(state, after)
+                receipt = {
                         "contract_version": CONTRACT_VERSION,
                         "operation_id": self.request.operation_id,
                         "request_digest": self.request.digest,
                         "state": "COMPLETE",
                         "product": "forge",
+                        "installed_version": self.request.existing_version,
+                        "installed_source": self.request.installed_source,
+                        "installed_artifact_digest": self.request.installed_artifact_digest,
                         "version": self.request.version,
                         "product_source": self.request.product_source,
                         "wheel_sha256": self.request.wheel_sha256,
                         "controller_source": self.request.controller_source,
                         "controller_sha256": self.request.controller_sha256,
+                        "assessment_digest": self.request.assessment_digest,
                         "runtime_id": self.request.runtime_id,
                         "installation_id": self.request.installation_id,
                         "data_root": self.request.data_root,
@@ -2326,18 +2516,18 @@ class InstalledForgeUpdateController:
                         "mission_disposition": "NOT_STARTED_OR_RESUMED",
                         "reset_disposition": "NOT_EXECUTED",
                         "completed_at": _now(),
-                    }
-                    _atomic_json(self.receipt_path, receipt)
-                    self._advance(state, "COMPLETE", receipt_sha256=file_digest(self.receipt_path),
-                                  safety_disposition="CANDIDATE_ACTIVE")
-                    self._restore_database_writable()
-                    return receipt
-                except Exception as error:
-                    try:
-                        self._secure_failure(state, error)
-                    except Exception:
-                        pass
-                    raise
+                }
+                _atomic_json(self.receipt_path, receipt)
+                self._advance(state, "COMPLETE", receipt_sha256=file_digest(self.receipt_path),
+                              safety_disposition="CANDIDATE_ACTIVE")
+                self._restore_database_writable()
+                return receipt
+            except Exception as error:
+                try:
+                    self._secure_failure(state, error)
+                except Exception:
+                    pass
+                raise
 
 
 def _request_from_args(args: argparse.Namespace) -> UpdateRequest:
@@ -2353,6 +2543,9 @@ def _request_from_args(args: argparse.Namespace) -> UpdateRequest:
         resolver=str(args.resolver), resolver_sha256=args.resolver_sha256,
         existing_interpreter=str(args.existing_interpreter), existing_version=args.existing_version,
         base_python=str(args.base_python),
+        installed_source=args.installed_source,
+        installed_artifact_digest=args.installed_artifact_digest,
+        assessment_digest=args.assessment_digest,
     )
 
 
@@ -2377,14 +2570,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--existing-interpreter", required=True, type=Path)
     parser.add_argument("--existing-version", required=True)
     parser.add_argument("--base-python", required=True, type=Path)
+    parser.add_argument("--installed-source", default="")
+    parser.add_argument("--installed-artifact-digest", default="")
+    parser.add_argument("--assessment-digest", default="")
+    parser.add_argument(
+        "--assess-only", action="store_true",
+        help="validate and assess the exact request without creating operation state or runtime bytes",
+    )
     parser.add_argument(
         "--reconcile-staged-controller", action="store_true",
         help="rebind a protected controller only after the recognized pre-adoption staged failure",
     )
     args = parser.parse_args(argv)
+    request = _request_from_args(args)
+    if args.assess_only:
+        print(json.dumps(assess_update(request), sort_keys=True))
+        return 0
     try:
         receipt = InstalledForgeUpdateController(
-            _request_from_args(args),
+            request,
             reconcile_staged_controller=args.reconcile_staged_controller,
         ).run()
     except (InstalledForgeUpdateError, OSError, sqlite3.Error, ValueError) as error:

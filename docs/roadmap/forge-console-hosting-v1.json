@@ -103,6 +103,22 @@
       "FC-RELOCATE"
     ]
   },
+  "implemented_subsets": {
+    "forge_server_update_compatibility": {
+      "node_subset": "FSH-SERVICES/server-only installed lifecycle",
+      "assignment": "L2-FORGE-SERVER-UPDATE-COMPATIBILITY-V1-20260928",
+      "status": "SOURCE_IMPLEMENTED",
+      "contract": "forge-installed-update/v1",
+      "assessment_contract": "forge-installed-update-assessment/v1",
+      "declared_sources": ["2.7.35", "2.7.36", "2.7.37"],
+      "declared_target": "2.7.38",
+      "schema_transition": "39_to_39",
+      "requires_protected_merge": true,
+      "requires_release_inclusion": true,
+      "requires_published_artifact_qualification": true,
+      "completes_parent_node": false
+    }
+  },
   "workspace_replaced": false,
   "work_packages": [
     {
