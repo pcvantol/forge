@@ -921,6 +921,67 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertTrue((controller.slot / "forge-installation-staging.json").is_file())
         self.assertFalse((controller.slot.parent / f".stage-{self.request.operation_id}").exists())
 
+    def test_sigkill_during_atomic_staging_owner_write_rebuilds_claimed_slot(self) -> None:
+        controller = self._controller()
+        state = controller._state()
+        controller.slot.parent.mkdir(parents=True)
+        update._atomic_json(controller.slot_claim, {
+            "contract_version": update.CONTRACT_VERSION,
+            "request_digest": self.request.digest,
+            "operation_id": self.request.operation_id,
+            "created_at": "2026-09-29T00:00:00Z",
+        })
+        controller.slot.mkdir(mode=0o700)
+        partial = controller.slot / ".forge-installation-staging.json.tmp-crash"
+        partial.write_bytes(b'{"partial":')
+        partial.chmod(0o600)
+
+        def identity(_interpreter: Path, *, cwd: Path) -> dict[str, str]:
+            del cwd
+            root = controller.slot.resolve()
+            return {
+                "version": "2.7.22", "distribution_version": "2.7.22",
+                "module": str(root / "lib/python/site-packages/forge/__init__.py"),
+                "prefix": str(root), "sys_executable": str(root / "bin/python"),
+            }
+
+        with (
+            patch.object(update, "installed_identity", side_effect=identity),
+            patch.object(update, "_install_validated_wheel"),
+            patch.object(update, "_verify_candidate_files", return_value={
+                "wheel_manifest_digest": update._digest_bytes(update._json_bytes({})),
+                "installed_file_count": 0, "entrypoint_sha256": "sha256:" + "0" * 64,
+            }),
+            patch.object(update, "_run", return_value=SimpleNamespace(stdout="", stderr="")),
+        ):
+            staged = controller._stage(state)
+        self.assertEqual(staged["phase"], "STAGED")
+        self.assertTrue(controller.slot_receipt.is_file())
+        self.assertFalse(partial.exists())
+        abandoned = list(controller.slot.parent.glob(f".{controller.slot.name}.abandoned-*"))
+        self.assertEqual(len(abandoned), 1)
+        self.assertEqual((abandoned[0] / partial.name).read_bytes(), b'{"partial":')
+
+    def test_claim_does_not_authorize_foreign_unreceipted_slot_contents(self) -> None:
+        controller = self._controller()
+        state = controller._state()
+        controller.slot.parent.mkdir(parents=True)
+        update._atomic_json(controller.slot_claim, {
+            "contract_version": update.CONTRACT_VERSION,
+            "request_digest": self.request.digest,
+            "operation_id": self.request.operation_id,
+        })
+        controller.slot.mkdir(mode=0o700)
+        foreign = controller.slot / "foreign-file"
+        foreign.write_bytes(b"foreign")
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "no matching operation owner"):
+            controller._stage(state)
+        foreign.unlink()
+        unsafe = controller.slot / ".forge-installation-staging.json.tmp-crash"
+        unsafe.symlink_to(self.wheel)
+        with self.assertRaisesRegex(update.InstalledForgeUpdateError, "unsafe staging evidence"):
+            controller._stage(state)
+
     def test_process_scan_does_not_hide_a_sibling_with_the_same_parent(self) -> None:
         controller = self._controller()
         output = (
