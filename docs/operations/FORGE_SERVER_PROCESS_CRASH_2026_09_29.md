@@ -77,12 +77,16 @@ published Forge 2.7.38 wheel is unchanged; the corrected controller needs a
 new protected source/digest and exact-binding requalification.
 
 **Status at this source checkpoint:** The correction has two focused source
-regressions and a local candidate-controller SIGKILL hit that reached terminal
-`COMPLETE` with a single receipted slot, one backup, unchanged sibling and
-identical replay. This is candidate evidence, not protected-controller
-qualification. The remaining between-phase physical cells, protected merge
-and final exact-controller readback must be recorded before this scoped
-process-crash result is called qualified.
+regressions and a local candidate-controller SIGKILL hit during the temporary
+staging-owner write that reached terminal `COMPLETE` with a single receipted
+slot, one backup, unchanged sibling and identical replay. The separately
+observed physical side-effect sweep covered each old baseline. A first
+2.7.36 unreceipted-candidate run ended in a harness error and was not counted;
+a fresh exact-wheel run then confirmed the SIGKILL boundary and same-operation
+PASS. A first 2.7.36 unjournaled database-swap attempt missed the boundary;
+the subsequent observed hit passed. These are local candidate results, not
+protected-controller qualification. Protected merge and final exact-controller
+readback remain required before this scoped result is called qualified.
 
 ## Reproduction entrypoints
 
