@@ -1954,8 +1954,26 @@ class InstalledForgeUpdateController:
                     owner = _read_json(staging_owner)
                     if any(owner.get(key) != value for key, value in claim.items()):
                         raise InstalledForgeUpdateError("unreceipted candidate slot belongs to a different request")
-                elif not claim_preexisting or any(self.slot.iterdir()):
-                    raise InstalledForgeUpdateError("unreceipted candidate slot has no matching operation owner")
+                else:
+                    entries = list(self.slot.iterdir())
+                    if not claim_preexisting:
+                        raise InstalledForgeUpdateError("unreceipted candidate slot has no matching operation owner")
+                    # SIGKILL can land inside the atomic staging-owner write.
+                    # Its one private temporary file is never trusted or read:
+                    # quarantine the whole claimed slot and rebuild from the
+                    # pinned wheel. Other unreceipted contents remain foreign.
+                    if entries:
+                        temporary_prefix = f".{staging_owner.name}.tmp-"
+                        if len(entries) != 1 or not entries[0].name.startswith(temporary_prefix):
+                            raise InstalledForgeUpdateError("unreceipted candidate slot has no matching operation owner")
+                        details = entries[0].lstat()
+                        if (
+                            not stat.S_ISREG(details.st_mode)
+                            or stat.S_IMODE(details.st_mode) != 0o600
+                            or details.st_uid != os.geteuid()
+                            or details.st_nlink != 1
+                        ):
+                            raise InstalledForgeUpdateError("unreceipted candidate slot has unsafe staging evidence")
                 abandoned = self.slot.parent / f".{self.slot.name}.abandoned-{secrets.token_hex(16)}"
                 os.replace(self.slot, abandoned)
             self.slot.mkdir(mode=0o700)
