@@ -62,9 +62,10 @@ qualification remain `PLANNED`.
 The same existing subset has a separate revision-26 abrupt-process
 qualification increment. [Its owning matrix and reproduced controller gap](../operations/FORGE_SERVER_PROCESS_CRASH_2026_09_29.md)
 cover exact-wheel SIGKILL/recovery without claiming a physical reboot or
-installer acceptance. This additional increment remains `IN_PROGRESS` until
-the bounded controller correction is protected-merged and requalified with
-its new exact source/digest; it does not change the parent node status.
+installer acceptance. The bounded controller correction was protected-merged
+and the three-baseline update matrix requalified against its exact new source
+and digest; this Forge-owned process-crash subset is `QUALIFIED`. The broader
+parent node and EP-owned release remain separately scoped.
 
 Read-only delivery includes the complete declared component registry, component
 modals, explicit central-root status and relay unconfigured/disabled/missing

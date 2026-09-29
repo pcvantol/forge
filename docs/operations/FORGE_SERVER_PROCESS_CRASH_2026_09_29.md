@@ -19,6 +19,7 @@ qualification.
 | Target 2.7.38 source / wheel | `0a3d6e35b01da93bb5a674ae7795558655c16c7d` / `e9a5609969b8e49476f44e99a6cf72b8edf60280a77e010effe55a3bc1b33af8` |
 | Target release-complete receipt | `7f8f4646a369ea565e52f8420df665acb64d032e5004e1b45ef7dc8427548c49` |
 | Original separately pinned controller | `bf7ae99c67e32fd2047965f19ece30a35071e868` / `9c43e1c3dcb411fb5f81a6a70d99b0c28b6bb2c79117f70703a50037e2e78183` |
+| Corrected protected controller | `e4b99a249845a547fd6b8e7e11d22467b2d0886d` / `6a6bb4ade3db9d1e45ba64a0d928e91013109de3243e8e2dbccfaa04a7a455b4` |
 
 The exact old/target packages were installed in isolated Python 3.14
 installations without a checkout package import or `PYTHONPATH` fallback. The
@@ -73,20 +74,34 @@ regular, exclusively linked temporary staging-owner file under the exact
 matching claim. It quarantines that slot without reading/executing its
 contents, then rebuilds from the unchanged pinned wheel. Foreign contents,
 foreign claims, changed requests and unsafe links still fail closed. The
-published Forge 2.7.38 wheel is unchanged; the corrected controller needs a
-new protected source/digest and exact-binding requalification.
+published Forge 2.7.38 wheel is unchanged. The correction was merged through
+[PR #201](https://github.com/pcvantol/forge/pull/201) at the protected source
+above. The final controller file was read back from that exact main commit and
+hashed independently before the post-merge matrix.
 
-**Status at this source checkpoint:** The correction has two focused source
-regressions and a local candidate-controller SIGKILL hit during the temporary
-staging-owner write that reached terminal `COMPLETE` with a single receipted
-slot, one backup, unchanged sibling and identical replay. The separately
-observed physical side-effect sweep covered each old baseline. A first
-2.7.36 unreceipted-candidate run ended in a harness error and was not counted;
-a fresh exact-wheel run then confirmed the SIGKILL boundary and same-operation
-PASS. A first 2.7.36 unjournaled database-swap attempt missed the boundary;
-the subsequent observed hit passed. These are local candidate results, not
-protected-controller qualification. Protected merge and final exact-controller
-readback remain required before this scoped result is called qualified.
+The corrected protected controller passed **all 57 tracked update cells**:
+the ten durable phases and nine physical side-effect boundaries (including
+the focused temporary staging-owner boundary of the reproduced defect) for
+each of the three old wheels. Every passing cell records exact controller
+`SIGKILL` exit, no surviving owned descendant, observed durable phase/effect,
+unchanged same-operation recovery to `COMPLETE`, identical terminal replay,
+one receipted candidate slot and backup, selected data/config identity,
+SQLite integrity and unchanged sibling bytes. The temporary staging-owner
+boundary was actually hit and recovered on all three old baselines. The
+post-merge runs retained nine `NOT_HIT` and three `UNPROVEN` attempts as
+non-passing observations before successful hits; they are not counted as
+coverage. The first post-merge `ADOPTED` sweep produced four further
+`UNPROVEN` records because the harness expected the candidate resolver too
+early. [PR #202](https://github.com/pcvantol/forge/pull/202) corrected that
+readback to the actual legacy managed resolver at `ADOPTED`, and fresh
+confirmed SIGKILL runs passed. The original 2.7.36 candidate-slot harness
+error and database-swap miss remain historical non-passing attempts; subsequent
+observed runs passed.
+
+The Forge-owned process-crash subset is qualified against the corrected
+protected controller and unchanged published wheels. It does not qualify the
+broader host installer or the separate EP release, which the same revision-26
+assignment delivers independently.
 
 ## Reproduction entrypoints
 

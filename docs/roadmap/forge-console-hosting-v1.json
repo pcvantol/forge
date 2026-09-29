@@ -107,7 +107,7 @@
     "forge_server_process_crash": {
       "node_subset": "FSH-SERVICES/server-only installed lifecycle",
       "assignment": "L2-PRODUCER-CRASH-RECOVERY-V1-20260929",
-      "status": "IN_PROGRESS",
+      "status": "QUALIFIED",
       "qualification_evidence": "docs/operations/FORGE_SERVER_PROCESS_CRASH_2026_09_29.md",
       "requires_protected_merge": true,
       "requires_published_artifact_qualification": true,
