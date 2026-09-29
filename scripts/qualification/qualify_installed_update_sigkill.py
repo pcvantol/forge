@@ -266,7 +266,7 @@ def qualify(root: Path, artifacts: Path, python: Path, baseline: str,
         after_kill["inventory_version"] == expected_inventory
         and (journal_phase == "PREPARED" or after_kill["slot_count"] == 1)
         and (PHASES.index(journal_phase) < PHASES.index("BACKED_UP") or after_kill["backup_count"] == 1)
-        and (phase != "ADOPTED" or after_kill["resolver_binding"] == "CANDIDATE_SLOT")
+        and (phase != "ADOPTED" or after_kill["resolver_binding"] == "LEGACY_MANAGED")
         and (phase != "FENCED" or after_kill["safety_disposition"] == "LEGACY_COMMAND_FENCED")
         and (phase != "COMPLETE" or after_kill["receipt_exists"])
         and (phase in PHASES or boundary_hit(phase, after_kill, data_root))
