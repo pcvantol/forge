@@ -295,3 +295,11 @@ symlink/hardlink/special-entry rejection, group/world-writable root/tree
 rejection, foreign-root rejection, sibling-instance non-interference and
 packaged CLI execution. Product qualification uses isolated fixtures only and performs
 no Forge Platform, Engineering Platform, Workspace or production mutation.
+
+The separate revision-26 [abrupt process-stop matrix](../operations/FORGE_SERVER_PROCESS_CRASH_2026_09_29.md)
+tests actual SIGKILL of the installed product or separately pinned update
+controller, observed durable phase and physical effect, then same-operation
+normal recovery. Its controller correction is a new exact source binding;
+the original 2.7.38 wheel and historical controlled-interruption evidence
+retain their identities. This matrix makes no host reboot, power-loss or
+installer acceptance claim.
