@@ -67,6 +67,7 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.35", "2.7.38"): (39, 39),
     ("2.7.36", "2.7.38"): (39, 39),
     ("2.7.37", "2.7.38"): (39, 39),
+    ("2.7.38", "2.7.39"): (39, 40),
 }
 SAME_SCHEMA_39_TRANSITIONS = frozenset(
     transition for transition, schemas in SUPPORTED_TRANSITIONS.items() if schemas == (39, 39)
@@ -79,6 +80,7 @@ ASSESSMENT_REQUIRED_TRANSITIONS = frozenset({
     ("2.7.35", "2.7.38"),
     ("2.7.36", "2.7.38"),
     ("2.7.37", "2.7.38"),
+    ("2.7.38", "2.7.39"),
 })
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
@@ -92,6 +94,9 @@ NEW_SCHEMA_38_TABLES = frozenset({
     "operational_reset_audit",
     "operational_reset_tombstones",
     "operational_reset_artifact_steps",
+})
+NEW_SCHEMA_40_TABLES = frozenset({
+    "execution_host_peer_generation", "execution_host_peer_detach_operations",
 })
 VOLATILE_METADATA_KEYS = frozenset({
     "schema_version", "migration_version", "last_migration", "forge_version",
@@ -381,7 +386,7 @@ class UpdateRequest:
         )
         if any(not Path(value).is_absolute() for value in paths):
             raise InstalledForgeUpdateError("all installation paths must be absolute")
-        if self.version == "2.7.38":
+        if self.version in {"2.7.38", "2.7.39"}:
             if re.fullmatch(r"[0-9a-f]{40}", self.installed_source) is None:
                 raise InstalledForgeUpdateError("installed source revision must be exact")
             if re.fullmatch(r"sha256:[0-9a-f]{64}", self.installed_artifact_digest) is None:
@@ -545,14 +550,14 @@ def _validate_server_runtime_qualification(report: object, request: UpdateReques
         "headless_foreground", "clean_sigterm", "ep_simulator_real_http_boundary",
         "ep_simulator_submissions", "production_ep_contacted", "production_provider_contacted",
     }
-    if request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38"}:
+    if request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38", "2.7.39"}:
         expected_keys |= {
             "lifecycle_update_assessment", "lifecycle_uninstall_dispatcher",
             "lifecycle_uninstall_replay",
         }
-    if request.version in {"2.7.36", "2.7.37", "2.7.38"}:
+    if request.version in {"2.7.36", "2.7.37", "2.7.38", "2.7.39"}:
         expected_keys |= {"lifecycle_preserve", "lifecycle_restore", "lifecycle_purge"}
-    if request.version in {"2.7.37", "2.7.38"}:
+    if request.version in {"2.7.37", "2.7.38", "2.7.39"}:
         expected_keys.add("lifecycle_filesystem_security")
     if (
         not isinstance(report, Mapping)
@@ -567,17 +572,17 @@ def _validate_server_runtime_qualification(report: object, request: UpdateReques
         or report.get("ep_simulator_submissions") != 1
         or report.get("production_ep_contacted") is not False
         or report.get("production_provider_contacted") is not False
-        or request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38"} and (
+        or request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38", "2.7.39"} and (
             report.get("lifecycle_update_assessment") != "PASS"
             or report.get("lifecycle_uninstall_dispatcher") != "PASS"
             or report.get("lifecycle_uninstall_replay") != "PASS"
         )
-        or request.version in {"2.7.36", "2.7.37", "2.7.38"} and (
+        or request.version in {"2.7.36", "2.7.37", "2.7.38", "2.7.39"} and (
             report.get("lifecycle_preserve") != "PASS"
             or report.get("lifecycle_restore") != "PASS"
             or report.get("lifecycle_purge") != "PASS"
         )
-        or request.version in {"2.7.37", "2.7.38"}
+        or request.version in {"2.7.37", "2.7.38", "2.7.39"}
         and report.get("lifecycle_filesystem_security") != "PASS"
     ):
         raise InstalledForgeUpdateError("installed Server Runtime qualification is noncanonical")
@@ -607,7 +612,7 @@ def _normal_release_evidence(
     exact_observed = {expected_name: request.wheel_sha256, sdist_name: sdist_digest}
     composition_keys = (
         {"criterion_completion", "server_runtime"}
-        if request.version in {"2.7.34", "2.7.35", "2.7.36", "2.7.37", "2.7.38"}
+        if request.version in {"2.7.34", "2.7.35", "2.7.36", "2.7.37", "2.7.38", "2.7.39"}
         else {"criterion_completion"}
         if request.version in {
             "2.7.25", "2.7.26", "2.7.27", "2.7.28", "2.7.29",
@@ -654,7 +659,7 @@ def _normal_release_evidence(
     if composition_keys:
         _validate_criterion_qualification(qualification["criterion_completion"], request)
         _validate_criterion_qualification(publication["criterion_completion"], request)
-        if request.version in {"2.7.34", "2.7.35", "2.7.36", "2.7.37", "2.7.38"}:
+        if request.version in {"2.7.34", "2.7.35", "2.7.36", "2.7.37", "2.7.38", "2.7.39"}:
             _validate_server_runtime_qualification(qualification["server_runtime"], request)
             _validate_server_runtime_qualification(publication["server_runtime"], request)
     return {
@@ -834,6 +839,22 @@ def database_snapshot(path: Path, *, existing_connection: sqlite3.Connection | N
             "binding_id": peer_row[0], "configuration_revision": peer_row[1],
             "configuration_digest": peer_row[2], "document_digest": _digest_bytes(str(peer_row[3]).encode()),
         }
+        if peer is not None:
+            peer_state_digest = peer["configuration_digest"]
+        elif "execution_host_peer_generation" in tables:
+            generation = connection.execute(
+                "SELECT generation,last_digest FROM execution_host_peer_generation WHERE singleton=1"
+            ).fetchone()
+            if generation is None:
+                raise InstalledForgeUpdateError("peer generation state is missing")
+            peer_state_digest = (
+                generation[1] if int(generation[0]) > 0
+                else _digest_bytes(_json_bytes({"state": "NOT_CONFIGURED", "runtime_id": metadata["runtime_id"]}))
+            )
+        else:
+            peer_state_digest = _digest_bytes(_json_bytes({
+                "state": "NOT_CONFIGURED", "runtime_id": metadata["runtime_id"],
+            }))
         dispatcher = [dict(row) for row in connection.execute(
             "SELECT status,active_mission_id FROM dispatcher_state"
         )] if "dispatcher_state" in tables else []
@@ -862,7 +883,7 @@ def database_snapshot(path: Path, *, existing_connection: sqlite3.Connection | N
         "foreign_key_check": foreign_keys, "user_version": user_version,
         "schema_digest": _digest_bytes(_json_bytes(schema_objects)),
         "metadata": metadata, "protected_metadata_digest": _digest_bytes(_json_bytes(protected_metadata)),
-        "tables": table_metrics, "peer": peer,
+        "tables": table_metrics, "peer": peer, "peer_state_digest": peer_state_digest,
         "writer_state": {
             "dispatcher": dispatcher, "missions": missions, "submissions": submissions,
             "generation_permits": permits, "planning": planning, "operational_reset": reset,
@@ -953,7 +974,7 @@ def assert_selected_installation(request: UpdateRequest, snapshot: Mapping[str, 
     schema_before, schema_after = transition_schemas(request)
     if snapshot.get("user_version") not in {schema_before, schema_after}:
         raise InstalledForgeUpdateError("selected runtime schema is outside the bounded update path")
-    if not isinstance(peer, Mapping) or peer.get("configuration_digest") != request.peer_configuration_digest:
+    if snapshot.get("peer_state_digest") != request.peer_configuration_digest:
         raise InstalledForgeUpdateError("selected peer configuration changed")
     marker = Path(request.data_root) / "instance" / "runtime-instance.json"
     if marker.is_symlink() or not marker.is_file() or marker.read_text(encoding="utf-8").strip() != request.runtime_id:
@@ -971,7 +992,7 @@ def _assert_assessment_installation(request: UpdateRequest, snapshot: Mapping[st
         raise InstalledForgeUpdateError("selected data root belongs to a different installation")
     if metadata.get("forge_version") != request.existing_version:
         raise InstalledForgeUpdateError("installed inventory version does not match runtime metadata")
-    if not isinstance(peer, Mapping) or peer.get("configuration_digest") != request.peer_configuration_digest:
+    if snapshot.get("peer_state_digest") != request.peer_configuration_digest:
         raise InstalledForgeUpdateError("selected peer configuration changed")
     marker = Path(request.data_root) / "instance" / "runtime-instance.json"
     _assert_no_symlink_components(marker)
@@ -1312,6 +1333,7 @@ def assert_completed_schema(
         snapshot.get("user_version") != schema_after
         or not isinstance(tables, Mapping)
         or not NEW_SCHEMA_38_TABLES.issubset(tables)
+        or (schema_after == 40 and not NEW_SCHEMA_40_TABLES.issubset(tables))
         or not isinstance(expected_digest, str)
         or snapshot.get("schema_digest") != expected_digest
     ):
@@ -1341,7 +1363,8 @@ def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], req
         raise InstalledForgeUpdateError("migration did not advance the selected Forge inventory version")
     if after.get("protected_metadata_digest") != before.get("protected_metadata_digest"):
         raise InstalledForgeUpdateError("migration changed protected runtime metadata")
-    if after.get("peer") != before.get("peer"):
+    if (after.get("peer") != before.get("peer")
+            or after.get("peer_state_digest") != before.get("peer_state_digest")):
         raise InstalledForgeUpdateError("migration changed the configured Forge-to-EP peer binding")
     before_tables, after_tables = before.get("tables"), after.get("tables")
     if not isinstance(before_tables, Mapping) or not isinstance(after_tables, Mapping):
@@ -1352,7 +1375,10 @@ def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], req
         if after_tables.get(table) != metric:
             raise InstalledForgeUpdateError(f"migration changed historical table contents: {table}")
     new_tables = set(after_tables) - set(before_tables)
-    expected_new_tables = set(NEW_SCHEMA_38_TABLES) if schema_before == 37 else set()
+    expected_new_tables = (
+        set(NEW_SCHEMA_38_TABLES) if schema_before == 37 else
+        set(NEW_SCHEMA_40_TABLES) if schema_before == 39 and schema_after == 40 else set()
+    )
     if new_tables != expected_new_tables:
         raise InstalledForgeUpdateError("migration produced an unexpected target-schema table set")
     reset = after.get("writer_state", {}).get("operational_reset", [])

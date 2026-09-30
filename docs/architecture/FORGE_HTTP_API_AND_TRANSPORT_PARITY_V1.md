@@ -62,6 +62,12 @@ A runtime worker also uses those services and remains the background executor.
 
 The local Forge CLI may call its OWN service in-process where explicitly supported,
 or be an HTTP client to its own server. A remote CLI uses the server HTTP API.
+
+The installed Server's opt-in standalone readiness and product-owned EP-peer
+detach routes are specified in [Forge EP standalone and pairing lifecycle
+V1](FORGE_EP_STANDALONE_AND_PAIRING_LIFECYCLE_V1.md); they do not add an EP
+peer CLI/subprocess transport.
+
 The transport-mode choice is explicit; server failure never silently starts a
 second runtime/writer. Shared rules do not imply identical privilege: supported
 capabilities declare LOCAL_ONLY_ADMIN versus HTTP_EXPOSED. Do not expose every

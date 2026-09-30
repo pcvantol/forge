@@ -55,6 +55,7 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.35", "2.7.38"): (39, 39),
     ("2.7.36", "2.7.38"): (39, 39),
     ("2.7.37", "2.7.38"): (39, 39),
+    ("2.7.38", "2.7.39"): (39, 40),
 }
 SAME_SCHEMA_39_TRANSITIONS = frozenset(
     transition for transition, schemas in SUPPORTED_TRANSITIONS.items() if schemas == (39, 39)
@@ -309,6 +310,9 @@ def _runtime_snapshot(data_root: Path) -> dict[str, Any]:
         reset = [dict(row) for row in connection.execute(
             "SELECT active_operation_id,state FROM operational_reset_state"
         )] if "operational_reset_state" in tables else []
+        peer_detach = [dict(row) for row in connection.execute(
+            "SELECT operation_id,phase FROM execution_host_peer_detach_operations ORDER BY operation_id"
+        )] if "execution_host_peer_detach_operations" in tables else []
     except (OSError, UnicodeError, sqlite3.Error, IndexError, ValueError) as error:
         raise InstalledLifecycleError("runtime database readback failed") from error
     finally:
@@ -327,6 +331,7 @@ def _runtime_snapshot(data_root: Path) -> dict[str, Any]:
         "writer_state": {
             "dispatcher": dispatcher, "missions": missions, "submissions": submissions,
             "generation_permits": permits, "planning": planning, "operational_reset": reset,
+            "peer_detach": peer_detach,
         },
     }
     snapshot["digest"] = _digest_bytes(_json_bytes(snapshot))
@@ -335,6 +340,7 @@ def _runtime_snapshot(data_root: Path) -> dict[str, Any]:
 
 def _assert_identity(
     snapshot: Mapping[str, Any], *, runtime_id: str, installation_id: str, installed_version: str | None = None,
+    expected_schema: int = RUNTIME_SCHEMA_VERSION,
 ) -> None:
     metadata = snapshot.get("metadata")
     if not isinstance(metadata, Mapping):
@@ -347,9 +353,9 @@ def _assert_identity(
         raise InstalledLifecycleError("installed inventory version does not match runtime metadata")
     if snapshot.get("integrity") != "ok" or snapshot.get("foreign_keys") != 0:
         raise InstalledLifecycleError("selected runtime storage integrity is unavailable")
-    if snapshot.get("user_version") != RUNTIME_SCHEMA_VERSION:
+    if snapshot.get("user_version") != expected_schema:
         raise InstalledLifecycleError("selected runtime schema is unsupported")
-    if metadata.get("schema_version") != str(RUNTIME_SCHEMA_VERSION):
+    if metadata.get("schema_version") != str(expected_schema):
         raise InstalledLifecycleError("selected runtime metadata schema is unsupported")
 
 
@@ -373,9 +379,17 @@ def assess_update(request: UpdateAssessmentRequest) -> dict[str, Any]:
             Path(request.candidate_wheel), request.candidate_version, request.candidate_artifact_digest,
         )
         snapshot = _runtime_snapshot(Path(request.data_root))
+        source_schemas = {
+            before for (source, _target), (before, _after) in SUPPORTED_TRANSITIONS.items()
+            if source == request.installed_version
+        }
+        if len(source_schemas) > 1:
+            raise InstalledLifecycleError("installed version has ambiguous schema lineage")
+        expected_schema = next(iter(source_schemas), RUNTIME_SCHEMA_VERSION)
         _assert_identity(
             snapshot, runtime_id=request.runtime_id, installation_id=request.installation_id,
             installed_version=request.installed_version,
+            expected_schema=expected_schema,
         )
         exact_current = (
             request.installed_version == request.candidate_version
@@ -443,6 +457,8 @@ def _assert_quiescent(snapshot: Mapping[str, Any]) -> None:
     if any(row.get("active_operation_id") is not None or row.get("state") != "IDLE"
            for row in writer.get("operational_reset", ())):
         raise InstalledLifecycleError("Forge operational reset maintenance is active")
+    if any(row.get("phase") != "COMPLETE" for row in writer.get("peer_detach", ())):
+        raise InstalledLifecycleError("Forge EP peer detach is unfinished")
 
 
 @dataclass(frozen=True)

@@ -59,6 +59,14 @@ This subset does not change the parent `FSH-SERVICES` status:
 Console/relay/service-account provisioning, boot/logout and full installed-host
 qualification remain `PLANNED`.
 
+The same Server-only family has a bounded producer subset for opt-in
+standalone readiness, durable exact-peer detach and guarded replacement
+pairing under `L2-PRODUCER-STANDALONE-AND-PAIRING-LIFECYCLE-V1-20260930`.
+Its [owning contract](../architecture/FORGE_EP_STANDALONE_AND_PAIRING_LIFECYCLE_V1.md)
+and [candidate/release evidence](../operations/FORGE_EP_PAIRING_LIFECYCLE_2026_09_30.md)
+define the producer surface. Console, relay, service-account and complete
+installer acceptance remain open.
+
 The same existing subset has a separate revision-26 abrupt-process
 qualification increment. [Its owning matrix and reproduced controller gap](../operations/FORGE_SERVER_PROCESS_CRASH_2026_09_29.md)
 cover exact-wheel SIGKILL/recovery without claiming a physical reboot or

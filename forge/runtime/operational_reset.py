@@ -48,6 +48,8 @@ TABLE_CLASSIFICATION: Mapping[str, str] = {
     # A — durable installation, binding, and provider configuration.
     "runtime_metadata": "INSTALLATION_AND_CONFIGURATION",
     "execution_host_peer_configuration": "INSTALLATION_AND_CONFIGURATION",
+    "execution_host_peer_generation": "INSTALLATION_AND_CONFIGURATION",
+    "execution_host_peer_detach_operations": "INSTALLATION_AND_CONFIGURATION",
     "planning_provider_security_config": "INSTALLATION_AND_CONFIGURATION",
     "planning_provider_external_session_config": "INSTALLATION_AND_CONFIGURATION",
     # B — authority, anti-replay, allocation, and consumed-budget lineage.
@@ -344,7 +346,8 @@ class ForgeOperationalResetService:
 
     def _relevant_revision(self, connection: sqlite3.Connection) -> str:
         values: dict[str, str] = {}
-        for table in sorted(set(TABLE_CLASSIFICATION) - set(MAINTENANCE_TABLES)):
+        existing = self._application_tables(connection)
+        for table in sorted((set(TABLE_CLASSIFICATION) - set(MAINTENANCE_TABLES)) & existing):
             if table == "runtime_metadata":
                 rows = [
                     [row[0], row[1]] for row in connection.execute(
@@ -485,6 +488,10 @@ class ForgeOperationalResetService:
         known_for_schema = set(TABLE_CLASSIFICATION)
         if schema == 37:
             known_for_schema -= set(MAINTENANCE_TABLES)
+        if schema < 40:
+            known_for_schema -= {
+                "execution_host_peer_generation", "execution_host_peer_detach_operations",
+            }
         unknown_tables = sorted(tables - known_for_schema)
         missing_tables = sorted(known_for_schema - tables)
         metadata = dict(connection.execute("SELECT key,value FROM runtime_metadata")) if "runtime_metadata" in tables else {}

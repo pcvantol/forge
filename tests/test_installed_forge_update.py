@@ -19,6 +19,8 @@ from unittest.mock import patch
 import zipfile
 
 from forge.runtime import RuntimeBootstrap
+from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
+from forge.secure_store import SecretReference
 import forge.runtime.database as runtime_database
 from forge.installed_lifecycle import SUPPORTED_TRANSITIONS as PACKAGED_TRANSITIONS
 from forge.runtime.operational_reset import MAINTENANCE_TABLES
@@ -208,6 +210,61 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         return update.InstalledForgeUpdateController(
             self.request, process_reader=lambda: (),
         )
+
+    def test_2738_to_2739_preserves_unpaired_instance_and_adds_peer_lifecycle_tables(self) -> None:
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 39):
+            database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.38").open()
+        runtime_id = database.runtime_identity.runtime_id
+        installation_id = database.metadata["installation_id"]
+        database.close()
+        before = update.database_snapshot(self.data_root / "forge.db")
+        request = update.UpdateRequest(**{
+            **self.request.__dict__,
+            "existing_version": "2.7.38", "version": "2.7.39",
+            "runtime_id": runtime_id, "installation_id": installation_id,
+            "peer_configuration_digest": before["peer_state_digest"],
+        })
+        self.assertEqual(update.transition_schemas(request), (39, 40))
+        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.39").open()
+        database.close()
+        after = update.database_snapshot(self.data_root / "forge.db")
+        proof = update.verify_preservation(before, after, request)
+        self.assertEqual(proof["added_tables"], sorted(update.NEW_SCHEMA_40_TABLES))
+        self.assertEqual(after["peer_state_digest"], before["peer_state_digest"])
+
+    def test_2738_to_2739_preserves_exact_paired_binding_and_history(self) -> None:
+        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.38").open()
+        runtime_id = database.runtime_identity.runtime_id
+        installation_id = database.metadata["installation_id"]
+        database.close()
+        configured = EngineeringPlatformPeerConfigurationService(self.data_root).configure(
+            binding_id="ep-selected", endpoint="https://ep.test",
+            expected_ep_instance_id="ep-instance", ep_consumer_id="consumer-old",
+            execution_host_id="ep-host", ep_project_id="project",
+            ep_repository_id="repository", repository_identity="forge-repository",
+            credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+            operator_id="operator",
+        )
+        with sqlite3.connect(self.data_root / "forge.db") as connection:
+            connection.execute("DROP TABLE execution_host_peer_detach_operations")
+            connection.execute("DROP TABLE execution_host_peer_generation")
+            connection.execute(
+                "UPDATE runtime_metadata SET value='39' WHERE key IN "
+                "('schema_version','migration_version','last_migration','database_version')"
+            )
+            connection.execute("PRAGMA user_version=39")
+        before = update.database_snapshot(self.data_root / "forge.db")
+        request = update.UpdateRequest(**{
+            **self.request.__dict__, "existing_version": "2.7.38", "version": "2.7.39",
+            "runtime_id": runtime_id, "installation_id": installation_id,
+            "peer_configuration_digest": configured.configuration_digest,
+        })
+        migrated = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.39").open()
+        migrated.close()
+        after = update.database_snapshot(self.data_root / "forge.db")
+        self.assertEqual(update.verify_preservation(before, after, request)["status"], "PASS")
+        self.assertEqual(after["peer"], before["peer"])
+        self.assertEqual(after["peer_state_digest"], configured.configuration_digest)
 
     def _same_schema_request(self) -> object:
         return update.UpdateRequest(**{
@@ -1708,7 +1765,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         (copy_root / "instance").mkdir(parents=True)
         (copy_root / "instance" / "runtime-instance.json").write_text(self.runtime_id + "\n")
         update._copy_sqlite_backup(self.data_root / "forge.db", copy_root / "forge.db")
-        RuntimeBootstrap(data_root=copy_root, forge_version=self.request.version).open().close()
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 39):
+            RuntimeBootstrap(data_root=copy_root, forge_version=self.request.version).open().close()
         after = update.database_snapshot(copy_root / "forge.db")
         update.verify_preservation(before, after, self.request)
         return after
@@ -1773,7 +1831,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
 
     def _same_schema39_transition(self, *, existing_version="2.7.25", target_version="2.7.26"):
         self._new_transition()
-        RuntimeBootstrap(data_root=self.data_root, forge_version=existing_version).open().close()
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 39):
+            RuntimeBootstrap(data_root=self.data_root, forge_version=existing_version).open().close()
         before = update.database_snapshot(self.data_root / "forge.db")
         self.request = self._normal_release_request(target_version, existing_version)
         return before
@@ -2271,7 +2330,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             "2.7.33": "2.7.31", "2.7.34": "2.7.33",
         }.get(target_version)
         if previous_version is not None:
-            RuntimeBootstrap(data_root=self.data_root, forge_version=previous_version).open().close()
+            with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", target_schema):
+                RuntimeBootstrap(data_root=self.data_root, forge_version=previous_version).open().close()
         legacy_interpreter = Path(os.environ.get("FORGE_LEGACY_INTERPRETER", sys.executable))
         try:
             legacy_identity = update.installed_identity(legacy_interpreter, cwd=self.root)

@@ -25,6 +25,8 @@ from forge.installed_lifecycle import (
 )
 from forge.__main__ import main
 from forge.runtime import RuntimeBootstrap
+import forge.runtime.database as runtime_database
+from unittest.mock import patch
 
 try:
     import fcntl
@@ -73,7 +75,8 @@ class InstalledLifecycleFixture(unittest.TestCase):
         self.instances_root = self.root / "instances"
         self.instances_root.mkdir()
         self.data_root = self.instances_root / "forge-primary"
-        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.34").open()
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 39):
+            database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.34").open()
         self.runtime_id = database.runtime_identity.runtime_id
         self.installation_id = database.metadata["installation_id"]
         database.close()
@@ -141,7 +144,8 @@ class UpdateAssessmentTests(InstalledLifecycleFixture):
         wheel, digest = _write_wheel(self.root, "2.7.38")
         for installed in ("2.7.35", "2.7.36", "2.7.37"):
             data_root = self.instances_root / installed
-            database = RuntimeBootstrap(data_root=data_root, forge_version=installed).open()
+            with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 39):
+                database = RuntimeBootstrap(data_root=data_root, forge_version=installed).open()
             runtime_id = database.runtime_identity.runtime_id
             installation_id = database.metadata["installation_id"]
             database.close()
@@ -185,6 +189,11 @@ class UpdateAssessmentTests(InstalledLifecycleFixture):
 
 
 class UninstallDispatcherTests(InstalledLifecycleFixture):
+    def setUp(self) -> None:
+        super().setUp()
+        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.34").open()
+        database.close()
+
     def test_removes_only_exact_instance_and_replays_receipt(self) -> None:
         other = self.instances_root / "forge-other"
         other.mkdir()

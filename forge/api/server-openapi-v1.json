@@ -387,6 +387,83 @@
           }
         }
       }
+    },
+    "/v1/readiness/standalone": {
+      "get": {
+        "summary": "Read opt-in standalone service readiness without EP dispatch authority",
+        "responses": {
+          "200": {
+            "description": "Standalone service is ready for its declared non-EP scope",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/StandaloneReadiness"}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          },
+          "503": {
+            "description": "Standalone service is not ready or the peer is required"
+          }
+        }
+      }
+    },
+    "/v1/execution-host/detach": {
+      "post": {
+        "summary": "Durably detach an exact quiescent EP peer generation",
+        "responses": {
+          "200": {
+            "description": "Exact durable local detach receipt",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/PeerDetachReceipt"}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeerDetachRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/execution-host/detach/{operation_id}": {
+      "get": {
+        "summary": "Read one exact EP peer detach operation and receipt",
+        "responses": {
+          "200": {
+            "description": "Independent detach status and verified terminal receipt"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "operation_id", "in": "path", "required": true,
+            "schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -400,6 +477,55 @@
       "JsonObject": {
         "type": "object",
         "additionalProperties": true
+      },
+      "StandaloneReadiness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "contract_version", "ready", "service_ready", "execution_ready", "mode", "provider", "scheduler", "execution_host_peer", "instance_id"],
+        "properties": {
+          "api_version": {"const": "1"},
+          "contract_version": {"const": "forge-server-standalone-readiness/v1"},
+          "ready": {"type": "boolean"},
+          "service_ready": {"type": "boolean"},
+          "execution_ready": {"const": false},
+          "mode": {"enum": ["STANDALONE", "PEER_REQUIRED"]},
+          "provider": {"type": "object"},
+          "scheduler": {"type": "object"},
+          "execution_host_peer": {"type": "object"},
+          "instance_id": {"type": "string"}
+        }
+      },
+      "PeerDetachRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["operation_id", "instance_id", "expected_binding_id", "expected_revision", "expected_digest", "operator_id"],
+        "properties": {
+          "operation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+          "instance_id": {"type": "string", "minLength": 1},
+          "expected_binding_id": {"type": "string", "minLength": 1},
+          "expected_revision": {"type": "integer", "minimum": 1},
+          "expected_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "operator_id": {"type": "string", "minLength": 1}
+        }
+      },
+      "PeerDetachReceipt": {
+        "type": "object", "additionalProperties": false,
+        "required": ["contract", "operation_id", "instance_id", "expected_binding_id", "expected_revision", "expected_digest", "operator_reference", "request_digest", "state", "local_peer_state", "remote_consumer_revoke", "next_configuration_revision", "completed_at", "receipt_digest"],
+        "properties": {
+          "contract": {"const": "forge-ep-peer-detach/v1"},
+          "operation_id": {"type": "string"},
+          "instance_id": {"type": "string"},
+          "expected_binding_id": {"type": "string"},
+          "expected_revision": {"type": "integer", "minimum": 1},
+          "expected_digest": {"type": "string"},
+          "operator_reference": {"type": "string"},
+          "request_digest": {"type": "string"},
+          "state": {"const": "COMPLETE"},
+          "local_peer_state": {"const": "DETACHED"},
+          "remote_consumer_revoke": {"const": "NOT_ASSERTED"},
+          "next_configuration_revision": {"type": "integer", "minimum": 2},
+          "completed_at": {"type": "string"},
+          "receipt_digest": {"type": "string"}
+        }
       }
     }
   }

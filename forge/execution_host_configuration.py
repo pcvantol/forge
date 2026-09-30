@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+from contextlib import contextmanager
 from typing import Any, Callable, Mapping, Protocol
 from urllib.parse import urlparse
 
@@ -25,6 +26,7 @@ _REPLACEABLE_LEGACY_CONTRACT_PAIRS = frozenset({("1.2", "1.2"), ("1.2", "1.3")})
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
+_OPERATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _FIELDS = frozenset((
     "schema_version", "binding_id", "configuration_revision", "configuration_digest",
     "owning_forge_runtime_id", "peer_product", "endpoint", "expected_ep_instance_id",
@@ -83,6 +85,28 @@ class _StoredPeerConfiguration:
 
 def _timestamp() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _verified_detach_receipt(raw: str, *, operation_id: str, request_digest: str) -> dict[str, Any]:
+    try:
+        receipt = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise PeerConfigurationError("EP peer detach receipt is unreadable") from error
+    if not isinstance(receipt, dict):
+        raise PeerConfigurationError("EP peer detach receipt is malformed")
+    digest = receipt.get("receipt_digest")
+    basis = {key: value for key, value in receipt.items() if key != "receipt_digest"}
+    calculated = "sha256:" + sha256(json.dumps(
+        basis, sort_keys=True, separators=(",", ":"),
+    ).encode()).hexdigest()
+    if (digest != calculated or receipt.get("operation_id") != operation_id
+            or receipt.get("request_digest") != request_digest
+            or receipt.get("contract") != "forge-ep-peer-detach/v1"
+            or receipt.get("state") != "COMPLETE"
+            or receipt.get("local_peer_state") != "DETACHED"
+            or receipt.get("remote_consumer_revoke") != "NOT_ASSERTED"):
+        raise PeerConfigurationError("EP peer detach receipt failed exact verification")
+    return receipt
 
 
 def _identifier(value: object, label: str) -> str:
@@ -391,6 +415,11 @@ class EngineeringPlatformPeerConfigurationStore:
         return _StoredPeerConfiguration(normalized)
 
     def load(self) -> EngineeringPlatformPeerConfiguration | None:
+        pending = self._connection.execute(
+            "SELECT 1 FROM execution_host_peer_detach_operations WHERE phase='PREPARED' LIMIT 1"
+        ).fetchone()
+        if pending is not None:
+            raise PeerConfigurationError("EP peer detach is unfinished")
         stored = self._stored()
         if stored is None:
             return None
@@ -450,6 +479,17 @@ class EngineeringPlatformPeerConfigurationStore:
         try:
             self._connection.execute("BEGIN IMMEDIATE")
             stored = self._stored()
+            generation = self._connection.execute(
+                "SELECT generation,last_digest FROM execution_host_peer_generation WHERE singleton=1"
+            ).fetchone()
+            if generation is None:
+                raise PeerConfigurationError("EP peer generation state is missing")
+            pending = self._connection.execute(
+                "SELECT operation_id FROM execution_host_peer_detach_operations "
+                "WHERE phase='PREPARED' LIMIT 1"
+            ).fetchone()
+            if pending is not None:
+                raise PeerConfigurationConflict("EP peer detach is unfinished")
             current = (
                 EngineeringPlatformPeerConfiguration.from_dict(stored.document)
                 if stored is not None and stored.current_contracts else None
@@ -466,9 +506,15 @@ class EngineeringPlatformPeerConfigurationStore:
                 revision = stored.revision + 1
                 created_at, created_by = str(stored.document["created_at"]), str(stored.document["created_by"])
             else:
-                if replace or expected_revision is not None or expected_digest is not None:
-                    raise PeerConfigurationConflict("initial EP peer configuration cannot claim a replacement")
-                revision, created_at, created_by = 1, now, operator_id
+                if int(generation[0]) == 0:
+                    if replace or expected_revision is not None or expected_digest is not None:
+                        raise PeerConfigurationConflict("initial EP peer configuration cannot claim a replacement")
+                elif (not replace or expected_revision != int(generation[0])
+                      or expected_digest != generation[1]):
+                    raise PeerConfigurationConflict(
+                        "re-pair requires the exact detached peer generation and receipt digest"
+                    )
+                revision, created_at, created_by = int(generation[0]) + 1, now, operator_id
             configured = EngineeringPlatformPeerConfiguration(
                 configuration_revision=revision,
                 configuration_digest=EngineeringPlatformPeerConfiguration.digest_for(basis),
@@ -491,6 +537,10 @@ class EngineeringPlatformPeerConfigurationStore:
                 "configuration_revision=excluded.configuration_revision, configuration_digest=excluded.configuration_digest, "
                 "document=excluded.document",
                 (configured.binding_id, configured.configuration_revision, configured.configuration_digest, document),
+            )
+            self._connection.execute(
+                "UPDATE execution_host_peer_generation SET generation=?,last_digest=? WHERE singleton=1",
+                (configured.configuration_revision, configured.configuration_digest),
             )
             if operational_event_writer is not None:
                 operational_event_writer(configured, "created" if stored is None else "replaced")
@@ -524,6 +574,8 @@ def read_peer_configuration(
     root = DataRootResolver(cli_data_root=data_root).resolve()
     database = root / "forge.db"
     marker = root / "instance" / "runtime-instance.json"
+    if marker.is_symlink() or database.is_symlink():
+        raise PeerConfigurationError("Forge instance marker or database is an unsafe symbolic link")
     if not marker.is_file() or not database.is_file():
         raise PeerConfigurationError("Forge data root is not initialized")
     try:
@@ -561,10 +613,44 @@ def read_peer_configuration(
                 EngineeringPlatformPeerConfiguration.from_dict(stored.document)
                 if stored is not None and stored.current_contracts else None
             )
-            if configuration is not None and schema < RUNTIME_SCHEMA_VERSION:
+            if (configuration is not None and schema < RUNTIME_SCHEMA_VERSION
+                    and not (allow_legacy_contract_replacement and schema == 39)):
                 raise PeerConfigurationError("EP peer configuration exists under an unqualified storage schema")
-        if stored is None:
-            status, stored_document = "NOT_CONFIGURED", None
+        detached = False
+        pending_detach = False
+        if schema == RUNTIME_SCHEMA_VERSION:
+            pending_detach = connection.execute(
+                "SELECT 1 FROM execution_host_peer_detach_operations WHERE phase='PREPARED' LIMIT 1"
+            ).fetchone() is not None
+            generation = connection.execute(
+                "SELECT generation,last_digest FROM execution_host_peer_generation WHERE singleton=1"
+            ).fetchone()
+            if generation is None:
+                raise PeerConfigurationError("EP peer generation state is missing")
+            if stored is not None:
+                if int(generation[0]) != stored.revision or generation[1] != stored.digest:
+                    raise PeerConfigurationError("EP peer generation does not match selected binding")
+            elif int(generation[0]) == 0:
+                if generation[1] is not None:
+                    raise PeerConfigurationError("initial EP peer generation is inconsistent")
+            else:
+                detached = True
+                terminal = connection.execute(
+                    "SELECT operation_id,request_digest,receipt FROM execution_host_peer_detach_operations "
+                    "WHERE phase='COMPLETE' AND expected_revision=? "
+                    "ORDER BY updated_at DESC LIMIT 1", (int(generation[0]),),
+                ).fetchone()
+                if terminal is None:
+                    raise PeerConfigurationError("detached EP peer receipt is missing")
+                receipt = _verified_detach_receipt(
+                    terminal[2], operation_id=terminal[0], request_digest=terminal[1],
+                )
+                if receipt.get("receipt_digest") != generation[1]:
+                    raise PeerConfigurationError("detached EP peer receipt does not match generation")
+        if pending_detach:
+            status, stored_document, configuration = "DETACH_PENDING", None, None
+        elif stored is None:
+            status, stored_document = ("DETACHED" if detached else "NOT_CONFIGURED"), None
         elif configuration is not None:
             status, stored_document = "CONFIGURED", configuration.to_dict()
         elif stored.document["schema_version"] == LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION:
@@ -661,9 +747,12 @@ class EngineeringPlatformPeerConfigurationService:
         marker = self.data_root / "instance" / "runtime-instance.json"
         if not marker.is_file() or not database_path.is_file():
             raise PeerConfigurationError("Forge data root must be initialized before peer configuration")
-        # Qualify marker/database identity on the read-only path before the
-        # writable RuntimeDatabase is allowed to apply a schema migration.
-        read_peer_configuration(self.data_root, allow_legacy_contract_replacement=True)
+        # Installed lifecycle owns migration of preserved older schemas. A
+        # peer command must never turn a 2.7.38 instance into a 2.7.39 one.
+        readback = read_peer_configuration(self.data_root, allow_legacy_contract_replacement=True)
+        from .runtime.database import RUNTIME_SCHEMA_VERSION
+        if readback.storage_schema != RUNTIME_SCHEMA_VERSION:
+            raise PeerConfigurationError("Forge instance requires its product-owned installed update first")
         database = RuntimeBootstrap(data_root=self.data_root, forge_version=canonical_version()).open()
         try:
             if marker.read_text(encoding="utf-8").strip() != database.runtime_identity.runtime_id:
@@ -674,6 +763,11 @@ class EngineeringPlatformPeerConfigurationService:
         return database
 
     def configure(self, **values: Any) -> EngineeringPlatformPeerConfiguration:
+        from .runtime.service import RuntimeServiceLock
+        with RuntimeServiceLock(self.data_root / "forge.db").acquire():
+            return self._configure_locked(**values)
+
+    def _configure_locked(self, **values: Any) -> EngineeringPlatformPeerConfiguration:
         database = self._open_for_configuration()
         try:
             store = EngineeringPlatformPeerConfigurationStore(
@@ -756,6 +850,195 @@ class EngineeringPlatformPeerConfigurationService:
             return configured
         finally:
             database.close()
+
+    @contextmanager
+    def _detach_locks(self, instance_id: str):
+        """Use the owning lifecycle, updater, controller and runtime exclusions."""
+        from .installed_lifecycle import CONTROL_DIRECTORY, _assert_no_symlink_components, _exclusive_locks
+        from .runtime.service import RuntimeServiceLock
+
+        identity = sha256(instance_id.encode("ascii")).hexdigest()
+        control = self.data_root.parent / CONTROL_DIRECTORY / identity
+        _assert_no_symlink_components(control.parent, allow_missing=True)
+        _assert_no_symlink_components(control, allow_missing=True)
+        control.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with _exclusive_locks((
+            control / "lifecycle.lock",
+            self.data_root / "forge-mission-controller.lock",
+        )):
+            with RuntimeServiceLock(self.data_root / "forge.db").acquire():
+                yield
+
+    @staticmethod
+    def _require_detach_quiescence(connection: sqlite3.Connection) -> None:
+        from .installed_lifecycle import TERMINAL_PERMIT_STATES
+
+        # A blocked/failed Mission or submission can still have unresolved EP
+        # authority. The broader preserve/update terminal set is insufficient
+        # for deleting the local peer that would reconcile that authority.
+        safe_missions = frozenset({"COMPLETED", "ARCHIVED", "INTEGRATION_COMPLETE"})
+        safe_submissions = frozenset({"RECONCILED"})
+
+        dispatcher = connection.execute(
+            "SELECT status,active_mission_id FROM dispatcher_state WHERE singleton=1"
+        ).fetchone()
+        if dispatcher is not None and (dispatcher[0] != "IDLE" or dispatcher[1] is not None):
+            raise PeerConfigurationConflict("Forge dispatcher is not idle")
+        for table, column, allowed in (
+            ("mission_state", "status", safe_missions),
+            ("scheduler_submissions", "state", safe_submissions),
+            ("planning_provider_generation_permits", "state", TERMINAL_PERMIT_STATES),
+        ):
+            if any(row[0] not in allowed for row in connection.execute(f"SELECT {column} FROM {table}")):
+                raise PeerConfigurationConflict("Forge has active peer-dependent work")
+        for row in connection.execute(
+            "SELECT current_queue,pending_engineering_actions,blocked_engineering_actions FROM planning_state"
+        ):
+            if any(json.loads(str(value)) for value in row):
+                raise PeerConfigurationConflict("Forge planning queue is not empty")
+        reset = connection.execute(
+            "SELECT active_operation_id,state FROM operational_reset_state WHERE singleton=1"
+        ).fetchone()
+        if reset is None or reset[0] is not None or reset[1] != "IDLE":
+            raise PeerConfigurationConflict("Forge operational reset maintenance is active")
+
+    def detach(
+        self, *, operation_id: str, instance_id: str, expected_binding_id: str,
+        expected_revision: int, expected_digest: str, operator_id: str,
+        interrupt_after: str | None = None,
+    ) -> dict[str, Any]:
+        """Detach one exact quiescent peer; replay the same request after loss."""
+        if not isinstance(operation_id, str) or _OPERATION_ID.fullmatch(operation_id) is None:
+            raise PeerConfigurationError("detach operation identity is invalid")
+        _identifier(instance_id, "Forge instance identity")
+        _identifier(expected_binding_id, "expected EP binding identity")
+        _identifier(operator_id, "operator identity")
+        if (not isinstance(expected_revision, int) or isinstance(expected_revision, bool)
+                or expected_revision < 1 or not isinstance(expected_digest, str)
+                or _DIGEST.fullmatch(expected_digest) is None):
+            raise PeerConfigurationError("expected EP peer generation is invalid")
+        request = {
+            "contract": "forge-ep-peer-detach/v1", "operation_id": operation_id,
+            "instance_id": instance_id, "expected_binding_id": expected_binding_id,
+            "expected_revision": expected_revision, "expected_digest": expected_digest,
+            "operator_reference": sha256(operator_id.encode()).hexdigest()[:16],
+        }
+        request_digest = "sha256:" + sha256(json.dumps(
+            request, sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest()
+        with self._detach_locks(instance_id):
+            selected = read_peer_configuration(self.data_root, allow_legacy_contract_replacement=True)
+            if selected.runtime_id != instance_id:
+                raise PeerConfigurationConflict("detach target is a different Forge instance")
+            database = self._open_for_configuration()
+            try:
+                if database.runtime_identity.runtime_id != instance_id:
+                    raise PeerConfigurationConflict("detach target is a different Forge instance")
+                connection = database._connection
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    "SELECT runtime_id,request_digest,phase,receipt FROM "
+                    "execution_host_peer_detach_operations WHERE operation_id=?", (operation_id,),
+                ).fetchone()
+                if row is not None:
+                    if row[0] != instance_id or row[1] != request_digest:
+                        raise PeerConfigurationConflict("detach operation identity belongs to another request")
+                    if row[2] == "COMPLETE":
+                        receipt = _verified_detach_receipt(
+                            row[3], operation_id=operation_id, request_digest=request_digest,
+                        )
+                        connection.rollback()
+                        return receipt
+                else:
+                    other = connection.execute(
+                        "SELECT operation_id FROM execution_host_peer_detach_operations "
+                        "WHERE phase='PREPARED' LIMIT 1"
+                    ).fetchone()
+                    if other is not None:
+                        raise PeerConfigurationConflict("another EP peer detach is unfinished")
+                self._require_detach_quiescence(connection)
+                store = EngineeringPlatformPeerConfigurationStore(
+                    connection, instance_id, writable=True,
+                )
+                current = store._stored()
+                if (current is None or current.binding_id != expected_binding_id
+                        or current.revision != expected_revision or current.digest != expected_digest):
+                    raise PeerConfigurationConflict("selected EP peer does not match the expected generation")
+                if row is None:
+                    now = _timestamp()
+                    connection.execute(
+                        "INSERT INTO execution_host_peer_detach_operations VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (operation_id, instance_id, request_digest, expected_binding_id,
+                         expected_revision, expected_digest, "PREPARED", None, now, now),
+                    )
+                    connection.commit()
+                    if interrupt_after == "PREPARED":
+                        raise InterruptedError("detach interrupted after PREPARED")
+                    connection.execute("BEGIN IMMEDIATE")
+                    current = store._stored()
+                    if (current is None or current.binding_id != expected_binding_id
+                            or current.revision != expected_revision or current.digest != expected_digest):
+                        raise PeerConfigurationConflict("selected EP peer changed during detach")
+                    self._require_detach_quiescence(connection)
+                now = _timestamp()
+                receipt = {
+                    **request, "request_digest": request_digest, "state": "COMPLETE",
+                    "local_peer_state": "DETACHED", "remote_consumer_revoke": "NOT_ASSERTED",
+                    "next_configuration_revision": expected_revision + 1,
+                    "completed_at": now,
+                }
+                receipt["receipt_digest"] = "sha256:" + sha256(json.dumps(
+                    receipt, sort_keys=True, separators=(",", ":"),
+                ).encode()).hexdigest()
+                deleted = connection.execute(
+                    "DELETE FROM execution_host_peer_configuration WHERE singleton=1 "
+                    "AND binding_id=? AND configuration_revision=? AND configuration_digest=?",
+                    (expected_binding_id, expected_revision, expected_digest),
+                )
+                if deleted.rowcount != 1:
+                    raise PeerConfigurationConflict("selected EP peer changed during detach")
+                connection.execute(
+                    "UPDATE execution_host_peer_generation SET generation=?,last_digest=? WHERE singleton=1",
+                    (expected_revision, receipt["receipt_digest"]),
+                )
+                connection.execute(
+                    "UPDATE execution_host_peer_detach_operations SET phase='COMPLETE',receipt=?,updated_at=? "
+                    "WHERE operation_id=? AND phase='PREPARED'",
+                    (json.dumps(receipt, sort_keys=True), now, operation_id),
+                )
+                connection.commit()
+                return receipt
+            except Exception:
+                database._connection.rollback()
+                raise
+            finally:
+                database.close()
+
+    def detach_status(self, operation_id: str) -> dict[str, Any]:
+        if not isinstance(operation_id, str) or _OPERATION_ID.fullmatch(operation_id) is None:
+            raise PeerConfigurationError("detach operation identity is invalid")
+        readback = read_peer_configuration(self.data_root)
+        database_path = self.data_root / "forge.db"
+        connection = sqlite3.connect(database_path.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            row = connection.execute(
+                "SELECT runtime_id,request_digest,phase,receipt FROM "
+                "execution_host_peer_detach_operations WHERE operation_id=?", (operation_id,),
+            ).fetchone()
+            if row is None or row[0] != readback.runtime_id:
+                raise PeerConfigurationError("detach operation is absent")
+            result = {
+                "contract": "forge-ep-peer-detach/v1", "operation_id": operation_id,
+                "instance_id": str(row[0]), "request_digest": str(row[1]),
+                "phase": str(row[2]), "current_peer_status": readback.status,
+            }
+            if row[2] == "COMPLETE":
+                result["receipt"] = _verified_detach_receipt(
+                    row[3], operation_id=operation_id, request_digest=str(row[1]),
+                )
+            return result
+        finally:
+            connection.close()
 
     def show(self) -> EngineeringPlatformPeerConfiguration | None:
         readback = read_peer_configuration(self.data_root)

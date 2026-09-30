@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sqlite3
 import subprocess
+import signal
 import sys
 from tempfile import TemporaryDirectory
 import unittest
@@ -23,6 +24,8 @@ from forge.execution_host_configuration import (
 )
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.database import RUNTIME_SCHEMA_VERSION
+from forge.preserved_lifecycle import InstanceLifecycleRequest, InstalledPreserveDispatcher
+from forge.installed_lifecycle import InstalledLifecycleError
 from forge.qualification.installed_smoke import run as installed_smoke
 from forge.scheduler.ep_http_adapter import EngineeringPlatformHttpExecutionHost
 from forge.secure_store import SecretReference, SecretState
@@ -84,6 +87,168 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         values.update(changes)
         return values
 
+    def test_exact_detach_replay_and_guarded_repair_preserve_generation(self) -> None:
+        old = self.service.configure(**self.values())
+        request = {
+            "operation_id": "detach-one", "instance_id": self.runtime_id,
+            "expected_binding_id": old.binding_id,
+            "expected_revision": old.configuration_revision,
+            "expected_digest": old.configuration_digest,
+            "operator_id": "local-admin",
+        }
+        with self.assertRaises(InterruptedError):
+            self.service.detach(**request, interrupt_after="PREPARED")
+        self.assertEqual(self.service.detach_status("detach-one")["phase"], "PREPARED")
+        self.assertEqual(self.service.readback().status, "DETACH_PENDING")
+        with self.assertRaisesRegex(PeerConfigurationError, "DETACH_PENDING"):
+            self.service.factory.from_data_root(self.root)
+        with self.assertRaises(PeerConfigurationConflict):
+            self.service.configure(**self.values(
+                replace=True, expected_revision=1, expected_digest=old.configuration_digest,
+            ))
+        receipt = self.service.detach(**request)
+        self.assertEqual(receipt["state"], "COMPLETE")
+        self.assertEqual(self.service.readback().status, "DETACHED")
+        output = StringIO()
+        with redirect_stdout(output):
+            code = main(["--data-root", str(self.root), "execution-host", "show"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(output.getvalue())["status"], "DETACHED")
+        self.assertEqual(self.service.detach(**request), receipt)
+        with self.assertRaises(PeerConfigurationConflict):
+            self.service.detach(**{**request, "expected_binding_id": "other"})
+        with self.assertRaises(PeerConfigurationConflict):
+            self.service.configure(**self.values(ep_consumer_id="new-consumer"))
+        replacement = self.service.configure(**self.values(
+            ep_consumer_id="new-consumer", replace=True,
+            expected_revision=1, expected_digest=receipt["receipt_digest"],
+        ))
+        self.assertEqual(replacement.configuration_revision, 2)
+        self.assertEqual(self.service.detach(**request), receipt)
+        self.assertEqual(self.service.show(), replacement)
+        with self.assertRaises(PeerConfigurationConflict):
+            self.service.detach(**{**request, "operation_id": "stale-retry"})
+
+    def test_detach_rejects_wrong_instance_and_active_dispatch(self) -> None:
+        old = self.service.configure(**self.values())
+        request = {
+            "operation_id": "detach-two", "instance_id": self.runtime_id,
+            "expected_binding_id": old.binding_id,
+            "expected_revision": 1, "expected_digest": old.configuration_digest,
+            "operator_id": "local-admin",
+        }
+        with self.assertRaises(PeerConfigurationConflict):
+            self.service.detach(**{**request, "instance_id": "foreign-instance"})
+        with sqlite3.connect(self.root / "forge.db") as connection:
+            connection.execute(
+                "INSERT INTO dispatcher_state VALUES (1,'ACTIVE','busy','[]','{}')"
+            )
+        with self.assertRaises(PeerConfigurationConflict):
+            self.service.detach(**request)
+        self.assertEqual(self.service.show(), old)
+
+    def test_detach_refuses_blocked_mission_with_possible_host_effect(self) -> None:
+        old = self.service.configure(**self.values())
+        with sqlite3.connect(self.root / "forge.db") as connection:
+            connection.execute(
+                "INSERT INTO mission_state VALUES (?,?,?,?,?,?,?,?,?)",
+                ("mission-uncertain", "BLOCKED", "BLOCKED", None, None, "{}", "{}", "{}",
+                 json.dumps({"mission_id": "mission-uncertain", "status": "BLOCKED"})),
+            )
+        with self.assertRaisesRegex(PeerConfigurationConflict, "active peer-dependent work"):
+            self.service.detach(
+                operation_id="detach-blocked", instance_id=self.runtime_id,
+                expected_binding_id=old.binding_id,
+                expected_revision=old.configuration_revision,
+                expected_digest=old.configuration_digest, operator_id="local-admin",
+            )
+        self.assertEqual(self.service.show(), old)
+
+    def test_detach_receipt_tampering_fails_readback_and_replay(self) -> None:
+        old = self.service.configure(**self.values())
+        request = {
+            "operation_id": "detach-tamper", "instance_id": self.runtime_id,
+            "expected_binding_id": old.binding_id, "expected_revision": old.configuration_revision,
+            "expected_digest": old.configuration_digest, "operator_id": "local-admin",
+        }
+        receipt = self.service.detach(**request)
+        with sqlite3.connect(self.root / "forge.db") as connection:
+            forged = {**receipt, "remote_consumer_revoke": "ASSERTED"}
+            connection.execute(
+                "UPDATE execution_host_peer_detach_operations SET receipt=? WHERE operation_id=?",
+                (json.dumps(forged), request["operation_id"]),
+            )
+        with self.assertRaisesRegex(PeerConfigurationError, "receipt failed exact verification"):
+            self.service.readback()
+        with self.assertRaisesRegex(PeerConfigurationError, "receipt failed exact verification"):
+            self.service.detach(**request)
+
+    def test_peer_mutation_rejects_symlinked_instance_marker(self) -> None:
+        marker = self.root / "instance" / "runtime-instance.json"
+        target = marker.with_name("runtime-instance-original.json")
+        marker.rename(target)
+        marker.symlink_to(target)
+        with self.assertRaisesRegex(PeerConfigurationError, "unsafe symbolic link"):
+            self.service.readback()
+        with self.assertRaisesRegex(PeerConfigurationError, "unsafe symbolic link"):
+            self.service.configure(**self.values())
+
+    def test_sigkill_after_prepared_resumes_without_second_detach(self) -> None:
+        old = self.service.configure(**self.values())
+        request = {
+            "operation_id": "detach-sigkill", "instance_id": self.runtime_id,
+            "expected_binding_id": old.binding_id, "expected_revision": old.configuration_revision,
+            "expected_digest": old.configuration_digest, "operator_id": "local-admin",
+        }
+        code = (
+            "import os,signal,sys\n"
+            "from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService\n"
+            "try:\n"
+            " EngineeringPlatformPeerConfigurationService(sys.argv[1]).detach("
+            "operation_id=sys.argv[2],instance_id=sys.argv[3],expected_binding_id=sys.argv[4],"
+            "expected_revision=int(sys.argv[5]),expected_digest=sys.argv[6],"
+            "operator_id='local-admin',interrupt_after='PREPARED')\n"
+            "except InterruptedError:\n"
+            " os.kill(os.getpid(),signal.SIGKILL)\n"
+        )
+        child = subprocess.run([
+            sys.executable, "-c", code, str(self.root), request["operation_id"],
+            self.runtime_id, old.binding_id, str(old.configuration_revision), old.configuration_digest,
+        ], cwd=Path(__file__).parents[1], capture_output=True, text=True, check=False)
+        self.assertEqual(child.returncode, -signal.SIGKILL)
+        self.assertEqual(self.service.detach_status(request["operation_id"])["phase"], "PREPARED")
+        receipt = self.service.detach(**request)
+        self.assertEqual(receipt["state"], "COMPLETE")
+        self.assertEqual(self.service.detach(**request), receipt)
+
+    def test_prepared_detach_blocks_preserve_until_exact_resume(self) -> None:
+        old = self.service.configure(**self.values())
+        request = {
+            "operation_id": "detach-preserve", "instance_id": self.runtime_id,
+            "expected_binding_id": old.binding_id, "expected_revision": old.configuration_revision,
+            "expected_digest": old.configuration_digest, "operator_id": "local-admin",
+        }
+        with self.assertRaises(InterruptedError):
+            self.service.detach(**request, interrupt_after="PREPARED")
+        root = self.service.data_root
+        with sqlite3.connect(root / "forge.db") as connection:
+            installation_id = connection.execute(
+                "SELECT value FROM runtime_metadata WHERE key='installation_id'"
+            ).fetchone()[0]
+            installed_version = connection.execute(
+                "SELECT value FROM runtime_metadata WHERE key='forge_version'"
+            ).fetchone()[0]
+        lifecycle = InstanceLifecycleRequest(
+            operation_id="preserve-while-detach", instance_id=self.runtime_id,
+            runtime_id=self.runtime_id, installation_id=installation_id,
+            installed_version=installed_version, installed_source="a" * 40,
+            installed_artifact_digest="sha256:" + "b" * 64,
+            data_root=str(root), instances_root=str(root.parent),
+        )
+        with self.assertRaisesRegex(InstalledLifecycleError, "peer detach is unfinished"):
+            InstalledPreserveDispatcher(lifecycle).run()
+        self.assertEqual(self.service.detach(**request)["state"], "COMPLETE")
+
     def test_packaged_smoke_requires_current_consumer_binding_schema(self) -> None:
         installed_smoke()
 
@@ -126,6 +291,7 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
                 "UPDATE execution_host_peer_configuration SET configuration_digest=?,document=?",
                 (legacy_digest, json.dumps(document, sort_keys=True, separators=(",", ":"))),
             )
+            connection.execute("UPDATE execution_host_peer_generation SET last_digest=?", (legacy_digest,))
         with self.assertRaisesRegex(PeerConfigurationError, "current versions"):
             self.service.show()
         with self.assertRaises(PeerConfigurationConflict):
@@ -165,6 +331,7 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
                 "UPDATE execution_host_peer_configuration SET configuration_digest=?,document=?",
                 (invalid_digest, json.dumps(document, sort_keys=True, separators=(",", ":"))),
             )
+            connection.execute("UPDATE execution_host_peer_generation SET last_digest=?", (invalid_digest,))
         with self.assertRaisesRegex(PeerConfigurationError, "unsupported"):
             self.service.configure(**self.values(
                 replace=True, expected_revision=current.configuration_revision,
@@ -187,6 +354,7 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
                 "UPDATE execution_host_peer_configuration SET configuration_digest=?,document=?",
                 (legacy_digest, json.dumps(document, sort_keys=True, separators=(",", ":"))),
             )
+            connection.execute("UPDATE execution_host_peer_generation SET last_digest=?", (legacy_digest,))
 
         readback = self.service.readback()
         self.assertEqual(readback.status, "CONSUMER_IDENTITY_REQUIRED")
@@ -244,6 +412,7 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
                 "UPDATE execution_host_peer_configuration SET configuration_digest=?,document=?",
                 (legacy_digest, json.dumps(document, sort_keys=True, separators=(",", ":"))),
             )
+            connection.execute("UPDATE execution_host_peer_generation SET last_digest=?", (legacy_digest,))
 
         for changed in (
             {"endpoint": "https://other.test"},
