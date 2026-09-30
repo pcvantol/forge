@@ -161,6 +161,14 @@ FCP-Q. These are product-service dependencies, not dependencies on shipping the
 entire universal installer or Workspace. The original FC data/runtime packages
 and FOC-STATUS/SHELL/FOOTER requirements remain intact.
 
+The product-owned exact-peer lifecycle portion of `FCP-PAIR-CONTRACT` is
+qualified by [the r29 published producer evidence](../operations/FORGE_EP_PAIRING_LIFECYCLE_2026_09_30.md):
+Forge 2.7.39 exposes guarded detach, replacement generation and exact-peer
+readiness; EP 2.3.106's existing consumer route supports a new scoped
+consumer after revocation. The shared installer discovery ceremony, secure
+credential handoff, automatic pairing UX and full `FCP-PAIR-CONTRACT` parent
+remain open for their owning delivery.
+
 The read-only milestone includes the common design, five languages, log query/
 selection/copy/download and true EP binding status. Enabled login, diagnostic
 purge/retention and pairing operations additionally require their owning service
