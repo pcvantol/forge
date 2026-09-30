@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 39
+RUNTIME_SCHEMA_VERSION = 40
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -1852,6 +1852,51 @@ class RuntimeDatabase:
                 self._set_metadata({"schema_version": "39", "migration_version": "39",
                                     "last_migration": "39", "forge_version": forge_version})
                 self._connection.execute("PRAGMA user_version=39")
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
+        elif version == 39:
+            active = self._connection.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()
+            if active is not None and active[0] is not None:
+                raise RuntimeMaintenanceActive("cannot migrate during operational reset maintenance")
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                self._connection.execute(
+                    "CREATE TABLE IF NOT EXISTS execution_host_peer_generation ("
+                    "singleton INTEGER PRIMARY KEY CHECK (singleton = 1),"
+                    "generation INTEGER NOT NULL CHECK (generation >= 0),"
+                    "last_digest TEXT)"
+                )
+                self._connection.execute(
+                    "CREATE TABLE IF NOT EXISTS execution_host_peer_detach_operations ("
+                    "operation_id TEXT PRIMARY KEY,runtime_id TEXT NOT NULL,"
+                    "request_digest TEXT NOT NULL,expected_binding_id TEXT NOT NULL,"
+                    "expected_revision INTEGER NOT NULL,expected_digest TEXT NOT NULL,"
+                    "phase TEXT NOT NULL CHECK (phase IN ('PREPARED', 'COMPLETE')) ,"
+                    "receipt TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)"
+                )
+                current = self._connection.execute(
+                    "SELECT configuration_revision,configuration_digest "
+                    "FROM execution_host_peer_configuration WHERE singleton=1"
+                ).fetchone()
+                self._connection.execute(
+                    "INSERT OR IGNORE INTO execution_host_peer_generation VALUES (1,?,?)",
+                    (0, None) if current is None else (int(current[0]), str(current[1])),
+                )
+                for table in ("execution_host_peer_generation", "execution_host_peer_detach_operations"):
+                    for operation in ("INSERT", "UPDATE", "DELETE"):
+                        self._connection.execute(
+                            f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_{table}_{operation.lower()} "
+                            f"BEFORE {operation} ON {table} "
+                            "WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL "
+                            "BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END"
+                        )
+                self._set_metadata({"schema_version": "40", "migration_version": "40",
+                                    "last_migration": "40", "forge_version": forge_version})
+                self._connection.execute("PRAGMA user_version=40")
                 self._connection.commit()
             except Exception:
                 self._connection.rollback()

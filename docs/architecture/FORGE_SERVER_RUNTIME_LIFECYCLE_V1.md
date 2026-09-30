@@ -7,6 +7,9 @@
 **Contract:** `forge-server-runtime-lifecycle/v1`
 **Baseline:** frozen `FORGE_SERVER_RUNTIME_DEPLOYMENT_CONTRACT` and `forge-installed-update/v1`
 
+The bounded standalone and exact-peer detach extension is specified in
+[Forge EP standalone and pairing lifecycle V1](FORGE_EP_STANDALONE_AND_PAIRING_LIFECYCLE_V1.md).
+
 ## Boundary
 
 Forge publishes three lifecycle decisions that a deployment owner may consume:

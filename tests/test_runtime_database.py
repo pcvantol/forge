@@ -54,7 +54,8 @@ class RuntimeDatabaseTests(unittest.TestCase):
         original_identity = self.database.metadata["runtime_id"]
         self.database.close()
         with sqlite3.connect(path) as connection:
-            # Schemas 38 and 39 intentionally have identical tables/triggers.
+            # Preserve every pre-existing row while the reader advances through
+            # the completion fence and the peer-lifecycle generation fence.
             connection.execute("UPDATE runtime_metadata SET value='38' WHERE key IN ('schema_version','migration_version','last_migration')")
             connection.execute("PRAGMA user_version=38")
             names = [row[0] for row in connection.execute(
@@ -64,7 +65,7 @@ class RuntimeDatabaseTests(unittest.TestCase):
                       for name in names}
             objects = connection.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall()
         self.database = RuntimeDatabase(self.root, forge_version="test-criterion-completion")
-        self.assertEqual(self.database.metadata["schema_version"], "39")
+        self.assertEqual(self.database.metadata["schema_version"], str(RUNTIME_SCHEMA_VERSION))
         self.assertEqual(self.database.metadata["runtime_id"], original_identity)
         self.database.validate_integrity()
         self.assertEqual(self.database.get_document("mission_state", "mission-1")["completion"]["schema_version"], "1.0")

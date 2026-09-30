@@ -239,6 +239,15 @@ def main(argv: list[str] | None = None) -> int:
     configure.add_argument("--expected-digest")
     execution_host_commands.add_parser("show", help="print the persisted secret-free EP peer binding")
     execution_host_commands.add_parser("preflight", help="perform read-only EP identity and v1.2 compatibility checks")
+    detach = execution_host_commands.add_parser("detach", help="durably detach one exact quiescent EP peer")
+    detach.add_argument("--operation-id", required=True)
+    detach.add_argument("--instance-id", required=True)
+    detach.add_argument("--expected-binding-id", required=True)
+    detach.add_argument("--expected-revision", type=int, required=True)
+    detach.add_argument("--expected-digest", required=True)
+    detach.add_argument("--operator-id", required=True)
+    detach_status = execution_host_commands.add_parser("detach-status", help="read one EP peer detach operation")
+    detach_status.add_argument("--operation-id", required=True)
     credential_access = execution_host_commands.add_parser(
         "credential-access",
         help="perform one explicit local Keychain credential-access setup read",
@@ -346,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         try:
             from .preserved_lifecycle import (
+                InstalledLifecycleError,
                 InstalledPreserveDispatcher,
                 InstalledPurgeDispatcher,
                 InstalledRestoreDispatcher,
@@ -518,7 +528,16 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(result.to_safe_dict(), sort_keys=True))
                 return 0 if result.succeeded else 1
             service = EngineeringPlatformPeerConfigurationService(args.data_root)
-            if args.execution_host_command == "configure":
+            if args.execution_host_command == "detach":
+                print(json.dumps(service.detach(
+                    operation_id=args.operation_id, instance_id=args.instance_id,
+                    expected_binding_id=args.expected_binding_id,
+                    expected_revision=args.expected_revision, expected_digest=args.expected_digest,
+                    operator_id=args.operator_id,
+                ), sort_keys=True))
+            elif args.execution_host_command == "detach-status":
+                print(json.dumps(service.detach_status(args.operation_id), sort_keys=True))
+            elif args.execution_host_command == "configure":
                 if args.replace != (args.expected_revision is not None and args.expected_digest is not None):
                     raise PeerConfigurationError(
                         "--replace requires both --expected-revision and --expected-digest; guards are invalid without --replace"
@@ -544,7 +563,7 @@ def main(argv: list[str] | None = None) -> int:
             elif args.execution_host_command == "show":
                 readback = service.readback()
                 if readback.stored_document is None:
-                    print(json.dumps({"status": "NOT_CONFIGURED"}, sort_keys=True))
+                    print(json.dumps({"status": readback.status}, sort_keys=True))
                     return 1
                 print(json.dumps({
                     "status": readback.status,

@@ -67,12 +67,15 @@ SERVER_ROUTE_INVENTORY = (
     ("GET", "/v1/status"),
     ("GET", "/v1/health"),
     ("GET", "/v1/readiness"),
+    ("GET", "/v1/readiness/standalone"),
     ("GET", "/v1/instance"),
     ("GET", "/v1/version"),
     ("GET", "/v1/provider-context"),
     ("POST", "/v1/provider-context"),
     ("GET", "/v1/execution-host/preflight"),
     ("POST", "/v1/execution-host/configure"),
+    ("POST", "/v1/execution-host/detach"),
+    ("GET", "/v1/execution-host/detach/{operation_id}"),
     ("POST", "/v1/missions/inspect"),
     ("POST", "/v1/missions/approve-business"),
     ("POST", "/v1/missions/approve-architecture"),
@@ -352,8 +355,12 @@ class ForgeServerApplicationServices:
         provider = self.provider_readiness()
         try:
             peer = read_peer_configuration(self.root)
-            peer_ready = peer.configuration is not None and peer.status == "CURRENT"
             peer_state = peer.status
+            peer_ready = False
+            if peer.configuration is not None:
+                preflight = self.execution_host_preflight()
+                peer_ready = preflight.get("status") == "PASS"
+                peer_state = "CURRENT" if peer_ready else "NOT_READY"
         except PeerConfigurationError as error:
             peer_ready, peer_state = False, "ERROR:" + str(error)
         scheduler = self.state.document()["scheduler"]
@@ -365,6 +372,26 @@ class ForgeServerApplicationServices:
             "execution_host_peer": {"ready": peer_ready, "state": peer_state},
             "scheduler": scheduler,
             "instance_id": existing_instance(self.root).instance_id,
+        }
+
+    def standalone_readiness(self) -> dict[str, Any]:
+        """Opt-in service readiness for an instance with no selected EP peer.
+
+        The legacy endpoint retains its peer-required meaning. A configured,
+        stale or malformed peer never qualifies for this standalone projection.
+        """
+        strict = self.readiness()
+        peer = strict["execution_host_peer"]
+        standalone = peer["state"] == "NOT_CONFIGURED"
+        scheduler_ready = strict["scheduler"].get("state") in {"READY", "IDLE"}
+        service_ready = bool(strict["provider"].get("ready")) and scheduler_ready and standalone
+        return {
+            **strict,
+            "contract_version": "forge-server-standalone-readiness/v1",
+            "ready": service_ready,
+            "service_ready": service_ready,
+            "execution_ready": False,
+            "mode": "STANDALONE" if standalone else "PEER_REQUIRED",
         }
 
     def execution_host_preflight(self) -> dict[str, Any]:
@@ -384,19 +411,30 @@ class ForgeServerApplicationServices:
         expected_revision, expected_digest = document["expected_revision"], document["expected_digest"]
         if bool(replace) != (expected_revision is not None and expected_digest is not None):
             raise ValueError("guarded replacement fields are inconsistent")
-        with RuntimeServiceLock(self.root / "forge.db").acquire():
-            configured = service.configure(
-                binding_id=document["binding_id"], endpoint=document["endpoint"],
-                expected_ep_instance_id=document["expected_instance_id"],
-                ep_consumer_id=document["consumer_id"],
-                execution_host_id=document["host_id"], ep_project_id=document["project_id"],
-                ep_repository_id=document["repository_id"], repository_identity=document["repository_identity"],
-                credential_reference=SecretReference.parse(document["credential_reference"]),
-                operator_id=document["operator_id"], timeout_seconds=document["timeout_seconds"],
-                allow_loopback_http=bool(document["allow_loopback_http"]),
-                replace=bool(replace), expected_revision=expected_revision, expected_digest=expected_digest,
-            )
+        configured = service.configure(
+            binding_id=document["binding_id"], endpoint=document["endpoint"],
+            expected_ep_instance_id=document["expected_instance_id"],
+            ep_consumer_id=document["consumer_id"],
+            execution_host_id=document["host_id"], ep_project_id=document["project_id"],
+            ep_repository_id=document["repository_id"], repository_identity=document["repository_identity"],
+            credential_reference=SecretReference.parse(document["credential_reference"]),
+            operator_id=document["operator_id"], timeout_seconds=document["timeout_seconds"],
+            allow_loopback_http=bool(document["allow_loopback_http"]),
+            replace=bool(replace), expected_revision=expected_revision, expected_digest=expected_digest,
+        )
         return configured.to_dict()
+
+    def detach_execution_host(self, document: Mapping[str, Any]) -> dict[str, Any]:
+        required = {
+            "operation_id", "instance_id", "expected_binding_id",
+            "expected_revision", "expected_digest", "operator_id",
+        }
+        if set(document) != required:
+            raise ValueError("execution-host detach request shape is invalid")
+        return EngineeringPlatformPeerConfigurationService(self.root).detach(**document)
+
+    def detach_execution_host_status(self, operation_id: str) -> dict[str, Any]:
+        return EngineeringPlatformPeerConfigurationService(self.root).detach_status(operation_id)
 
     def configure_provider_context(self, document: Mapping[str, Any]) -> dict[str, Any]:
         required = {
@@ -495,6 +533,9 @@ class ForgeServerAPI:
             if method == "GET" and path == "/v1/readiness":
                 value = self.services.readiness()
                 return APIResponse(200 if value["ready"] else 503, value, headers)
+            if method == "GET" and path == "/v1/readiness/standalone":
+                value = self.services.standalone_readiness()
+                return APIResponse(200 if value["ready"] else 503, value, headers)
             if method == "GET" and path == "/v1/version":
                 instance = existing_instance(self.services.root)
                 return APIResponse(200, {
@@ -512,6 +553,11 @@ class ForgeServerAPI:
                 return APIResponse(200, self.services.configure_provider_context(body or {}), headers)
             if method == "POST" and path == "/v1/execution-host/configure":
                 return APIResponse(200, self.services.configure_execution_host(body or {}), headers)
+            if method == "POST" and path == "/v1/execution-host/detach":
+                return APIResponse(200, self.services.detach_execution_host(body or {}), headers)
+            if method == "GET" and path.startswith("/v1/execution-host/detach/"):
+                operation_id = unquote(path.removeprefix("/v1/execution-host/detach/"))
+                return APIResponse(200, self.services.detach_execution_host_status(operation_id), headers)
             if method == "POST" and path in {
                 "/v1/missions/inspect", "/v1/missions/approve-business",
                 "/v1/missions/approve-architecture", "/v1/missions/admit",

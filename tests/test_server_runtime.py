@@ -7,9 +7,12 @@ import socket
 import subprocess
 import sys
 import time
+from threading import Thread
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.provider_security import (
@@ -19,6 +22,8 @@ from forge.provider_security import (
     ProviderAuthenticationMode,
 )
 from forge.runtime import RuntimeBootstrap
+from forge.runtime.database import RUNTIME_SCHEMA_VERSION
+from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
 from forge.server_runtime import (
     ForgeServerRuntime,
     ForgeServerRuntimeError,
@@ -26,6 +31,7 @@ from forge.server_runtime import (
     existing_instance,
 )
 from forge.secure_store import SecretState
+from forge.secure_store import SecretReference
 
 
 class _Store:
@@ -108,8 +114,207 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                 denied = server.api.handle("GET", "/v1/version", None)
                 accepted = server.api.handle("GET", "/v1/version", "Bearer server-test-credential")
                 self.assertEqual((denied.status, accepted.status), (401, 200))
-                self.assertEqual(accepted.body["storage_schema"], 39)
+                self.assertEqual(accepted.body["storage_schema"], RUNTIME_SCHEMA_VERSION)
                 self.assertEqual(accepted.body["instance_id"], existing_instance(root).instance_id)
+            finally:
+                server.server.server_close()
+
+    def test_explicit_standalone_readiness_does_not_authorize_ep_execution(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "standalone")
+            server = ForgeServerRuntime(
+                data_root=root, credential_file=self._credential(root),
+                host="127.0.0.1", port=0,
+            )
+            try:
+                server.state.scheduler("READY")
+                with patch.object(server.services, "provider_readiness", return_value={
+                    "state": "READY", "ready": True,
+                }):
+                    strict = server.api.handle("GET", "/v1/readiness", "Bearer server-test-credential")
+                    standalone = server.api.handle(
+                        "GET", "/v1/readiness/standalone", "Bearer server-test-credential",
+                    )
+                self.assertEqual(strict.status, 503)
+                self.assertEqual(standalone.status, 200)
+                self.assertTrue(standalone.body["service_ready"])
+                self.assertFalse(standalone.body["execution_ready"])
+                self.assertEqual(standalone.body["mode"], "STANDALONE")
+                self.assertEqual(standalone.body["execution_host_peer"]["state"], "NOT_CONFIGURED")
+            finally:
+                server.server.server_close()
+
+    def test_detached_peer_does_not_become_standalone_implicitly(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "detached")
+            service = EngineeringPlatformPeerConfigurationService(root)
+            old = service.configure(
+                binding_id="ep", endpoint="https://ep.test", expected_ep_instance_id="ep-instance",
+                ep_consumer_id="consumer-old", execution_host_id="ep-host", ep_project_id="project",
+                ep_repository_id="repository", repository_identity="forge-repository",
+                credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+                operator_id="operator",
+            )
+            instance = existing_instance(root).instance_id
+            service.detach(
+                operation_id="detach-test", instance_id=instance, expected_binding_id=old.binding_id,
+                expected_revision=old.configuration_revision, expected_digest=old.configuration_digest,
+                operator_id="operator",
+            )
+            server = ForgeServerRuntime(
+                data_root=root, credential_file=self._credential(root), host="127.0.0.1", port=0,
+            )
+            try:
+                server.state.scheduler("READY")
+                with patch.object(server.services, "provider_readiness", return_value={"ready": True}):
+                    response = server.api.handle(
+                        "GET", "/v1/readiness/standalone", "Bearer server-test-credential",
+                    )
+                self.assertEqual(response.status, 503)
+                self.assertFalse(response.body["service_ready"])
+                self.assertEqual(response.body["execution_host_peer"]["state"], "DETACHED")
+                self.assertEqual(response.body["mode"], "PEER_REQUIRED")
+            finally:
+                server.server.server_close()
+
+    def test_http_peer_configuration_detach_and_status_are_exactly_bound(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "peer-http")
+            server = ForgeServerRuntime(
+                data_root=root, credential_file=self._credential(root), host="127.0.0.1", port=0,
+            )
+            authorization = "Bearer server-test-credential"
+            configure = {
+                "binding_id": "ep", "endpoint": "https://ep.test", "expected_instance_id": "ep-instance",
+                "consumer_id": "consumer-old", "host_id": "ep-host", "project_id": "project",
+                "repository_id": "repository", "repository_identity": "forge-repository",
+                "credential_reference": "keychain://forge.ep/consumer", "operator_id": "operator",
+                "timeout_seconds": 10.0, "allow_loopback_http": False,
+                "replace": False, "expected_revision": None, "expected_digest": None,
+            }
+            try:
+                created = server.api.handle("POST", "/v1/execution-host/configure", authorization, configure)
+                self.assertEqual(created.status, 200)
+                self.assertEqual(created.body["ep_consumer_id"], "consumer-old")
+                self.assertEqual(server.api.handle(
+                    "GET", "/v1/readiness/standalone", authorization,
+                ).status, 503)
+                self.assertEqual(server.api.handle(
+                    "GET", "/v1/execution-host/preflight", authorization,
+                ).status, 409)
+                detached_request = {
+                    "operation_id": "peer-http-detach", "instance_id": existing_instance(root).instance_id,
+                    "expected_binding_id": "ep", "expected_revision": 1,
+                    "expected_digest": created.body["configuration_digest"], "operator_id": "operator",
+                }
+                self.assertEqual(server.api.handle(
+                    "POST", "/v1/execution-host/detach", None, detached_request,
+                ).status, 401)
+                detached = server.api.handle(
+                    "POST", "/v1/execution-host/detach", authorization, detached_request,
+                )
+                self.assertEqual(detached.status, 200)
+                self.assertEqual(detached.body["remote_consumer_revoke"], "NOT_ASSERTED")
+                self.assertEqual(server.api.handle(
+                    "GET", "/v1/execution-host/detach/peer-http-detach", authorization,
+                ).body["phase"], "COMPLETE")
+                self.assertEqual(server.api.handle(
+                    "POST", "/v1/execution-host/detach", authorization,
+                    {**detached_request, "expected_binding_id": "other"},
+                ).status, 409)
+                repaired = server.api.handle(
+                    "POST", "/v1/execution-host/configure", authorization,
+                    {**configure, "consumer_id": "consumer-new", "replace": True,
+                     "expected_revision": 1, "expected_digest": detached.body["receipt_digest"]},
+                )
+                self.assertEqual(repaired.status, 200)
+                self.assertEqual(repaired.body["configuration_revision"], 2)
+                self.assertEqual(server.api.handle(
+                    "POST", "/v1/execution-host/detach", authorization, detached_request,
+                ).body, detached.body)
+            finally:
+                server.server.server_close()
+
+    def test_http_transport_rejects_malformed_json_and_preserves_admin_routes(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "transport")
+            server = ForgeServerRuntime(
+                data_root=root, credential_file=self._credential(root), host="127.0.0.1", port=0,
+            )
+            authorization = "Bearer server-test-credential"
+            thread = Thread(target=server.server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                for payload in (b"{broken", b"[1,2]"):
+                    request = Request(
+                        f"http://127.0.0.1:{server.server.server_port}/v1/execution-host/detach",
+                        data=payload, method="POST", headers={"Authorization": authorization},
+                    )
+                    with self.assertRaises(HTTPError) as caught:
+                        urlopen(request, timeout=2)
+                    self.assertEqual(caught.exception.code, 400)
+                    self.assertEqual(json.loads(caught.exception.read())["error"]["code"], "REQUEST_INVALID")
+                    caught.exception.close()
+                with patch.object(server.services, "mission_document", return_value={"status": "VALID"}) as mission:
+                    for operation in ("inspect", "approve-business", "approve-architecture", "admit"):
+                        result = server.api.handle(
+                            "POST", "/v1/missions/" + operation, authorization, {"id": "test"},
+                        )
+                        self.assertEqual(result.status, 200)
+                    self.assertEqual(mission.call_count, 4)
+                with patch.object(server.services, "mission_start", return_value={"status": "COMPLETED"}) as start:
+                    path = "/v1/missions/mission-1/controller/start"
+                    self.assertEqual(server.api.handle("POST", path, authorization, {}).status, 409)
+                    self.assertEqual(server.api.handle(
+                        "POST", path, authorization, {"repository_truth": {"id": "truth"}},
+                    ).status, 200)
+                    start.assert_called_once()
+                with patch.object(server.services, "mission_reopen", return_value={"status": "COMPLETED"}):
+                    self.assertEqual(server.api.handle(
+                        "POST", "/v1/missions/mission-1/controller/reopen", authorization,
+                    ).status, 200)
+                with patch.object(server.services, "configure_provider_context", return_value={"state": "BOUND"}):
+                    self.assertEqual(server.api.handle(
+                        "POST", "/v1/provider-context", authorization, {},
+                    ).status, 200)
+                self.assertEqual(server.api.handle("GET", "/v1/absent", authorization).status, 404)
+            finally:
+                server.server.shutdown()
+                server.server.server_close()
+                thread.join(timeout=2)
+
+    def test_mission_document_transport_uses_private_one_request_file(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "mission-document")
+            server = ForgeServerRuntime(
+                data_root=root, credential_file=self._credential(root), host="127.0.0.1", port=0,
+            )
+            seen = []
+
+            def inspect(path):
+                request = Path(path)
+                seen.append((json.loads(request.read_text()), request.stat().st_mode & 0o777, request))
+                return {"status": "VALID"}
+
+            def approve(_root, path, role):
+                inspect(path)
+                return {"status": role}
+
+            def admit(_root, path):
+                inspect(path)
+                return {"status": "ADMITTED"}
+
+            try:
+                with (patch("forge.server_runtime.mission_inspect", side_effect=inspect),
+                      patch("forge.server_runtime.mission_approve", side_effect=approve),
+                      patch("forge.server_runtime.mission_admit", side_effect=admit)):
+                    for operation in ("inspect", "approve-business", "approve-architecture", "admit"):
+                        self.assertIn("status", server.services.mission_document(operation, {"case": operation}))
+                    with self.assertRaisesRegex(ValueError, "unsupported Mission"):
+                        server.services.mission_document("unknown", {})
+                self.assertEqual(len(seen), 4)
+                self.assertTrue(all(mode == 0o600 and body["case"] for body, mode, _ in seen))
+                self.assertTrue(all(not path.exists() for _, _, path in seen))
             finally:
                 server.server.server_close()
 
@@ -154,7 +359,7 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                     except OSError:
                         time.sleep(0.05)
                 self.assertIsNotNone(response, process.stderr.read() if process.poll() is not None else "")
-                self.assertEqual(response["storage_schema"], 39)
+                self.assertEqual(response["storage_schema"], RUNTIME_SCHEMA_VERSION)
                 process.terminate()
                 process.communicate(timeout=8)
                 self.assertEqual(process.returncode, 0)

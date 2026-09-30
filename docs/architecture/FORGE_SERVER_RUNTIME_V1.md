@@ -11,6 +11,9 @@ Forge Server is the long-running product composition of existing Forge applicati
 
 The Server refuses to invent an instance. `server run` requires an explicitly selected, already initialized, current-schema data root. Runtime identity is the existing opaque instance ID. Locks, database, logs, provider context, peer binding and endpoints are scoped to that data root. There is no machine-global Server singleton.
 
+The opt-in standalone readiness and exact EP-peer detach/re-pair extension is
+defined in [Forge EP standalone and pairing lifecycle V1](FORGE_EP_STANDALONE_AND_PAIRING_LIFECYCLE_V1.md).
+
 The V1 network listener is deliberately IPv4 loopback-only. Remote human access belongs to the separately planned Forge relay/Tailnet surface. This keeps the Server transport production-bounded without inventing an unaudited public-TLS edge.
 
 ## Process composition
