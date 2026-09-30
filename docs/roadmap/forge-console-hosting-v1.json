@@ -104,6 +104,24 @@
     ]
   },
   "implemented_subsets": {
+    "forge_server_standalone_and_pairing_lifecycle": {
+      "node_subset": "FSH-SERVICES/server-only installed lifecycle",
+      "assignment": "L2-PRODUCER-STANDALONE-AND-PAIRING-LIFECYCLE-V1-20260930",
+      "status": "QUALIFIED",
+      "contracts": ["forge-server-standalone-readiness/v1", "forge-ep-peer-detach/v1", "forge-installed-update/v1"],
+      "target_release": "forge-v2.7.39",
+      "target_source": "ebc43dc12da27353f85c991a26da9852aa790f05",
+      "target_wheel_sha256": "b62bf5f7a1d937f5224ef941a3dea3e961d28b67d9206fd89b644153aea502f1",
+      "release_complete_receipt_sha256": "078a9f09f048cbd1fd36c4d5f83a5739dfeb3c3a546ba94bb1148596135ba15f",
+      "controller_source": "ebc43dc12da27353f85c991a26da9852aa790f05",
+      "controller_sha256": "84bac133849c539a2bfae662234be93c3cd6583e841cae34eb27f3b21728fb87",
+      "schema_transition": "39_to_40",
+      "qualification_evidence": "docs/operations/FORGE_EP_PAIRING_LIFECYCLE_2026_09_30.md",
+      "requires_protected_merge": true,
+      "requires_release_inclusion": true,
+      "requires_published_artifact_qualification": true,
+      "completes_parent_node": false
+    },
     "forge_server_process_crash": {
       "node_subset": "FSH-SERVICES/server-only installed lifecycle",
       "assignment": "L2-PRODUCER-CRASH-RECOVERY-V1-20260929",

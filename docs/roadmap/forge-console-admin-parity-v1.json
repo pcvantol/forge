@@ -71,6 +71,20 @@
     "separate_hosts_required": true,
     "full_installer_required": false
   },
+  "implemented_subsets": {
+    "forge_ep_peer_lifecycle_producer": {
+      "node_subset": "FCP-PAIR-CONTRACT/product-owned exact-peer lifecycle",
+      "assignment": "L2-PRODUCER-STANDALONE-AND-PAIRING-LIFECYCLE-V1-20260930",
+      "status": "QUALIFIED",
+      "forge_release": "forge-v2.7.39",
+      "forge_source": "ebc43dc12da27353f85c991a26da9852aa790f05",
+      "ep_runtime_version": "2.3.106",
+      "ep_conformance_merge": "1f1fe0799eec1525ba113657e4c0bdc82b573e29",
+      "qualification_evidence": "docs/operations/FORGE_EP_PAIRING_LIFECYCLE_2026_09_30.md",
+      "completes_parent_node": false,
+      "completes_installer_or_pairing_ux": false
+    }
+  },
   "quality": {
     "ep_observed_python_aggregate_minimum": 80.0,
     "ep_observed_python_per_module_minimum": 80.2,
