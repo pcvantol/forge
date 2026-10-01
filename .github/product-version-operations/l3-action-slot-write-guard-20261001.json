@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.44",
+  "classification_rationale": "L3-FORGE-ACTION-SLOT-WRITE-GUARD-V1-20261001",
+  "component": "product",
+  "event_lineage": "L3-FORGE-ACTION-SLOT-WRITE-GUARD-V1-20261001",
+  "expected_head": "88a3f666cee551a7bed26d09df13ee9af62dc7d1",
+  "operation_id": "l3-action-slot-write-guard-20261001",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.45"
+}

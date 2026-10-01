@@ -2199,13 +2199,20 @@ class RuntimeDatabase:
             stored_actions = state.get("actions")
             if (not isinstance(stored_actions, list)
                     or len(stored_actions) != len(normalized["actions"])
-                    or {action.get("id") for action in stored_actions if isinstance(action, dict)}
+                    or any(not isinstance(action, dict) or not isinstance(action.get("id"), str)
+                           for action in stored_actions)
+                    or len({action["id"] for action in stored_actions}) != len(stored_actions)
+                    or {action["id"] for action in stored_actions}
                     != {action["action_id"] for action in normalized["actions"]}):
                 raise RuntimeDatabaseError("Action slots must match the current Mission Action set")
             proposed = {action["action_id"]: action for action in normalized["actions"]}
             for action in stored_actions:
                 predecessors = action.get("dependencies")
                 if (not isinstance(predecessors, list)
+                        or any(not isinstance(item, str) for item in predecessors)
+                        or len(set(predecessors)) != len(predecessors)
+                        or action["id"] in predecessors
+                        or any(item not in proposed for item in predecessors)
                         or set(predecessors) != {
                             edge["predecessor_action_id"] for edge in proposed[action["id"]]["dependencies"]
                         }):
