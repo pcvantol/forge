@@ -2181,8 +2181,6 @@ class RuntimeDatabase:
         normalized = validate_peer_graph(graph)
         mission_id = normalized["mission_id"]
         revision = normalized["mission_revision"]
-        encoded = self._dump(normalized)
-        digest = "sha256:" + sha256(encoded.encode("utf-8")).hexdigest()
         self._reject_reset_retired_identity("mission_id", mission_id)
         with self._connection:
             self._connection.execute("BEGIN IMMEDIATE")
@@ -2214,9 +2212,14 @@ class RuntimeDatabase:
                     raise RuntimeDatabaseError("Action slot predecessors must match the stored Mission graph")
             scope = mission.get("scope")
             if (not isinstance(scope, list) or not scope
+                    or any(not isinstance(item, str) for item in scope)
+                    or len(set(scope)) != len(scope)
                     or any(action["target"]["repository_id"] not in scope
                            for action in normalized["actions"])):
                 raise RuntimeDatabaseError("Action slot target is outside the approved Mission scope")
+            normalized["approved_scope"] = sorted(scope)
+            encoded = self._dump(normalized)
+            digest = "sha256:" + sha256(encoded.encode("utf-8")).hexdigest()
             previous = self._connection.execute(
                 "SELECT document_digest,document FROM mission_action_slot_snapshots "
                 "WHERE mission_id=? AND mission_revision=?", (mission_id, revision)

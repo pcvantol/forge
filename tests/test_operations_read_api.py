@@ -273,6 +273,48 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                          "MULTIPLE_IN_FLIGHT_ACTIONS")
         self.assertNotIn("action_id", ambiguous.body["mission"]["serial_correlation"])
 
+    def test_same_revision_action_slot_graph_drift_fails_closed(self) -> None:
+        self.create_mission()
+        self.database.record_mission_action_slots(self._slot_graph())
+        original = self.database.get_document("mission_state", "MISSION-0042")
+        current = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(current.body["mission"]["planning_slots"]["freshness"], "CURRENT")
+        for change in ("edge", "duplicate_edge", "action", "scope", "scope_expansion",
+                       "duplicate_scope", "malformed_scope", "malformed_edge", "approval"):
+            with self.subTest(change=change):
+                state = json.loads(json.dumps(original))
+                if change == "edge":
+                    state["actions"][1]["dependencies"] = []
+                elif change == "duplicate_edge":
+                    state["actions"][1]["dependencies"] *= 2
+                elif change == "action":
+                    state["actions"].pop()
+                elif change == "scope":
+                    state["mission"]["scope"] = ["other-repository"]
+                elif change == "scope_expansion":
+                    state["mission"]["scope"].append("other-repository")
+                elif change == "duplicate_scope":
+                    state["mission"]["scope"].append("forge-repository")
+                elif change == "malformed_scope":
+                    state["mission"]["scope"] = [{"repository_id": "forge-repository"}]
+                elif change == "malformed_edge":
+                    state["actions"][1]["dependencies"] = [{"action_id": "ACTION-0042-A"}]
+                else:
+                    state["mission"]["status"] = "architecture_review"
+                self.database.save_mission_state(state)
+                before = self.snapshot()
+                response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+                self.assertEqual(response.status, 409)
+                self.assertEqual(response.body["error"]["code"], "MISSION_ACTION_SLOTS_DRIFT")
+                self.assertNotIn("planning_slots", json.dumps(response.body))
+                self.assertEqual(self.snapshot(), before)
+        later = json.loads(json.dumps(original))
+        later["revision"] = 2
+        self.database.save_mission_state(later)
+        stale = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(stale.status, 200)
+        self.assertEqual(stale.body["mission"]["planning_slots"]["freshness"], "STALE")
+
     @staticmethod
     def _slot_graph() -> dict:
         return {
