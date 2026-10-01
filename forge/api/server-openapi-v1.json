@@ -289,7 +289,7 @@
     },
     "/v1/missions/{mission_id}": {
       "get": {
-        "summary": "Read Mission lifecycle and evidence lineage",
+        "summary": "Read Mission lifecycle, evidence lineage and non-dispatchable Action frontier",
         "responses": {
           "200": {
             "description": "Accepted JSON response"

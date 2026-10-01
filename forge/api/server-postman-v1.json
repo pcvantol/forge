@@ -344,7 +344,7 @@
       }
     },
     {
-      "name": "Read Mission lifecycle and evidence lineage",
+      "name": "Read Mission lifecycle, evidence lineage and non-dispatchable Action frontier",
       "request": {
         "method": "GET",
         "header": [],
