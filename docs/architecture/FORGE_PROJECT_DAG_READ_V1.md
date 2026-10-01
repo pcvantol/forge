@@ -17,3 +17,13 @@ approved-pending and history do not. A multiple-active observation remains
 fully visible while explicitly marking the current serial Mission runtime's
 unsupported cardinality. These fields do not prove project membership,
 execution overlap or parallel capability, and reading them changes no state.
+
+Project-roadmap `freshness` now comes from the persisted Mission state timelines,
+never from the runtime's most recent open. Each repository-scoped Mission shows
+its latest recorded transition as `source_observed_at` and its own
+`CURRENT`/`STALE`/`UNKNOWN` classification against one read clock. The aggregate
+`source_observed_at` is the oldest of those latest transitions; any missing or
+malformed timeline makes aggregate freshness `UNKNOWN`. An empty repository
+also reports `UNKNOWN`. A future timestamp reports `STALE`, including when
+another Mission has a current transition. This is the age of recorded Mission
+state, not a host liveness, Project membership or execution-readiness claim.

@@ -85,6 +85,16 @@ def _freshness(observed_at: object, *, now: datetime, stale_after: timedelta) ->
     return "STALE" if age < timedelta(0) or age > stale_after else "CURRENT"
 
 
+def _last_recorded_mission_transition(state: Any) -> str | None:
+    """Use the persisted Mission timeline, never the runtime's reopen time."""
+    history = state.state_history
+    if not history or any(not isinstance(item, Mapping) or _parse_time(item.get("occurred_at")) is None
+                          for item in history):
+        return None
+    return max((item["occurred_at"] for item in history),
+               key=lambda item: _parse_time(item) or datetime.min.replace(tzinfo=UTC))
+
+
 def _redact(value: Any) -> Any:
     """Return a JSON-compatible projection with credential-shaped data removed."""
     if isinstance(value, Mapping):
@@ -397,11 +407,7 @@ class InstalledOperationsReadService:
                 "dispatch_authorized": False,
                 "actions": actions,
             }
-        times = [item.get("occurred_at") for item in state.state_history if isinstance(item, Mapping)]
-        valid_times = [item for item in times if _parse_time(item) is not None]
-        observed_at = max(
-            valid_times, key=lambda item: _parse_time(item) or datetime.min.replace(tzinfo=UTC),
-        ) if valid_times else None
+        observed_at = _last_recorded_mission_transition(state)
         projection.update({
             "criteria": [_safe_text(item) for item in state.mission.get("acceptance_criteria", ())],
             "actions": [_project_action(item) for item in state.actions],
@@ -464,6 +470,8 @@ class InstalledOperationsReadService:
             if len(rows) > 256:
                 raise OperationsProjectionError("PROJECT_TOO_LARGE", "Project projection exceeds the bounded read limit", status=503)
             missions: list[dict[str, Any]] = []
+            mission_observations: list[str | None] = []
+            now = self.clock()
             for (mission_id,) in rows:
                 projection, state = mission_status_projection(connection, mission_id)
                 if state.mission_id != mission_id or state.mission.get("id") != mission_id:
@@ -498,12 +506,27 @@ class InstalledOperationsReadService:
                 status = str(projection["status"])
                 group = ("APPROVED_PENDING" if status == "APPROVED_PLANNABLE" else
                          "HISTORY" if status in {"COMPLETED", "ARCHIVED"} else "ACTIVE")
+                observed_at = _last_recorded_mission_transition(state)
+                mission_observations.append(observed_at)
                 missions.append({
                     "mission_id": mission_id, "group": group, "status": status,
                     "revision": projection["revision"],
+                    "source_observed_at": observed_at,
+                    "freshness": _freshness(observed_at, now=now, stale_after=self.stale_after),
                     "actions": [{key: item[key] for key in ("id", "status", "dependencies") if key in item}
                                 for item in actions],
                 })
+            complete_observations = bool(mission_observations) and all(
+                item is not None for item in mission_observations
+            )
+            source_observed_at = (
+                min(mission_observations, key=lambda item: _parse_time(item) or datetime.max.replace(tzinfo=UTC))
+                if complete_observations else None
+            )
+            freshness = (
+                "UNKNOWN" if not complete_observations else
+                "STALE" if any(item["freshness"] == "STALE" for item in missions) else "CURRENT"
+            )
             active_mission_ids = [item["mission_id"] for item in missions if item["group"] == "ACTIVE"]
             active_multiplicity = (
                 "NONE" if not active_mission_ids else
@@ -516,7 +539,8 @@ class InstalledOperationsReadService:
                 "project_id": project_id,
                 "repository_id": binding.ep_repository_id,
                 "availability": "AVAILABLE",
-                "freshness": _freshness(metadata.get("last_access_at"), now=self.clock(), stale_after=self.stale_after),
+                "freshness": freshness,
+                "source_observed_at": source_observed_at,
                 "graph_kind": "REPOSITORY_MISSION_ACTION_SUBSET",
                 "project_mission_attribution": "UNAVAILABLE",
                 "project_capability_graph": "UNAVAILABLE",
