@@ -158,6 +158,38 @@ def _project_action(document: object) -> dict[str, Any]:
     return projected
 
 
+def _planning_slots_match_current_mission(document: Mapping[str, Any], state: Any) -> bool:
+    """Never label a pinned proposal current after same-revision graph drift."""
+    mission = state.mission
+    if (not isinstance(mission, Mapping)
+            or mission.get("status") != "approved_for_engineering"
+            or not isinstance(mission.get("scope"), list)
+            or any(not isinstance(item, str) for item in mission["scope"])
+            or len(set(mission["scope"])) != len(mission["scope"])
+            or document.get("approved_scope") != sorted(mission["scope"])):
+        return False
+    scope = set(mission["scope"])
+    actions = state.actions
+    proposed = document["actions"]
+    if (len(actions) != len(proposed)
+            or any(not isinstance(item, Mapping) or not isinstance(item.get("id"), str)
+                   for item in actions)
+            or len({item["id"] for item in actions}) != len(actions)
+            or {item["id"] for item in actions} != {item["action_id"] for item in proposed}):
+        return False
+    by_id = {item["action_id"]: item for item in proposed}
+    for action in actions:
+        dependencies = action.get("dependencies")
+        if (not isinstance(dependencies, (list, tuple))
+                or any(not isinstance(item, str) for item in dependencies)
+                or len(set(dependencies)) != len(dependencies)
+                or set(dependencies) != {
+                    edge["predecessor_action_id"] for edge in by_id[action["id"]]["dependencies"]
+                }):
+            return False
+    return all(item["target"]["repository_id"] in scope for item in proposed)
+
+
 def _project_assessment(document: object) -> dict[str, Any] | None:
     if not isinstance(document, Mapping):
         return None
@@ -258,16 +290,25 @@ class InstalledOperationsReadService:
                 document = None
             try:
                 validated = validate_peer_graph({key: value for key, value in document.items()
-                                                 if key != "dispatch_authorized"}) if isinstance(document, dict) else None
+                                                 if key not in {"dispatch_authorized", "approved_scope"}}) if isinstance(document, dict) else None
             except ParallelActionContractError:
                 validated = None
             if (slot_row[1] != expected_digest or not isinstance(document, dict)
-                    or document != validated
+                    or {key: value for key, value in document.items() if key != "approved_scope"} != validated
+                    or ("approved_scope" in document and
+                        (not isinstance(document["approved_scope"], list)
+                         or any(not isinstance(item, str) for item in document["approved_scope"])
+                         or document["approved_scope"] != sorted(set(document["approved_scope"]))))
                     or document.get("mission_id") != mission_id
                     or document.get("mission_revision") != slot_row[0]
                     or document.get("dispatch_authorized") is not False):
                 raise OperationsProjectionError(
                     "MISSION_ACTION_SLOTS_INVALID", "Mission Action slots are inconsistent", status=409,
+                )
+            if (slot_row[0] == state.revision
+                    and not _planning_slots_match_current_mission(document, state)):
+                raise OperationsProjectionError(
+                    "MISSION_ACTION_SLOTS_DRIFT", "Mission Action slots no longer match the Mission", status=409,
                 )
             planning_slots = {
                 "contract_version": document.get("contract_version"),

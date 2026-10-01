@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.43",
+  "classification_rationale": "L3-FORGE-ACTION-SLOT-DRIFT-GUARD-V1-20261001",
+  "component": "product",
+  "event_lineage": "L3-FORGE-ACTION-SLOT-DRIFT-GUARD-V1-20261001",
+  "expected_head": "d7537bff691e84e121db40fe3c1fb97cb864f57b",
+  "operation_id": "l3-action-slot-drift-guard-20261001",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.44"
+}
