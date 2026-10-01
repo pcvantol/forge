@@ -504,6 +504,11 @@ class InstalledOperationsReadService:
                     "actions": [{key: item[key] for key in ("id", "status", "dependencies") if key in item}
                                 for item in actions],
                 })
+            active_mission_ids = [item["mission_id"] for item in missions if item["group"] == "ACTIVE"]
+            active_multiplicity = (
+                "NONE" if not active_mission_ids else
+                "SINGLE" if len(active_mission_ids) == 1 else "UNSUPPORTED_MULTIPLE"
+            )
             return {
                 "api_version": API_VERSION,
                 "contract_version": "project-roadmap-read/v1",
@@ -516,7 +521,13 @@ class InstalledOperationsReadService:
                 "project_mission_attribution": "UNAVAILABLE",
                 "project_capability_graph": "UNAVAILABLE",
                 "candidate_and_expected_views": "UNAVAILABLE",
-                "repository_scope": {"repository_id": binding.ep_repository_id, "missions": missions},
+                "repository_scope": {
+                    "repository_id": binding.ep_repository_id,
+                    "active_mission_ids": active_mission_ids,
+                    "active_mission_count": len(active_mission_ids),
+                    "active_mission_multiplicity": active_multiplicity,
+                    "missions": missions,
+                },
                 "read_only": True,
             }
 
