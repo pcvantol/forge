@@ -104,6 +104,12 @@ confused-deputy/cross-project requests and never trust roles supplied in JSON.
 Protect browser-origin mutation, bound inputs/uploads and redact credentials.
 HTTPS is the remote default; any permitted HTTP loopback/overlay exception must
 be explicit and qualified. No arbitrary endpoint redirect or secret forwarding.
+Forge's loopback listeners reject repeated `Authorization` headers rather than
+selecting one credential. Body-bearing Forge Server requests reject repeated
+`Content-Length`, non-decimal lengths, truncated bodies and unsupported
+`Transfer-Encoding` framing before dispatch.
+These transport errors grant no application authority and do not change the
+versioned business contract.
 
 Mutations use stable operation/idempotency IDs, expected revisions/digests and
 canonical result readback. Request acceptance is not task completion. Expose

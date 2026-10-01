@@ -6,11 +6,13 @@ from datetime import UTC, datetime
 from http.client import HTTPConnection
 import json
 from pathlib import Path
+import socket
 import sqlite3
 from tempfile import TemporaryDirectory
 from threading import Thread
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -894,6 +896,105 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
             connection.endheaders()
             response = connection.getresponse()
             self.assertEqual(response.status, 400)
+            response.read()
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
+    def test_real_listeners_reject_ambiguous_authorization(self) -> None:
+        for server in (
+            make_server("127.0.0.1", 0, self.api),
+            make_forge_server("127.0.0.1", 0, ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)),
+        ):
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                port = server.server_address[1]
+                for second in ("Bearer " + CREDENTIAL, "Bearer other-credential"):
+                    connection = HTTPConnection("127.0.0.1", port, timeout=3)
+                    connection.putrequest("GET", "/v1/status")
+                    connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+                    connection.putheader("Authorization", second)
+                    connection.endheaders()
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 400)
+                    self.assertEqual(json.load(response)["error"]["code"], "REQUEST_INVALID")
+                    connection.close()
+                connection = HTTPConnection("127.0.0.1", port, timeout=3)
+                connection.request("GET", "/v1/status", headers={"Authorization": "Bearer " + CREDENTIAL})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                response.read()
+                connection.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_real_forge_server_rejects_ambiguous_body_framing(self) -> None:
+        api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
+        server = make_forge_server("127.0.0.1", 0, api)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            for framing in (
+                (("Content-Length", "2"), ("Content-Length", "2")),
+                (("Content-Length", "2"), ("Content-Length", "3")),
+                (("Content-Length", "2"), ("Transfer-Encoding", "chunked")),
+                (("Transfer-Encoding", "chunked"),),
+                (("Content-Length", "+2"),),
+                (("Content-Length", "2_0"),),
+                (("Content-Length", "2x"),),
+            ):
+                connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=3)
+                connection.putrequest("POST", "/v1/execution-host/detach")
+                connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+                for name, value in framing:
+                    connection.putheader(name, value)
+                connection.endheaders()
+                response = connection.getresponse()
+                self.assertEqual(response.status, 400)
+                self.assertEqual(json.load(response)["error"]["code"], "REQUEST_INVALID")
+                connection.close()
+            connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=3)
+            connection.putrequest("GET", "/v1/status")
+            connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+            connection.putheader("Transfer-Encoding", "chunked")
+            connection.endheaders()
+            response = connection.getresponse()
+            self.assertEqual(response.status, 400)
+            response.read()
+            connection.close()
+            with patch.object(api, "handle", wraps=api.handle) as dispatch:
+                connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=3)
+                connection.putrequest("POST", "/v1/missions/inspect")
+                connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+                connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+                connection.putheader("Content-Length", "2")
+                connection.endheaders(b"{}")
+                response = connection.getresponse()
+                self.assertEqual(response.status, 400)
+                response.read()
+                connection.close()
+                dispatch.assert_not_called()
+            with patch.object(api, "handle", wraps=api.handle) as dispatch:
+                connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=8)
+                connection.putrequest("POST", "/v1/missions/inspect")
+                connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+                connection.putheader("Content-Length", "3")
+                connection.endheaders(b"{}")
+                connection.sock.shutdown(socket.SHUT_WR)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 400)
+                response.read()
+                connection.close()
+                dispatch.assert_not_called()
+            connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=3)
+            connection.request("GET", "/v1/status", headers={"Authorization": "Bearer " + CREDENTIAL})
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
             response.read()
             connection.close()
         finally:
