@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.40",
+  "classification_rationale": "L3-FORGE-ACTION-FRONTIER-PRODUCER-V1-20261001",
+  "component": "product",
+  "event_lineage": "L3-FORGE-ACTION-FRONTIER-PRODUCER-V1-20261001",
+  "expected_head": "05b2a79eecfc162b8866c25ddd0dd66960626de3",
+  "operation_id": "l3-action-frontier-producer-20261001",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.41"
+}

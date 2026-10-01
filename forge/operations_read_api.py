@@ -20,6 +20,7 @@ from typing import Any, Iterator, Mapping
 from urllib.parse import unquote, urlsplit
 
 from .__main__ import _status
+from .action_frontier import ActionFrontierError, project_action_frontier
 from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
 from .installed_health import InstalledHealthError, InstalledHealthSnapshotService
 from .mission_cli import _status_projection as mission_status_projection
@@ -256,6 +257,14 @@ class InstalledOperationsReadService:
                 "criterion_assessment_history": [_project_assessment(item) for item in state.completion_history],
             },
         })
+        try:
+            projection["action_frontier"] = project_action_frontier(
+                state.actions, mission_revision=state.revision,
+            )
+        except ActionFrontierError:
+            raise OperationsProjectionError(
+                "MISSION_ACTION_GRAPH_INVALID", "Mission Action graph is inconsistent", status=409,
+            ) from None
         return _redact({
             "api_version": API_VERSION,
             "availability": "AVAILABLE",

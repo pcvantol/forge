@@ -197,6 +197,26 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                          ["MISSION-0042", "MISSION-0043"])
         self.assertEqual([item["group"] for item in response.body["repository_scope"]["missions"]], ["ACTIVE", "ACTIVE"])
 
+    def test_existing_mission_with_two_independent_actions_has_only_a_logical_frontier(self) -> None:
+        self.create_mission()
+        row = self.database._connection.execute(  # noqa: SLF001 - controlled graph fixture
+            "SELECT document FROM mission_state WHERE mission_id='MISSION-0042'"
+        ).fetchone()
+        document = json.loads(row[0])
+        document["actions"][1]["dependencies"] = []
+        self.database._connection.execute(  # noqa: SLF001
+            "UPDATE mission_state SET document=? WHERE mission_id='MISSION-0042'", (json.dumps(document),)
+        )
+        self.database._connection.commit()  # noqa: SLF001
+        before = self.snapshot()
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        frontier = response.body["mission"]["action_frontier"]
+        self.assertEqual(frontier["logical_frontier_action_ids"], ["ACTION-0042-A", "ACTION-0042-B"])
+        self.assertTrue(all(not item["dispatchable"] for item in frontier["actions"]))
+        self.assertEqual(frontier["parallel_execution"], "NOT_QUALIFIED")
+        self.assertEqual(self.snapshot(), before)
+
     def test_same_repository_project_rebind_does_not_claim_mission_membership(self) -> None:
         old = self.configure_project()
         self.create_mission()
@@ -234,6 +254,9 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         response = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
         self.assertEqual(response.status, 409)
         self.assertEqual(response.body["error"]["code"], "PROJECT_DAG_INVALID")
+        mission_response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(mission_response.status, 409)
+        self.assertEqual(mission_response.body["error"]["code"], "MISSION_ACTION_GRAPH_INVALID")
 
     def test_mission_from_other_repository_is_not_attributed_to_project(self) -> None:
         self.configure_project()
@@ -403,6 +426,12 @@ class TestMissionEndpoint(_InstalledFixture):
         self.assertTrue(response.body["read_only"])
         self.assertEqual(response.body["mission"]["mission_id"], "MISSION-0042")
         self.assertEqual(response.body["mission"]["action_ids"], ["ACTION-0042"])
+        frontier = response.body["mission"]["action_frontier"]
+        self.assertEqual(frontier["contract_version"], "parallel-action-frontier/v1")
+        self.assertEqual(frontier["logical_frontier_action_ids"], ["ACTION-0042"])
+        self.assertEqual(frontier["actions"][0]["target_resolution"], "UNAVAILABLE")
+        self.assertFalse(frontier["actions"][0]["dispatchable"])
+        self.assertEqual(frontier["parallel_execution"], "NOT_QUALIFIED")
         self.assertEqual(response.body["mission"]["repository_revision"], "a" * 40)
         self.assertEqual(response.body["mission"]["execution_attempts"][0]["receipt_id"], "receipt-0042")
         redacted_values = "[REDACTED] [REDACTED] [REDACTED] https://[REDACTED]@example.test/resource"

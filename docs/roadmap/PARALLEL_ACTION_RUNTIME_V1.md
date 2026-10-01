@@ -15,6 +15,12 @@ This is the implementation decomposition of the existing second Runtime mileston
 
 PA-F0 consumes the existing Living Mission Graph/Producer contract; no complete future policy/UI programme is required. PA-F1/F2 can progress using peer fixtures while EP qualifies execution. PA-F3 requires the exact used EP admission/resource/isolation slice, not merely a threadpool or two accepted rows. EP PA-EQ consumes PA-F0 contract fixtures, never PA-FQ, so there is no cross-product qualification cycle.
 
+The [bounded graph/frontier producer](../architecture/PARALLEL_ACTION_FRONTIER_PRODUCER_V1.md)
+supplies a versioned peer fixture and an installed logical readback subset.
+Stored Actions still lack per-Action target and verified-edge evidence; the
+readback marks dispatch and parallel execution unavailable. Its delivery does
+not close full PA-F1/F2 or installed overlap qualification.
+
 EP owns `docs/development/PARALLEL_ACTION_EXECUTION_V1_ROADMAP.md` and its JSON DAG. Same-Mission membership must not add an EP global mutex; real shared resources may legitimately serialize. First canary uses separate repositories/workspaces on one host, no full Agent fleet, Workspace or native subagent implementation dependency. Same-repository concurrent mutation remains separate stricter qualification.
 
 The serial Mission-3 loop and current reset maintenance task are not expanded. Implementation can be prepared in parallel with other roadmap lanes in isolated work; acceptance of this capability is separate from serial autonomy, not inferred from it. Any later prioritization/actual Mission allocation follows existing governance. No new Mission IDs, live grants, policy activation, CI gate activation, installed change or release is made by this documentation.
