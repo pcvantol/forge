@@ -190,6 +190,61 @@ def _planning_slots_match_current_mission(document: Mapping[str, Any], state: An
     return all(item["target"]["repository_id"] in scope for item in proposed)
 
 
+def _project_serial_execution_slots(rows: list[sqlite3.Row], state: Any) -> dict[str, Any]:
+    """Expose only proven identities from the immutable legacy migration record."""
+    from types import SimpleNamespace
+
+    base = {"contract_version": "serial-execution-slot-migration/v1", "read_only": True,
+            "dispatch_authorized": False, "status": "UNAVAILABLE", "reason": "NOT_MIGRATED",
+            "actions": []}
+    if not rows:
+        serial = project_serial_correlation(state)
+        if serial["binding_status"] == "UNSUPPORTED":
+            return {**base, "status": "UNSUPPORTED", "reason": serial["reason"]}
+        return base
+    if len(rows) != 1:
+        raise OperationsProjectionError("MISSION_EXECUTION_SLOTS_INVALID", "Mission execution slots are inconsistent", status=409)
+    row = rows[0]
+    encoded = row[5]
+    try:
+        document = json.loads(encoded)
+    except (TypeError, ValueError):
+        document = None
+    expected_digest = "sha256:" + sha256(encoded.encode("utf-8")).hexdigest()
+    if (not isinstance(document, dict)
+            or set(document) != {"contract_version", "mission_id", "action_id", "source_revision",
+                                 "source_digest", "action_status", "correlation", "dispatch_authorized"}
+            or document["contract_version"] != base["contract_version"]
+            or document["mission_id"] != state.mission_id or document["mission_id"] != row[0]
+            or document["action_id"] != row[1]
+            or not isinstance(document["source_revision"], int)
+            or isinstance(document["source_revision"], bool)
+            or document["source_revision"] < 1
+            or document["source_revision"] != row[2]
+            or not isinstance(document["action_status"], str)
+            or not document["action_status"]
+            or document["source_digest"] != row[3]
+            or row[4] != expected_digest or document["dispatch_authorized"] is not False
+            or not isinstance(document["correlation"], dict)
+            or document["source_digest"] != "sha256:" + sha256(json.dumps(
+                document["correlation"], sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")).hexdigest()):
+        raise OperationsProjectionError("MISSION_EXECUTION_SLOTS_INVALID", "Mission execution slots are inconsistent", status=409)
+    binding = project_serial_correlation(SimpleNamespace(
+        mission_id=row[0], revision=row[2],
+        actions=({"id": row[1], "status": document["action_status"]},),
+        execution_correlation=document["correlation"],
+    ))
+    if binding["binding_status"] != "BOUND" or binding["action_id"] != row[1]:
+        raise OperationsProjectionError("MISSION_EXECUTION_SLOTS_INVALID", "Mission execution slots are inconsistent", status=409)
+    return {**base, "status": "MIGRATED", "reason": None, "actions": [{
+        "action_id": row[1], "correlation_id": binding["correlation_id"],
+        "host_run_id": binding["host_run_id"], "source_revision": row[2],
+        "dispatch_authorized": False,
+    }]}
+
+
 def _project_assessment(document: object) -> dict[str, Any] | None:
     if not isinstance(document, Mapping):
         return None
@@ -269,6 +324,10 @@ class InstalledOperationsReadService:
                     "SELECT mission_revision,document_digest,document FROM mission_action_slot_snapshots "
                     "WHERE mission_id=? ORDER BY mission_revision DESC LIMIT 1", (mission_id,)
                 ).fetchone()
+                execution_rows = connection.execute(
+                    "SELECT mission_id,action_id,source_revision,source_digest,document_digest,document "
+                    "FROM mission_action_execution_slots WHERE mission_id=? ORDER BY action_id", (mission_id,)
+                ).fetchall()
         except ValueError as error:
             if str(error) == "unknown Mission":
                 raise OperationsProjectionError("MISSION_MISSING", "Mission was not found", status=404) from None
@@ -328,6 +387,7 @@ class InstalledOperationsReadService:
             "criteria": [_safe_text(item) for item in state.mission.get("acceptance_criteria", ())],
             "actions": [_project_action(item) for item in state.actions],
             "planning_slots": planning_slots,
+            "execution_slots": _project_serial_execution_slots(execution_rows, state),
             "serial_correlation": project_serial_correlation(state),
             "evidence_lineage": {
                 "execution_evidence": _project_execution_evidence(state.execution_evidence),

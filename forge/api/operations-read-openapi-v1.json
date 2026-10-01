@@ -555,6 +555,33 @@
                 ],
                 "type": "object"
               },
+              "execution_slots": {
+                "additionalProperties": false,
+                "properties": {
+                  "actions": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action_id": {"type": "string"},
+                        "correlation_id": {"type": "string"},
+                        "dispatch_authorized": {"const": false},
+                        "host_run_id": {"type": ["string", "null"]},
+                        "source_revision": {"type": "integer", "minimum": 1}
+                      },
+                      "required": ["action_id", "correlation_id", "dispatch_authorized", "host_run_id", "source_revision"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "contract_version": {"const": "serial-execution-slot-migration/v1"},
+                  "dispatch_authorized": {"const": false},
+                  "read_only": {"const": true},
+                  "reason": {"type": ["string", "null"]},
+                  "status": {"enum": ["MIGRATED", "UNAVAILABLE", "UNSUPPORTED"]}
+                },
+                "required": ["actions", "contract_version", "dispatch_authorized", "read_only", "reason", "status"],
+                "type": "object"
+              },
               "mission_id": {
                 "minLength": 1,
                 "type": "string"
@@ -575,6 +602,7 @@
               "action_ids",
               "criteria",
               "actions",
+              "execution_slots",
               "evidence_lineage"
             ],
             "type": "object"

@@ -53,6 +53,24 @@ credential-bearing request fields are omitted. Missing correlation is
 `UNAVAILABLE`; malformed, contradictory or multi-active records are
 `UNSUPPORTED` with a reason and no selected Action. The view never implies a
 new per-Action slot, EP admission, target verification, or host effect. A
-future PA-F1 migration must still prove lossless persistence and
-reconciliation of actual serial execution state before claiming full
-multi-slot support.
+this compatibility view alone does not prove lossless persistence or
+reconciliation of actual serial execution state for full multi-slot support.
+
+## Explicit serial execution-slot migration subset
+
+Schema 42 adds a separate immutable `mission_action_execution_slots` table.
+`RuntimeDatabase.migrate_legacy_serial_execution_slot` copies the complete
+stored legacy correlation into one Action-keyed record only when the current
+Mission, Action and correlation identity are unambiguous. It pins the source
+revision and canonical correlation digest; identical replay is idempotent and
+changed source bytes or revision conflict. It neither changes the legacy
+Mission state nor submits or replays an execution request. No installation is
+automatically migrated.
+
+Authenticated Mission detail exposes only `execution_slots` migration status,
+Action/correlation/run identity and source revision. Digests derived from the
+private request are kept inside the runtime. The stored request and
+private prompt remain inside the Forge runtime; malformed snapshots conflict
+without exposing them. Missing or ambiguous migration stays explicit. This
+subset does not qualify full PA-F1, runtime use of multiple execution slots,
+target grants, admission, or parallel dispatch.

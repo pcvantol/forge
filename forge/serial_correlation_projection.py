@@ -30,7 +30,8 @@ def project_serial_correlation(state: Any) -> dict[str, Any]:
     actions = state.actions
     if (not isinstance(actions, (tuple, list)) or not actions
             or any(not isinstance(action, Mapping) or not isinstance(action.get("id"), str)
-                   or not action["id"] for action in actions)
+                   or not action["id"] or not isinstance(action.get("status"), str)
+                   for action in actions)
             or len({action["id"] for action in actions}) != len(actions)):
         return {**base, "binding_status": "UNSUPPORTED", "reason": "AMBIGUOUS_ACTION_SET"}
     in_flight = [action for action in actions if action.get("status") in _IN_FLIGHT]

@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.45",
+  "classification_rationale": "L3-FORGE-SERIAL-EXECUTION-SLOT-MIGRATION-V1-20261001",
+  "component": "product",
+  "event_lineage": "L3-FORGE-SERIAL-EXECUTION-SLOT-MIGRATION-V1-20261001",
+  "expected_head": "6db6a6888a08b2ac0ca3cded937e33cf9395ef8d",
+  "operation_id": "l3-serial-execution-slot-migration-20261001",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.46"
+}

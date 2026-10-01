@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 41
+RUNTIME_SCHEMA_VERSION = 42
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -30,7 +30,7 @@ _REQUIRED_METADATA = frozenset((
     "database_location", "last_access_at", "status", "instance_version", "initialization_version",
 ))
 _TABLES = frozenset((
-    "mission_state", "mission_action_slot_snapshots", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
+    "mission_state", "mission_action_slot_snapshots", "mission_action_execution_slots", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
     "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
@@ -43,6 +43,15 @@ _TABLES = frozenset((
     "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
     "operational_reset_tombstones", "operational_reset_artifact_steps",
 ))
+
+
+def _tables_for_schema() -> frozenset[str]:
+    tables = _TABLES
+    if RUNTIME_SCHEMA_VERSION < 41:
+        tables = tables - {"mission_action_slot_snapshots"}
+    if RUNTIME_SCHEMA_VERSION < 42:
+        tables = tables - {"mission_action_execution_slots"}
+    return tables
 _OPERATIONAL_RESET_TABLES = frozenset((
     "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
     "operational_reset_tombstones", "operational_reset_artifact_steps",
@@ -516,6 +525,29 @@ class RuntimeDatabase:
         if references != {("mission_state", "mission_id", "mission_id")}:
             raise RuntimeIntegrityError("Mission Action slot Mission reference is inconsistent")
 
+    def _require_execution_slot_structure(self) -> None:
+        columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                        for row in self._connection.execute("PRAGMA table_info(mission_action_execution_slots)"))
+        if columns != (
+            ("mission_id", "TEXT", 1, 1), ("action_id", "TEXT", 1, 2),
+            ("source_revision", "INTEGER", 1, 0), ("source_digest", "TEXT", 1, 0),
+            ("document_digest", "TEXT", 1, 0), ("document", "TEXT", 1, 0),
+        ):
+            raise RuntimeIntegrityError("Mission execution slot storage shape is inconsistent")
+        references = {(row["table"], row["from"], row["to"])
+                      for row in self._connection.execute("PRAGMA foreign_key_list(mission_action_execution_slots)")}
+        if references != {("mission_state", "mission_id", "mission_id")}:
+            raise RuntimeIntegrityError("Mission execution slot Mission reference is inconsistent")
+        for operation in ("update", "delete"):
+            trigger = self._connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?",
+                (f"mission_action_execution_slots_immutable_{operation}",),
+            ).fetchone()
+            sql = "" if trigger is None or trigger[0] is None else " ".join(trigger[0].lower().split())
+            if (trigger is None or f"before {operation}" not in sql
+                    or "raise(abort, 'mission execution slots are immutable')" not in sql):
+                raise RuntimeIntegrityError("Mission execution slot immutability is inconsistent")
+
     def _require_operational_reset_structure(self) -> None:
         required_columns = {
             "operational_reset_state": {
@@ -545,7 +577,7 @@ class RuntimeDatabase:
         ).fetchall()
         if len(state_rows) != 1 or int(state_rows[0]["singleton"]) != 1 or int(state_rows[0]["dataset_generation"]) < 0:
             raise RuntimeIntegrityError("operational reset durable state is inconsistent")
-        reset_tables = _TABLES if RUNTIME_SCHEMA_VERSION >= 41 else _TABLES - {"mission_action_slot_snapshots"}
+        reset_tables = _tables_for_schema()
         for table in sorted(reset_tables):
             prefix = "operational_reset_authorize" if table in _OPERATIONAL_RESET_TABLES else "operational_reset_block"
             for operation in ("insert", "update", "delete"):
@@ -1944,6 +1976,42 @@ class RuntimeDatabase:
             except Exception:
                 self._connection.rollback()
                 raise
+        elif version == 41:
+            active = self._connection.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()
+            if active is not None and active[0] is not None:
+                raise RuntimeMaintenanceActive("cannot migrate during operational reset maintenance")
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                self._connection.execute(
+                    "CREATE TABLE IF NOT EXISTS mission_action_execution_slots ("
+                    "mission_id TEXT NOT NULL, action_id TEXT NOT NULL,"
+                    "source_revision INTEGER NOT NULL, source_digest TEXT NOT NULL,"
+                    "document_digest TEXT NOT NULL, document TEXT NOT NULL,"
+                    "PRIMARY KEY (mission_id, action_id),"
+                    "FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id))"
+                )
+                for operation in ("UPDATE", "DELETE"):
+                    self._connection.execute(
+                        f"CREATE TRIGGER IF NOT EXISTS mission_action_execution_slots_immutable_{operation.lower()} "
+                        f"BEFORE {operation} ON mission_action_execution_slots "
+                        "BEGIN SELECT RAISE(ABORT, 'Mission execution slots are immutable'); END"
+                    )
+                for operation in ("INSERT", "UPDATE", "DELETE"):
+                    self._connection.execute(
+                        f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_mission_action_execution_slots_{operation.lower()} "
+                        f"BEFORE {operation} ON mission_action_execution_slots "
+                        "WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL "
+                        "BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END"
+                    )
+                self._set_metadata({"schema_version": "42", "migration_version": "42",
+                                    "last_migration": "42", "forge_version": forge_version})
+                self._connection.execute("PRAGMA user_version=42")
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -2072,7 +2140,7 @@ class RuntimeDatabase:
         if check != "ok":
             raise RuntimeIntegrityError("SQLite integrity check failed")
         tables = {row["name"] for row in self._connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        required_tables = _TABLES if RUNTIME_SCHEMA_VERSION >= 41 else _TABLES - {"mission_action_slot_snapshots"}
+        required_tables = _tables_for_schema()
         if not required_tables <= tables:
             raise RuntimeIntegrityError("runtime database schema is incomplete")
         metadata = self.metadata
@@ -2089,6 +2157,8 @@ class RuntimeDatabase:
         self._require_operational_log_structure()
         if RUNTIME_SCHEMA_VERSION >= 41:
             self._require_action_slot_structure()
+        if RUNTIME_SCHEMA_VERSION >= 42:
+            self._require_execution_slot_structure()
         self._require_operational_reset_structure()
         identity = self.runtime_identity
         expected_identity = "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)
@@ -2242,6 +2312,68 @@ class RuntimeDatabase:
         return {"mission_id": mission_id, "mission_revision": revision,
                 "document_digest": digest, "target_verification": "UNVERIFIED",
                 "dispatch_authorized": False}
+
+    def migrate_legacy_serial_execution_slot(self, mission_id: str) -> dict[str, Any]:
+        """Copy one proven legacy correlation to an immutable, non-dispatchable Action slot."""
+        from types import SimpleNamespace
+        from forge.serial_correlation_projection import project_serial_correlation
+
+        if not isinstance(mission_id, str) or not mission_id:
+            raise RuntimeDatabaseError("serial slot migration requires a Mission identity")
+        self._reject_reset_retired_identity("mission_id", mission_id)
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            row = self._connection.execute(
+                "SELECT document FROM mission_state WHERE mission_id=?", (mission_id,)
+            ).fetchone()
+            if row is None:
+                raise RuntimeDatabaseError("serial slot migration requires an existing Mission")
+            state = json.loads(row["document"])
+            revision = state.get("revision")
+            mission = state.get("mission")
+            if (state.get("mission_id") != mission_id or not isinstance(mission, dict)
+                    or mission.get("id") != mission_id or not isinstance(revision, int)
+                    or isinstance(revision, bool) or revision < 1):
+                raise RuntimeDatabaseError("serial slot migration Mission identity is inconsistent")
+            correlation = state.get("execution_correlation")
+            binding = project_serial_correlation(SimpleNamespace(
+                mission_id=mission_id, revision=revision, actions=state.get("actions"),
+                execution_correlation=correlation,
+            ))
+            if (binding["binding_status"] != "BOUND"
+                    or not isinstance(binding["action_status"], str)
+                    or not binding["action_status"]):
+                raise RuntimeDatabaseError("serial slot migration correlation is unavailable or ambiguous")
+            correlation_encoded = self._dump(correlation)
+            source_digest = "sha256:" + sha256(correlation_encoded.encode("utf-8")).hexdigest()
+            action_id = binding["action_id"]
+            document = {
+                "contract_version": "serial-execution-slot-migration/v1",
+                "mission_id": mission_id, "action_id": action_id,
+                "source_revision": revision, "source_digest": source_digest,
+                "action_status": binding["action_status"],
+                "correlation": correlation,
+                "dispatch_authorized": False,
+            }
+            encoded = self._dump(document)
+            digest = "sha256:" + sha256(encoded.encode("utf-8")).hexdigest()
+            prior = self._connection.execute(
+                "SELECT action_id,source_revision,source_digest,document_digest,document "
+                "FROM mission_action_execution_slots WHERE mission_id=?", (mission_id,)
+            ).fetchall()
+            if prior:
+                if (len(prior) != 1 or prior[0]["action_id"] != action_id
+                        or prior[0]["source_revision"] != revision
+                        or prior[0]["source_digest"] != source_digest
+                        or prior[0]["document_digest"] != digest or prior[0]["document"] != encoded):
+                    raise RuntimeDatabaseError("serial slot migration conflicts with immutable source")
+            else:
+                self._connection.execute(
+                    "INSERT INTO mission_action_execution_slots VALUES (?,?,?,?,?,?)",
+                    (mission_id, action_id, revision, source_digest, digest, encoded),
+                )
+        return {"mission_id": mission_id, "action_id": action_id,
+                "source_revision": revision, "dispatch_authorized": False}
 
     def create_mission_state(self, state: Any) -> dict[str, Any]:
         """Create one Mission state without replacing an existing record."""
