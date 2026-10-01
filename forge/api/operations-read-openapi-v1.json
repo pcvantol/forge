@@ -586,6 +586,30 @@
                 "minLength": 1,
                 "type": "string"
               },
+              "planning_slots": {
+                "type": ["object", "null"],
+                "properties": {
+                  "actions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "selected_binding_resolution": {
+                          "enum": ["MATCHED_SELECTED_BINDING", "UNCONFIGURED", "MISMATCH", "STALE"]
+                        },
+                        "baseline_verification": {"const": "UNVERIFIED"}
+                      },
+                      "required": ["selected_binding_resolution", "baseline_verification"]
+                    }
+                  },
+                  "selected_binding_resolution": {
+                    "enum": ["MATCHED_SELECTED_BINDING", "UNCONFIGURED", "MISMATCH", "STALE", "MIXED"]
+                  },
+                  "target_verification": {"const": "UNVERIFIED"},
+                  "dispatch_authorized": {"const": false}
+                },
+                "required": ["actions", "selected_binding_resolution", "target_verification", "dispatch_authorized"]
+              },
               "revision": {
                 "minimum": 1,
                 "type": "integer"
@@ -602,6 +626,7 @@
               "action_ids",
               "criteria",
               "actions",
+              "planning_slots",
               "execution_slots",
               "evidence_lineage"
             ],
