@@ -933,6 +933,64 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                 server.server_close()
                 thread.join(timeout=3)
 
+    def test_real_listeners_reject_authority_bearing_targets(self) -> None:
+        forge_api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
+        for api, server in (
+            (self.api, make_server("127.0.0.1", 0, self.api)),
+            (forge_api, make_forge_server("127.0.0.1", 0, forge_api)),
+        ):
+            service = api.service if isinstance(api, OperationsReadAPI) else api._read_api.service
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                port = server.server_address[1]
+                with patch.object(service, "installed_status", wraps=service.installed_status) as status_read:
+                    for target in (
+                        "http://evil.example/v1/status",
+                        "//evil.example/v1/status",
+                        "v1/status",
+                        "/v1/status#fragment",
+                    ):
+                        connection = HTTPConnection("127.0.0.1", port, timeout=3)
+                        connection.putrequest("GET", target)
+                        connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+                        connection.endheaders()
+                        response = connection.getresponse()
+                        self.assertEqual(response.status, 400, target)
+                        self.assertEqual(json.load(response)["error"]["code"], "REQUEST_INVALID")
+                        connection.close()
+                    with socket.create_connection(("127.0.0.1", port), timeout=3) as raw:
+                        raw.sendall(
+                            b"GET /v1/status\xa0 HTTP/1.1\r\n"
+                            b"Host: 127.0.0.1\r\n"
+                            + b"Authorization: Bearer " + CREDENTIAL.encode("ascii")
+                            + b"\r\nConnection: close\r\n\r\n"
+                        )
+                        with raw.makefile("rb") as reply:
+                            self.assertIn(b" 400 ", reply.readline())
+                    status_read.assert_not_called()
+                connection = HTTPConnection("127.0.0.1", port, timeout=3)
+                connection.request("GET", "/v1/status?view=1",
+                                   headers={"Authorization": "Bearer " + CREDENTIAL})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                response.read()
+                connection.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
+    def test_direct_apis_reject_control_and_backslash_targets(self) -> None:
+        forge_api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
+        for target in ("/v1/status\\evil", "/v1/status\t", "/v1/status\xa0"):
+            for response in (
+                self.api.handle("GET", target, "Bearer " + CREDENTIAL),
+                forge_api.handle("GET", target, "Bearer " + CREDENTIAL),
+            ):
+                self.assertEqual(response.status, 400)
+                self.assertEqual(response.body["error"]["code"], "REQUEST_INVALID")
+
     def test_real_forge_server_rejects_ambiguous_body_framing(self) -> None:
         api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
         server = make_forge_server("127.0.0.1", 0, api)

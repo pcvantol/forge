@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.50",
+  "classification_rationale": "Forge LANE_3 #207 r13 origin-form installed HTTP request-target repair",
+  "component": "product",
+  "event_lineage": "Forge LANE_3 #207 r13 origin-form installed HTTP request-target repair",
+  "expected_head": "f2d033c2a9a0afcc7aa1edba1ca23241f81ff501",
+  "operation_id": "L3-FORGE-HTTP-ORIGIN-FORM-R13",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.51"
+}

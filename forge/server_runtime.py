@@ -20,7 +20,7 @@ from threading import BoundedSemaphore, Event, Lock, Thread
 import tempfile
 import time
 from typing import Any, Iterator, Mapping
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote
 
 try:
     import fcntl
@@ -42,7 +42,10 @@ from .mission_cli import (
     status as mission_status,
 )
 from .repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
-from .operations_read_api import APIResponse, InstalledOperationsReadService, OperationsReadAPI, read_bearer_credential
+from .operations_read_api import (
+    APIResponse, InstalledOperationsReadService, OperationsReadAPI, origin_form_path, raw_request_target,
+    read_bearer_credential,
+)
 from .planner import (
     CodexCliSessionReadinessChecker,
     CodexCliSessionReadinessState,
@@ -523,7 +526,12 @@ class ForgeServerAPI:
             return APIResponse(401, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "AUTHENTICATION_REQUIRED", "message": "Authentication is required",
             }}, headers)
-        path = urlsplit(target).path
+        try:
+            path = origin_form_path(target)
+        except ValueError:
+            return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
+                "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
+            }}, headers)
         if path == "/v1/projects" or path.startswith("/v1/projects/"):
             return self._read_api.handle(method, target, authorization)
         if method == "GET" and (
@@ -663,7 +671,8 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 if len(authorizations) > 1:
                     raise ValueError("request Authorization is ambiguous")
                 body = self._body()
-                response = api.handle(self.command, self.path,
+                target = raw_request_target(self.raw_requestline)
+                response = api.handle(self.command, target,
                                       authorizations[0] if authorizations else None, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {

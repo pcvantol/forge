@@ -3,7 +3,7 @@
   "info": {
     "title": "Forge Server Runtime API",
     "version": "1.0.0",
-    "description": "Authenticated loopback API for one explicit Forge Server instance. Repeated Authorization or Content-Length headers, non-decimal lengths, truncated bodies and Transfer-Encoding request framing are rejected before service dispatch. Forge business semantics remain owned by application services."
+    "description": "Authenticated loopback API for one explicit Forge Server instance. Only origin-form request targets are routed; absolute URLs, authority-bearing paths, fragments and control characters are rejected. Repeated Authorization or Content-Length headers, non-decimal lengths, truncated bodies and Transfer-Encoding request framing are rejected before service dispatch. Forge business semantics remain owned by application services."
   },
   "servers": [
     {
