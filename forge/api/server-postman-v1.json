@@ -15,6 +15,10 @@
     {
       "key": "missionId",
       "value": "MISSION-0001"
+    },
+    {
+      "key": "projectId",
+      "value": "replace-with-configured-project-id"
     }
   ],
   "auth": {
@@ -491,6 +495,30 @@
             "detach",
             "{operation_id}"
           ]
+        }
+      }
+    },
+    {
+      "name": "List configured Forge project",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/projects",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "projects"]
+        }
+      }
+    },
+    {
+      "name": "Read configured project Mission and Action DAG",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/projects/{{projectId}}/roadmap",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "projects", "{{projectId}}", "roadmap"]
         }
       }
     }

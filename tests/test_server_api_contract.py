@@ -26,6 +26,7 @@ class ForgeServerApiContractTests(unittest.TestCase):
             request = item["request"]
             raw = request["url"]["raw"].removeprefix("{{baseUrl}}")
             raw = raw.replace("{{missionId}}", "{mission_id}")
+            raw = raw.replace("{{projectId}}", "{project_id}")
             postman_routes.add((request["method"].upper(), raw))
 
         expected = set(SERVER_ROUTE_INVENTORY)

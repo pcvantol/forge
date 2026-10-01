@@ -30,6 +30,8 @@ from .runtime.data_root import DataRootResolver
 API_VERSION = "1"
 DEFAULT_STALE_AFTER = timedelta(minutes=5)
 _MISSION_PATH = re.compile(r"^/v1/missions/([^/]+)$")
+_PROJECT_ROADMAP_PATH = re.compile(r"^/v1/projects/([^/]+)/roadmap$")
+_PROJECT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _SENSITIVE_KEY = re.compile(r"(?:authorization|bearer|credential|password|secret|token)", re.IGNORECASE)
 _BEARER_VALUE = re.compile(r"(?i)\bbearer\s+[^\s,;]+")
 _KEYCHAIN_REFERENCE = re.compile(r"(?i)\bkeychain://[^\s,;]+")
@@ -263,6 +265,108 @@ class InstalledOperationsReadService:
             "mission": projection,
         })
 
+    def project_index(self) -> dict[str, Any]:
+        """Expose only the project selected by this exact Forge instance binding."""
+        with self._runtime_snapshot() as (connection, metadata):
+            binding = self._project_binding(connection, metadata)
+            return {
+                "api_version": API_VERSION,
+                "contract_version": "project-roadmap-read/v1",
+                "instance_id": metadata["runtime_id"],
+                "availability": "AVAILABLE" if binding is not None else "UNCONFIGURED",
+                "projects": [] if binding is None else [{
+                    "project_id": binding.ep_project_id,
+                    "repository_id": binding.ep_repository_id,
+                    "roadmap_url": f"/v1/projects/{binding.ep_project_id}/roadmap",
+                }],
+                "read_only": True,
+            }
+
+    def project_roadmap(self, project_id: str) -> dict[str, Any]:
+        """Project the installed Mission/Action subset from one SQLite snapshot."""
+        if _PROJECT_ID.fullmatch(project_id) is None:
+            raise OperationsProjectionError("PROJECT_REFERENCE_INVALID", "Project reference is invalid", status=400)
+        with self._runtime_snapshot() as (connection, metadata):
+            binding = self._project_binding(connection, metadata)
+            if binding is None:
+                raise OperationsProjectionError("PROJECT_UNCONFIGURED", "Project binding is not configured", status=503)
+            if project_id != binding.ep_project_id:
+                raise OperationsProjectionError("PROJECT_MISSING", "Project was not found", status=404)
+            rows = connection.execute("SELECT mission_id FROM mission_state ORDER BY mission_id LIMIT 257").fetchall()
+            if len(rows) > 256:
+                raise OperationsProjectionError("PROJECT_TOO_LARGE", "Project projection exceeds the bounded read limit", status=503)
+            missions: list[dict[str, Any]] = []
+            for (mission_id,) in rows:
+                projection, state = mission_status_projection(connection, mission_id)
+                if state.mission_id != mission_id or state.mission.get("id") != mission_id:
+                    raise OperationsProjectionError("PROJECT_AMBIGUOUS", "Mission identity is inconsistent", status=409)
+                source = state.mission.get("repository_evidence_source")
+                if not isinstance(source, Mapping) or source.get("repository_id") != binding.ep_repository_id:
+                    raise OperationsProjectionError("PROJECT_AMBIGUOUS", "Mission repository binding is inconsistent", status=409)
+                actions = [_project_action(item) for item in state.actions]
+                ids = {item.get("id") for item in actions}
+                if len(ids) != len(actions) or None in ids or any(
+                    dependency not in ids
+                    for item in actions for dependency in item.get("dependencies", ())
+                ):
+                    raise OperationsProjectionError("PROJECT_DAG_INVALID", "Mission Action graph is inconsistent", status=409)
+                dependencies = {item["id"]: tuple(item.get("dependencies", ())) for item in actions}
+                active: set[str] = set()
+                complete: set[str] = set()
+
+                def visit(action_id: str) -> None:
+                    if action_id in active:
+                        raise OperationsProjectionError("PROJECT_DAG_INVALID", "Mission Action graph has a cycle", status=409)
+                    if action_id in complete:
+                        return
+                    active.add(action_id)
+                    for predecessor in dependencies[action_id]:
+                        visit(predecessor)
+                    active.remove(action_id)
+                    complete.add(action_id)
+
+                for action_id in dependencies:
+                    visit(action_id)
+                status = str(projection["status"])
+                group = ("APPROVED_PENDING" if status == "APPROVED_PLANNABLE" else
+                         "HISTORY" if status in {"COMPLETED", "ARCHIVED"} else "ACTIVE")
+                missions.append({
+                    "mission_id": mission_id, "group": group, "status": status,
+                    "revision": projection["revision"],
+                    "actions": [{key: item[key] for key in ("id", "status", "dependencies") if key in item}
+                                for item in actions],
+                })
+            return {
+                "api_version": API_VERSION,
+                "contract_version": "project-roadmap-read/v1",
+                "instance_id": metadata["runtime_id"],
+                "project_id": project_id,
+                "repository_id": binding.ep_repository_id,
+                "availability": "AVAILABLE",
+                "freshness": _freshness(metadata.get("last_access_at"), now=self.clock(), stale_after=self.stale_after),
+                "graph_kind": "REPOSITORY_MISSION_ACTION_SUBSET",
+                "project_mission_attribution": "UNAVAILABLE",
+                "project_capability_graph": "UNAVAILABLE",
+                "candidate_and_expected_views": "UNAVAILABLE",
+                "repository_scope": {"repository_id": binding.ep_repository_id, "missions": missions},
+                "read_only": True,
+            }
+
+    def _project_binding(self, connection: sqlite3.Connection, metadata: Mapping[str, str]):
+        """Join peer readback to the same storage generation as Mission state."""
+        readback = read_peer_configuration(self.root)
+        if readback.runtime_id != metadata.get("runtime_id") or readback.status not in {
+            "CONFIGURED", "NOT_CONFIGURED", "DETACHED",
+        }:
+            raise OperationsProjectionError("PROJECT_UNAVAILABLE", "Project binding is unavailable", status=503)
+        row = connection.execute(
+            "SELECT configuration_digest FROM execution_host_peer_configuration WHERE singleton=1"
+        ).fetchone()
+        expected = readback.configuration.configuration_digest if readback.configuration is not None else None
+        if (row[0] if row is not None else None) != expected:
+            raise OperationsProjectionError("PROJECT_UNAVAILABLE", "Project binding changed during readback", status=503)
+        return readback.configuration
+
     def installed_health_snapshot(self) -> dict[str, Any]:
         """Return the canonical bounded installed-health assessment."""
         return InstalledHealthSnapshotService(
@@ -335,6 +439,11 @@ class OperationsReadAPI:
             if path == "/v1/health":
                 body = self.service.installed_health_snapshot()
                 return APIResponse(200 if body.get("outcome") == "HEALTHY" else 503, body, headers)
+            if path == "/v1/projects":
+                return APIResponse(200, self.service.project_index(), headers)
+            project_match = _PROJECT_ROADMAP_PATH.fullmatch(path)
+            if project_match:
+                return APIResponse(200, self.service.project_roadmap(unquote(project_match.group(1))), headers)
             match = _MISSION_PATH.fullmatch(path)
             if match:
                 return APIResponse(200, self.service.mission_detail(unquote(match.group(1))), headers)

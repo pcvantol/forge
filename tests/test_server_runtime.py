@@ -59,6 +59,16 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                 existing_instance(absent)
             self.assertFalse(absent.exists())
 
+    def test_server_rejects_nonpositive_tick_before_opening_an_instance(self) -> None:
+        with TemporaryDirectory() as temporary:
+            absent = Path(temporary) / "absent"
+            with self.assertRaisesRegex(ValueError, "tick interval must be positive"):
+                ForgeServerRuntime(
+                    data_root=absent, credential_file=absent / "credential",
+                    host="127.0.0.1", port=0, tick_interval=0,
+                )
+            self.assertFalse(absent.exists())
+
     def test_two_instances_bind_distinct_runtime_state_and_listeners(self) -> None:
         with TemporaryDirectory() as temporary:
             root_a = self._root(temporary, "alpha")

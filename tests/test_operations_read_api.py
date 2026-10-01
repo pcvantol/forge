@@ -2,20 +2,26 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from http.client import HTTPConnection
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Thread
+from types import SimpleNamespace
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from forge.models.action import EngineeringAction, EngineeringActionStatus
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.criterion_assessment import ApprovedRepositoryEvidenceSource
 from forge.models.intent import EngineeringIntent, IntentCategory, IntentReference, IntentTraceability
 from forge.models.mission import EngineeringMission, MissionIntentMembership, MissionScope
+from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
 from forge.operations_read_api import InstalledOperationsReadService, OperationsReadAPI, make_server
 from forge.runtime import RuntimeBootstrap
+from forge.secure_store import SecretReference
+from forge.server_runtime import ForgeServerAPI, make_server as make_forge_server
 from forge.state import MissionStateStore
 
 
@@ -113,6 +119,229 @@ class TestStatusEndpoint(_InstalledFixture):
             self.assertEqual(response.body["runtime"]["runtime_status"], "uninitialized")
             self.assertNotIn(path_credential, json.dumps(response.body, sort_keys=True))
             self.assertFalse(absent_root.exists())
+
+
+class TestProjectRoadmapEndpoint(_InstalledFixture):
+    def configure_project(self, project_id: str = "forge-project", *, replace: bool = False,
+                          expected_revision: int | None = None,
+                          expected_digest: str | None = None):
+        return EngineeringPlatformPeerConfigurationService(self.root).configure(
+            binding_id="ep-primary", endpoint="https://ep.test",
+            expected_ep_instance_id="ep-instance-1", ep_consumer_id="forge-consumer-1",
+            execution_host_id="engineering-platform", ep_project_id=project_id,
+            ep_repository_id="forge-repository", repository_identity="forge-source",
+            credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+            operator_id="local-admin", occurred_at="2026-09-10T18:00:00Z",
+            replace=replace, expected_revision=expected_revision, expected_digest=expected_digest,
+        )
+
+    def create_mission(self, number: str = "0042") -> None:
+        mission = ArchitectureMission(
+            id=f"MISSION-{number}", candidate_id=f"CANDIDATE-{number}", title="Read project",
+            summary="Project existing work", business_objective="Show actual project work",
+            business_value="Read-only overview", architecture_review_reference=f"review-{number}",
+            mission_recommendation_reference=f"recommendation-{number}", scope=("forge-repository",),
+            status=ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
+            repository_evidence_source=ApprovedRepositoryEvidenceSource("forge-repository", "pcvantol/forge"),
+        )
+        reference = IntentReference("source", "1", "docs/source.md")
+        intent = EngineeringIntent(
+            f"INTENT-{number}", "1", "Projection", "Read the existing DAG",
+            IntentCategory.IMPLEMENTATION,
+            IntentTraceability((reference,), (reference,), (reference,), (reference,), (reference,)),
+        )
+        first = EngineeringAction(1, f"ACTION-{number}-A", intent.id, "1", "Read", ("proof",))
+        second = EngineeringAction(2, f"ACTION-{number}-B", intent.id, "1", "Project", ("proof",),
+                                   dependencies=(first.id,))
+        MissionStateStore(self.database, data_root=str(self.root)).create(
+            mission, (intent,), (first, second), occurred_at="2026-09-21T05:00:00Z",
+        )
+
+    def test_unconfigured_project_is_empty_and_read_only(self) -> None:
+        before = self.snapshot()
+        denied = self.api.handle("GET", "/v1/projects", None)
+        listed = self.api.handle("GET", "/v1/projects", "Bearer " + CREDENTIAL)
+        detail = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual((denied.status, listed.status, detail.status), (401, 200, 503))
+        self.assertEqual(listed.body["availability"], "UNCONFIGURED")
+        self.assertEqual(listed.body["projects"], [])
+        self.assertEqual(detail.body["error"]["code"], "PROJECT_UNCONFIGURED")
+        self.assertEqual(self.snapshot(), before)
+
+    def test_configured_project_returns_actual_mission_action_graph(self) -> None:
+        self.configure_project()
+        empty = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual(empty.body["repository_scope"]["missions"], [])
+        self.create_mission()
+        before = self.snapshot()
+        listed = self.api.handle("GET", "/v1/projects", "Bearer " + CREDENTIAL)
+        response = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual((listed.status, response.status), (200, 200))
+        self.assertEqual(listed.body["projects"][0]["project_id"], "forge-project")
+        self.assertEqual(response.body["project_capability_graph"], "UNAVAILABLE")
+        self.assertEqual(response.body["candidate_and_expected_views"], "UNAVAILABLE")
+        self.assertEqual(response.body["graph_kind"], "REPOSITORY_MISSION_ACTION_SUBSET")
+        self.assertEqual(response.body["project_mission_attribution"], "UNAVAILABLE")
+        self.assertEqual(response.body["repository_scope"]["missions"][0]["group"], "ACTIVE")
+        self.assertEqual(response.body["repository_scope"]["missions"][0]["actions"][1]["dependencies"], ["ACTION-0042-A"])
+        self.assertNotIn("keychain://", json.dumps(response.body))
+        self.assertEqual(self.snapshot(), before)
+
+    def test_multiple_missions_have_stable_order_without_claiming_runtime_parallelism(self) -> None:
+        self.configure_project()
+        self.create_mission("0043")
+        self.create_mission("0042")
+        response = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        self.assertEqual([item["mission_id"] for item in response.body["repository_scope"]["missions"]],
+                         ["MISSION-0042", "MISSION-0043"])
+        self.assertEqual([item["group"] for item in response.body["repository_scope"]["missions"]], ["ACTIVE", "ACTIVE"])
+
+    def test_same_repository_project_rebind_does_not_claim_mission_membership(self) -> None:
+        old = self.configure_project()
+        self.create_mission()
+        self.configure_project("new-project", replace=True,
+                               expected_revision=old.configuration_revision,
+                               expected_digest=old.configuration_digest)
+        response = self.api.handle("GET", "/v1/projects/new-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body["project_id"], "new-project")
+        self.assertNotIn("missions", response.body)
+        self.assertEqual(response.body["project_mission_attribution"], "UNAVAILABLE")
+        self.assertEqual(response.body["repository_scope"]["missions"][0]["mission_id"], "MISSION-0042")
+
+    def test_wrong_project_malformed_reference_and_method_fail_closed(self) -> None:
+        self.configure_project()
+        auth = "Bearer " + CREDENTIAL
+        wrong = self.api.handle("GET", "/v1/projects/other/roadmap", auth)
+        malformed = self.api.handle("GET", "/v1/projects/%2Fetc/roadmap", auth)
+        mutation = self.api.handle("POST", "/v1/projects/forge-project/roadmap", auth)
+        self.assertEqual((wrong.status, malformed.status, mutation.status), (404, 400, 405))
+        self.assertEqual(wrong.body["error"]["code"], "PROJECT_MISSING")
+
+    def test_corrupt_mission_graph_does_not_claim_a_valid_roadmap(self) -> None:
+        self.configure_project()
+        self.create_mission()
+        row = self.database._connection.execute(  # noqa: SLF001 - controlled corruption fixture
+            "SELECT document FROM mission_state WHERE mission_id='MISSION-0042'"
+        ).fetchone()
+        document = json.loads(row[0])
+        document["actions"][1]["dependencies"] = ["ACTION-MISSING"]
+        self.database._connection.execute(  # noqa: SLF001
+            "UPDATE mission_state SET document=? WHERE mission_id='MISSION-0042'", (json.dumps(document),)
+        )
+        self.database._connection.commit()  # noqa: SLF001
+        response = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 409)
+        self.assertEqual(response.body["error"]["code"], "PROJECT_DAG_INVALID")
+
+    def test_mission_from_other_repository_is_not_attributed_to_project(self) -> None:
+        self.configure_project()
+        self.create_mission()
+        row = self.database._connection.execute(  # noqa: SLF001 - controlled foreign-source fixture
+            "SELECT document FROM mission_state WHERE mission_id='MISSION-0042'"
+        ).fetchone()
+        document = json.loads(row[0])
+        document["mission"]["repository_evidence_source"]["repository_id"] = "other-repository"
+        self.database._connection.execute(  # noqa: SLF001
+            "UPDATE mission_state SET document=? WHERE mission_id='MISSION-0042'", (json.dumps(document),)
+        )
+        self.database._connection.commit()  # noqa: SLF001
+        response = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 409)
+        self.assertEqual(response.body["error"]["code"], "PROJECT_AMBIGUOUS")
+
+    def test_cyclic_action_dependencies_are_not_exposed_as_a_dag(self) -> None:
+        self.configure_project()
+        self.create_mission()
+        row = self.database._connection.execute(  # noqa: SLF001 - controlled cycle fixture
+            "SELECT document FROM mission_state WHERE mission_id='MISSION-0042'"
+        ).fetchone()
+        document = json.loads(row[0])
+        document["actions"][0]["dependencies"] = ["ACTION-0042-B"]
+        self.database._connection.execute(  # noqa: SLF001
+            "UPDATE mission_state SET document=? WHERE mission_id='MISSION-0042'", (json.dumps(document),)
+        )
+        self.database._connection.commit()  # noqa: SLF001
+        response = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 409)
+        self.assertEqual(response.body["error"]["code"], "PROJECT_DAG_INVALID")
+
+    def test_real_forge_server_route_uses_bearer_and_read_service(self) -> None:
+        self.configure_project()
+        api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
+        server = make_forge_server("127.0.0.1", 0, api)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            endpoint = f"http://127.0.0.1:{server.server_address[1]}/v1/projects"
+            with self.assertRaises(HTTPError) as denied:
+                urlopen(Request(endpoint), timeout=3)
+            self.assertEqual(denied.exception.code, 401)
+            denied.exception.close()
+            with urlopen(Request(endpoint, headers={"Authorization": "Bearer " + CREDENTIAL}), timeout=3) as response:
+                document = json.load(response)
+            self.assertEqual(document["projects"][0]["project_id"], "forge-project")
+            self.assertTrue(document["read_only"])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
+    def test_real_server_rejects_mutation_and_malformed_requests(self) -> None:
+        api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
+        with self.assertRaises(ValueError):
+            make_forge_server("0.0.0.0", 0, api)
+        with self.assertRaises(ValueError):
+            make_forge_server("127.0.0.1", 65536, api)
+        server = make_forge_server("127.0.0.1", 0, api)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = server.server_address[1]
+            for body, expected in ((b"", 405), (b"{}", 405), (b"[]", 400), (b"{bad", 400)):
+                connection = HTTPConnection("127.0.0.1", port, timeout=3)
+                connection.request("POST", "/v1/projects", body=body,
+                                   headers={"Authorization": "Bearer " + CREDENTIAL,
+                                            "Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, expected)
+                response.read()
+                connection.close()
+            connection = HTTPConnection("127.0.0.1", port, timeout=3)
+            connection.request("HEAD", "/v1/projects", headers={"Authorization": "Bearer " + CREDENTIAL})
+            response = connection.getresponse()
+            self.assertEqual(response.status, 405)
+            self.assertEqual(response.read(), b"")
+            connection.close()
+            connection = HTTPConnection("127.0.0.1", port, timeout=3)
+            connection.request("GET", "/v1/status", headers={"Authorization": "Bearer " + CREDENTIAL})
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertTrue(json.load(response)["read_only"])
+            connection.close()
+            connection = HTTPConnection("127.0.0.1", port, timeout=3)
+            connection.putrequest("POST", "/v1/projects")
+            connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+            connection.putheader("Content-Length", "invalid")
+            connection.endheaders()
+            response = connection.getresponse()
+            self.assertEqual(response.status, 400)
+            response.read()
+            connection.close()
+            connection = HTTPConnection("127.0.0.1", port, timeout=3)
+            connection.putrequest("POST", "/v1/projects")
+            connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+            connection.putheader("Content-Length", "1048577")
+            connection.endheaders()
+            response = connection.getresponse()
+            self.assertEqual(response.status, 400)
+            response.read()
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
 
 
 class TestMissionEndpoint(_InstalledFixture):
