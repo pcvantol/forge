@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from http.client import HTTPConnection
 import json
 from pathlib import Path
+import socket
 import sqlite3
 from tempfile import TemporaryDirectory
 from threading import Thread
@@ -943,6 +944,9 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                 (("Content-Length", "2"), ("Content-Length", "3")),
                 (("Content-Length", "2"), ("Transfer-Encoding", "chunked")),
                 (("Transfer-Encoding", "chunked"),),
+                (("Content-Length", "+2"),),
+                (("Content-Length", "2_0"),),
+                (("Content-Length", "2x"),),
             ):
                 connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=3)
                 connection.putrequest("POST", "/v1/execution-host/detach")
@@ -970,6 +974,18 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                 connection.putheader("Authorization", "Bearer " + CREDENTIAL)
                 connection.putheader("Content-Length", "2")
                 connection.endheaders(b"{}")
+                response = connection.getresponse()
+                self.assertEqual(response.status, 400)
+                response.read()
+                connection.close()
+                dispatch.assert_not_called()
+            with patch.object(api, "handle", wraps=api.handle) as dispatch:
+                connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=8)
+                connection.putrequest("POST", "/v1/missions/inspect")
+                connection.putheader("Authorization", "Bearer " + CREDENTIAL)
+                connection.putheader("Content-Length", "3")
+                connection.endheaders(b"{}")
+                connection.sock.shutdown(socket.SHUT_WR)
                 response = connection.getresponse()
                 self.assertEqual(response.status, 400)
                 response.read()
