@@ -9,3 +9,11 @@ This is a bounded producer subset of `PRM-F-CONTRACT` and `PRM-F-PROJECTION` thr
 A missing binding yields `UNCONFIGURED` in the list and `503 PROJECT_UNCONFIGURED` for detail. A different project yields `404 PROJECT_MISSING`; malformed IDs yield `400 PROJECT_REFERENCE_INVALID`. Inconsistent installed identity or binding, unreadable storage and more than 256 Missions return an explicit `503`; inconsistent Mission identity or Action edges/cycles return `409`. No partial graph is represented as complete. Authentication failure returns `401`; unsupported methods return `405`. The exact route inventory is checked against OpenAPI and Postman in the repository validation suite.
 
 This producer can be exercised from a fresh installed Forge wheel. Workspace may later consume it only through the authenticated HTTP contract and must not treat `repository_scope.missions` as project membership. Full project attribution, capability DAGs, Candidate/Expected views, cross-Mission edges, remote HTTPS, Workspace peer integration and `PRM-F-Q` remain under their owning dependencies and evidence gates. Forge runtime installation and public registry release are separate product operations.
+
+The same repository-scoped snapshot also reports sorted `active_mission_ids`,
+`active_mission_count` and `active_mission_multiplicity` as `NONE`, `SINGLE` or
+`UNSUPPORTED_MULTIPLE`. Only the existing `ACTIVE` presentation group counts;
+approved-pending and history do not. A multiple-active observation remains
+fully visible while explicitly marking the current serial Mission runtime's
+unsupported cardinality. These fields do not prove project membership,
+execution overlap or parallel capability, and reading them changes no state.

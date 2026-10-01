@@ -609,6 +609,9 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.configure_project()
         empty = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
         self.assertEqual(empty.body["repository_scope"]["missions"], [])
+        self.assertEqual(empty.body["repository_scope"]["active_mission_ids"], [])
+        self.assertEqual(empty.body["repository_scope"]["active_mission_count"], 0)
+        self.assertEqual(empty.body["repository_scope"]["active_mission_multiplicity"], "NONE")
         self.create_mission()
         before = self.snapshot()
         listed = self.api.handle("GET", "/v1/projects", "Bearer " + CREDENTIAL)
@@ -620,6 +623,9 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertEqual(response.body["graph_kind"], "REPOSITORY_MISSION_ACTION_SUBSET")
         self.assertEqual(response.body["project_mission_attribution"], "UNAVAILABLE")
         self.assertEqual(response.body["repository_scope"]["missions"][0]["group"], "ACTIVE")
+        self.assertEqual(response.body["repository_scope"]["active_mission_ids"], ["MISSION-0042"])
+        self.assertEqual(response.body["repository_scope"]["active_mission_count"], 1)
+        self.assertEqual(response.body["repository_scope"]["active_mission_multiplicity"], "SINGLE")
         self.assertEqual(response.body["repository_scope"]["missions"][0]["actions"][1]["dependencies"], ["ACTION-0042-A"])
         self.assertNotIn("keychain://", json.dumps(response.body))
         self.assertEqual(self.snapshot(), before)
@@ -633,6 +639,37 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertEqual([item["mission_id"] for item in response.body["repository_scope"]["missions"]],
                          ["MISSION-0042", "MISSION-0043"])
         self.assertEqual([item["group"] for item in response.body["repository_scope"]["missions"]], ["ACTIVE", "ACTIVE"])
+        self.assertEqual(response.body["repository_scope"]["active_mission_ids"],
+                         ["MISSION-0042", "MISSION-0043"])
+        self.assertEqual(response.body["repository_scope"]["active_mission_count"], 2)
+        self.assertEqual(response.body["repository_scope"]["active_mission_multiplicity"], "UNSUPPORTED_MULTIPLE")
+        self.assertEqual(response.body["project_mission_attribution"], "UNAVAILABLE")
+
+    def test_pending_and_history_do_not_inflate_repository_active_count(self) -> None:
+        self.configure_project()
+        self.create_mission("0042")
+        self.create_mission("0043")
+        self.create_mission("0044")
+        pending = self.database.get_document("mission_state", "MISSION-0043")
+        pending["status"] = "APPROVED_PLANNABLE"
+        self.database.save_mission_state(pending)
+        history = self.database.get_document("mission_state", "MISSION-0044")
+        history["status"] = "COMPLETED"
+        self.database.save_mission_state(history)
+        self.database.close()
+        self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        before = self.snapshot()
+
+        response = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+
+        self.assertEqual(response.status, 200)
+        scope = response.body["repository_scope"]
+        self.assertEqual([item["group"] for item in scope["missions"]],
+                         ["ACTIVE", "APPROVED_PENDING", "HISTORY"])
+        self.assertEqual(scope["active_mission_ids"], ["MISSION-0042"])
+        self.assertEqual(scope["active_mission_count"], 1)
+        self.assertEqual(scope["active_mission_multiplicity"], "SINGLE")
+        self.assertEqual(self.snapshot(), before)
 
     def test_existing_mission_with_two_independent_actions_has_only_a_logical_frontier(self) -> None:
         self.create_mission()
