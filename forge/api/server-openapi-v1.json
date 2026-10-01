@@ -464,6 +464,32 @@
           }
         ]
       }
+    },
+    "/v1/projects": {
+      "get": {
+        "summary": "Read the configured project binding for this Forge instance",
+        "description": "Read-only. Returns an empty list with UNCONFIGURED when no current binding exists; never creates a Project.",
+        "responses": {
+          "200": {"description": "Configured project or explicit empty state"},
+          "401": {"description": "Authentication required"},
+          "503": {"description": "Installed source or binding is unavailable"}
+        }
+      }
+    },
+    "/v1/projects/{project_id}/roadmap": {
+      "get": {
+        "summary": "Read the persisted Mission and Action DAG subset for one configured project",
+        "description": "The response explicitly marks capability, Candidate, Expected and cross-Mission project graph views unavailable. No peer call or Mission mutation occurs.",
+        "parameters": [{"name": "project_id", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"}}],
+        "responses": {
+          "200": {"description": "Consistent installed Mission/Action snapshot"},
+          "400": {"description": "Invalid project reference"},
+          "401": {"description": "Authentication required"},
+          "404": {"description": "Project is not the configured project"},
+          "409": {"description": "Stored Mission/Action graph is inconsistent"},
+          "503": {"description": "Project binding or bounded projection is unavailable"}
+        }
+      }
     }
   },
   "components": {

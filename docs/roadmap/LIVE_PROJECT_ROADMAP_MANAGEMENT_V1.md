@@ -25,6 +25,12 @@ F5 is not a scheduler; its parent refinement is navigation, not a backward edge.
 All nine nodes remain PLANNED with empty qualification evidence. External evidence
 is a real producer subset, not permission to allocate peer implementation.
 
+The bounded [project-bound Mission/Action read projection](../architecture/FORGE_PROJECT_DAG_READ_V1.md)
+can deliver a useful HTTP producer subset before the full project-loop graph.
+Its configured-project binding, repository-scoped installed Mission/Action edges
+and explicit unavailable project membership and graph fields do not mark `PRM-F-PROJECTION`, its capability graph or `PRM-F-Q`
+complete. Workspace peer consumption remains separately owned.
+
 PRM-F-PROJECTION consumes F2/FH operation/HTTP subsets. PRM-F-ELIGIBILITY and
 PRM-F-ACTIVATION consume the relevant existing intake, approval, progression,
 claim and recovery services. PRM-F-CHANGES reuses the existing context/observer

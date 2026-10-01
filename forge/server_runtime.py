@@ -71,6 +71,8 @@ SERVER_ROUTE_INVENTORY = (
     ("GET", "/v1/instance"),
     ("GET", "/v1/version"),
     ("GET", "/v1/provider-context"),
+    ("GET", "/v1/projects"),
+    ("GET", "/v1/projects/{project_id}/roadmap"),
     ("POST", "/v1/provider-context"),
     ("GET", "/v1/execution-host/preflight"),
     ("POST", "/v1/execution-host/configure"),
@@ -522,6 +524,8 @@ class ForgeServerAPI:
                 "code": "AUTHENTICATION_REQUIRED", "message": "Authentication is required",
             }}, headers)
         path = urlsplit(target).path
+        if path == "/v1/projects" or path.startswith("/v1/projects/"):
+            return self._read_api.handle(method, target, authorization)
         if method == "GET" and (
             path in {"/v1/status", "/v1/health"} or path.startswith("/v1/missions/")
             and not path.endswith(("/controller/start", "/controller/reopen"))
