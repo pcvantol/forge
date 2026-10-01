@@ -215,6 +215,48 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         ).fetchone()[0]
         self.assertEqual(count, 1)
 
+    def test_action_slot_writer_rejects_corrupt_current_graph_without_snapshot(self) -> None:
+        self.create_mission()
+        original = self.database.get_document("mission_state", "MISSION-0042")
+        for change in ("duplicate_edge", "self_edge", "unknown_edge", "missing_edge",
+                       "malformed_edge", "duplicate_action", "malformed_action",
+                       "duplicate_scope", "empty_scope", "malformed_scope"):
+            with self.subTest(change=change):
+                state = json.loads(json.dumps(original))
+                if change == "duplicate_edge":
+                    state["actions"][1]["dependencies"] *= 2
+                elif change == "self_edge":
+                    state["actions"][1]["dependencies"] = ["ACTION-0042-B"]
+                elif change == "unknown_edge":
+                    state["actions"][1]["dependencies"] = ["ACTION-UNKNOWN"]
+                elif change == "missing_edge":
+                    state["actions"][1]["dependencies"] = []
+                elif change == "malformed_edge":
+                    state["actions"][1]["dependencies"] = [{"id": "ACTION-0042-A"}]
+                elif change == "duplicate_action":
+                    state["actions"][1]["id"] = "ACTION-0042-A"
+                elif change == "malformed_action":
+                    state["actions"][1]["id"] = {"id": "ACTION-0042-B"}
+                elif change == "duplicate_scope":
+                    state["mission"]["scope"].append("forge-repository")
+                elif change == "empty_scope":
+                    state["mission"]["scope"] = []
+                else:
+                    state["mission"]["scope"] = [{"repository_id": "forge-repository"}]
+                with self.database._connection:  # noqa: SLF001 - corrupt current-state fixture
+                    self.database._connection.execute(  # noqa: SLF001
+                        "UPDATE mission_state SET document=? WHERE mission_id='MISSION-0042'",
+                        (json.dumps(state),),
+                    )
+                changes = self.database._connection.total_changes  # noqa: SLF001
+                with self.assertRaisesRegex(RuntimeDatabaseError, "Action slot"):
+                    self.database.record_mission_action_slots(self._slot_graph())
+                self.assertEqual(self.database._connection.total_changes, changes)  # noqa: SLF001
+                count = self.database._connection.execute(  # noqa: SLF001
+                    "SELECT COUNT(*) FROM mission_action_slot_snapshots"
+                ).fetchone()[0]
+                self.assertEqual(count, 0)
+
     def test_action_slots_reject_missing_mission_and_corrupt_readback(self) -> None:
         graph = self._slot_graph()
         with self.assertRaisesRegex(RuntimeDatabaseError, "existing Mission"):

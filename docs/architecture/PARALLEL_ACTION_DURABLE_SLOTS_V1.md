@@ -11,6 +11,10 @@ ID set, and every target repository inside the approved Mission scope. The
 validator checks target and baseline shape, predecessor identity, repository-
 bound evidence digests, and a cycle-free graph. Scope membership is only a
 planning containment check; it is not an EP binding or execution grant.
+The writer also checks that the current stored Mission graph has unique Action
+IDs, unique valid predecessors, and a unique nonempty approved scope before
+recording a snapshot. Malformed or contradictory current state cannot create
+a slot record, even when a set comparison would otherwise hide duplicates.
 
 One immutable normalized document, including the sorted approved Mission
 scope at registration, is stored per Mission revision in the
