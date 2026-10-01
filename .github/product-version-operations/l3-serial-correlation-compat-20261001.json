@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.42",
+  "classification_rationale": "L3-FORGE-SERIAL-CORRELATION-COMPAT-V1-20261001",
+  "component": "product",
+  "event_lineage": "L3-FORGE-SERIAL-CORRELATION-COMPAT-V1-20261001",
+  "expected_head": "08ad4f89f1d888747662910ad450c8070e5937c1",
+  "operation_id": "l3-serial-correlation-compat-20261001",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.43"
+}

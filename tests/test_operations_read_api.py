@@ -247,6 +247,32 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertEqual(response.status, 200)
         self.assertIsNone(response.body["mission"]["planning_slots"])
 
+    def test_installed_mission_readback_binds_only_one_legacy_correlation(self) -> None:
+        self.create_mission()
+        document = self.database.get_document("mission_state", "MISSION-0042")
+        document["actions"][0]["status"] = "WAITING_FOR_RESULT"
+        document["execution_correlation"] = {
+            "request": {"mission_id": "MISSION-0042", "action_id": "ACTION-0042-A",
+                        "correlation_id": "corr-0042", "runtime_prompt": "synthetic-private-prompt"},
+            "host_run_id": "run-0042",
+        }
+        self.database.save_mission_state(document)
+        before = self.snapshot()
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        serial = response.body["mission"]["serial_correlation"]
+        self.assertEqual((serial["binding_status"], serial["action_id"], serial["correlation_id"]),
+                         ("BOUND", "ACTION-0042-A", "corr-0042"))
+        self.assertNotIn("synthetic-private-prompt", json.dumps(response.body))
+        self.assertEqual(self.snapshot(), before)
+        document["actions"][1]["status"] = "ACTIVE"
+        self.database.save_mission_state(document)
+        ambiguous = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(ambiguous.status, 200)
+        self.assertEqual(ambiguous.body["mission"]["serial_correlation"]["reason"],
+                         "MULTIPLE_IN_FLIGHT_ACTIONS")
+        self.assertNotIn("action_id", ambiguous.body["mission"]["serial_correlation"])
+
     @staticmethod
     def _slot_graph() -> dict:
         return {
