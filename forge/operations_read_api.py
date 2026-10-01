@@ -612,6 +612,24 @@ class InstalledOperationsReadService:
             if connection is not None:
                 connection.close()
 
+
+def origin_form_path(target: str) -> str:
+    """Accept only an unambiguous HTTP origin-form request target."""
+    if (
+        not isinstance(target, str)
+        or not target.startswith("/")
+        or target.startswith("//")
+        or "#" in target
+        or "\\" in target
+        or any(ord(character) < 32 or ord(character) == 127 for character in target)
+    ):
+        raise ValueError("request target is not origin-form")
+    parsed = urlsplit(target)
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/") or parsed.path.startswith("//"):
+        raise ValueError("request target is not origin-form")
+    return parsed.path
+
+
 class OperationsReadAPI:
     """Small transport adapter with constant-time bearer authentication."""
 
@@ -629,7 +647,10 @@ class OperationsReadAPI:
         }
         if not self._authenticated(authorization):
             return APIResponse(401, self._error("AUTHENTICATION_REQUIRED", "Authentication is required"), headers)
-        path = urlsplit(target).path
+        try:
+            path = origin_form_path(target)
+        except ValueError:
+            return APIResponse(400, self._error("REQUEST_INVALID", "Request target must be origin-form"), headers)
         if method != "GET":
             return APIResponse(405, self._error("METHOD_NOT_ALLOWED", "Only read-only GET is supported"), {
                 **headers, "Allow": "GET",
@@ -716,7 +737,10 @@ def make_server(host: str, port: int, api: OperationsReadAPI) -> ThreadingHTTPSe
                 ), {"Content-Type": "application/json; charset=utf-8",
                     "X-Content-Type-Options": "nosniff"})
             else:
-                response = api.handle(method, self.path, authorizations[0] if authorizations else None)
+                # BaseHTTPRequestHandler normalizes a leading // in self.path.
+                # Validate the original wire target before it can become a route.
+                response = api.handle(method, self.requestline.split()[1],
+                                      authorizations[0] if authorizations else None)
             self._respond(response, body=body)
 
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract

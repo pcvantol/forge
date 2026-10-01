@@ -110,6 +110,12 @@ selecting one credential. Body-bearing Forge Server requests reject repeated
 `Transfer-Encoding` framing before dispatch.
 These transport errors grant no application authority and do not change the
 versioned business contract.
+The Forge Server and operations read listener also route only origin-form
+request targets. Absolute URLs, authority-bearing `//` targets, relative paths,
+fragments and control characters fail before application-service dispatch;
+normal paths and query strings retain their existing meaning. The listeners
+inspect the original request line because the standard HTTP handler can
+normalize a leading `//` before populating its parsed path.
 
 Mutations use stable operation/idempotency IDs, expected revisions/digests and
 canonical result readback. Request acceptance is not task completion. Expose
