@@ -1,5 +1,14 @@
 # Forge agent instructions
 
+For current lane allocation, first read
+[FOUR_LANE_DEVELOPMENT_V1](docs/roadmap/FOUR_LANE_DEVELOPMENT_V1.md) and
+[its machine-readable plan](docs/roadmap/four-lane-development-v1.json).
+They supersede only the older two-lane concurrency/default-pool instructions:
+LANE_1 owns Forge Platform, LANE_2 EP, LANE_3 Forge and LANE_4 Workspace.
+Existing #141 installer and #142 r30 assignments and resource boundaries remain
+unchanged. Older two-lane documents remain historical inventory/navigation,
+not a competing active allocation. Reading a plan never starts a Work session.
+
 Read [BOOTSTRAP.md](BOOTSTRAP.md), [ENGINEERING_METHOD.md](ENGINEERING_METHOD.md),
 [PROMPT_INITIALIZATION.md](PROMPT_INITIALIZATION.md), and the generated
 [AI-development projection](docs/ai-development/GENERATED_PROJECTION.md)
