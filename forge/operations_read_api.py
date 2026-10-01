@@ -617,6 +617,7 @@ def origin_form_path(target: str) -> str:
     """Accept only an unambiguous HTTP origin-form request target."""
     if (
         not isinstance(target, str)
+        or not target.isascii()
         or not target.startswith("/")
         or target.startswith("//")
         or "#" in target
@@ -628,6 +629,17 @@ def origin_form_path(target: str) -> str:
     if parsed.scheme or parsed.netloc or not parsed.path.startswith("/") or parsed.path.startswith("//"):
         raise ValueError("request target is not origin-form")
     return parsed.path
+
+
+def raw_request_target(requestline: bytes) -> str:
+    """Extract an ASCII target without Unicode whitespace normalization."""
+    parts = requestline.rstrip(b"\r\n").split(b" ")
+    if len(parts) != 3 or not all(parts):
+        raise ValueError("request line is invalid")
+    try:
+        return parts[1].decode("ascii")
+    except UnicodeDecodeError as error:
+        raise ValueError("request target is not ASCII") from error
 
 
 class OperationsReadAPI:
@@ -731,15 +743,17 @@ def make_server(host: str, port: int, api: OperationsReadAPI) -> ThreadingHTTPSe
 
         def _dispatch(self, method: str, *, body: bool = True) -> None:
             authorizations = self.headers.get_all("Authorization", [])
-            if len(authorizations) > 1:
+            try:
+                target = raw_request_target(self.raw_requestline)
+            except ValueError:
+                target = None
+            if len(authorizations) > 1 or target is None:
                 response = APIResponse(400, OperationsReadAPI._error(
-                    "REQUEST_INVALID", "request Authorization is ambiguous",
+                    "REQUEST_INVALID", "request Authorization or target is invalid",
                 ), {"Content-Type": "application/json; charset=utf-8",
                     "X-Content-Type-Options": "nosniff"})
             else:
-                # BaseHTTPRequestHandler normalizes a leading // in self.path.
-                # Validate the original wire target before it can become a route.
-                response = api.handle(method, self.requestline.split()[1],
+                response = api.handle(method, target,
                                       authorizations[0] if authorizations else None)
             self._respond(response, body=body)
 

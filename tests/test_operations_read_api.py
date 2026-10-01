@@ -959,6 +959,15 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                         self.assertEqual(response.status, 400, target)
                         self.assertEqual(json.load(response)["error"]["code"], "REQUEST_INVALID")
                         connection.close()
+                    with socket.create_connection(("127.0.0.1", port), timeout=3) as raw:
+                        raw.sendall(
+                            b"GET /v1/status\xa0 HTTP/1.1\r\n"
+                            b"Host: 127.0.0.1\r\n"
+                            + b"Authorization: Bearer " + CREDENTIAL.encode("ascii")
+                            + b"\r\nConnection: close\r\n\r\n"
+                        )
+                        with raw.makefile("rb") as reply:
+                            self.assertIn(b" 400 ", reply.readline())
                     status_read.assert_not_called()
                 connection = HTTPConnection("127.0.0.1", port, timeout=3)
                 connection.request("GET", "/v1/status?view=1",
@@ -974,7 +983,7 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
 
     def test_direct_apis_reject_control_and_backslash_targets(self) -> None:
         forge_api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
-        for target in ("/v1/status\\evil", "/v1/status\t"):
+        for target in ("/v1/status\\evil", "/v1/status\t", "/v1/status\xa0"):
             for response in (
                 self.api.handle("GET", target, "Bearer " + CREDENTIAL),
                 forge_api.handle("GET", target, "Bearer " + CREDENTIAL),

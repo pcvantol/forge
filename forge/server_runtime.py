@@ -43,7 +43,8 @@ from .mission_cli import (
 )
 from .repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from .operations_read_api import (
-    APIResponse, InstalledOperationsReadService, OperationsReadAPI, origin_form_path, read_bearer_credential,
+    APIResponse, InstalledOperationsReadService, OperationsReadAPI, origin_form_path, raw_request_target,
+    read_bearer_credential,
 )
 from .planner import (
     CodexCliSessionReadinessChecker,
@@ -670,8 +671,8 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 if len(authorizations) > 1:
                     raise ValueError("request Authorization is ambiguous")
                 body = self._body()
-                # self.path may already have lost a leading // authority marker.
-                response = api.handle(self.command, self.requestline.split()[1],
+                target = raw_request_target(self.raw_requestline)
+                response = api.handle(self.command, target,
                                       authorizations[0] if authorizations else None, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {

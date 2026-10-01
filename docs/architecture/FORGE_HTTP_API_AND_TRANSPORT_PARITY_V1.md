@@ -114,8 +114,9 @@ The Forge Server and operations read listener also route only origin-form
 request targets. Absolute URLs, authority-bearing `//` targets, relative paths,
 fragments and control characters fail before application-service dispatch;
 normal paths and query strings retain their existing meaning. The listeners
-inspect the original request line because the standard HTTP handler can
-normalize a leading `//` before populating its parsed path.
+inspect ASCII request-target bytes from the original request line because the
+standard HTTP handler can normalize a leading `//` or Unicode whitespace
+before populating its parsed path.
 
 Mutations use stable operation/idempotency IDs, expected revisions/digests and
 canonical result readback. Request acceptance is not task completion. Expose
