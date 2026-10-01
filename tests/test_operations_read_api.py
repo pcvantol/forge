@@ -289,6 +289,35 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertEqual(response.status, 200)
         self.assertIsNone(response.body["mission"]["planning_slots"])
 
+    def test_schema41_migration_preserves_serial_state_without_invented_execution_slot(self) -> None:
+        self.create_mission()
+        state = self.database.get_document("mission_state", "MISSION-0042")
+        state["actions"][0]["status"] = "WAITING_FOR_RESULT"
+        state["execution_correlation"] = {
+            "mission_id": "MISSION-0042", "action_id": "ACTION-0042-A",
+            "correlation_id": "corr-0042", "runtime_prompt": "synthetic-private-prompt",
+        }
+        self.database.save_mission_state(state)
+        prior = self.database.get_document("mission_state", "MISSION-0042")
+        path = self.database.path
+        self.database.close()
+        with sqlite3.connect(path) as connection:
+            connection.execute("DROP TABLE mission_action_execution_slots")
+            connection.execute(
+                "UPDATE runtime_metadata SET value='41' WHERE key IN "
+                "('schema_version','migration_version','last_migration','database_version')"
+            )
+            connection.execute("PRAGMA user_version=41")
+        self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        self.assertEqual(self.database.get_document("mission_state", "MISSION-0042"), prior)
+        self.assertEqual(self.database._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM mission_action_execution_slots"
+        ).fetchone()[0], 0)
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body["mission"]["execution_slots"]["status"], "UNAVAILABLE")
+        self.assertNotIn("synthetic-private-prompt", json.dumps(response.body))
+
     def test_installed_mission_readback_binds_only_one_legacy_correlation(self) -> None:
         self.create_mission()
         document = self.database.get_document("mission_state", "MISSION-0042")
@@ -314,6 +343,133 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertEqual(ambiguous.body["mission"]["serial_correlation"]["reason"],
                          "MULTIPLE_IN_FLIGHT_ACTIONS")
         self.assertNotIn("action_id", ambiguous.body["mission"]["serial_correlation"])
+
+    def test_serial_execution_slot_migration_replay_restart_and_private_readback(self) -> None:
+        self.create_mission()
+        state = self.database.get_document("mission_state", "MISSION-0042")
+        state["actions"][0]["status"] = "WAITING_FOR_RESULT"
+        correlation = {
+            "request": {"mission_id": "MISSION-0042", "action_id": "ACTION-0042-A",
+                        "correlation_id": "corr-0042", "runtime_prompt": "synthetic-private-prompt",
+                        "credential_reference": "synthetic-private-credential"},
+            "host_run_id": "run-0042", "receipt_id": "receipt-0042",
+        }
+        state["execution_correlation"] = correlation
+        self.database.save_mission_state(state)
+        receipt = self.database.migrate_legacy_serial_execution_slot("MISSION-0042")
+        self.assertEqual(self.database.migrate_legacy_serial_execution_slot("MISSION-0042"), receipt)
+        self.assertNotIn("source_digest", receipt)
+        self.assertNotIn("document_digest", receipt)
+        row = self.database._connection.execute(  # noqa: SLF001
+            "SELECT document FROM mission_action_execution_slots WHERE mission_id='MISSION-0042'"
+        ).fetchone()
+        self.assertEqual(json.loads(row[0])["correlation"], correlation)
+        self.assertEqual(self.database.get_document("mission_state", "MISSION-0042"), state)
+        self.database.close()
+        self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        before = self.snapshot()
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        slots = response.body["mission"]["execution_slots"]
+        self.assertEqual(slots["status"], "MIGRATED")
+        self.assertEqual(slots["actions"][0]["action_id"], "ACTION-0042-A")
+        self.assertEqual(slots["actions"][0]["correlation_id"], "corr-0042")
+        self.assertEqual(slots["actions"][0]["host_run_id"], "run-0042")
+        self.assertFalse(slots["dispatch_authorized"])
+        self.assertNotIn("source_digest", json.dumps(slots))
+        self.assertNotIn("document_digest", json.dumps(slots))
+        self.assertNotIn("synthetic-private-prompt", json.dumps(response.body))
+        self.assertNotIn("synthetic-private-credential", json.dumps(response.body))
+        self.assertEqual(self.snapshot(), before)
+        denied = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer wrong")
+        self.assertEqual(denied.status, 401)
+        changed = json.loads(json.dumps(state))
+        changed["execution_correlation"]["host_run_id"] = "different-run"
+        self.database.save_mission_state(changed)
+        with self.assertRaisesRegex(RuntimeDatabaseError, "conflicts"):
+            self.database.migrate_legacy_serial_execution_slot("MISSION-0042")
+        self.assertEqual(self.database._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM mission_action_execution_slots"
+        ).fetchone()[0], 1)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database._connection.execute(  # noqa: SLF001
+                "DELETE FROM mission_action_execution_slots WHERE mission_id='MISSION-0042'"
+            )
+        later = json.loads(json.dumps(state))
+        later["revision"] = 2
+        self.database.save_mission_state(later)
+        with self.assertRaisesRegex(RuntimeDatabaseError, "conflicts"):
+            self.database.migrate_legacy_serial_execution_slot("MISSION-0042")
+        historical = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(historical.status, 200)
+        self.assertEqual(historical.body["mission"]["execution_slots"]["actions"][0]["source_revision"], 1)
+
+    def test_serial_execution_slot_migration_rejects_ambiguous_identity(self) -> None:
+        self.create_mission()
+        original = self.database.get_document("mission_state", "MISSION-0042")
+        for change in ("absent", "ambiguous", "wrong_mission", "wrong_action",
+                       "missing_correlation", "malformed_status"):
+            with self.subTest(change=change):
+                state = json.loads(json.dumps(original))
+                state["actions"][0]["status"] = "WAITING_FOR_RESULT"
+                state["execution_correlation"] = {
+                    "mission_id": "MISSION-0042", "action_id": "ACTION-0042-A",
+                    "correlation_id": "corr-0042",
+                }
+                if change == "absent":
+                    state["execution_correlation"] = None
+                elif change == "ambiguous":
+                    state["actions"][1]["status"] = "WAITING_FOR_RESULT"
+                elif change == "wrong_mission":
+                    state["execution_correlation"]["mission_id"] = "MISSION-OTHER"
+                elif change == "wrong_action":
+                    state["execution_correlation"]["action_id"] = "ACTION-0042-B"
+                elif change == "missing_correlation":
+                    state["execution_correlation"].pop("correlation_id")
+                elif change == "malformed_status":
+                    state["actions"].pop()
+                    state["actions"][0]["status"] = {"state": "WAITING_FOR_RESULT"}
+                self.database.save_mission_state(state)
+                changes = self.database._connection.total_changes  # noqa: SLF001
+                with self.assertRaisesRegex(RuntimeDatabaseError, "unavailable or ambiguous"):
+                    self.database.migrate_legacy_serial_execution_slot("MISSION-0042")
+                self.assertEqual(self.database._connection.total_changes, changes)  # noqa: SLF001
+                self.assertEqual(self.database._connection.execute(  # noqa: SLF001
+                    "SELECT COUNT(*) FROM mission_action_execution_slots"
+                ).fetchone()[0], 0)
+        ambiguous = json.loads(json.dumps(original))
+        ambiguous["actions"][0]["status"] = "WAITING_FOR_RESULT"
+        ambiguous["actions"][1]["status"] = "WAITING_FOR_RESULT"
+        ambiguous["execution_correlation"] = {
+            "mission_id": "MISSION-0042", "action_id": "ACTION-0042-A",
+            "correlation_id": "corr-0042",
+        }
+        self.database.save_mission_state(ambiguous)
+        unsupported = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(unsupported.body["mission"]["execution_slots"]["status"], "UNSUPPORTED")
+
+    def test_serial_execution_slot_corrupt_digest_fails_closed(self) -> None:
+        self.create_mission()
+        state = self.database.get_document("mission_state", "MISSION-0042")
+        state["actions"][0]["status"] = "WAITING_FOR_RESULT"
+        state["execution_correlation"] = {
+            "mission_id": "MISSION-0042", "action_id": "ACTION-0042-A",
+            "correlation_id": "corr-0042", "runtime_prompt": "synthetic-private-prompt",
+        }
+        self.database.save_mission_state(state)
+        self.database.migrate_legacy_serial_execution_slot("MISSION-0042")
+        with self.database._connection:  # noqa: SLF001 - corrupt-storage fixture
+            self.database._connection.execute(  # noqa: SLF001
+                "DROP TRIGGER mission_action_execution_slots_immutable_update"
+            )
+            self.database._connection.execute(  # noqa: SLF001
+                "UPDATE mission_action_execution_slots SET document_digest=? WHERE mission_id=?",
+                ("sha256:" + "0" * 64, "MISSION-0042"),
+            )
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 409)
+        self.assertEqual(response.body["error"]["code"], "MISSION_EXECUTION_SLOTS_INVALID")
+        self.assertNotIn("synthetic-private-prompt", json.dumps(response.body))
 
     def test_same_revision_action_slot_graph_drift_fails_closed(self) -> None:
         self.create_mission()
