@@ -26,3 +26,19 @@ and always reports `target_verification: UNVERIFIED` and
 `dispatch_authorized: false`. A slot never supplies correlation, admission,
 or execution evidence. Installed artifact qualification and full PA-F1/F2/F3
 remain separate roadmap work.
+
+## Legacy serial correlation compatibility
+
+Authenticated Mission detail also reports `serial_correlation` with contract
+version `serial-action-correlation-compat/v1`. It reads the existing durable
+singleton correlation without rewriting it. A bound view requires one
+unambiguous relevant stored Action and matching direct or request-nested
+Mission/Action/correlation identity. Only the Action ID and status,
+correlation ID and optional host run ID are projected; prompt and
+credential-bearing request fields are omitted. Missing correlation is
+`UNAVAILABLE`; malformed, contradictory or multi-active records are
+`UNSUPPORTED` with a reason and no selected Action. The view never implies a
+new per-Action slot, EP admission, target verification, or host effect. A
+future PA-F1 migration must still prove lossless persistence and
+reconciliation of actual serial execution state before claiming full
+multi-slot support.

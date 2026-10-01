@@ -28,6 +28,7 @@ from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
 from .parallel_action_contract import ParallelActionContractError, validate_peer_graph
 from .runtime.data_root import DataRootResolver
+from .serial_correlation_projection import project_serial_correlation
 
 
 API_VERSION = "1"
@@ -286,6 +287,7 @@ class InstalledOperationsReadService:
             "criteria": [_safe_text(item) for item in state.mission.get("acceptance_criteria", ())],
             "actions": [_project_action(item) for item in state.actions],
             "planning_slots": planning_slots,
+            "serial_correlation": project_serial_correlation(state),
             "evidence_lineage": {
                 "execution_evidence": _project_execution_evidence(state.execution_evidence),
                 "execution_attempts": [_project_execution_evidence(item) for item in state.execution_history],
