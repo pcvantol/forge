@@ -9,6 +9,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -25,6 +26,7 @@ from .execution_host_configuration import PeerConfigurationError, read_peer_conf
 from .installed_health import InstalledHealthError, InstalledHealthSnapshotService
 from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
+from .parallel_action_contract import ParallelActionContractError, validate_peer_graph
 from .runtime.data_root import DataRootResolver
 
 
@@ -230,6 +232,10 @@ class InstalledOperationsReadService:
         try:
             with self._runtime_snapshot() as (connection, _metadata):
                 projection, state = mission_status_projection(connection, mission_id)
+                slot_row = connection.execute(
+                    "SELECT mission_revision,document_digest,document FROM mission_action_slot_snapshots "
+                    "WHERE mission_id=? ORDER BY mission_revision DESC LIMIT 1", (mission_id,)
+                ).fetchone()
         except ValueError as error:
             if str(error) == "unknown Mission":
                 raise OperationsProjectionError("MISSION_MISSING", "Mission was not found", status=404) from None
@@ -241,6 +247,36 @@ class InstalledOperationsReadService:
             raise OperationsProjectionError(
                 "MISSION_AMBIGUOUS", "Mission identity is inconsistent", status=409,
             )
+        planning_slots: dict[str, Any] | None = None
+        if slot_row is not None:
+            encoded = slot_row[2]
+            expected_digest = "sha256:" + sha256(encoded.encode("utf-8")).hexdigest()
+            try:
+                document = json.loads(encoded)
+            except (TypeError, ValueError):
+                document = None
+            try:
+                validated = validate_peer_graph({key: value for key, value in document.items()
+                                                 if key != "dispatch_authorized"}) if isinstance(document, dict) else None
+            except ParallelActionContractError:
+                validated = None
+            if (slot_row[1] != expected_digest or not isinstance(document, dict)
+                    or document != validated
+                    or document.get("mission_id") != mission_id
+                    or document.get("mission_revision") != slot_row[0]
+                    or document.get("dispatch_authorized") is not False):
+                raise OperationsProjectionError(
+                    "MISSION_ACTION_SLOTS_INVALID", "Mission Action slots are inconsistent", status=409,
+                )
+            planning_slots = {
+                "contract_version": document.get("contract_version"),
+                "mission_revision": slot_row[0],
+                "document_digest": expected_digest,
+                "freshness": "CURRENT" if slot_row[0] == state.revision else "STALE",
+                "target_verification": "UNVERIFIED",
+                "dispatch_authorized": False,
+                "actions": document.get("actions"),
+            }
         times = [item.get("occurred_at") for item in state.state_history if isinstance(item, Mapping)]
         valid_times = [item for item in times if _parse_time(item) is not None]
         observed_at = max(
@@ -249,6 +285,7 @@ class InstalledOperationsReadService:
         projection.update({
             "criteria": [_safe_text(item) for item in state.mission.get("acceptance_criteria", ())],
             "actions": [_project_action(item) for item in state.actions],
+            "planning_slots": planning_slots,
             "evidence_lineage": {
                 "execution_evidence": _project_execution_evidence(state.execution_evidence),
                 "execution_attempts": [_project_execution_evidence(item) for item in state.execution_history],

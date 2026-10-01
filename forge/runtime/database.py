@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 40
+RUNTIME_SCHEMA_VERSION = 41
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -30,7 +30,7 @@ _REQUIRED_METADATA = frozenset((
     "database_location", "last_access_at", "status", "instance_version", "initialization_version",
 ))
 _TABLES = frozenset((
-    "mission_state", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
+    "mission_state", "mission_action_slot_snapshots", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
     "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
@@ -503,6 +503,19 @@ class RuntimeDatabase:
                     or f"before {operation}" not in sql or fragment not in sql):
                 raise RuntimeIntegrityError(f"durable action-derivation result migration found incompatible {name} trigger")
 
+    def _require_action_slot_structure(self) -> None:
+        columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                        for row in self._connection.execute("PRAGMA table_info(mission_action_slot_snapshots)"))
+        if columns != (
+            ("mission_id", "TEXT", 1, 1), ("mission_revision", "INTEGER", 1, 2),
+            ("document_digest", "TEXT", 1, 0), ("document", "TEXT", 1, 0),
+        ):
+            raise RuntimeIntegrityError("Mission Action slot storage shape is inconsistent")
+        references = {(row["table"], row["from"], row["to"])
+                      for row in self._connection.execute("PRAGMA foreign_key_list(mission_action_slot_snapshots)")}
+        if references != {("mission_state", "mission_id", "mission_id")}:
+            raise RuntimeIntegrityError("Mission Action slot Mission reference is inconsistent")
+
     def _require_operational_reset_structure(self) -> None:
         required_columns = {
             "operational_reset_state": {
@@ -532,7 +545,8 @@ class RuntimeDatabase:
         ).fetchall()
         if len(state_rows) != 1 or int(state_rows[0]["singleton"]) != 1 or int(state_rows[0]["dataset_generation"]) < 0:
             raise RuntimeIntegrityError("operational reset durable state is inconsistent")
-        for table in sorted(_TABLES):
+        reset_tables = _TABLES if RUNTIME_SCHEMA_VERSION >= 41 else _TABLES - {"mission_action_slot_snapshots"}
+        for table in sorted(reset_tables):
             prefix = "operational_reset_authorize" if table in _OPERATIONAL_RESET_TABLES else "operational_reset_block"
             for operation in ("insert", "update", "delete"):
                 name = f"{prefix}_{table}_{operation}"
@@ -1901,6 +1915,35 @@ class RuntimeDatabase:
             except Exception:
                 self._connection.rollback()
                 raise
+        elif version == 40:
+            active = self._connection.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()
+            if active is not None and active[0] is not None:
+                raise RuntimeMaintenanceActive("cannot migrate during operational reset maintenance")
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                self._connection.execute(
+                    "CREATE TABLE IF NOT EXISTS mission_action_slot_snapshots ("
+                    "mission_id TEXT NOT NULL, mission_revision INTEGER NOT NULL,"
+                    "document_digest TEXT NOT NULL, document TEXT NOT NULL,"
+                    "PRIMARY KEY (mission_id, mission_revision),"
+                    "FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id))"
+                )
+                for operation in ("INSERT", "UPDATE", "DELETE"):
+                    self._connection.execute(
+                        f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_mission_action_slot_snapshots_{operation.lower()} "
+                        f"BEFORE {operation} ON mission_action_slot_snapshots "
+                        "WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL "
+                        "BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END"
+                    )
+                self._set_metadata({"schema_version": "41", "migration_version": "41",
+                                    "last_migration": "41", "forge_version": forge_version})
+                self._connection.execute("PRAGMA user_version=41")
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -2029,7 +2072,8 @@ class RuntimeDatabase:
         if check != "ok":
             raise RuntimeIntegrityError("SQLite integrity check failed")
         tables = {row["name"] for row in self._connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        if not _TABLES <= tables:
+        required_tables = _TABLES if RUNTIME_SCHEMA_VERSION >= 41 else _TABLES - {"mission_action_slot_snapshots"}
+        if not required_tables <= tables:
             raise RuntimeIntegrityError("runtime database schema is incomplete")
         metadata = self.metadata
         if not _REQUIRED_METADATA <= metadata.keys():
@@ -2043,6 +2087,8 @@ class RuntimeDatabase:
         self._require_peer_configuration_structure()
         self._require_execution_host_exchange_audit_structure()
         self._require_operational_log_structure()
+        if RUNTIME_SCHEMA_VERSION >= 41:
+            self._require_action_slot_structure()
         self._require_operational_reset_structure()
         identity = self.runtime_identity
         expected_identity = "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)
@@ -2122,6 +2168,70 @@ class RuntimeDatabase:
         with self._connection:
             self._write_mission_state_in_transaction(document, mission_id, lifecycle, context)
         return document
+
+    def record_mission_action_slots(self, graph: Mapping[str, Any]) -> dict[str, Any]:
+        """Pin non-dispatchable planning slots to one current, approved Mission revision.
+
+        This records no admission, EP binding, execution grant, or lifecycle change.
+        A second proposal for the same revision must be byte-equivalent after
+        canonical validation; a stale revision cannot be written.
+        """
+        from forge.parallel_action_contract import validate_peer_graph
+
+        normalized = validate_peer_graph(graph)
+        mission_id = normalized["mission_id"]
+        revision = normalized["mission_revision"]
+        encoded = self._dump(normalized)
+        digest = "sha256:" + sha256(encoded.encode("utf-8")).hexdigest()
+        self._reject_reset_retired_identity("mission_id", mission_id)
+        with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            row = self._connection.execute(
+                "SELECT document FROM mission_state WHERE mission_id=?", (mission_id,)
+            ).fetchone()
+            if row is None:
+                raise RuntimeDatabaseError("Action slots require an existing Mission")
+            state = json.loads(row["document"])
+            mission = state.get("mission")
+            if (state.get("mission_id") != mission_id or state.get("revision") != revision
+                    or not isinstance(mission, dict) or mission.get("id") != mission_id
+                    or mission.get("status") != "approved_for_engineering"
+                    or state.get("status") in {"COMPLETED", "ARCHIVED", "FAILED"}):
+                raise RuntimeDatabaseError("Action slots require the current approved Mission revision")
+            stored_actions = state.get("actions")
+            if (not isinstance(stored_actions, list)
+                    or len(stored_actions) != len(normalized["actions"])
+                    or {action.get("id") for action in stored_actions if isinstance(action, dict)}
+                    != {action["action_id"] for action in normalized["actions"]}):
+                raise RuntimeDatabaseError("Action slots must match the current Mission Action set")
+            proposed = {action["action_id"]: action for action in normalized["actions"]}
+            for action in stored_actions:
+                predecessors = action.get("dependencies")
+                if (not isinstance(predecessors, list)
+                        or set(predecessors) != {
+                            edge["predecessor_action_id"] for edge in proposed[action["id"]]["dependencies"]
+                        }):
+                    raise RuntimeDatabaseError("Action slot predecessors must match the stored Mission graph")
+            scope = mission.get("scope")
+            if (not isinstance(scope, list) or not scope
+                    or any(action["target"]["repository_id"] not in scope
+                           for action in normalized["actions"])):
+                raise RuntimeDatabaseError("Action slot target is outside the approved Mission scope")
+            previous = self._connection.execute(
+                "SELECT document_digest,document FROM mission_action_slot_snapshots "
+                "WHERE mission_id=? AND mission_revision=?", (mission_id, revision)
+            ).fetchone()
+            if previous is not None:
+                if previous["document_digest"] != digest or previous["document"] != encoded:
+                    raise RuntimeDatabaseError("Action slots conflict with the pinned Mission revision")
+            else:
+                self._connection.execute(
+                    "INSERT INTO mission_action_slot_snapshots VALUES (?,?,?,?)",
+                    (mission_id, revision, digest, encoded),
+                )
+        return {"mission_id": mission_id, "mission_revision": revision,
+                "document_digest": digest, "target_verification": "UNVERIFIED",
+                "dispatch_authorized": False}
 
     def create_mission_state(self, state: Any) -> dict[str, Any]:
         """Create one Mission state without replacing an existing record."""

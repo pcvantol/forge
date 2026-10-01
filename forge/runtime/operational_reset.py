@@ -64,6 +64,7 @@ TABLE_CLASSIFICATION: Mapping[str, str] = {
     "mission_id_allocations": "SECURITY_AND_AUTHORITY_LEDGER",
     # C — old planning/execution history removed from the active generation.
     "mission_state": "OPERATIONAL_HISTORY",
+    "mission_action_slot_snapshots": "OPERATIONAL_HISTORY",
     "execution_context_snapshots": "OPERATIONAL_HISTORY",
     "architecture_reviews": "OPERATIONAL_HISTORY",
     "mission_recommendations": "OPERATIONAL_HISTORY",
@@ -127,6 +128,7 @@ PURGE_ORDER = (
     "integration_evidence",
     "mission_intake_evidence",
     "mission_runtime_projections",
+    "mission_action_slot_snapshots",
     "execution_context_snapshots",
     "action_derivations",
     "scheduler_submissions",

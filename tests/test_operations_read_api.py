@@ -5,6 +5,7 @@ from dataclasses import replace
 from http.client import HTTPConnection
 import json
 from pathlib import Path
+import sqlite3
 from tempfile import TemporaryDirectory
 from threading import Thread
 from types import SimpleNamespace
@@ -20,6 +21,7 @@ from forge.models.mission import EngineeringMission, MissionIntentMembership, Mi
 from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
 from forge.operations_read_api import InstalledOperationsReadService, OperationsReadAPI, make_server
 from forge.runtime import RuntimeBootstrap
+from forge.runtime.database import RuntimeDatabaseError
 from forge.secure_store import SecretReference
 from forge.server_runtime import ForgeServerAPI, make_server as make_forge_server
 from forge.state import MissionStateStore
@@ -156,6 +158,112 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         MissionStateStore(self.database, data_root=str(self.root)).create(
             mission, (intent,), (first, second), occurred_at="2026-09-21T05:00:00Z",
         )
+
+    def test_durable_action_slots_replay_restart_readback_and_stale_revision(self) -> None:
+        self.create_mission()
+        graph = self._slot_graph()
+        receipt = self.database.record_mission_action_slots(graph)
+        self.assertEqual(self.database.record_mission_action_slots(graph), receipt)
+        self.database.close()
+        self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        slots = response.body["mission"]["planning_slots"]
+        self.assertEqual(slots["freshness"], "CURRENT")
+        self.assertEqual(slots["document_digest"], receipt["document_digest"])
+        self.assertFalse(slots["dispatch_authorized"])
+        self.assertEqual([item["action_id"] for item in slots["actions"]],
+                         ["ACTION-0042-A", "ACTION-0042-B"])
+        with self.database._connection:  # noqa: SLF001 - simulated later Mission revision
+            row = self.database._connection.execute(  # noqa: SLF001
+                "SELECT document FROM mission_state WHERE mission_id='MISSION-0042'"
+            ).fetchone()
+            state = json.loads(row[0])
+            state["revision"] = 2
+            self.database._connection.execute(  # noqa: SLF001
+                "UPDATE mission_state SET document=? WHERE mission_id='MISSION-0042'",
+                (json.dumps(state),),
+            )
+        stale = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(stale.body["mission"]["planning_slots"]["freshness"], "STALE")
+        with self.assertRaisesRegex(RuntimeDatabaseError, "current approved Mission revision"):
+            self.database.record_mission_action_slots(graph)
+
+    def test_action_slots_reject_conflict_scope_and_unstored_action(self) -> None:
+        self.create_mission()
+        graph = self._slot_graph()
+        self.database.record_mission_action_slots(graph)
+        changed = json.loads(json.dumps(graph))
+        changed["actions"][0]["target"]["baseline_revision"] = "different"
+        with self.assertRaisesRegex(RuntimeDatabaseError, "conflict"):
+            self.database.record_mission_action_slots(changed)
+        outside = json.loads(json.dumps(graph))
+        outside["actions"][0]["target"]["repository_id"] = "other-repository"
+        outside["actions"][1]["dependencies"][0]["required_evidence"]["repository_id"] = "other-repository"
+        with self.assertRaisesRegex(RuntimeDatabaseError, "scope"):
+            self.database.record_mission_action_slots(outside)
+        missing = json.loads(json.dumps(graph))
+        missing["actions"][1]["action_id"] = "ACTION-UNKNOWN"
+        with self.assertRaisesRegex(RuntimeDatabaseError, "Action set"):
+            self.database.record_mission_action_slots(missing)
+        altered_edges = json.loads(json.dumps(graph))
+        altered_edges["actions"][1]["dependencies"] = []
+        with self.assertRaisesRegex(RuntimeDatabaseError, "predecessors"):
+            self.database.record_mission_action_slots(altered_edges)
+        count = self.database._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM mission_action_slot_snapshots"
+        ).fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_action_slots_reject_missing_mission_and_corrupt_readback(self) -> None:
+        graph = self._slot_graph()
+        with self.assertRaisesRegex(RuntimeDatabaseError, "existing Mission"):
+            self.database.record_mission_action_slots(graph)
+        self.create_mission()
+        self.database.record_mission_action_slots(graph)
+        with self.database._connection:  # noqa: SLF001 - controlled corrupt-storage fixture
+            self.database._connection.execute(  # noqa: SLF001
+                "UPDATE mission_action_slot_snapshots SET document_digest=? WHERE mission_id=?",
+                ("sha256:" + "0" * 64, "MISSION-0042"),
+            )
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 409)
+        self.assertEqual(response.body["error"]["code"], "MISSION_ACTION_SLOTS_INVALID")
+
+    def test_schema40_migration_keeps_serial_mission_without_invented_slots(self) -> None:
+        self.create_mission()
+        prior = self.database.get_document("mission_state", "MISSION-0042")
+        self.database.close()
+        with sqlite3.connect(self.root / "forge.db") as connection:
+            connection.execute("DROP TABLE mission_action_slot_snapshots")
+            connection.execute(
+                "UPDATE runtime_metadata SET value='40' WHERE key IN "
+                "('schema_version','migration_version','last_migration','database_version')"
+            )
+            connection.execute("PRAGMA user_version=40")
+        self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        self.assertEqual(self.database.get_document("mission_state", "MISSION-0042"), prior)
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        self.assertIsNone(response.body["mission"]["planning_slots"])
+
+    @staticmethod
+    def _slot_graph() -> dict:
+        return {
+            "contract_version": "parallel-action-graph/v1", "mission_id": "MISSION-0042",
+            "mission_revision": 1, "actions": [
+                {"action_id": action, "target": {
+                    "ep_instance_id": "ep-instance-1", "project_id": "forge-project",
+                    "repository_id": "forge-repository", "baseline_revision": "baseline-1",
+                }, "dependencies": [] if action.endswith("-A") else [{
+                    "predecessor_action_id": "ACTION-0042-A",
+                    "required_evidence": {"kind": "REPOSITORY_REVISION",
+                                          "repository_id": "forge-repository",
+                                          "content_digest": "sha256:" + "a" * 64},
+                }]}
+                for action in ("ACTION-0042-A", "ACTION-0042-B")
+            ],
+        }
 
     def test_unconfigured_project_is_empty_and_read_only(self) -> None:
         before = self.snapshot()

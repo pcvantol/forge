@@ -225,7 +225,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             "peer_configuration_digest": before["peer_state_digest"],
         })
         self.assertEqual(update.transition_schemas(request), (39, 40))
-        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.39").open()
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 40):
+            database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.39").open()
         database.close()
         after = update.database_snapshot(self.data_root / "forge.db")
         proof = update.verify_preservation(before, after, request)
@@ -233,18 +234,20 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         self.assertEqual(after["peer_state_digest"], before["peer_state_digest"])
 
     def test_2738_to_2739_preserves_exact_paired_binding_and_history(self) -> None:
-        database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.38").open()
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 40):
+            database = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.38").open()
         runtime_id = database.runtime_identity.runtime_id
         installation_id = database.metadata["installation_id"]
         database.close()
-        configured = EngineeringPlatformPeerConfigurationService(self.data_root).configure(
-            binding_id="ep-selected", endpoint="https://ep.test",
-            expected_ep_instance_id="ep-instance", ep_consumer_id="consumer-old",
-            execution_host_id="ep-host", ep_project_id="project",
-            ep_repository_id="repository", repository_identity="forge-repository",
-            credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
-            operator_id="operator",
-        )
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 40):
+            configured = EngineeringPlatformPeerConfigurationService(self.data_root).configure(
+                binding_id="ep-selected", endpoint="https://ep.test",
+                expected_ep_instance_id="ep-instance", ep_consumer_id="consumer-old",
+                execution_host_id="ep-host", ep_project_id="project",
+                ep_repository_id="repository", repository_identity="forge-repository",
+                credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+                operator_id="operator",
+            )
         with sqlite3.connect(self.data_root / "forge.db") as connection:
             connection.execute("DROP TABLE execution_host_peer_detach_operations")
             connection.execute("DROP TABLE execution_host_peer_generation")
@@ -259,7 +262,8 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             "runtime_id": runtime_id, "installation_id": installation_id,
             "peer_configuration_digest": configured.configuration_digest,
         })
-        migrated = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.39").open()
+        with patch.object(runtime_database, "RUNTIME_SCHEMA_VERSION", 40):
+            migrated = RuntimeBootstrap(data_root=self.data_root, forge_version="2.7.39").open()
         migrated.close()
         after = update.database_snapshot(self.data_root / "forge.db")
         self.assertEqual(update.verify_preservation(before, after, request)["status"], "PASS")
