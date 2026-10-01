@@ -708,26 +708,37 @@ def make_server(host: str, port: int, api: OperationsReadAPI) -> ThreadingHTTPSe
         server_version = "ForgeOperationsReadAPI/1"
         sys_version = ""
 
+        def _dispatch(self, method: str, *, body: bool = True) -> None:
+            authorizations = self.headers.get_all("Authorization", [])
+            if len(authorizations) > 1:
+                response = APIResponse(400, OperationsReadAPI._error(
+                    "REQUEST_INVALID", "request Authorization is ambiguous",
+                ), {"Content-Type": "application/json; charset=utf-8",
+                    "X-Content-Type-Options": "nosniff"})
+            else:
+                response = api.handle(method, self.path, authorizations[0] if authorizations else None)
+            self._respond(response, body=body)
+
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
-            self._respond(api.handle("GET", self.path, self.headers.get("Authorization")))
+            self._dispatch("GET")
 
         def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
-            self._respond(api.handle("POST", self.path, self.headers.get("Authorization")))
+            self._dispatch("POST")
 
         def do_PUT(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
-            self._respond(api.handle("PUT", self.path, self.headers.get("Authorization")))
+            self._dispatch("PUT")
 
         def do_DELETE(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
-            self._respond(api.handle("DELETE", self.path, self.headers.get("Authorization")))
+            self._dispatch("DELETE")
 
         def do_PATCH(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
-            self._respond(api.handle("PATCH", self.path, self.headers.get("Authorization")))
+            self._dispatch("PATCH")
 
         def do_HEAD(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
-            self._respond(api.handle("HEAD", self.path, self.headers.get("Authorization")), body=False)
+            self._dispatch("HEAD", body=False)
 
         def do_OPTIONS(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
-            self._respond(api.handle("OPTIONS", self.path, self.headers.get("Authorization")))
+            self._dispatch("OPTIONS")
 
         def log_message(self, _format: str, *_args: object) -> None:
             # Request targets and headers are intentionally not logged here.

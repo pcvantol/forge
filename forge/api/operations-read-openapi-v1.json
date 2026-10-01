@@ -715,7 +715,8 @@
   },
   "info": {
     "title": "Forge Operations Read API",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "description": "Authenticated loopback read API. Repeated Authorization headers are rejected before read-service dispatch."
   },
   "openapi": "3.1.0",
   "paths": {

@@ -631,9 +631,14 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
         sys_version = ""
 
         def _body(self) -> Mapping[str, Any] | None:
+            lengths = self.headers.get_all("Content-Length", [])
+            if len(lengths) > 1:
+                raise ValueError("request Content-Length is ambiguous")
+            if self.headers.get_all("Transfer-Encoding", []):
+                raise ValueError("request Transfer-Encoding is unsupported")
             if self.command == "GET":
                 return None
-            length_text = self.headers.get("Content-Length", "0")
+            length_text = lengths[0] if lengths else "0"
             try:
                 length = int(length_text)
             except ValueError as error:
@@ -650,8 +655,12 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
 
         def _dispatch(self) -> None:
             try:
+                authorizations = self.headers.get_all("Authorization", [])
+                if len(authorizations) > 1:
+                    raise ValueError("request Authorization is ambiguous")
                 body = self._body()
-                response = api.handle(self.command, self.path, self.headers.get("Authorization"), body)
+                response = api.handle(self.command, self.path,
+                                      authorizations[0] if authorizations else None, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                     "code": "REQUEST_INVALID", "message": str(error),
