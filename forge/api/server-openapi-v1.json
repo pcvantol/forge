@@ -479,7 +479,7 @@
     "/v1/projects/{project_id}/roadmap": {
       "get": {
         "summary": "Read the persisted Mission and Action DAG subset for one configured project",
-        "description": "The repository scope reports the exact active Mission IDs/count and NONE, SINGLE or UNSUPPORTED_MULTIPLE cardinality without claiming project membership or parallel execution. Capability, Candidate, Expected and cross-Mission project graph views remain unavailable. No peer call or Mission mutation occurs.",
+        "description": "The repository scope reports exact active Mission IDs/count and NONE, SINGLE or UNSUPPORTED_MULTIPLE cardinality, plus per-Mission recorded-transition source times and freshness. Aggregate freshness is UNKNOWN when any Mission timeline is missing or malformed, and is never refreshed merely by reopening the runtime. These fields do not claim project membership or parallel execution. Capability, Candidate, Expected and cross-Mission project graph views remain unavailable. No peer call or Mission mutation occurs.",
         "parameters": [{"name": "project_id", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"}}],
         "responses": {
           "200": {"description": "Consistent installed Mission/Action snapshot"},

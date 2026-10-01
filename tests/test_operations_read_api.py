@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from http.client import HTTPConnection
 import json
 from pathlib import Path
@@ -609,6 +610,8 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.configure_project()
         empty = self.api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
         self.assertEqual(empty.body["repository_scope"]["missions"], [])
+        self.assertEqual(empty.body["freshness"], "UNKNOWN")
+        self.assertIsNone(empty.body["source_observed_at"])
         self.assertEqual(empty.body["repository_scope"]["active_mission_ids"], [])
         self.assertEqual(empty.body["repository_scope"]["active_mission_count"], 0)
         self.assertEqual(empty.body["repository_scope"]["active_mission_multiplicity"], "NONE")
@@ -629,6 +632,64 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertEqual(response.body["repository_scope"]["missions"][0]["actions"][1]["dependencies"], ["ACTION-0042-A"])
         self.assertNotIn("keychain://", json.dumps(response.body))
         self.assertEqual(self.snapshot(), before)
+
+    def test_project_freshness_uses_mission_transitions_not_runtime_reopen(self) -> None:
+        self.configure_project()
+        self.create_mission("0042")
+        self.create_mission("0043")
+        current = self.database.get_document("mission_state", "MISSION-0043")
+        current["state_history"][-1]["occurred_at"] = "2026-10-01T19:00:00Z"
+        self.database.save_mission_state(current)
+        self.database.close()
+        self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        clock = lambda: datetime(2026, 10, 1, 19, 1, tzinfo=UTC)
+        api = OperationsReadAPI(InstalledOperationsReadService(self.root, clock=clock), CREDENTIAL)
+        before = self.snapshot()
+
+        response = api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+
+        self.assertEqual(response.status, 200)
+        missions = response.body["repository_scope"]["missions"]
+        self.assertEqual([item["freshness"] for item in missions], ["STALE", "CURRENT"])
+        self.assertEqual(response.body["freshness"], "STALE")
+        self.assertEqual(response.body["source_observed_at"], "2026-09-21T05:00:00Z")
+        self.assertEqual(self.snapshot(), before)
+        denied = api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer wrong")
+        self.assertEqual(denied.status, 401)
+
+    def test_project_freshness_missing_and_future_transition_fail_closed(self) -> None:
+        self.configure_project()
+        self.create_mission("0042")
+        self.create_mission("0043")
+        missing = self.database.get_document("mission_state", "MISSION-0042")
+        missing["state_history"] = []
+        self.database.save_mission_state(missing)
+        future = self.database.get_document("mission_state", "MISSION-0043")
+        future["state_history"][-1]["occurred_at"] = "2099-01-01T00:00:00Z"
+        self.database.save_mission_state(future)
+        clock = lambda: datetime(2026, 10, 1, 19, 1, tzinfo=UTC)
+        api = OperationsReadAPI(InstalledOperationsReadService(self.root, clock=clock), CREDENTIAL)
+
+        response = api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual([item["freshness"] for item in response.body["repository_scope"]["missions"]],
+                         ["UNKNOWN", "STALE"])
+        self.assertEqual(response.body["freshness"], "UNKNOWN")
+        self.assertIsNone(response.body["source_observed_at"])
+
+        malformed = self.database.get_document("mission_state", "MISSION-0042")
+        malformed["state_history"] = [{"occurred_at": "not-a-timestamp"}]
+        self.database.save_mission_state(malformed)
+        malformed_response = api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual(malformed_response.body["freshness"], "UNKNOWN")
+
+        repaired = self.database.get_document("mission_state", "MISSION-0042")
+        repaired["state_history"] = [{"occurred_at": "2026-10-01T19:00:00Z"}]
+        self.database.save_mission_state(repaired)
+        future_only = api.handle("GET", "/v1/projects/forge-project/roadmap", "Bearer " + CREDENTIAL)
+        self.assertEqual(future_only.body["freshness"], "STALE")
+        self.assertEqual(future_only.body["source_observed_at"], "2026-10-01T19:00:00Z")
 
     def test_multiple_missions_have_stable_order_without_claiming_runtime_parallelism(self) -> None:
         self.configure_project()
