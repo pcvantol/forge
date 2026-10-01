@@ -174,6 +174,9 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertFalse(slots["dispatch_authorized"])
         self.assertEqual([item["action_id"] for item in slots["actions"]],
                          ["ACTION-0042-A", "ACTION-0042-B"])
+        self.assertEqual(slots["selected_binding_resolution"], "UNCONFIGURED")
+        self.assertTrue(all(item["selected_binding_resolution"] == "UNCONFIGURED"
+                            for item in slots["actions"]))
         with self.database._connection:  # noqa: SLF001 - simulated later Mission revision
             row = self.database._connection.execute(  # noqa: SLF001
                 "SELECT document FROM mission_state WHERE mission_id='MISSION-0042'"
@@ -186,8 +189,68 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
             )
         stale = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
         self.assertEqual(stale.body["mission"]["planning_slots"]["freshness"], "STALE")
+        self.assertEqual(stale.body["mission"]["planning_slots"]["selected_binding_resolution"], "STALE")
+        self.configure_project()
+        stale_with_binding = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(stale_with_binding.body["mission"]["planning_slots"]["selected_binding_resolution"], "STALE")
         with self.assertRaisesRegex(RuntimeDatabaseError, "current approved Mission revision"):
             self.database.record_mission_action_slots(graph)
+
+    def test_action_slots_resolve_only_exact_selected_binding_without_dispatch(self) -> None:
+        self.create_mission()
+        self.database.record_mission_action_slots(self._slot_graph())
+        self.configure_project()
+        self.database.close()
+        self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        before = self.snapshot()
+
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+
+        self.assertEqual(response.status, 200)
+        slots = response.body["mission"]["planning_slots"]
+        self.assertEqual(slots["selected_binding_resolution"], "MATCHED_SELECTED_BINDING")
+        self.assertEqual([item["selected_binding_resolution"] for item in slots["actions"]],
+                         ["MATCHED_SELECTED_BINDING"] * 2)
+        self.assertTrue(all(item["baseline_verification"] == "UNVERIFIED" for item in slots["actions"]))
+        self.assertEqual(slots["target_verification"], "UNVERIFIED")
+        self.assertFalse(slots["dispatch_authorized"])
+        self.assertNotIn("keychain://", json.dumps(response.body))
+        self.assertNotIn("https://ep.test", json.dumps(response.body))
+        self.assertEqual(self.snapshot(), before)
+
+        wrong = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer wrong")
+        self.assertEqual(wrong.status, 401)
+
+        with self.database._connection:  # noqa: SLF001 - synthetic config corruption
+            self.database._connection.execute(  # noqa: SLF001
+                "UPDATE execution_host_peer_configuration SET configuration_digest=? WHERE singleton=1",
+                ("sha256:" + "0" * 64,),
+            )
+        corrupt = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(corrupt.status, 503)
+        self.assertNotIn("planning_slots", json.dumps(corrupt.body))
+        self.assertNotIn("keychain://", json.dumps(corrupt.body))
+
+    def test_action_slots_distinguish_mismatch_and_mixed_binding(self) -> None:
+        self.create_mission()
+        graph = self._slot_graph()
+        graph["actions"][1]["target"]["project_id"] = "other-project"
+        self.database.record_mission_action_slots(graph)
+        old = self.configure_project()
+        response = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(response.status, 200)
+        slots = response.body["mission"]["planning_slots"]
+        self.assertEqual(slots["selected_binding_resolution"], "MIXED")
+        self.assertEqual([item["selected_binding_resolution"] for item in slots["actions"]],
+                         ["MATCHED_SELECTED_BINDING", "MISMATCH"])
+        self.assertFalse(slots["dispatch_authorized"])
+
+        self.configure_project("different-project", replace=True,
+                               expected_revision=old.configuration_revision,
+                               expected_digest=old.configuration_digest)
+        rebound = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
+        self.assertEqual(rebound.status, 200)
+        self.assertEqual(rebound.body["mission"]["planning_slots"]["selected_binding_resolution"], "MISMATCH")
 
     def test_action_slots_reject_conflict_scope_and_unstored_action(self) -> None:
         self.create_mission()

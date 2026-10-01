@@ -74,3 +74,21 @@ private prompt remain inside the Forge runtime; malformed snapshots conflict
 without exposing them. Missing or ambiguous migration stays explicit. This
 subset does not qualify full PA-F1, runtime use of multiple execution slots,
 target grants, admission, or parallel dispatch.
+
+## Selected binding readback subset
+
+The authenticated installed Mission detail compares each current, validated
+planning-slot target's EP instance, project and repository IDs with the one
+selected Forge→EP configuration in the same read-only runtime snapshot. Each
+Action reports `selected_binding_resolution` as `MATCHED_SELECTED_BINDING`,
+`UNCONFIGURED` or `MISMATCH`; the aggregate is that common value or `MIXED`.
+An older Mission revision reports `STALE` regardless of today's configuration.
+The comparison never rewrites or retargets a slot. A broken selected
+configuration makes readback unavailable instead of asserting a match.
+
+This identity comparison is narrower than target authorization: the selected
+binding may later change, the Action's baseline remains unverified, and EP
+admission, credential validity, host capacity and grants are not checked.
+`target_verification` therefore remains `UNVERIFIED` and
+`dispatch_authorized` remains false. The stored Action frontier remains
+non-dispatchable; full PA-F1/F2/F3 qualification remains open.

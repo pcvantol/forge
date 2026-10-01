@@ -318,7 +318,7 @@ class InstalledOperationsReadService:
         if not mission_id or len(mission_id) > 128 or any(ord(character) < 33 for character in mission_id):
             raise OperationsProjectionError("MISSION_REFERENCE_INVALID", "Mission reference is invalid", status=400)
         try:
-            with self._runtime_snapshot() as (connection, _metadata):
+            with self._runtime_snapshot() as (connection, metadata):
                 projection, state = mission_status_projection(connection, mission_id)
                 slot_row = connection.execute(
                     "SELECT mission_revision,document_digest,document FROM mission_action_slot_snapshots "
@@ -328,6 +328,7 @@ class InstalledOperationsReadService:
                     "SELECT mission_id,action_id,source_revision,source_digest,document_digest,document "
                     "FROM mission_action_execution_slots WHERE mission_id=? ORDER BY action_id", (mission_id,)
                 ).fetchall()
+                binding = self._project_binding(connection, metadata) if slot_row is not None else None
         except ValueError as error:
             if str(error) == "unknown Mission":
                 raise OperationsProjectionError("MISSION_MISSING", "Mission was not found", status=404) from None
@@ -369,14 +370,32 @@ class InstalledOperationsReadService:
                 raise OperationsProjectionError(
                     "MISSION_ACTION_SLOTS_DRIFT", "Mission Action slots no longer match the Mission", status=409,
                 )
+            slot_freshness = "CURRENT" if slot_row[0] == state.revision else "STALE"
+            actions = []
+            for action in document["actions"]:
+                target = action["target"]
+                if slot_freshness != "CURRENT":
+                    resolution = "STALE"
+                elif binding is None:
+                    resolution = "UNCONFIGURED"
+                elif (target["ep_instance_id"] == binding.expected_ep_instance_id
+                      and target["project_id"] == binding.ep_project_id
+                      and target["repository_id"] == binding.ep_repository_id):
+                    resolution = "MATCHED_SELECTED_BINDING"
+                else:
+                    resolution = "MISMATCH"
+                actions.append({**action, "selected_binding_resolution": resolution,
+                                "baseline_verification": "UNVERIFIED"})
+            resolutions = {action["selected_binding_resolution"] for action in actions}
             planning_slots = {
                 "contract_version": document.get("contract_version"),
                 "mission_revision": slot_row[0],
                 "document_digest": expected_digest,
-                "freshness": "CURRENT" if slot_row[0] == state.revision else "STALE",
+                "freshness": slot_freshness,
                 "target_verification": "UNVERIFIED",
+                "selected_binding_resolution": resolutions.pop() if len(resolutions) == 1 else "MIXED",
                 "dispatch_authorized": False,
-                "actions": document.get("actions"),
+                "actions": actions,
             }
         times = [item.get("occurred_at") for item in state.state_history if isinstance(item, Mapping)]
         valid_times = [item for item in times if _parse_time(item) is not None]
