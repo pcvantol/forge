@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.41",
+  "classification_rationale": "L3-FORGE-DURABLE-ACTION-SLOTS-V1-20261001",
+  "component": "product",
+  "event_lineage": "L3-FORGE-DURABLE-ACTION-SLOTS-V1-20261001",
+  "expected_head": "8330037ebc99b35b9f423d46efe27397e632cdab",
+  "operation_id": "l3-durable-action-slots-20261001",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.42"
+}
