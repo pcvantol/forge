@@ -427,6 +427,8 @@ class InstalledOperationsReadService:
         try:
             projection["action_frontier"] = project_action_frontier(
                 state.actions, mission_revision=state.revision,
+                pinned_slots=planning_slots if planning_slots is not None
+                and planning_slots["freshness"] == "CURRENT" else None,
             )
         except ActionFrontierError:
             raise OperationsProjectionError(

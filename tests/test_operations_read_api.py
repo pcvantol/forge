@@ -218,6 +218,12 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertEqual(slots["selected_binding_resolution"], "UNCONFIGURED")
         self.assertTrue(all(item["selected_binding_resolution"] == "UNCONFIGURED"
                             for item in slots["actions"]))
+        frontier = response.body["mission"]["action_frontier"]
+        self.assertEqual(frontier["source_slot_digest"], receipt["document_digest"])
+        self.assertEqual([item["target_resolution"] for item in frontier["actions"]],
+                         ["PINNED_UNVERIFIED"] * 2)
+        self.assertEqual([item["selected_binding_resolution"] for item in frontier["actions"]],
+                         ["UNCONFIGURED"] * 2)
         with self.database._connection:  # noqa: SLF001 - simulated later Mission revision
             row = self.database._connection.execute(  # noqa: SLF001
                 "SELECT document FROM mission_state WHERE mission_id='MISSION-0042'"
@@ -231,6 +237,9 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         stale = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
         self.assertEqual(stale.body["mission"]["planning_slots"]["freshness"], "STALE")
         self.assertEqual(stale.body["mission"]["planning_slots"]["selected_binding_resolution"], "STALE")
+        self.assertIsNone(stale.body["mission"]["action_frontier"]["source_slot_digest"])
+        self.assertTrue(all(item["target_resolution"] == "UNAVAILABLE"
+                            for item in stale.body["mission"]["action_frontier"]["actions"]))
         self.configure_project()
         stale_with_binding = self.api.handle("GET", "/v1/missions/MISSION-0042", "Bearer " + CREDENTIAL)
         self.assertEqual(stale_with_binding.body["mission"]["planning_slots"]["selected_binding_resolution"], "STALE")
@@ -255,6 +264,15 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         self.assertTrue(all(item["baseline_verification"] == "UNVERIFIED" for item in slots["actions"]))
         self.assertEqual(slots["target_verification"], "UNVERIFIED")
         self.assertFalse(slots["dispatch_authorized"])
+        frontier = response.body["mission"]["action_frontier"]
+        self.assertEqual(frontier["source_slot_digest"], slots["document_digest"])
+        self.assertEqual([item["target_repository_id"] for item in frontier["actions"]],
+                         ["forge-repository"] * 2)
+        self.assertEqual([item["selected_binding_resolution"] for item in frontier["actions"]],
+                         ["MATCHED_SELECTED_BINDING"] * 2)
+        self.assertTrue(all(item["target_resolution"] == "PINNED_UNVERIFIED"
+                            and item["baseline_verification"] == "UNVERIFIED"
+                            and not item["dispatchable"] for item in frontier["actions"]))
         self.assertNotIn("keychain://", json.dumps(response.body))
         self.assertNotIn("https://ep.test", json.dumps(response.body))
         self.assertEqual(self.snapshot(), before)
@@ -283,6 +301,9 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
         slots = response.body["mission"]["planning_slots"]
         self.assertEqual(slots["selected_binding_resolution"], "MIXED")
         self.assertEqual([item["selected_binding_resolution"] for item in slots["actions"]],
+                         ["MATCHED_SELECTED_BINDING", "MISMATCH"])
+        self.assertEqual([item["selected_binding_resolution"] for item in
+                          response.body["mission"]["action_frontier"]["actions"]],
                          ["MATCHED_SELECTED_BINDING", "MISMATCH"])
         self.assertFalse(slots["dispatch_authorized"])
 
@@ -886,6 +907,39 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
             server.server_close()
             thread.join(timeout=3)
 
+    def test_real_forge_server_reads_pinned_frontier_target_without_mutation(self) -> None:
+        self.create_mission()
+        receipt = self.database.record_mission_action_slots(self._slot_graph())
+        self.configure_project()
+        before = self.snapshot()
+        api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
+        server = make_forge_server("127.0.0.1", 0, api)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            endpoint = f"http://127.0.0.1:{server.server_address[1]}/v1/missions/MISSION-0042"
+            with self.assertRaises(HTTPError) as denied:
+                urlopen(Request(endpoint), timeout=3)
+            self.assertEqual(denied.exception.code, 401)
+            denied.exception.close()
+            with urlopen(Request(endpoint, headers={"Authorization": "Bearer " + CREDENTIAL}),
+                         timeout=3) as response:
+                self.assertEqual(response.status, 200)
+                document = json.load(response)
+            frontier = document["mission"]["action_frontier"]
+            self.assertEqual(frontier["source_slot_digest"], receipt["document_digest"])
+            self.assertEqual([item["target_repository_id"] for item in frontier["actions"]],
+                             ["forge-repository"] * 2)
+            self.assertTrue(all(item["target_resolution"] == "PINNED_UNVERIFIED"
+                                and not item["dispatchable"] for item in frontier["actions"]))
+            self.assertEqual(frontier["parallel_execution"], "NOT_QUALIFIED")
+            self.assertNotIn("keychain://", json.dumps(document))
+            self.assertEqual(self.snapshot(), before)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
     def test_real_server_rejects_mutation_and_malformed_requests(self) -> None:
         api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
         with self.assertRaises(ValueError):
@@ -1184,7 +1238,7 @@ class TestMissionEndpoint(_InstalledFixture):
         self.assertEqual(response.body["mission"]["mission_id"], "MISSION-0042")
         self.assertEqual(response.body["mission"]["action_ids"], ["ACTION-0042"])
         frontier = response.body["mission"]["action_frontier"]
-        self.assertEqual(frontier["contract_version"], "parallel-action-frontier/v1")
+        self.assertEqual(frontier["contract_version"], "parallel-action-frontier/v2")
         self.assertEqual(frontier["logical_frontier_action_ids"], ["ACTION-0042"])
         self.assertEqual(frontier["actions"][0]["target_resolution"], "UNAVAILABLE")
         self.assertFalse(frontier["actions"][0]["dispatchable"])
