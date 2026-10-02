@@ -685,7 +685,18 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
         def send_error(self, code: int, message: str | None = None,
                        explain: str | None = None) -> None:
             # Parser errors can include the raw request line or method.
-            super().send_error(code)
+            self.close_connection = True
+            payload = json.dumps({"api_version": SERVER_API_VERSION, "error": {
+                "code": "REQUEST_INVALID", "message": "HTTP request was rejected",
+            }}, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            self.send_response(code)
+            for name, value in ForgeServerAPI._headers().items():
+                self.send_header(name, value)
+            self.send_header("Connection", "close")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            if getattr(self, "command", None) != "HEAD":
+                self.wfile.write(payload)
 
         def _body(self) -> Mapping[str, Any] | None:
             lengths = self.headers.get_all("Content-Length", [])

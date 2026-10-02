@@ -1012,6 +1012,8 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                     connection.endheaders()
                     response = connection.getresponse()
                     self.assertEqual(response.status, 400)
+                    self.assertEqual(response.headers["Cache-Control"], "no-store")
+                    self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
                     self.assertEqual(json.load(response)["error"]["code"], "REQUEST_INVALID")
                     connection.close()
                 connection = HTTPConnection("127.0.0.1", port, timeout=3)
@@ -1027,6 +1029,7 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
 
     def test_real_listeners_do_not_echo_parser_request_text(self) -> None:
         forge_api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
+        before = self.snapshot()
         for api, server in (
             (self.api, make_server("127.0.0.1", 0, self.api)),
             (forge_api, make_forge_server("127.0.0.1", 0, forge_api)),
@@ -1043,12 +1046,32 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                             raw.sendall(request_line + b"\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
                             with raw.makefile("rb") as reply:
                                 response = reply.read()
-                        self.assertIn(status, response.split(b"\r\n", 1)[0])
+                        header, body = response.split(b"\r\n\r\n", 1)
+                        self.assertIn(status, header.split(b"\r\n", 1)[0])
+                        self.assertIn(b"Cache-Control: no-store", header)
+                        self.assertIn(b"X-Content-Type-Options: nosniff", header)
+                        self.assertIn(b"Content-Type: application/json; charset=utf-8", header)
+                        self.assertIn(b"Connection: close", header)
+                        self.assertIn(f"Content-Length: {len(body)}".encode(), header)
+                        self.assertEqual(json.loads(body)["error"]["code"], "REQUEST_INVALID")
                         self.assertNotIn(b"FORGE_PARSER_LEAK", response)
+                    with socket.create_connection(server.server_address, timeout=3) as raw:
+                        raw.sendall(
+                            b"HEAD /v1/status HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                            + b"X-Padding: value\r\n" * 101 + b"\r\n"
+                        )
+                        with raw.makefile("rb") as reply:
+                            response = reply.read()
+                    header, body = response.split(b"\r\n\r\n", 1)
+                    self.assertIn(b" 431 ", header.split(b"\r\n", 1)[0])
+                    self.assertIn(b"Content-Type: application/json; charset=utf-8", header)
+                    self.assertIn(b"Cache-Control: no-store", header)
+                    self.assertEqual(body, b"")
             finally:
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=3)
+        self.assertEqual(before, self.snapshot())
 
     def test_real_listeners_reject_authority_bearing_targets(self) -> None:
         forge_api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
