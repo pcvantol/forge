@@ -29,4 +29,33 @@ De r30-credentialproef blijft bij LANE_2. Lever de echte exacte testkandidaat en
 
 Herstel eerst een concrete installerblocker of draag de exacte producerreproducer aan de owning lane over. Daarna finish de reeds geselecteerde install/update/preserve/restore/purge-, provider/pairing-, GUI/CLI-, release- en live-acceptatie. Geen nieuwe roadmapfamilie om benutting te verhogen. Gedeelde host/signing/reboot-effecten vereisen een concreet conflictvrij venster; vier bronlanes zijn geen vier privilegeslots.
 
+### Bestaande installerassignment: helperupgrade zonder routinereboot
+
+`DIRECTIVE_ID=L1-HELPER-UPGRADE-WITHOUT-REBOOT-V1-20261002` verfijnt dezelfde
+`L1-FORGE-PLATFORM-MANAGED-INSTALLER-V1-20260923`, PR #75-lineage en de
+oorspronkelijke first-production installer-DoD. Volg de [owning beslissing in
+#141](https://github.com/pcvantol/forge/issues/141#issuecomment-5956174828)
+en de actuele #141-evidence; deze router is geen zelfstandige kwalificatie of
+nieuwe assignment.
+
+Prioriteit is een reeds gebruikte helper veilig binnen **dezelfde macOS-boot**
+vervangen. Sluit nieuwe mutaties racevrij via helper-owned admission, bewijs
+quiescence van bestaande effecten, bind één duurzaam exclusief
+operation-ID/epoch-journal en laat een extern bevoegde macOS-servicecoordinator
+de overgang met nieuwe signed inodes afronden. Hervat pas na werkelijke
+helper-/service- en XPC-readback. De eerste overgang vanaf de bestaande 0.3.13
+helper heeft geen drainprotocol: `runs=1` en een draaiende parent bewijzen geen
+veilige idle-toestand; SMAppService-unregister beëindigt die daemon. Houd deze
+legacy-overgang `BLOCKED_LEGACY_TRANSITION` tot een ondersteunde, gereviewde
+route actieve-effectenbewijs én racevrije sluiting levert. Geen routinereboot,
+rebootfallback of hergebruik van een eerdere rebootautorisatie.
+
+LANE_1 verwerkt de technische architectuur en installer-DAG via eigen protected
+delivery. De native credentialmatrix #142/r30 blijft `PREPARED_NOT_ACK` /
+`NOT_RUN` tot na werkelijke kwalificatie een inhoudelijke #141-ACK met exacte
+kandidaat- en resourcebinding bestaat. Forge 2.7.39 en EP 2.3.106 blijven
+frozen/read-only. De afzonderlijke cold-boot/no-login-proef vraagt een eigen
+afgestemd rebootakkoord. Deze router geeft geen peerbron-, host-, signer-,
+credential- of runtimebevoegdheid en verandert geen Workspace-scope.
+
 Lees alle vier registers bij NEXT. Deze router is geen live assignmentstate of productruntimegrant. De actuele allocatie en de bestaande verticale deliveryregels blijven leidend.
