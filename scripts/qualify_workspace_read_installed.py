@@ -16,7 +16,9 @@ from urllib.request import Request, urlopen
 from jsonschema import Draft202012Validator, FormatChecker
 
 import forge
-from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
+from forge.execution_host_configuration import (
+    EngineeringPlatformPeerConfigurationService, read_peer_configuration,
+)
 from forge.runtime import RuntimeBootstrap
 from forge.secure_store import SecretReference
 from forge.server_runtime import ForgeServerRuntime, existing_instance
@@ -60,6 +62,19 @@ def _grant(root: Path, action: str, *, token_path: Path | None = None) -> None:
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode or json.loads(result.stdout).get("status") not in {"ACTIVE", "REVOKED"}:
         raise AssertionError(f"installed read-grant command failed: {result.stdout}")
+
+
+def _replace_repository(root: Path, repository_id: str) -> None:
+    current = read_peer_configuration(root).configuration
+    assert current is not None
+    EngineeringPlatformPeerConfigurationService(root).configure(
+        binding_id="ep", endpoint="https://ep.test", expected_ep_instance_id="ep-instance",
+        ep_consumer_id="consumer", execution_host_id="ep-host", ep_project_id="project",
+        ep_repository_id=repository_id, repository_identity="source-repo",
+        credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+        operator_id="operator", replace=True,
+        expected_revision=current.configuration_revision, expected_digest=current.configuration_digest,
+    )
 
 
 def _request(port: int, path: str, token: str | None, *, method: str = "GET") -> tuple[int, dict]:
@@ -119,6 +134,10 @@ def main() -> int:
             assert _request(port, "/v1/provider-context", token, method="POST")[0] == 403
             assert _request(port, "/v1/instance", "synthetic-admin-only")[0] == 200
             assert hashlib.sha256((primary / "forge.db").read_bytes()).hexdigest() == before
+            _replace_repository(primary, "repo-2")
+            assert _request(port, "/v1/instance", token)[0] == 401
+            _replace_repository(primary, "repo-1")
+            assert _request(port, "/v1/instance", token)[0] == 200
             next_token_path = primary / "workspace-token-next"
             _grant(primary, "rotate", token_path=next_token_path)
             next_token = next_token_path.read_text(encoding="utf-8").strip()
@@ -152,7 +171,7 @@ def main() -> int:
                       "contract_sha256": hashlib.sha256(INSTALLED_SCHEMA_BYTES).hexdigest(),
                       "routes": ["GET /v1/instance", "GET /v1/status"],
                       "negatives": ["missing/wrong/revoked token", "write/other route", "foreign instance",
-                                    "missing/foreign repository"], "storage_mutation": False}, sort_keys=True))
+                                    "missing/foreign/changed repository"], "storage_mutation": False}, sort_keys=True))
     return 0
 
 
