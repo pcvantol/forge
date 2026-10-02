@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.55",
+  "classification_rationale": "r19 pinned Action-target frontier readback from current validated Mission slot snapshot",
+  "component": "product",
+  "event_lineage": "r19 pinned Action-target frontier readback from current validated Mission slot snapshot",
+  "expected_head": "b7b8aef0dfb57040921b4b43896d18befd51fd98",
+  "operation_id": "L3-FORGE-ACTION-FRONTIER-PINNED-TARGET-READBACK-V1-20261002",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.56"
+}

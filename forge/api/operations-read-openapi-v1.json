@@ -446,6 +446,47 @@
                 },
                 "type": "array"
               },
+              "action_frontier": {
+                "additionalProperties": false,
+                "properties": {
+                  "actions": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action_id": {"type": "string"},
+                        "baseline_verification": {"enum": ["UNAVAILABLE", "UNVERIFIED"]},
+                        "dependencies": {"items": {"type": "string"}, "type": "array"},
+                        "dependency_evidence_resolution": {"enum": ["NOT_REQUIRED", "UNAVAILABLE"]},
+                        "dispatchable": {"const": false},
+                        "logical_state": {"type": "string"},
+                        "order": {"minimum": 1, "type": "integer"},
+                        "selected_binding_resolution": {
+                          "enum": ["UNAVAILABLE", "MATCHED_SELECTED_BINDING", "MISMATCH", "UNCONFIGURED"]
+                        },
+                        "status": {"type": "string"},
+                        "target_repository_id": {"type": ["string", "null"]},
+                        "target_resolution": {"enum": ["UNAVAILABLE", "PINNED_UNVERIFIED"]}
+                      },
+                      "required": ["action_id", "order", "status", "dependencies", "logical_state",
+                                   "target_repository_id", "target_resolution", "selected_binding_resolution",
+                                   "baseline_verification", "dependency_evidence_resolution", "dispatchable"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "contract_version": {"const": "parallel-action-frontier/v2"},
+                  "graph_kind": {"const": "STORED_ACTION_LOGICAL_DAG"},
+                  "logical_frontier_action_ids": {"items": {"type": "string"}, "type": "array"},
+                  "parallel_execution": {"const": "NOT_QUALIFIED"},
+                  "read_only": {"const": true},
+                  "source_mission_revision": {"minimum": 1, "type": "integer"},
+                  "source_slot_digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"}
+                },
+                "required": ["contract_version", "source_mission_revision", "source_slot_digest",
+                             "graph_kind", "logical_frontier_action_ids", "actions",
+                             "parallel_execution", "read_only"],
+                "type": "object"
+              },
               "actions": {
                 "items": {
                   "additionalProperties": false,
@@ -624,6 +665,7 @@
               "status",
               "revision",
               "action_ids",
+              "action_frontier",
               "criteria",
               "actions",
               "planning_slots",

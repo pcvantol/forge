@@ -12,6 +12,46 @@ def action(order: int, action_id: str, *, status: str = "READY",
 
 
 class ActionFrontierTests(unittest.TestCase):
+    def test_current_pinned_targets_are_visible_but_never_dispatchable(self) -> None:
+        slots = {
+            "freshness": "CURRENT", "mission_revision": 3,
+            "document_digest": "sha256:" + "a" * 64,
+            "target_verification": "UNVERIFIED", "dispatch_authorized": False,
+            "actions": [
+                {"action_id": "A", "target": {"repository_id": "repo-a"},
+                 "baseline_verification": "UNVERIFIED",
+                 "selected_binding_resolution": "MATCHED_SELECTED_BINDING"},
+                {"action_id": "B", "target": {"repository_id": "repo-b"},
+                 "baseline_verification": "UNVERIFIED",
+                 "selected_binding_resolution": "MISMATCH"},
+            ],
+        }
+        result = project_action_frontier(
+            (action(2, "B"), action(1, "A")), mission_revision=3, pinned_slots=slots,
+        )
+        self.assertEqual(result["contract_version"], "parallel-action-frontier/v2")
+        self.assertEqual(result["source_slot_digest"], slots["document_digest"])
+        self.assertEqual(
+            [(item["target_repository_id"], item["target_resolution"],
+              item["selected_binding_resolution"], item["baseline_verification"])
+             for item in result["actions"]],
+            [("repo-a", "PINNED_UNVERIFIED", "MATCHED_SELECTED_BINDING", "UNVERIFIED"),
+             ("repo-b", "PINNED_UNVERIFIED", "MISMATCH", "UNVERIFIED")],
+        )
+        self.assertTrue(all(not item["dispatchable"] for item in result["actions"]))
+        self.assertEqual(result["parallel_execution"], "NOT_QUALIFIED")
+        for changed in (
+            {**slots, "freshness": "STALE"},
+            {**slots, "mission_revision": 4},
+            {**slots, "document_digest": "invalid"},
+            {**slots, "actions": slots["actions"][:1]},
+            {**slots, "actions": [slots["actions"][0]] * 2},
+            {**slots, "actions": [{**slots["actions"][0], "selected_binding_resolution": []}, slots["actions"][1]]},
+        ):
+            with self.subTest(changed=changed), self.assertRaises(ActionFrontierError):
+                project_action_frontier((action(1, "A"), action(2, "B")),
+                                        mission_revision=3, pinned_slots=changed)
+
     def test_zero_one_and_independent_multiple_actions_are_logical_only(self) -> None:
         empty = project_action_frontier((), mission_revision=1)
         self.assertEqual(empty["logical_frontier_action_ids"], [])

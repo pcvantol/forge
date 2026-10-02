@@ -8,7 +8,7 @@ EP owns host admission, capacity, execution and evidence production.
 ## Installed readback
 
 The authenticated Forge Server `GET /v1/missions/{mission_id}` response adds
-`mission.action_frontier` with contract version `parallel-action-frontier/v1`.
+`mission.action_frontier` with contract version `parallel-action-frontier/v2`.
 It reads the same installed, read-only Mission snapshot as the existing
 lifecycle/evidence projection. At most 256 stored Actions are accepted. Action
 IDs and orders must be unique; every dependency must name a stored Action; and
@@ -19,8 +19,16 @@ cycles, malformed statuses or invalid revisions fail closed with
 hard predecessor. An Action with a completed predecessor still waits for
 verified *edge-specific* evidence, which the current serial store cannot
 prove. Failed or blocked predecessors block the dependent node. Every Action
-reports `dispatchable: false` and `target_resolution: UNAVAILABLE` because the
-current stored Action has no per-Action target binding. The response explicitly
+reports `dispatchable: false`. Without current pinned planning slots, it
+reports `target_resolution: UNAVAILABLE`, null target and null
+`source_slot_digest`. With a validated, current `planning_slots` snapshot for
+the same Mission revision and exact Action set, it reports the pinned
+`target_repository_id`, `source_slot_digest` and each Action's selected-binding
+resolution. `target_resolution: PINNED_UNVERIFIED` and
+`baseline_verification: UNVERIFIED` explicitly distinguish a durable proposal
+from actual target/baseline qualification. Stale slots never populate the
+frontier target. Matching the selected binding is not authority to dispatch.
+The response explicitly
 reports `parallel_execution: NOT_QUALIFIED`. This is a planning/readback
 classification, not authorization or proof of concurrent EP execution.
 
