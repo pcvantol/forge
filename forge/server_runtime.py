@@ -638,6 +638,11 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
         server_version = "ForgeServerRuntime/1"
         sys_version = ""
 
+        def send_error(self, code: int, message: str | None = None,
+                       explain: str | None = None) -> None:
+            # Parser errors can include the raw request line or method.
+            super().send_error(code)
+
         def _body(self) -> Mapping[str, Any] | None:
             lengths = self.headers.get_all("Content-Length", [])
             if len(lengths) > 1:

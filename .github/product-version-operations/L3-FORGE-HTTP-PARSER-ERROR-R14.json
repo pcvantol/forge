@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.51",
+  "classification_rationale": "Forge LANE_3 #207 r14 parser error response redaction on installed HTTP listeners",
+  "component": "product",
+  "event_lineage": "Forge LANE_3 #207 r14 parser error response redaction on installed HTTP listeners",
+  "expected_head": "61f5f6b4655eda1ff4e51f3a780a72e092d51225",
+  "operation_id": "L3-FORGE-HTTP-PARSER-ERROR-R14",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.52"
+}
