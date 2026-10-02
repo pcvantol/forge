@@ -1424,6 +1424,17 @@ class TestTransportContract(unittest.TestCase):
             openapi["components"]["schemas"]["MissionResponse"]["required"],
             ["api_version", "availability", "freshness", "source_observed_at", "read_only", "mission"],
         )
+        mission_schema = schemas["MissionResponse"]["properties"]["mission"]
+        self.assertIn("action_frontier", mission_schema["required"])
+        frontier_schema = mission_schema["properties"]["action_frontier"]
+        self.assertEqual(frontier_schema["properties"]["contract_version"]["const"],
+                         "parallel-action-frontier/v2")
+        self.assertEqual(frontier_schema["properties"]["source_slot_digest"]["type"],
+                         ["string", "null"])
+        action_schema = frontier_schema["properties"]["actions"]["items"]
+        self.assertEqual(action_schema["properties"]["target_resolution"]["enum"],
+                         ["UNAVAILABLE", "PINNED_UNVERIFIED"])
+        self.assertEqual(action_schema["properties"]["dispatchable"]["const"], False)
         health = openapi["components"]["schemas"]["HealthResponse"]
         self.assertFalse(health["additionalProperties"])
         self.assertEqual(set(health["required"]), set(health["properties"]))
