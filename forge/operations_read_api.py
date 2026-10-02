@@ -741,6 +741,11 @@ def make_server(host: str, port: int, api: OperationsReadAPI) -> ThreadingHTTPSe
         server_version = "ForgeOperationsReadAPI/1"
         sys_version = ""
 
+        def send_error(self, code: int, message: str | None = None,
+                       explain: str | None = None) -> None:
+            # Parser errors can include the raw request line or method.
+            super().send_error(code)
+
         def _dispatch(self, method: str, *, body: bool = True) -> None:
             authorizations = self.headers.get_all("Authorization", [])
             try:

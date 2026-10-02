@@ -933,6 +933,31 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                 server.server_close()
                 thread.join(timeout=3)
 
+    def test_real_listeners_do_not_echo_parser_request_text(self) -> None:
+        forge_api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
+        for api, server in (
+            (self.api, make_server("127.0.0.1", 0, self.api)),
+            (forge_api, make_forge_server("127.0.0.1", 0, forge_api)),
+        ):
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with patch.object(api, "handle", side_effect=AssertionError("parser reached application")):
+                    for request_line, status in (
+                        (b"GET /?token=FORGE_PARSER_LEAK EXTRA HTTP/1.1", b" 400 "),
+                        (b"FORGE_PARSER_LEAK /v1/status HTTP/1.1", b" 501 "),
+                    ):
+                        with socket.create_connection(server.server_address, timeout=3) as raw:
+                            raw.sendall(request_line + b"\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+                            with raw.makefile("rb") as reply:
+                                response = reply.read()
+                        self.assertIn(status, response.split(b"\r\n", 1)[0])
+                        self.assertNotIn(b"FORGE_PARSER_LEAK", response)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
+
     def test_real_listeners_reject_authority_bearing_targets(self) -> None:
         forge_api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
         for api, server in (
