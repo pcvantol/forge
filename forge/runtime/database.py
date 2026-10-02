@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 42
+RUNTIME_SCHEMA_VERSION = 43
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -30,7 +30,7 @@ _REQUIRED_METADATA = frozenset((
     "database_location", "last_access_at", "status", "instance_version", "initialization_version",
 ))
 _TABLES = frozenset((
-    "mission_state", "mission_action_slot_snapshots", "mission_action_execution_slots", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
+    "mission_state", "mission_action_slot_snapshots", "mission_action_execution_slots", "mission_action_intent_revisions", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
     "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
@@ -51,6 +51,8 @@ def _tables_for_schema() -> frozenset[str]:
         tables = tables - {"mission_action_slot_snapshots"}
     if RUNTIME_SCHEMA_VERSION < 42:
         tables = tables - {"mission_action_execution_slots"}
+    if RUNTIME_SCHEMA_VERSION < 43:
+        tables = tables - {"mission_action_intent_revisions"}
     return tables
 _OPERATIONAL_RESET_TABLES = frozenset((
     "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
@@ -547,6 +549,30 @@ class RuntimeDatabase:
             if (trigger is None or f"before {operation}" not in sql
                     or "raise(abort, 'mission execution slots are immutable')" not in sql):
                 raise RuntimeIntegrityError("Mission execution slot immutability is inconsistent")
+
+    def _require_action_intent_structure(self) -> None:
+        columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                        for row in self._connection.execute("PRAGMA table_info(mission_action_intent_revisions)"))
+        if columns != (
+            ("mission_id", "TEXT", 1, 1), ("action_id", "TEXT", 1, 2),
+            ("slot_revision", "INTEGER", 1, 3), ("source_revision", "INTEGER", 1, 0),
+            ("source_digest", "TEXT", 1, 0), ("document_digest", "TEXT", 1, 0),
+            ("document", "TEXT", 1, 0),
+        ):
+            raise RuntimeIntegrityError("Action intent storage shape is inconsistent")
+        references = {(row["table"], row["from"], row["to"])
+                      for row in self._connection.execute("PRAGMA foreign_key_list(mission_action_intent_revisions)")}
+        if references != {("mission_state", "mission_id", "mission_id")}:
+            raise RuntimeIntegrityError("Action intent Mission reference is inconsistent")
+        for operation in ("update", "delete"):
+            trigger = self._connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?",
+                (f"mission_action_intent_revisions_immutable_{operation}",),
+            ).fetchone()
+            sql = "" if trigger is None or trigger[0] is None else " ".join(trigger[0].lower().split())
+            if (trigger is None or f"before {operation}" not in sql
+                    or "raise(abort, 'action intent revisions are immutable')" not in sql):
+                raise RuntimeIntegrityError("Action intent immutability is inconsistent")
 
     def _require_operational_reset_structure(self) -> None:
         required_columns = {
@@ -2012,6 +2038,42 @@ class RuntimeDatabase:
             except Exception:
                 self._connection.rollback()
                 raise
+        elif version == 42:
+            active = self._connection.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()
+            if active is not None and active[0] is not None:
+                raise RuntimeMaintenanceActive("cannot migrate during operational reset maintenance")
+            try:
+                self._connection.execute("BEGIN IMMEDIATE")
+                self._connection.execute(
+                    "CREATE TABLE IF NOT EXISTS mission_action_intent_revisions ("
+                    "mission_id TEXT NOT NULL, action_id TEXT NOT NULL,"
+                    "slot_revision INTEGER NOT NULL, source_revision INTEGER NOT NULL,"
+                    "source_digest TEXT NOT NULL, document_digest TEXT NOT NULL, document TEXT NOT NULL,"
+                    "PRIMARY KEY (mission_id, action_id, slot_revision),"
+                    "FOREIGN KEY (mission_id) REFERENCES mission_state(mission_id))"
+                )
+                for operation in ("INSERT", "UPDATE", "DELETE"):
+                    self._connection.execute(
+                        f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_mission_action_intent_revisions_{operation.lower()} "
+                        f"BEFORE {operation} ON mission_action_intent_revisions "
+                        "WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL "
+                        "BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END"
+                    )
+                for operation in ("UPDATE", "DELETE"):
+                    self._connection.execute(
+                        f"CREATE TRIGGER IF NOT EXISTS mission_action_intent_revisions_immutable_{operation.lower()} "
+                        f"BEFORE {operation} ON mission_action_intent_revisions "
+                        "BEGIN SELECT RAISE(ABORT, 'Action intent revisions are immutable'); END"
+                    )
+                self._set_metadata({"schema_version": "43", "migration_version": "43",
+                                    "last_migration": "43", "forge_version": forge_version})
+                self._connection.execute("PRAGMA user_version=43")
+                self._connection.commit()
+            except Exception:
+                self._connection.rollback()
+                raise
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -2159,6 +2221,8 @@ class RuntimeDatabase:
             self._require_action_slot_structure()
         if RUNTIME_SCHEMA_VERSION >= 42:
             self._require_execution_slot_structure()
+        if RUNTIME_SCHEMA_VERSION >= 43:
+            self._require_action_intent_structure()
         self._require_operational_reset_structure()
         identity = self.runtime_identity
         expected_identity = "forge-installation" if self._installation_scoped else repository_identity(self.repository_root)
@@ -2374,6 +2438,39 @@ class RuntimeDatabase:
                 )
         return {"mission_id": mission_id, "action_id": action_id,
                 "source_revision": revision, "dispatch_authorized": False}
+
+    def materialize_action_intents(self, mission_id: str) -> dict[str, Any]:
+        """Atomically pin every approved Action target without dispatching it."""
+        from .action_intents import ActionIntentError, ActionIntentLedger
+
+        self._reject_reset_retired_identity("mission_id", mission_id)
+        try:
+            return ActionIntentLedger(self._connection).materialize(mission_id)
+        except ActionIntentError as error:
+            raise RuntimeDatabaseError(str(error)) from error
+
+    def bind_action_intent(self, mission_id: str, action_id: str, *, expected_slot_revision: int,
+                           correlation_id: str, request_digest: str) -> dict[str, Any]:
+        """Bind one immutable correlation before any future EP submission."""
+        from .action_intents import ActionIntentError, ActionIntentLedger
+
+        self._reject_reset_retired_identity("mission_id", mission_id)
+        try:
+            return ActionIntentLedger(self._connection).bind(
+                mission_id, action_id, expected_slot_revision=expected_slot_revision,
+                correlation_id=correlation_id, request_digest=request_digest,
+            )
+        except ActionIntentError as error:
+            raise RuntimeDatabaseError(str(error)) from error
+
+    def read_action_intents(self, mission_id: str) -> dict[str, Any]:
+        """Return safe durable identities, never private request bytes."""
+        from .action_intents import ActionIntentError, ActionIntentLedger
+
+        try:
+            return ActionIntentLedger(self._connection).read(mission_id)
+        except ActionIntentError as error:
+            raise RuntimeDatabaseError(str(error)) from error
 
     def create_mission_state(self, state: Any) -> dict[str, Any]:
         """Create one Mission state without replacing an existing record."""

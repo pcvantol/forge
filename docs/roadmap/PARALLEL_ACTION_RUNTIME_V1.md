@@ -1,6 +1,6 @@
 # Parallel Action runtime V1 — Forge owning roadmap
 
-**Owner:** Forge. **All implementation/qualification nodes: PLANNED. NO_BUMP.**
+**Owner:** Forge. **Full implementation/qualification nodes remain open.**
 This is the implementation decomposition of the existing second Runtime milestone in [the canonical roadmap](../../knowledge/bootstrap/10_ROADMAP.md) and [implementation DAG](../architecture/FORGE_V1_IMPLEMENTATION_DAG.md), not a competing programme. Read [the detailed design](../architecture/PARALLEL_ACTION_RUNTIME_V1.md) and [26 shared qualification families](../architecture/PARALLEL_ACTION_QUALIFICATION_V1.md). The [JSON](parallel-action-runtime-v1.json) is documentary, not scheduler input.
 
 | Node | Dependencies | Bounded deliverable |
@@ -20,6 +20,15 @@ supplies a versioned peer fixture and an installed logical readback subset.
 Stored Actions still lack per-Action target and verified-edge evidence; the
 readback marks dispatch and parallel execution unavailable. Its delivery does
 not close full PA-F1/F2 or installed overlap qualification.
+
+The bounded PA-F1 durable-intent subset in Forge 2.7.60 materializes all Actions
+from a current approved pinned graph in one SQLite transaction. Each Action has
+an immutable target/source record and an independent correlation binding with a
+revision guard. Restart readback distinguishes current and stale source; target
+verification and dispatch authority remain unavailable. The existing serial
+execution-slot history is preserved and cannot be rematerialized as multi-Action
+intent. PA-F1 still needs authoritative per-target/baseline proof and the later
+execution-state semantics; PA-F2/PA-F3 and installed overlap remain open.
 
 EP owns `docs/development/PARALLEL_ACTION_EXECUTION_V1_ROADMAP.md` and its JSON DAG. Same-Mission membership must not add an EP global mutex; real shared resources may legitimately serialize. First canary uses separate repositories/workspaces on one host, no full Agent fleet, Workspace or native subagent implementation dependency. Same-repository concurrent mutation remains separate stricter qualification.
 

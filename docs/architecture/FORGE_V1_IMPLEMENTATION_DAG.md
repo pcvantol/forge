@@ -15,7 +15,7 @@
 > [PA-01..PA-26 qualification](PARALLEL_ACTION_QUALIFICATION_V1.md)
 > concretize the second milestone below. Actual execution overlap and incremental
 > result-driven release are required, not just simultaneous eligibility. All added
-> PA nodes remain PLANNED; current serial Mission 3/reset work is unchanged.
+> PA nodes remain open beyond delivered bounded subsets; current serial Mission 3/reset work is unchanged.
 
 **AUTHORITY = DERIVED.** Source authority is the canonical Forge roadmap and product-owned EP/Workspace/Forge Platform contracts. This document never allocates peer implementation work.
 
@@ -61,9 +61,9 @@ This is the first real Forge -> EP -> Forge autonomy proof. It is deliberately s
 | Installed Forge Server / peer binding | IMPLEMENTATION/QUALIFICATION LANE | Required before live inner-loop canary. |
 | Forge exact receipt reconciliation | IMPLEMENTATION LANE | Required before replanning from live evidence. |
 | Dynamic same-Mission `reconcile -> replan -> derive successor` | TARGET RUNTIME GAP | First autonomy canary. |
-| Per-Action repository target | TARGET RUNTIME GAP | PA-F0/PA-F1; required before cross-repository Mission graph. |
+| Per-Action repository target | PINNED INTENT SUBSET; VERIFICATION OPEN | PA-F0/PA-F1 pin graph target in durable non-dispatchable intent; authoritative target/baseline proof is still required before execution. |
 | Forge-owned hard `depends_on` snapshot | BOOTSTRAP SEED EXISTS | PA-F0/PA-F2 generalize current Action dependencies. |
-| Multiple independently eligible Actions in flight | TARGET RUNTIME GAP | PA-F1/PA-F2/PA-F3; actual overlap in PA-FQ, not just two eligible rows. |
+| Multiple independently eligible Actions in flight | DURABLE INTENT SUBSET; EXECUTION OPEN | PA-F1 independently binds Action intent; PA-F2/F3 require containment/admission before actual overlap in PA-FQ. |
 | Incremental fan-in/replan without a wave barrier | TARGET RUNTIME GAP | PA-F4; A-only successor need not wait for unrelated B. |
 | EP dependency enforcement/resource/capacity separation | EP-OWNED TARGET | Consume PA-E evidence; Forge does not schedule resources. |
 | Evidence-gated cross-repository artifact unlock | CROSS-PRODUCT TARGET | Second canary; Forge Platform manifest is reference scenario. |
