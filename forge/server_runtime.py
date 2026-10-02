@@ -60,6 +60,7 @@ from .provider_security import (
 from .runtime import RUNTIME_SCHEMA_VERSION
 from .secure_store import SecretReference
 from .runtime.data_root import DataRootResolver
+from .root_identity import RootIdentity
 from .runtime.dynamic_mission import DynamicMissionRunResult, InstalledDynamicMissionRuntime
 from .runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeServiceLock
 
@@ -166,12 +167,15 @@ class ServerInstanceLease:
 class _ServerLog:
     """Append secret-free Server lifecycle diagnostics below the instance data root."""
 
-    def __init__(self, data_root: Path) -> None:
+    def __init__(self, data_root: Path, root_identity: RootIdentity) -> None:
+        self.root_identity = root_identity
         self.path = data_root / "logs" / "server-runtime.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         os.chmod(self.path.parent, 0o700)
 
     def write(self, event: str, **details: Any) -> None:
+        if self.root_identity.drifted():
+            return
         document = {"at": _now(), "event": event, **details}
         payload = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
         descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
@@ -496,11 +500,13 @@ class ForgeServerApplicationServices:
 class ForgeServerAPI:
     """Authenticated versioned HTTP transport; application semantics stay elsewhere."""
 
-    def __init__(self, services: ForgeServerApplicationServices, bearer_credential: str) -> None:
+    def __init__(self, services: ForgeServerApplicationServices, bearer_credential: str,
+                 *, root_identity: RootIdentity | None = None) -> None:
         if not bearer_credential:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
         self._credential = bearer_credential
+        self.root_identity = root_identity or RootIdentity(services.root)
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
 
     @staticmethod
@@ -525,11 +531,19 @@ class ForgeServerAPI:
             "code": "AUTHENTICATION_REQUIRED", "message": "Authentication is required",
         }}, ForgeServerAPI._headers())
 
+    @staticmethod
+    def _root_unavailable() -> APIResponse:
+        return APIResponse(503, {"api_version": SERVER_API_VERSION, "error": {
+            "code": "INSTANCE_UNAVAILABLE", "message": "Selected instance is unavailable",
+        }}, ForgeServerAPI._headers())
+
     def handle(self, method: str, target: str, authorization: str | None,
                body: Mapping[str, Any] | None = None) -> APIResponse:
         headers = self._headers()
         if not self._authenticated(authorization):
             return self._authentication_required()
+        if self.root_identity.drifted():
+            return self._root_unavailable()
         try:
             path = origin_form_path(target)
         except ValueError:
@@ -682,6 +696,8 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 authorization = authorizations[0] if authorizations else None
                 if not api._authenticated(authorization):
                     response = api._authentication_required()
+                elif api.root_identity.drifted():
+                    response = api._root_unavailable()
                 else:
                     body = self._body()
                     target = raw_request_target(self.raw_requestline)
@@ -725,23 +741,26 @@ class ForgeServerRuntime:
             raise ValueError("Forge Server tick interval must be positive")
         self.instance = existing_instance(data_root)
         self.root = Path(self.instance.data_root)
+        self.root_identity = RootIdentity(self.root)
         self.provider_id = provider_id
         self.tick_interval = tick_interval
         self._credential = read_bearer_credential(credential_file)
         self.state = ServerRuntimeState(self.instance, provider_id)
         self.services = ForgeServerApplicationServices(self.root, self.state, provider_id=provider_id)
-        self.api = ForgeServerAPI(self.services, self._credential)
+        self.api = ForgeServerAPI(self.services, self._credential, root_identity=self.root_identity)
         self.server = make_server(host, port, self.api)
         address, actual_port = self.server.server_address
         self.state.update(listener={"host": address, "port": actual_port}, lifecycle="STARTING")
         self._stop = Event()
         self._lease = ServerInstanceLease(self.root)
-        self._log = _ServerLog(self.root)
+        self._log = _ServerLog(self.root, self.root_identity)
 
     def stop(self) -> None:
         self._stop.set()
 
     def _tick(self) -> None:
+        if self.root_identity.drifted():
+            raise ForgeServerRuntimeError("Forge Server selected instance root changed")
         # Server mode is deliberately stricter than legacy interactive CLI use:
         # the scheduler will not inherit an ambient user provider context.
         provider = self.services.provider_readiness()
@@ -754,6 +773,8 @@ class ForgeServerRuntime:
 
     def serve_forever(self) -> None:
         """Run in the foreground and terminate cleanly on SIGINT/SIGTERM."""
+        if self.root_identity.drifted():
+            raise ForgeServerRuntimeError("Forge Server selected instance root changed")
         with self._lease.acquire():
             self._log.write(
                 "server_starting", instance_id=self.instance.instance_id,

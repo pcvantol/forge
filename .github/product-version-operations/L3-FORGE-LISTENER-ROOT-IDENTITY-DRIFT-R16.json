@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.53",
+  "classification_rationale": "Forge LANE_3 #207 r16 fail closed on running listener data-root identity drift",
+  "component": "product",
+  "event_lineage": "Forge LANE_3 #207 r16 fail closed on running listener data-root identity drift",
+  "expected_head": "48d1e2ef5f961ecdccbf3c6ab8f46bbee7abf556",
+  "operation_id": "L3-FORGE-LISTENER-ROOT-IDENTITY-DRIFT-R16",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.54"
+}
