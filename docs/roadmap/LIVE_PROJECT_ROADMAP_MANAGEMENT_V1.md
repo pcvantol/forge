@@ -30,6 +30,9 @@ can deliver a useful HTTP producer subset before the full project-loop graph.
 Its configured-project binding, repository-scoped installed Mission/Action edges
 and explicit unavailable project membership and graph fields do not mark `PRM-F-PROJECTION`, its capability graph or `PRM-F-Q`
 complete. Workspace peer consumption remains separately owned.
+The packaged HTTP subset also types both project 200 responses and provides
+encoded Mission detail links through the existing authenticated Forge read route.
+These links remain repository-scoped navigation, not project attribution.
 
 PRM-F-PROJECTION consumes F2/FH operation/HTTP subsets. PRM-F-ELIGIBILITY and
 PRM-F-ACTIVATION consume the relevant existing intake, approval, progression,

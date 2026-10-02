@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
+from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
 from forge.models.action import EngineeringAction, EngineeringActionStatus
@@ -22,7 +23,10 @@ from forge.models.criterion_assessment import ApprovedRepositoryEvidenceSource
 from forge.models.intent import EngineeringIntent, IntentCategory, IntentReference, IntentTraceability
 from forge.models.mission import EngineeringMission, MissionIntentMembership, MissionScope
 from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
-from forge.operations_read_api import InstalledOperationsReadService, OperationsReadAPI, make_server
+from forge.operations_read_api import (
+    InstalledOperationsReadService, OperationsProjectionError, OperationsReadAPI,
+    _mission_detail_url, make_server,
+)
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.database import RuntimeDatabaseError
 from forge.secure_store import SecretReference
@@ -888,6 +892,8 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
 
     def test_real_forge_server_route_uses_bearer_and_read_service(self) -> None:
         self.configure_project()
+        self.create_mission()
+        before = self.snapshot()
         api = ForgeServerAPI(SimpleNamespace(root=self.root), CREDENTIAL)
         server = make_forge_server("127.0.0.1", 0, api)
         thread = Thread(target=server.serve_forever, daemon=True)
@@ -902,10 +908,25 @@ class TestProjectRoadmapEndpoint(_InstalledFixture):
                 document = json.load(response)
             self.assertEqual(document["projects"][0]["project_id"], "forge-project")
             self.assertTrue(document["read_only"])
+            with urlopen(Request(urljoin(endpoint, document["projects"][0]["roadmap_url"]),
+                                 headers={"Authorization": "Bearer " + CREDENTIAL}), timeout=3) as response:
+                roadmap = json.load(response)
+            mission = roadmap["repository_scope"]["missions"][0]
+            self.assertEqual(mission["mission_detail_url"], "/v1/missions/MISSION-0042")
+            with urlopen(Request(urljoin(endpoint, mission["mission_detail_url"]),
+                                 headers={"Authorization": "Bearer " + CREDENTIAL}), timeout=3) as response:
+                detail = json.load(response)
+            self.assertEqual(detail["mission"]["mission_id"], mission["mission_id"])
+            self.assertEqual(self.snapshot(), before)
         finally:
             server.shutdown()
             server.server_close()
             thread.join(timeout=3)
+
+    def test_mission_detail_link_encodes_one_path_segment(self) -> None:
+        self.assertEqual(_mission_detail_url("MISSION:/?#%"), "/v1/missions/MISSION%3A%2F%3F%23%25")
+        with self.assertRaisesRegex(OperationsProjectionError, "Mission identity is inconsistent"):
+            _mission_detail_url("..")
 
     def test_real_forge_server_reads_pinned_frontier_target_without_mutation(self) -> None:
         self.create_mission()

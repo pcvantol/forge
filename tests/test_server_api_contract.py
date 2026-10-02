@@ -49,6 +49,28 @@ class ForgeServerApiContractTests(unittest.TestCase):
         self.assertEqual(schema["properties"]["project_mission_attribution"]["const"], "UNAVAILABLE")
         self.assertEqual(schema["properties"]["operations"]["maxItems"], 2)
 
+    def test_project_read_responses_have_closed_typed_contracts_and_detail_links(self) -> None:
+        openapi = json.loads((API / "server-openapi-v1.json").read_text(encoding="utf-8"))
+        schemas = openapi["components"]["schemas"]
+        for path, name in (("/v1/projects", "ProjectIndex"),
+                           ("/v1/projects/{project_id}/roadmap", "ProjectRoadmap")):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    openapi["paths"][path]["get"]["responses"]["200"]["content"]
+                    ["application/json"]["schema"]["$ref"], f"#/components/schemas/{name}",
+                )
+        for name in ("ProjectIndex", "ProjectBinding", "ProjectRoadmap",
+                     "ProjectRoadmapRepositoryScope", "ProjectRoadmapMission", "ProjectRoadmapAction"):
+            with self.subTest(schema=name):
+                self.assertFalse(schemas[name]["additionalProperties"])
+                self.assertEqual(set(schemas[name]["required"]), set(schemas[name]["properties"]))
+        self.assertEqual(schemas["ProjectRoadmap"]["properties"]["project_mission_attribution"]["const"],
+                         "UNAVAILABLE")
+        self.assertEqual(schemas["ProjectRoadmap"]["properties"]["candidate_and_expected_views"]["const"],
+                         "UNAVAILABLE")
+        self.assertEqual(schemas["ProjectRoadmapMission"]["properties"]["mission_detail_url"]["pattern"],
+                         "^/v1/missions/[^/?#]+$")
+
     def test_server_contract_has_no_ep_proxy_or_implicit_initialization_route(self) -> None:
         paths = {path for _method, path in SERVER_ROUTE_INVENTORY}
         self.assertNotIn("/v1/ep/{path}", paths)

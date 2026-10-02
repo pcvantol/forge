@@ -18,13 +18,14 @@ import secrets
 import sqlite3
 from threading import BoundedSemaphore
 from typing import Any, Iterator, Mapping
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from .__main__ import _status
 from .action_frontier import ActionFrontierError, project_action_frontier
 from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
 from .installed_health import InstalledHealthError, InstalledHealthSnapshotService
 from .mission_cli import _status_projection as mission_status_projection
+from .models.action import EngineeringActionStatus
 from .models.producer import redact_action_summary
 from .parallel_action_contract import ParallelActionContractError, validate_peer_graph
 from .runtime.data_root import DataRootResolver
@@ -37,6 +38,7 @@ DEFAULT_STALE_AFTER = timedelta(minutes=5)
 _MISSION_PATH = re.compile(r"^/v1/missions/([^/]+)$")
 _PROJECT_ROADMAP_PATH = re.compile(r"^/v1/projects/([^/]+)/roadmap$")
 _PROJECT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_ACTION_STATUSES = frozenset(status.value for status in EngineeringActionStatus)
 _SENSITIVE_KEY = re.compile(r"(?:authorization|bearer|credential|password|secret|token)", re.IGNORECASE)
 _BEARER_VALUE = re.compile(r"(?i)\bbearer\s+[^\s,;]+")
 _KEYCHAIN_REFERENCE = re.compile(r"(?i)\bkeychain://[^\s,;]+")
@@ -167,6 +169,13 @@ def _project_action(document: object) -> dict[str, Any]:
         _safe_text(item) for item in expected if isinstance(item, str)
     ] if isinstance(expected, (list, tuple)) else []
     return projected
+
+
+def _mission_detail_url(mission_id: str) -> str:
+    """Link to the existing authenticated read route using one encoded segment."""
+    if mission_id in {".", ".."}:
+        raise OperationsProjectionError("PROJECT_AMBIGUOUS", "Mission identity is inconsistent", status=409)
+    return "/v1/missions/" + quote(mission_id, safe="")
 
 
 def _planning_slots_match_current_mission(document: Mapping[str, Any], state: Any) -> bool:
@@ -447,6 +456,12 @@ class InstalledOperationsReadService:
         """Expose only the project selected by this exact Forge instance binding."""
         with self._runtime_snapshot() as (connection, metadata):
             binding = self._project_binding(connection, metadata)
+            if binding is not None and (
+                not isinstance(binding.ep_project_id, str)
+                or _PROJECT_ID.fullmatch(binding.ep_project_id) is None
+                or binding.ep_project_id in {".", ".."}
+            ):
+                raise OperationsProjectionError("PROJECT_UNAVAILABLE", "Project binding is unavailable", status=503)
             return {
                 "api_version": API_VERSION,
                 "contract_version": "project-roadmap-read/v1",
@@ -455,7 +470,7 @@ class InstalledOperationsReadService:
                 "projects": [] if binding is None else [{
                     "project_id": binding.ep_project_id,
                     "repository_id": binding.ep_repository_id,
-                    "roadmap_url": f"/v1/projects/{binding.ep_project_id}/roadmap",
+                    "roadmap_url": f"/v1/projects/{quote(binding.ep_project_id, safe='')}/roadmap",
                 }],
                 "read_only": True,
             }
@@ -468,6 +483,10 @@ class InstalledOperationsReadService:
             binding = self._project_binding(connection, metadata)
             if binding is None:
                 raise OperationsProjectionError("PROJECT_UNCONFIGURED", "Project binding is not configured", status=503)
+            if (not isinstance(binding.ep_project_id, str)
+                    or _PROJECT_ID.fullmatch(binding.ep_project_id) is None
+                    or binding.ep_project_id in {".", ".."}):
+                raise OperationsProjectionError("PROJECT_UNAVAILABLE", "Project binding is unavailable", status=503)
             if project_id != binding.ep_project_id:
                 raise OperationsProjectionError("PROJECT_MISSING", "Project was not found", status=404)
             rows = connection.execute("SELECT mission_id FROM mission_state ORDER BY mission_id LIMIT 257").fetchall()
@@ -478,17 +497,27 @@ class InstalledOperationsReadService:
             now = self.clock()
             for (mission_id,) in rows:
                 projection, state = mission_status_projection(connection, mission_id)
-                if state.mission_id != mission_id or state.mission.get("id") != mission_id:
+                if (not isinstance(mission_id, str) or not mission_id
+                        or len(mission_id) > 128
+                        or any(ord(character) < 33 for character in mission_id)
+                        or state.mission_id != mission_id or state.mission.get("id") != mission_id):
                     raise OperationsProjectionError("PROJECT_AMBIGUOUS", "Mission identity is inconsistent", status=409)
                 source = state.mission.get("repository_evidence_source")
                 if not isinstance(source, Mapping) or source.get("repository_id") != binding.ep_repository_id:
                     raise OperationsProjectionError("PROJECT_AMBIGUOUS", "Mission repository binding is inconsistent", status=409)
                 actions = [_project_action(item) for item in state.actions]
+                if (len(actions) > 256
+                        or any(not isinstance(item.get("id"), str) or not item["id"]
+                               or not isinstance(item.get("status"), str)
+                               or item["status"] not in _ACTION_STATUSES
+                               or not isinstance(item.get("dependencies"), list)
+                               for item in actions)):
+                    raise OperationsProjectionError("PROJECT_DAG_INVALID", "Mission Action graph is inconsistent", status=409)
                 ids = {item.get("id") for item in actions}
-                if len(ids) != len(actions) or None in ids or any(
-                    dependency not in ids
-                    for item in actions for dependency in item.get("dependencies", ())
-                ):
+                if (len(ids) != len(actions) or any(
+                    not isinstance(dependency, str) or dependency not in ids
+                    for item in actions for dependency in item["dependencies"]
+                )):
                     raise OperationsProjectionError("PROJECT_DAG_INVALID", "Mission Action graph is inconsistent", status=409)
                 dependencies = {item["id"]: tuple(item.get("dependencies", ())) for item in actions}
                 active: set[str] = set()
@@ -513,7 +542,8 @@ class InstalledOperationsReadService:
                 observed_at = _last_recorded_mission_transition(state)
                 mission_observations.append(observed_at)
                 missions.append({
-                    "mission_id": mission_id, "group": group, "status": status,
+                    "mission_id": mission_id, "mission_detail_url": _mission_detail_url(mission_id),
+                    "group": group, "status": status,
                     "revision": projection["revision"],
                     "source_observed_at": observed_at,
                     "freshness": _freshness(observed_at, now=now, stale_after=self.stale_after),
