@@ -519,13 +519,17 @@ class ForgeServerAPI:
             and secrets.compare_digest(authorization[7:], self._credential)
         )
 
+    @staticmethod
+    def _authentication_required() -> APIResponse:
+        return APIResponse(401, {"api_version": SERVER_API_VERSION, "error": {
+            "code": "AUTHENTICATION_REQUIRED", "message": "Authentication is required",
+        }}, ForgeServerAPI._headers())
+
     def handle(self, method: str, target: str, authorization: str | None,
                body: Mapping[str, Any] | None = None) -> APIResponse:
         headers = self._headers()
         if not self._authenticated(authorization):
-            return APIResponse(401, {"api_version": SERVER_API_VERSION, "error": {
-                "code": "AUTHENTICATION_REQUIRED", "message": "Authentication is required",
-            }}, headers)
+            return self._authentication_required()
         try:
             path = origin_form_path(target)
         except ValueError:
@@ -675,10 +679,13 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 authorizations = self.headers.get_all("Authorization", [])
                 if len(authorizations) > 1:
                     raise ValueError("request Authorization is ambiguous")
-                body = self._body()
-                target = raw_request_target(self.raw_requestline)
-                response = api.handle(self.command, target,
-                                      authorizations[0] if authorizations else None, body)
+                authorization = authorizations[0] if authorizations else None
+                if not api._authenticated(authorization):
+                    response = api._authentication_required()
+                else:
+                    body = self._body()
+                    target = raw_request_target(self.raw_requestline)
+                    response = api.handle(self.command, target, authorization, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                     "code": "REQUEST_INVALID", "message": str(error),

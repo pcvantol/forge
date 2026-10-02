@@ -293,6 +293,48 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                 server.server.server_close()
                 thread.join(timeout=2)
 
+    def test_http_rejects_invalid_bearer_without_waiting_for_body(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "auth-before-body")
+            server = ForgeServerRuntime(
+                data_root=root, credential_file=self._credential(root), host="127.0.0.1", port=0,
+            )
+            thread = Thread(target=server.server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                port = server.server.server_port
+                with patch.object(server.api, "handle", side_effect=AssertionError("app dispatched")):
+                    for authorization, expected in (
+                        (b"", 401),
+                        (b"Authorization: Bearer wrong\r\n", 401),
+                        (b"Authorization: Bearer wrong\r\nAuthorization: Bearer wrong\r\n", 400),
+                    ):
+                        with socket.create_connection(("127.0.0.1", port), timeout=2) as client:
+                            client.settimeout(0.75)
+                            client.sendall(
+                                b"POST /v1/provider-context HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                                + authorization + b"Content-Length: 50\r\n\r\n{"
+                            )
+                            with client.makefile("rb") as reply:
+                                self.assertEqual(int(reply.readline().split()[1]), expected)
+                with socket.create_connection(("127.0.0.1", port), timeout=2) as client:
+                    client.settimeout(0.2)
+                    client.sendall(
+                        b"POST /v1/absent HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                        b"Authorization: Bearer server-test-credential\r\n"
+                        b"Content-Length: 7\r\n\r\n{"
+                    )
+                    with self.assertRaises(socket.timeout):
+                        client.recv(1)
+                    client.settimeout(2)
+                    client.sendall(b'"x":1}')
+                    with client.makefile("rb") as reply:
+                        self.assertEqual(int(reply.readline().split()[1]), 404)
+            finally:
+                server.server.shutdown()
+                server.server.server_close()
+                thread.join(timeout=2)
+
     def test_mission_document_transport_uses_private_one_request_file(self) -> None:
         with TemporaryDirectory() as temporary:
             root = self._root(temporary, "mission-document")
