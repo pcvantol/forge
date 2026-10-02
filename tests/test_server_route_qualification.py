@@ -59,6 +59,13 @@ SERVICE_ROUTES = {
     ("POST", "/v1/missions/{mission_id}/controller/start"): "mission_start",
     ("POST", "/v1/missions/{mission_id}/controller/reopen"): "mission_reopen",
 }
+READ_ROUTES = {
+    ("GET", "/v1/status"): "installed_status",
+    ("GET", "/v1/health"): "installed_health_snapshot",
+    ("GET", "/v1/projects"): "project_index",
+    ("GET", "/v1/projects/{project_id}/roadmap"): "project_roadmap",
+    ("GET", "/v1/missions/{mission_id}"): "mission_detail",
+}
 
 
 def _concrete(path: str) -> str:
@@ -143,6 +150,13 @@ class ServerRouteQualificationTests(unittest.TestCase):
                         ))
                     stack.enter_context(patch.object(server.services, "readiness", return_value={"ready": True}))
                     stack.enter_context(patch.object(server.services, "standalone_readiness", return_value={"ready": True}))
+                    read_service = server.api._read_api.service
+                    mocked_reads = {}
+                    for name in READ_ROUTES.values():
+                        mocked_reads[name] = stack.enter_context(patch.object(
+                            read_service, name,
+                            return_value={"service": name, "outcome": "HEALTHY", "availability": "AVAILABLE"},
+                        ))
                     observed: set[tuple[str, str]] = set()
                     for method, path in sorted(EXPECTED_ROUTES):
                         with self.subTest(method=method, path=path):
@@ -161,6 +175,23 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                         mocked_services[expected_service].call_args.args[0],
                                         path.rsplit("/", 1)[1],
                                     )
+                                elif expected_service == "detach_execution_host_status":
+                                    mocked_services[expected_service].assert_called_with("qualified-operation")
+                                elif expected_service == "mission_start":
+                                    mocked_services[expected_service].assert_called_with("MISSION-QUAL", {})
+                                elif expected_service == "mission_reopen":
+                                    mocked_services[expected_service].assert_called_with("MISSION-QUAL")
+                            expected_read = READ_ROUTES.get((method, path))
+                            if expected_read is not None:
+                                self.assertEqual(status, 200)
+                                self.assertEqual(body.get("service"), expected_read)
+                                mocked_reads[expected_read].assert_called()
+                                if expected_read == "project_roadmap":
+                                    mocked_reads[expected_read].assert_called_with("qualified-project")
+                                elif expected_read == "mission_detail":
+                                    mocked_reads[expected_read].assert_called_with("MISSION-QUAL")
+                            if expected_service is None and expected_read is None:
+                                self.assertEqual(status, 200)
                             observed.add((method, path))
                     self.assertEqual(observed, EXPECTED_ROUTES)
             finally:
