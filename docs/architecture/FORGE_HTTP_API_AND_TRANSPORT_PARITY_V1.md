@@ -95,6 +95,13 @@ The API grows by qualified slices: instance/capability/status; project/evidence
 queries; governance/Candidate/Mission operations; operational configuration/log/
 data controls; role-aware sessions/proposals. A minimal status API does not close
 all F2, and the first Server need not wait for every future chat/Portfolio endpoint.
+
+The installed Server's authenticated `GET /v1/project-dag/capability` identifies
+only its existing project-DAG HTTP read subset and selected instance. It marks
+support separately from binding/readiness and declares missing project-level
+attribution, capability graph and Candidate/Expected views unavailable. This
+bounded discovery route does not complete the full operation inventory or FH-Q.
+
 All Console and Workspace features consume their specific qualified slice.
 
 Peer bindings pin expected instance, version/capability and project scope. Server

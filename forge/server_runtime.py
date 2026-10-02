@@ -68,6 +68,7 @@ from .runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeSer
 SERVER_API_VERSION = "1"
 SERVER_RUNTIME_CONTRACT_VERSION = "1.0"
 SERVER_ROUTE_INVENTORY = (
+    ("GET", "/v1/project-dag/capability"),
     ("GET", "/v1/status"),
     ("GET", "/v1/health"),
     ("GET", "/v1/readiness"),
@@ -335,6 +336,30 @@ class ForgeServerApplicationServices:
             "read_only": True,
         }
 
+    def project_dag_capability(self) -> dict[str, Any]:
+        """Describe only the installed project-DAG read subset, without probing peers."""
+        current = existing_instance(self.root)
+        return {
+            "api_version": SERVER_API_VERSION,
+            "contract_version": "forge-project-dag-http-capability/v1",
+            "instance_id": current.instance_id,
+            "server_product_version": canonical_version(),
+            "runtime_product_version": current.product_version,
+            "capability_id": "PROJECT_DAG_READ_V1",
+            "support": "SUPPORTED_NOT_READINESS",
+            "authentication": "INSTANCE_BEARER",
+            "project_scope": "CONFIGURED_PROJECT_ID_ONLY",
+            "adapter": "HTTP",
+            "operations": [
+                {"method": "GET", "path": "/v1/projects"},
+                {"method": "GET", "path": "/v1/projects/{project_id}/roadmap"},
+            ],
+            "project_mission_attribution": "UNAVAILABLE",
+            "project_capability_graph": "UNAVAILABLE",
+            "candidate_and_expected_views": "UNAVAILABLE",
+            "read_only": True,
+        }
+
     def provider_context(self) -> dict[str, Any]:
         try:
             context = ProviderExecutionContextService(self.root).read(self.provider_id)
@@ -558,6 +583,8 @@ class ForgeServerAPI:
         ):
             return self._read_api.handle(method, target, authorization)
         try:
+            if method == "GET" and path == "/v1/project-dag/capability":
+                return APIResponse(200, self.services.project_dag_capability(), headers)
             if method == "GET" and path == "/v1/instance":
                 return APIResponse(200, self.services.instance(), headers)
             if method == "GET" and path == "/v1/readiness":
