@@ -35,6 +35,20 @@ class ForgeServerApiContractTests(unittest.TestCase):
         self.assertEqual(openapi["openapi"], "3.1.0")
         self.assertEqual(openapi["components"]["securitySchemes"]["bearerAuth"]["scheme"], "bearer")
 
+    def test_project_dag_discovery_contract_is_typed_and_honest(self) -> None:
+        openapi = json.loads((API / "server-openapi-v1.json").read_text(encoding="utf-8"))
+        route = openapi["paths"]["/v1/project-dag/capability"]["get"]
+        self.assertEqual(
+            route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ProjectDagCapability",
+        )
+        schema = openapi["components"]["schemas"]["ProjectDagCapability"]
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(set(schema["required"]), set(schema["properties"]))
+        self.assertEqual(schema["properties"]["support"]["const"], "SUPPORTED_NOT_READINESS")
+        self.assertEqual(schema["properties"]["project_mission_attribution"]["const"], "UNAVAILABLE")
+        self.assertEqual(schema["properties"]["operations"]["maxItems"], 2)
+
     def test_server_contract_has_no_ep_proxy_or_implicit_initialization_route(self) -> None:
         paths = {path for _method, path in SERVER_ROUTE_INVENTORY}
         self.assertNotIn("/v1/ep/{path}", paths)

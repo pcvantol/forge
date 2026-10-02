@@ -21,6 +21,18 @@
     }
   ],
   "paths": {
+    "/v1/project-dag/capability": {
+      "get": {
+        "summary": "Read the installed Server's project-DAG HTTP capability subset",
+        "description": "Authenticated capability support is not project-binding or execution readiness. This response describes only the existing project list and repository-scoped Mission/Action roadmap reads; project Mission attribution, capability graph and Candidate/Expected views remain unavailable.",
+        "responses": {
+          "200": {"description": "Instance-bound read-only capability", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectDagCapability"}}}},
+          "401": {"description": "Authentication required"},
+          "409": {"description": "Installed instance is inconsistent"},
+          "503": {"description": "Selected instance root is unavailable"}
+        }
+      }
+    },
     "/v1/status": {
       "get": {
         "summary": "Read installed runtime status",
@@ -500,6 +512,27 @@
       }
     },
     "schemas": {
+      "ProjectDagCapability": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "contract_version", "instance_id", "server_product_version", "capability_id", "support", "authentication", "project_scope", "adapter", "operations", "project_mission_attribution", "project_capability_graph", "candidate_and_expected_views", "read_only"],
+        "properties": {
+          "api_version": {"const": "1"},
+          "contract_version": {"const": "forge-project-dag-http-capability/v1"},
+          "instance_id": {"type": "string", "minLength": 1},
+          "server_product_version": {"type": "string", "minLength": 1},
+          "capability_id": {"const": "PROJECT_DAG_READ_V1"},
+          "support": {"const": "SUPPORTED_NOT_READINESS"},
+          "authentication": {"const": "INSTANCE_BEARER"},
+          "project_scope": {"const": "CONFIGURED_PROJECT_ID_ONLY"},
+          "adapter": {"const": "HTTP"},
+          "operations": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "object", "additionalProperties": false, "required": ["method", "path"], "properties": {"method": {"const": "GET"}, "path": {"enum": ["/v1/projects", "/v1/projects/{project_id}/roadmap"]}}}},
+          "project_mission_attribution": {"const": "UNAVAILABLE"},
+          "project_capability_graph": {"const": "UNAVAILABLE"},
+          "candidate_and_expected_views": {"const": "UNAVAILABLE"},
+          "read_only": {"const": true}
+        }
+      },
       "JsonObject": {
         "type": "object",
         "additionalProperties": true

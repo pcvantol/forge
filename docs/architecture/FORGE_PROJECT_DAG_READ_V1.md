@@ -2,6 +2,18 @@
 
 This is a bounded producer subset of `PRM-F-CONTRACT` and `PRM-F-PROJECTION` through the existing Forge Server `FH-HTTP` surface. It is not the complete project-loop capability or a new Project registration service. The current Forge Server binds at most one Engineering Platform project and repository through its existing versioned peer configuration. Both endpoints use the Server's instance-owned bearer credential and return JSON with `Cache-Control: no-store`.
 
+An authenticated `GET /v1/project-dag/capability` on the installed Server
+describes this HTTP read subset before a client requests a project. Its
+`forge-project-dag-http-capability/v1` response binds the selected instance ID,
+server product version, exact supported method/path pairs,
+instance-bearer authentication and configured-project scope. `SUPPORTED_NOT_READINESS`
+means the package supports these reads; it does not assert an EP binding, current
+project availability or execution readiness. Project Mission attribution,
+capability graph and Candidate/Expected views remain explicitly `UNAVAILABLE`.
+The read does not probe EP or the provider, create a Project/Mission, or disclose
+the credential or data-root path. This is only the project-DAG HTTP subset, not
+an inventory of every Forge Server operation or a new CLI peer transport.
+
 - `GET /v1/projects` returns `project-roadmap-read/v1`, the exact Forge instance ID and either one configured EP project/repository binding or `UNCONFIGURED` with an empty list. The list is a binding readback, not an EP availability check or a project creation operation.
 - `GET /v1/projects/{project_id}/roadmap` accepts only the configured project ID. It reads up to 256 actual persisted Forge Mission states within one SQLite read transaction, in stable Mission-ID order. They are nested under `repository_scope.missions`, not represented as members of the EP project: Forge persists a repository source for each Mission but no project ID. `project_mission_attribution` is therefore `UNAVAILABLE`, including after a same-repository project rebind. Each repository-scoped Mission includes its actual lifecycle, revision, presentation group and stored Action IDs/status/dependency edges. `APPROVED_PLANNABLE` is shown as `APPROVED_PENDING`; terminal `COMPLETED`/`ARCHIVED` are `HISTORY`; other recorded states remain visible in `ACTIVE`, including blocked and recoverable failures. These are display groups, not changed lifecycle states.
 - The projection reports source freshness and marks `project_capability_graph` and `candidate_and_expected_views` `UNAVAILABLE`. It does not infer project capability edges, approvals, completion, time estimates or runtime concurrency from documentary DAGs. It makes no EP request and performs no planning, admission, Mission allocation, provider call or state mutation.

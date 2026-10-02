@@ -33,6 +33,18 @@
   },
   "item": [
     {
+      "name": "Read installed project-DAG HTTP capability",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/project-dag/capability",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "project-dag", "capability"]
+        }
+      }
+    },
+    {
       "name": "Read installed runtime status",
       "request": {
         "method": "GET",
