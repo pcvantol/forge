@@ -135,9 +135,13 @@ def main() -> int:
             assert _request(port, "/v1/instance", "synthetic-admin-only")[0] == 200
             assert hashlib.sha256((primary / "forge.db").read_bytes()).hexdigest() == before
             _replace_repository(primary, "repo-2")
+            changed_binding = hashlib.sha256((primary / "forge.db").read_bytes()).hexdigest()
             assert _request(port, "/v1/instance", token)[0] == 401
+            assert hashlib.sha256((primary / "forge.db").read_bytes()).hexdigest() == changed_binding
             _replace_repository(primary, "repo-1")
+            restored_binding = hashlib.sha256((primary / "forge.db").read_bytes()).hexdigest()
             assert _request(port, "/v1/instance", token)[0] == 200
+            assert hashlib.sha256((primary / "forge.db").read_bytes()).hexdigest() == restored_binding
             next_token_path = primary / "workspace-token-next"
             _grant(primary, "rotate", token_path=next_token_path)
             next_token = next_token_path.read_text(encoding="utf-8").strip()
@@ -145,6 +149,7 @@ def main() -> int:
             assert _request(port, "/v1/instance", next_token)[0] == 200
             _grant(primary, "revoke")
             assert _request(port, "/v1/instance", next_token)[0] == 401
+            assert hashlib.sha256((primary / "forge.db").read_bytes()).hexdigest() == restored_binding
         finally:
             _close(runtime, thread)
 
@@ -171,7 +176,9 @@ def main() -> int:
                       "contract_sha256": hashlib.sha256(INSTALLED_SCHEMA_BYTES).hexdigest(),
                       "routes": ["GET /v1/instance", "GET /v1/status"],
                       "negatives": ["missing/wrong/revoked token", "write/other route", "foreign instance",
-                                    "missing/foreign/changed repository"], "storage_mutation": False}, sort_keys=True))
+                                    "missing/foreign/changed repository"],
+                      "primary_http_requests_mutated_forge_db": False,
+                      "fixture_peer_configuration_replaced": True}, sort_keys=True))
     return 0
 
 
