@@ -10,6 +10,7 @@ from threading import Thread
 import unittest
 from unittest.mock import patch
 
+from forge._version import canonical_version
 from forge.runtime import RuntimeBootstrap
 from forge.server_runtime import ForgeServerRuntime, SERVER_ROUTE_INVENTORY
 
@@ -45,6 +46,8 @@ EXPECTED_ROUTES = frozenset({
 })
 
 SERVICE_ROUTES = {
+    ("GET", "/v1/readiness"): "readiness",
+    ("GET", "/v1/readiness/standalone"): "standalone_readiness",
     ("GET", "/v1/instance"): "instance",
     ("GET", "/v1/provider-context"): "provider_context",
     ("POST", "/v1/provider-context"): "configure_provider_context",
@@ -148,8 +151,10 @@ class ServerRouteQualificationTests(unittest.TestCase):
                         mocked_services[name] = stack.enter_context(patch.object(
                             server.services, name, return_value={"service": name},
                         ))
-                    stack.enter_context(patch.object(server.services, "readiness", return_value={"ready": True}))
-                    stack.enter_context(patch.object(server.services, "standalone_readiness", return_value={"ready": True}))
+                    for name in ("readiness", "standalone_readiness"):
+                        mocked_services[name] = stack.enter_context(patch.object(
+                            server.services, name, return_value={"ready": True, "service": name},
+                        ))
                     read_service = server.api._read_api.service
                     mocked_reads = {}
                     for name in READ_ROUTES.values():
@@ -190,7 +195,18 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                     mocked_reads[expected_read].assert_called_with("qualified-project")
                                 elif expected_read == "mission_detail":
                                     mocked_reads[expected_read].assert_called_with("MISSION-QUAL")
-                            if expected_service is None and expected_read is None:
+                            if path == "/v1/project-dag/capability":
+                                self.assertEqual(status, 200)
+                                self.assertEqual(body.get("contract_version"), "forge-project-dag-http-capability/v1")
+                                self.assertEqual(body.get("capability_id"), "PROJECT_DAG_READ_V1")
+                                self.assertEqual(body.get("support"), "SUPPORTED_NOT_READINESS")
+                            elif path == "/v1/version":
+                                self.assertEqual(status, 200)
+                                self.assertEqual(body.get("product"), "forge-autonomy")
+                                self.assertEqual(body.get("product_version"), canonical_version())
+                                self.assertIsInstance(body.get("storage_schema"), int)
+                                self.assertTrue(body.get("instance_id"))
+                            elif expected_service is None and expected_read is None:
                                 self.assertEqual(status, 200)
                             observed.add((method, path))
                     self.assertEqual(observed, EXPECTED_ROUTES)
