@@ -44,9 +44,10 @@ quiescence van bestaande effecten, bind één duurzaam exclusief
 operation-ID/epoch-journal en laat een extern bevoegde macOS-servicecoordinator
 de overgang met nieuwe signed inodes afronden. Hervat pas na werkelijke
 helper-/service- en XPC-readback. De eerste overgang vanaf de bestaande 0.3.13
-helper heeft geen drainprotocol: `runs=1` en een draaiende parent bewijzen geen
-veilige idle-toestand; SMAppService-unregister beëindigt die daemon. Houd deze
-legacy-overgang `BLOCKED_LEGACY_TRANSITION` tot een ondersteunde, gereviewde
+helper heeft geen drainprotocol: de eerdere `runs=1`-readback en een draaiende
+parent bewezen geen veilige idle-toestand; SMAppService-unregister beëindigt
+een draaiende daemon. Houd deze legacy-overgang `BLOCKED_LEGACY_TRANSITION`
+tot een ondersteunde, gereviewde
 route actieve-effectenbewijs én racevrije sluiting levert. Geen routinereboot,
 rebootfallback of hergebruik van een eerdere rebootautorisatie.
 
