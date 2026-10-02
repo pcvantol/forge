@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Barrier
 import unittest
 from unittest.mock import patch
 
@@ -42,6 +44,8 @@ class WorkspaceReadGrantTests(unittest.TestCase):
             self.assertTrue(grant.authenticate(f"Bearer {token}"))
             self.assertFalse(grant.authenticate("Bearer wrong"))
             self.assertFalse(grant.authenticate(None))
+            with patch("forge.workspace_read_grant._repository_id", side_effect=AssertionError("database read")):
+                self.assertFalse(grant.authenticate("Bearer wrong"))
             self.assertEqual(grant.scope()["repository_id"], "repo-1")
             with self.assertRaisesRegex(ValueError, "already exists"):
                 grant.issue("repo-1", root / "token-2")
@@ -56,6 +60,39 @@ class WorkspaceReadGrantTests(unittest.TestCase):
             self.assertFalse(grant.authenticate(f"Bearer {token_2}"))
             with self.assertRaisesRegex(ValueError, "binding is unavailable"):
                 grant.scope()
+            with self.assertRaisesRegex(ValueError, "cannot be rotated"):
+                grant.issue("repo-1", root / "token-after-revoke", rotate=True)
+
+    def test_concurrent_rotation_cannot_undo_revocation(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root, grant = self._instance(temporary)
+            token_path = root / "token-1"
+            grant.issue("repo-1", token_path)
+            barrier = Barrier(3)
+
+            def rotate() -> object:
+                barrier.wait()
+                try:
+                    return grant.issue("repo-1", root / "token-2", rotate=True)
+                except ValueError as error:
+                    return str(error)
+
+            def revoke() -> int:
+                barrier.wait()
+                return grant.revoke()
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                rotated = pool.submit(rotate)
+                revoked = pool.submit(revoke)
+                barrier.wait()
+                self.assertIn(revoked.result(), (2, 3))
+                self.assertTrue(rotated.result() in (2, "revoked read grant cannot be rotated"))
+            document = json.loads(grant.path.read_text(encoding="utf-8"))
+            self.assertEqual(document["state"], "REVOKED")
+            self.assertFalse(grant.authenticate("Bearer " + token_path.read_text(encoding="utf-8").strip()))
+            second = root / "token-2"
+            if second.exists():
+                self.assertFalse(grant.authenticate("Bearer " + second.read_text(encoding="utf-8").strip()))
 
     def test_missing_foreign_and_unsafe_documents_fail_closed(self) -> None:
         with TemporaryDirectory() as temporary:
@@ -102,6 +139,14 @@ class WorkspaceReadGrantTests(unittest.TestCase):
                 self.assertEqual(main(["--data-root", str(root), "issue",
                                        "--repository-id", "repo-1", "--token-file", str(token_path)]), 1)
             self.assertEqual(json.loads(output.call_args.args[0])["status"], "ERROR")
+
+    def test_lifecycle_refuses_missing_os_locking(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root, grant = self._instance(temporary)
+            with patch("forge.workspace_read_grant.fcntl", None):
+                with self.assertRaisesRegex(ValueError, "locking is unavailable"):
+                    grant.issue("repo-1", root / "token")
+            self.assertFalse(grant.path.exists())
 
 
 if __name__ == "__main__":

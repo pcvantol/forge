@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -9,6 +10,12 @@ from pathlib import Path
 import secrets
 import stat
 import tempfile
+from typing import Iterator
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - lifecycle changes fail closed without OS locking
+    fcntl = None  # type: ignore[assignment]
 
 from .execution_host_configuration import PeerConfigurationError, read_peer_configuration
 
@@ -97,6 +104,30 @@ def _write_new_private(path: Path, content: bytes) -> None:
         os.fsync(output.fileno())
 
 
+@contextmanager
+def _lifecycle_lock(path: Path) -> Iterator[None]:
+    """Serialize issue, rotation and revocation across installed operator processes."""
+    if fcntl is None:
+        raise ValueError("read grant lifecycle locking is unavailable")
+    parent = path.parent
+    if parent.is_symlink():
+        raise ValueError("read grant directory must not be a symbolic link")
+    parent.mkdir(parents=True, exist_ok=True)
+    lock_path = parent / ".workspace-read-grant.lock"
+    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        details = os.fstat(descriptor)
+        if not stat.S_ISREG(details.st_mode) or details.st_mode & 0o077:
+            raise ValueError("read grant lock must be private and regular")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
+
+
 class WorkspaceReadGrant:
     """A grant file is revalidated on each request, so rotation and revocation are immediate."""
 
@@ -109,16 +140,23 @@ class WorkspaceReadGrant:
         if not isinstance(authorization, str) or not authorization.startswith("Bearer "):
             return False
         try:
-            document = self._bound_document()
+            document = _document(self.path)
         except ValueError:
             return False
         token = authorization[7:]
-        return bool(token) and secrets.compare_digest(
+        if not token or not secrets.compare_digest(
             hashlib.sha256(token.encode("utf-8")).hexdigest(), document["token_sha256"]
-        )
+        ):
+            return False
+        try:
+            self._bound_document(document)
+        except ValueError:
+            return False
+        return True
 
-    def _bound_document(self) -> dict[str, object]:
-        document = _document(self.path)
+    def _bound_document(self, document: dict[str, object] | None = None) -> dict[str, object]:
+        if document is None:
+            document = _document(self.path)
         if (document["state"] != "ACTIVE" or document["instance_id"] != self.instance_id
                 or document["repository_id"] != _repository_id(self.root)):
             raise ValueError("read grant binding is unavailable")
@@ -133,6 +171,10 @@ class WorkspaceReadGrant:
         }
 
     def issue(self, repository_id: str, token_path: Path, *, rotate: bool = False) -> int:
+        with _lifecycle_lock(self.path):
+            return self._issue_locked(repository_id, token_path, rotate=rotate)
+
+    def _issue_locked(self, repository_id: str, token_path: Path, *, rotate: bool) -> int:
         if not repository_id or repository_id != _repository_id(self.root):
             raise ValueError("repository binding does not match the selected Forge instance")
         if token_path.resolve() == self.path.resolve():
@@ -145,6 +187,8 @@ class WorkspaceReadGrant:
             previous = _document(self.path)
             if previous["instance_id"] != self.instance_id or previous["repository_id"] != repository_id:
                 raise ValueError("read grant binding does not match")
+            if previous["state"] != "ACTIVE":
+                raise ValueError("revoked read grant cannot be rotated")
             revision = previous["revision"] + 1
         elif rotate:
             raise ValueError("read grant does not exist")
@@ -164,6 +208,10 @@ class WorkspaceReadGrant:
         return revision
 
     def revoke(self) -> int:
+        with _lifecycle_lock(self.path):
+            return self._revoke_locked()
+
+    def _revoke_locked(self) -> int:
         document = _document(self.path)
         if document["instance_id"] != self.instance_id:
             raise ValueError("read grant binding does not match")
