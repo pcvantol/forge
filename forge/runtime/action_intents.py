@@ -27,6 +27,11 @@ def _digest(encoded: str) -> str:
     return "sha256:" + sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _safe_view(document: dict[str, Any]) -> dict[str, Any]:
+    """Expose durable state without a fingerprint of private request bytes."""
+    return {key: value for key, value in document.items() if key != "request_digest"}
+
+
 def _approved_state(connection: sqlite3.Connection, mission_id: str) -> tuple[dict[str, Any], list[str]]:
     state_row = connection.execute(
         "SELECT document FROM mission_state WHERE mission_id=?", (mission_id,)
@@ -48,6 +53,8 @@ def _approved_state(connection: sqlite3.Connection, mission_id: str) -> tuple[di
             or state.get("status") in {"COMPLETED", "ARCHIVED", "FAILED"}
             or type(revision) is not int or revision < 1):
         raise ActionIntentError("Action intents require the current approved Mission revision")
+    if state.get("execution_correlation") is not None:
+        raise ActionIntentError("legacy serial correlation cannot be replayed as multi-Action intent")
     scope = mission.get("scope")
     if (not isinstance(scope, list) or not scope
             or any(not isinstance(item, str) or not item for item in scope)
@@ -116,6 +123,8 @@ def _row_document(row: sqlite3.Row) -> dict[str, Any]:
         document = json.loads(row["document"])
     except (TypeError, ValueError) as error:
         raise ActionIntentError("Action intent document is invalid") from error
+    if _encode(document) != row["document"]:
+        raise ActionIntentError("Action intent document bytes are noncanonical")
     _check_row_identity(row, document)
     _check_binding(row, document)
     return document
@@ -205,7 +214,7 @@ class ActionIntentLedger:
                         (mission_id, action["action_id"], 1, revision, source_digest,
                          _digest(encoded), encoded),
                     )
-                elif _row_document(prior) != document:
+                elif _row_document(prior) != document or prior["document"] != encoded:
                     raise ActionIntentError("Action intent conflicts with the pinned source")
             existing = self._latest(mission_id)
             if {row["action_id"] for row in existing} != {item["action_id"] for item in graph["actions"]}:
@@ -221,6 +230,7 @@ class ActionIntentLedger:
         with self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
             graph, source_digest = _source(self.connection, mission_id)
+            self._read_snapshot(mission_id)
             if action_id not in {item["action_id"] for item in graph["actions"]}:
                 raise ActionIntentError("Action is absent from the current planning snapshot")
             row = self.connection.execute(
@@ -236,7 +246,7 @@ class ActionIntentLedger:
                 if (document["correlation_id"] == correlation_id
                         and document["request_digest"] == request_digest
                         and expected_slot_revision == row["slot_revision"] - 1):
-                    return document
+                    return _safe_view(document)
                 raise ActionIntentError("Action correlation binding conflicts")
             if row["slot_revision"] != expected_slot_revision or document["correlation_status"] != "UNBOUND":
                 raise ActionIntentError("Action intent revision conflicts")
@@ -252,7 +262,7 @@ class ActionIntentLedger:
                 (mission_id, action_id, bound["slot_revision"], graph["mission_revision"],
                  source_digest, _digest(encoded), encoded),
             )
-        return bound
+        return _safe_view(bound)
 
     def read(self, mission_id: str) -> dict[str, Any]:
         if self.connection.in_transaction:
@@ -301,4 +311,5 @@ class ActionIntentLedger:
                 raise ActionIntentError("Action intents conflict with current planning source")
         return {"contract_version": CONTRACT_VERSION, "mission_id": mission_id,
                 "source_freshness": freshness, "read_only": True,
-                "dispatch_authorized": False, "actions": actions}
+                "dispatch_authorized": False,
+                "actions": [_safe_view(action) for action in actions]}

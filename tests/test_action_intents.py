@@ -76,7 +76,10 @@ class ActionIntentTests(unittest.TestCase):
         after = self.database.read_action_intents(MISSION_ID)
         self.assertEqual({item["action_id"]: item["correlation_status"] for item in after["actions"]},
                          {"ACTION-A": "BOUND", "ACTION-B": "BOUND", "ACTION-Q": "UNBOUND"})
-        self.assertEqual(after["actions"][0]["request_digest"], DIGEST_A)
+        self.assertTrue(all("request_digest" not in item for item in after["actions"]))
+        self.assertEqual(json.loads(self._rows()[1]["document"])["request_digest"], DIGEST_A)
+        self.assertNotIn("request_digest", a)
+        self.assertNotIn("request_digest", b)
         self.assertEqual(after["source_freshness"], "CURRENT")
         self.assertFalse(after["dispatch_authorized"])
 
@@ -205,6 +208,40 @@ class ActionIntentTests(unittest.TestCase):
             "SELECT document FROM mission_action_execution_slots WHERE mission_id=?", (MISSION_ID,)
         ).fetchone()[0], before)
 
+    def test_unmigrated_serial_correlation_blocks_multi_action_intent(self) -> None:
+        state = json.loads(json.dumps(self.state))
+        for action in state["actions"]:
+            action["status"] = "READY"
+        state["actions"][0]["status"] = "WAITING_FOR_RESULT"
+        state["execution_correlation"] = {
+            "request": {"mission_id": MISSION_ID, "action_id": "ACTION-A",
+                        "correlation_id": "legacy-A", "runtime_prompt": "synthetic-private-bytes"},
+            "host_run_id": "legacy-run-A",
+        }
+        self.database.save_mission_state(state)
+        with self.assertRaisesRegex(RuntimeDatabaseError, "legacy serial correlation"):
+            self.database.materialize_action_intents(MISSION_ID)
+        self.assertEqual(self._rows(), [])
+
+    def test_changed_serialized_bytes_are_not_an_idempotent_replay(self) -> None:
+        self.database.materialize_action_intents(MISSION_ID)
+        connection = self.database._connection  # noqa: SLF001 - isolated corruption fixture
+        with connection:
+            connection.execute("DROP TRIGGER mission_action_intent_revisions_immutable_update")
+            row = connection.execute(
+                "SELECT document FROM mission_action_intent_revisions WHERE action_id='ACTION-A'"
+            ).fetchone()
+            recoded = json.dumps(json.loads(row[0]), sort_keys=True, indent=2)
+            from hashlib import sha256
+            connection.execute(
+                "UPDATE mission_action_intent_revisions SET document=?,document_digest=? "
+                "WHERE action_id='ACTION-A'",
+                (recoded, "sha256:" + sha256(recoded.encode()).hexdigest()),
+            )
+        with self.assertRaisesRegex(RuntimeDatabaseError, "noncanonical"):
+            self.database.materialize_action_intents(MISSION_ID)
+        self.assertEqual(len(self._rows()), 3)
+
     def test_corrupt_digest_is_not_read_as_valid_intent(self) -> None:
         self.database.materialize_action_intents(MISSION_ID)
         with self.database._connection:  # noqa: SLF001 - controlled corruption fixture
@@ -268,6 +305,19 @@ class ActionIntentTests(unittest.TestCase):
             self.database.read_action_intents(MISSION_ID)
         with self.assertRaises(RuntimeDatabaseError):
             self.database.materialize_action_intents(MISSION_ID)
+
+    def test_partial_history_cannot_bind_a_surviving_action(self) -> None:
+        self.database.materialize_action_intents(MISSION_ID)
+        connection = self.database._connection  # noqa: SLF001 - isolated corruption fixture
+        with connection:
+            connection.execute("DROP TRIGGER mission_action_intent_revisions_immutable_delete")
+            connection.execute("DELETE FROM mission_action_intent_revisions WHERE action_id='ACTION-B'")
+        with self.assertRaisesRegex(RuntimeDatabaseError, "conflict"):
+            self.database.bind_action_intent(
+                MISSION_ID, "ACTION-A", expected_slot_revision=1,
+                correlation_id="correlation-A", request_digest=DIGEST_A,
+            )
+        self.assertEqual(len(self._rows()), 2)
 
 
 if __name__ == "__main__":
