@@ -11,7 +11,7 @@
   "current_mission_3_dependency": false,
   "nodes": [
     {"id":"PA-F0","status":"PLANNED","depends_on":[],"deliverable":"Graph/frontier/target/evidence contract and compatibility fixtures"},
-    {"id":"PA-F1","status":"PLANNED","depends_on":["PA-F0"],"deliverable":"Durable multi-Action slots, migration and per-target Truth"},
+    {"id":"PA-F1","status":"PARTIAL","depends_on":["PA-F0"],"delivered_subset":"Non-dispatchable atomic per-Action intent materialization, immutable source/target pinning, independent correlation CAS and restart readback in Forge 2.7.60","remaining_gates":["authoritative target and baseline verification","execution-state and per-target Truth qualification","installed multi-Action execution proof"],"deliverable":"Durable multi-Action slots, migration and per-target Truth"},
     {"id":"PA-F2","status":"PLANNED","depends_on":["PA-F1"],"deliverable":"Contained planner fan-out, reservations and eligible frontier"},
     {"id":"PA-F3","status":"PLANNED","depends_on":["PA-F1"],"external_evidence":["engineering-platform:PA-E1","engineering-platform:PA-E2","engineering-platform:PA-E3"],"deliverable":"Bounded asynchronous HTTP submission/readback and recovery"},
     {"id":"PA-F4","status":"PLANNED","depends_on":["PA-F2","PA-F3"],"deliverable":"Incremental reconcile/replan, joins and completion/cancellation"},

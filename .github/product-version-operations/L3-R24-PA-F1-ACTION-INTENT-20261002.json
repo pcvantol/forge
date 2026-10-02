@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.59",
+  "classification_rationale": "L3-FORGE-PA-F1-DURABLE-ACTION-INTENT-V1-20261002",
+  "component": "product",
+  "event_lineage": "L3-FORGE-PA-F1-DURABLE-ACTION-INTENT-V1-20261002",
+  "expected_head": "31e6b1cb34e7d2a7426d0ee43e1efe5352e722ce",
+  "operation_id": "L3-R24-PA-F1-ACTION-INTENT-20261002",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.60"
+}

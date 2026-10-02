@@ -66,6 +66,7 @@ TABLE_CLASSIFICATION: Mapping[str, str] = {
     "mission_state": "OPERATIONAL_HISTORY",
     "mission_action_slot_snapshots": "OPERATIONAL_HISTORY",
     "mission_action_execution_slots": "OPERATIONAL_HISTORY",
+    "mission_action_intent_revisions": "OPERATIONAL_HISTORY",
     "execution_context_snapshots": "OPERATIONAL_HISTORY",
     "architecture_reviews": "OPERATIONAL_HISTORY",
     "mission_recommendations": "OPERATIONAL_HISTORY",
@@ -131,6 +132,7 @@ PURGE_ORDER = (
     "mission_runtime_projections",
     "mission_action_slot_snapshots",
     "mission_action_execution_slots",
+    "mission_action_intent_revisions",
     "execution_context_snapshots",
     "action_derivations",
     "scheduler_submissions",
@@ -160,6 +162,7 @@ EXTERNAL_CLASSIFICATION: Mapping[str, str] = {
 
 _IMMUTABLE_DELETE_TRIGGERS: Mapping[str, tuple[str, ...]] = {
     "mission_action_execution_slots": ("mission_action_execution_slots_immutable_delete",),
+    "mission_action_intent_revisions": ("mission_action_intent_revisions_immutable_delete",),
     "execution_context_snapshots": ("execution_context_snapshots_immutable_delete",),
     "action_derivation_canary_closures": ("action_derivation_canary_closures_immutable_delete",),
     "action_derivation_results": ("action_derivation_results_immutable_delete",),
