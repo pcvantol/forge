@@ -30,18 +30,22 @@ capability. TDE evidence is produced through the public CLI and its canonical
 evidence location; Forge neither imports TDE internals nor defines a
 repository-specific TDE policy fork.
 
-TDE is currently not a required GitHub check: its CLI is not yet available as
-a public package that GitHub Actions can deterministically install. This is an
-intentional, fail-closed non-enablement rather than a fabricated CI check. The
-operator can run the public command locally:
+The GitHub `TDE observe` workflow installs the published runtime, runs the
+`standard` assessment and repository qualification, and retains their canonical
+artifacts. It is intentionally nonblocking and is not a required merge check.
+Its job summary shows the assessment decision and repository qualification
+separately, including an explicit unavailable state when evidence is missing or
+inconsistent. A successful workflow run only means the observation completed;
+it does not imply a TDE PASS. The local `.tde.yml` code-size profile remains
+the committed Forge profile. The operator can also run its public commands:
 
 ```text
 tde assess --capability code_size .
 tde qualify --capability code_size .
 ```
 
-When TDE publishes a supported immutable consumer distribution or reusable
-workflow, Forge may add that exact producer as an observe-only CI check.
+Forge does not reinterpret TDE policy, replace its evidence, or turn observe
+mode into an approval gate through the summary.
 
 ## Dependency review boundary
 
