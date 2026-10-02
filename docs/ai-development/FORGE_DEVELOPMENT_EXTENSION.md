@@ -50,9 +50,10 @@ Agent, store or evidence implementation.
 Technical Debt Engine remains product authority for TDE implementation,
 policies, evidence semantics, release and security. Forge owns only its
 committed [`.tde.yml`](../../.tde.yml) `code_size` profile, Forge-specific
-evidence references and this integration navigation. The profile is
-observe-only and not a hosted required check until TDE publishes a deterministic
-consumer distribution or reusable workflow.
+evidence references and this integration navigation. The hosted observation
+uses the published TDE runtime but remains nonblocking; its job summary shows
+the actual assessment and repository qualification separately from workflow
+completion. It is not a required merge check or a Forge-owned policy fork.
 
 ## Forge-local validation and handoff
 
