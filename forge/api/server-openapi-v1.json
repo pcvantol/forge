@@ -482,7 +482,7 @@
         "summary": "Read the configured project binding for this Forge instance",
         "description": "Read-only. Returns an empty list with UNCONFIGURED when no current binding exists; never creates a Project.",
         "responses": {
-          "200": {"description": "Configured project or explicit empty state"},
+          "200": {"description": "Configured project or explicit empty state", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectIndex"}}}},
           "401": {"description": "Authentication required"},
           "503": {"description": "Installed source or binding is unavailable"}
         }
@@ -494,7 +494,7 @@
         "description": "The repository scope reports exact active Mission IDs/count and NONE, SINGLE or UNSUPPORTED_MULTIPLE cardinality, plus per-Mission recorded-transition source times and freshness. Aggregate freshness is UNKNOWN when any Mission timeline is missing or malformed, and is never refreshed merely by reopening the runtime. These fields do not claim project membership or parallel execution. Capability, Candidate, Expected and cross-Mission project graph views remain unavailable. No peer call or Mission mutation occurs.",
         "parameters": [{"name": "project_id", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"}}],
         "responses": {
-          "200": {"description": "Consistent installed Mission/Action snapshot"},
+          "200": {"description": "Consistent installed Mission/Action snapshot", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectRoadmap"}}}},
           "400": {"description": "Invalid project reference"},
           "401": {"description": "Authentication required"},
           "404": {"description": "Project is not the configured project"},
@@ -531,6 +531,81 @@
           "project_capability_graph": {"const": "UNAVAILABLE"},
           "candidate_and_expected_views": {"const": "UNAVAILABLE"},
           "read_only": {"const": true}
+        }
+      },
+      "ProjectIndex": {
+        "type": "object", "additionalProperties": false,
+        "required": ["api_version", "contract_version", "instance_id", "availability", "projects", "read_only"],
+        "properties": {
+          "api_version": {"const": "1"},
+          "contract_version": {"const": "project-roadmap-read/v1"},
+          "instance_id": {"type": "string", "minLength": 1},
+          "availability": {"enum": ["AVAILABLE", "UNCONFIGURED"]},
+          "projects": {"type": "array", "maxItems": 1, "items": {"$ref": "#/components/schemas/ProjectBinding"}},
+          "read_only": {"const": true}
+        }
+      },
+      "ProjectBinding": {
+        "type": "object", "additionalProperties": false,
+        "required": ["project_id", "repository_id", "roadmap_url"],
+        "properties": {
+          "project_id": {"type": "string", "minLength": 1},
+          "repository_id": {"type": "string", "minLength": 1},
+          "roadmap_url": {"type": "string", "pattern": "^/v1/projects/[^/?#]+/roadmap$"}
+        }
+      },
+      "ProjectRoadmap": {
+        "type": "object", "additionalProperties": false,
+        "required": ["api_version", "contract_version", "instance_id", "project_id", "repository_id", "availability", "freshness", "source_observed_at", "graph_kind", "project_mission_attribution", "project_capability_graph", "candidate_and_expected_views", "repository_scope", "read_only"],
+        "properties": {
+          "api_version": {"const": "1"},
+          "contract_version": {"const": "project-roadmap-read/v1"},
+          "instance_id": {"type": "string", "minLength": 1},
+          "project_id": {"type": "string", "minLength": 1},
+          "repository_id": {"type": "string", "minLength": 1},
+          "availability": {"const": "AVAILABLE"},
+          "freshness": {"enum": ["CURRENT", "STALE", "UNKNOWN"]},
+          "source_observed_at": {"type": ["string", "null"], "format": "date-time"},
+          "graph_kind": {"const": "REPOSITORY_MISSION_ACTION_SUBSET"},
+          "project_mission_attribution": {"const": "UNAVAILABLE"},
+          "project_capability_graph": {"const": "UNAVAILABLE"},
+          "candidate_and_expected_views": {"const": "UNAVAILABLE"},
+          "repository_scope": {"$ref": "#/components/schemas/ProjectRoadmapRepositoryScope"},
+          "read_only": {"const": true}
+        }
+      },
+      "ProjectRoadmapRepositoryScope": {
+        "type": "object", "additionalProperties": false,
+        "required": ["repository_id", "active_mission_ids", "active_mission_count", "active_mission_multiplicity", "missions"],
+        "properties": {
+          "repository_id": {"type": "string", "minLength": 1},
+          "active_mission_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "active_mission_count": {"type": "integer", "minimum": 0},
+          "active_mission_multiplicity": {"enum": ["NONE", "SINGLE", "UNSUPPORTED_MULTIPLE"]},
+          "missions": {"type": "array", "maxItems": 256, "items": {"$ref": "#/components/schemas/ProjectRoadmapMission"}}
+        }
+      },
+      "ProjectRoadmapMission": {
+        "type": "object", "additionalProperties": false,
+        "required": ["mission_id", "mission_detail_url", "group", "status", "revision", "source_observed_at", "freshness", "actions"],
+        "properties": {
+          "mission_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "mission_detail_url": {"type": "string", "pattern": "^/v1/missions/[^/?#]+$"},
+          "group": {"enum": ["ACTIVE", "APPROVED_PENDING", "HISTORY"]},
+          "status": {"type": "string", "minLength": 1},
+          "revision": {"type": "integer", "minimum": 1},
+          "source_observed_at": {"type": ["string", "null"], "format": "date-time"},
+          "freshness": {"enum": ["CURRENT", "STALE", "UNKNOWN"]},
+          "actions": {"type": "array", "maxItems": 256, "items": {"$ref": "#/components/schemas/ProjectRoadmapAction"}}
+        }
+      },
+      "ProjectRoadmapAction": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "status", "dependencies"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["READY", "ACTIVE", "WAITING_FOR_RESULT", "COMPLETE", "BLOCKED", "FAILED"]},
+          "dependencies": {"type": "array", "items": {"type": "string", "minLength": 1}}
         }
       },
       "JsonObject": {

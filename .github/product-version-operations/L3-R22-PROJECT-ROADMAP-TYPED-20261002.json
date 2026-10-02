@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.57",
+  "classification_rationale": "LANE_3 #207 r22 selected Forge project roadmap typed HTTP producer",
+  "component": "product",
+  "event_lineage": "LANE_3 #207 r22 selected Forge project roadmap typed HTTP producer",
+  "expected_head": "f60dfa74d69085888de8cb4d6c1bfcdbd1dae521",
+  "operation_id": "L3-R22-PROJECT-ROADMAP-TYPED-20261002",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.58"
+}
