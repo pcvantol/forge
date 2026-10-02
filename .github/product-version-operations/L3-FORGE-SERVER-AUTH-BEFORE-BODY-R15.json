@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.52",
+  "classification_rationale": "Forge LANE_3 #207 r15 authenticate Server HTTP request before body read",
+  "component": "product",
+  "event_lineage": "Forge LANE_3 #207 r15 authenticate Server HTTP request before body read",
+  "expected_head": "58a6c6729d3a9f350a77446311773902f4dffc12",
+  "operation_id": "L3-FORGE-SERVER-AUTH-BEFORE-BODY-R15",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.53"
+}
