@@ -51,7 +51,7 @@ class ProjectDagCapabilityTests(TestCase):
                         self.assertEqual(body["contract_version"], "forge-project-dag-http-capability/v1")
                         self.assertEqual(body["instance_id"], existing_instance(root).instance_id)
                         self.assertEqual(body["server_product_version"], canonical_version())
-                        self.assertEqual(body["runtime_product_version"], existing_instance(root).product_version)
+                        self.assertNotIn("runtime_product_version", body)
                         self.assertEqual(body["support"], "SUPPORTED_NOT_READINESS")
                         self.assertEqual(body["authentication"], "INSTANCE_BEARER")
                         self.assertEqual(body["project_scope"], "CONFIGURED_PROJECT_ID_ONLY")

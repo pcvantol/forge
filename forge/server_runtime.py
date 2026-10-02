@@ -344,7 +344,6 @@ class ForgeServerApplicationServices:
             "contract_version": "forge-project-dag-http-capability/v1",
             "instance_id": current.instance_id,
             "server_product_version": canonical_version(),
-            "runtime_product_version": current.product_version,
             "capability_id": "PROJECT_DAG_READ_V1",
             "support": "SUPPORTED_NOT_READINESS",
             "authentication": "INSTANCE_BEARER",

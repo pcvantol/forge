@@ -5,7 +5,7 @@ This is a bounded producer subset of `PRM-F-CONTRACT` and `PRM-F-PROJECTION` thr
 An authenticated `GET /v1/project-dag/capability` on the installed Server
 describes this HTTP read subset before a client requests a project. Its
 `forge-project-dag-http-capability/v1` response binds the selected instance ID,
-server and stored runtime product versions, exact supported method/path pairs,
+server product version, exact supported method/path pairs,
 instance-bearer authentication and configured-project scope. `SUPPORTED_NOT_READINESS`
 means the package supports these reads; it does not assert an EP binding, current
 project availability or execution readiness. Project Mission attribution,
