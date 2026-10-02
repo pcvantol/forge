@@ -2,7 +2,7 @@
   "schema_version": 1,
   "increment": "HTTP_ONLY_PEERS_AND_THIN_CLI_V1",
   "owner": "forge",
-  "status": "PLANNED",
+  "status": "PARTIALLY_IMPLEMENTED",
   "documentary_only": true,
   "executable": false,
   "execution_authority": false,
@@ -71,7 +71,12 @@
       "depends_on": [
         "FH-SERVICES"
       ],
-      "status": "PLANNED",
+      "status": "PARTIALLY_IMPLEMENTED",
+      "qualified_subsets": [
+        {"id": "PROJECT_DAG_HTTP_READ_V1", "evidence": "https://github.com/pcvantol/forge/pull/230", "source": "cdaa1570bf78021d1d53245072133aea96a4ab3e"}
+      ],
+      "selected_next_subset": {"id": "WORKSPACE_STATUS_HTTP_READ_V1", "producer_register": "https://github.com/pcvantol/forge/issues/207", "consumer_register": "https://github.com/pcvantol/forge/issues/208", "contract": "docs/architecture/FORGE_WORKSPACE_STATUS_HTTP_READ_V1.md", "installed_producer_evidence": "REQUIRED", "workspace_consumer_evidence": "SEPARATE_REQUIRED"},
+      "remaining_gates": ["FULL_ROUTE_AND_AUTH_MATRIX", "FH_CLI_PARITY", "INSTALLED_FH_Q", "WORKSPACE_CONSUMER_ACCEPTANCE"],
       "completion_evidence": [
         "Real installed foreground HTTP and OpenAPI/Postman"
       ]

@@ -36,6 +36,8 @@
     "/v1/status": {
       "get": {
         "summary": "Read installed runtime status",
+        "description": "A separately issued Workspace read bearer is limited to this GET and GET /v1/instance. Its 200 response includes workspace_read_scope; the exact typed response is workspace-status-read-v1.json#/$defs/status. The ordinary Server bearer remains a distinct administrator credential.",
+        "security": [{"bearerAuth": []}, {"workspaceReadBearer": []}],
         "responses": {
           "200": {
             "description": "Accepted JSON response"
@@ -43,6 +45,7 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {"description": "Workspace read bearer is outside its route scope"},
           "409": {
             "description": "Fail-closed application or runtime conflict"
           }
@@ -84,6 +87,8 @@
     "/v1/instance": {
       "get": {
         "summary": "Read instance identity and deployment bindings",
+        "description": "A separately issued Workspace read bearer is limited to this GET and GET /v1/status. Its 200 response includes workspace_read_scope; the exact typed response is workspace-status-read-v1.json#/$defs/instance. The ordinary Server bearer remains a distinct administrator credential.",
+        "security": [{"bearerAuth": []}, {"workspaceReadBearer": []}],
         "responses": {
           "200": {
             "description": "Accepted JSON response"
@@ -91,6 +96,7 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {"description": "Workspace read bearer is outside its route scope"},
           "409": {
             "description": "Fail-closed application or runtime conflict"
           }
@@ -509,6 +515,11 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer"
+      },
+      "workspaceReadBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate instance and configured-repository bound read grant for GET /v1/instance and GET /v1/status only"
       }
     },
     "schemas": {

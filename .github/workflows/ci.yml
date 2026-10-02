@@ -15,7 +15,17 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
+      - run: python -m pip install '.[validation]'
       - run: bash scripts/validate.sh
+        env:
+          FORGE_WITH_COVERAGE: "1"
+      - name: Enforce changed Forge source coverage
+        if: github.event_name == 'pull_request'
+        env:
+          FORGE_COVERAGE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/check_changed_product_coverage.py forge-coverage.json

@@ -59,8 +59,8 @@ jobs:
         with:
           ref: ${{ needs.release-context.outputs.source_sha }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with: { python-version: '3.11' }
-      - run: python3 -m pip install --upgrade 'setuptools>=83' build twine pip-audit 'bandit[toml]' cyclonedx-bom
+        with: { python-version: '3.14' }
+      - run: python3 -m pip install --upgrade 'setuptools>=83' build twine pip-audit 'bandit[toml]' cyclonedx-bom '.[validation]'
       - name: Build exactly one artifact set and qualify source
         env:
           OPERATION_ID: ${{ needs.release-context.outputs.operation_id }}
@@ -291,7 +291,7 @@ jobs:
           name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
           path: release-input
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with: { python-version: '3.11' }
+        with: { python-version: '3.14' }
       - name: Read back, hash, and reinstall both published distributions
         env:
           READBACK_CACHE_TOKEN: ${{ github.run_id }}-${{ github.run_attempt }}

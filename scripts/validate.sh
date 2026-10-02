@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+python3 - <<'PY'
+import sys
+if sys.version_info[:2] != (3, 14):
+    raise SystemExit("Forge validation requires Python 3.14.x")
+PY
+
 python3 -m compileall -q forge tests
-python3 -m unittest discover -s tests -v
+if [[ "${FORGE_WITH_COVERAGE:-0}" == "1" ]]; then
+  python3 -m coverage run --source=forge -m unittest discover -s tests -v
+  python3 -m coverage json -o forge-coverage.json
+else
+  python3 -m unittest discover -s tests -v
+fi
 python3 scripts/advance_product_version.py --check
 python3 docs/ai-development/validate_projection.py \
   --profile forge \

@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.58",
+  "classification_rationale": "L3-FORGE-WORKSPACE-STATUS-SCOPED-HTTP-READ-V1-20261002",
+  "component": "product",
+  "event_lineage": "L3-FORGE-WORKSPACE-STATUS-SCOPED-HTTP-READ-V1-20261002",
+  "expected_head": "cdaa1570bf78021d1d53245072133aea96a4ab3e",
+  "operation_id": "L3-R23-WORKSPACE-STATUS-READ-20261002",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.59"
+}

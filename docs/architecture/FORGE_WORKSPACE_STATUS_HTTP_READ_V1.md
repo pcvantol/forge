@@ -1,0 +1,21 @@
+# Forge Workspace status HTTP read V1
+
+**Producer assignment:** LANE_3 r23, `L3-FORGE-WORKSPACE-STATUS-SCOPED-HTTP-READ-V1-20261002` in [#207](https://github.com/pcvantol/forge/issues/207). **Selected consumer:** LANE_4 [#208](https://github.com/pcvantol/forge/issues/208). Producer source/installed qualification and actual Workspace consumption are separate evidence gates.
+
+## Selected operation
+
+The installed Forge Server keeps its V1 loopback listener and existing `GET /v1/instance` and `GET /v1/status` response envelopes. A separately issued Workspace bearer is accepted only on these two GET routes. The response includes `workspace_read_scope` with the exact installed Forge instance ID, configured repository ID and `forge-workspace-status-read/v1` contract version. The typed read-bearer response schemas are packaged at `forge/api/workspace-status-read-v1.json`; the canonical route catalogue remains `forge/api/server-openapi-v1.json`. The general Server bearer remains write-capable and must not be given to Workspace.
+
+The repository ID is the exact `ep_repository_id` of the currently configured Forge-to-EP peer. It is an expected repository binding, not a Project ID or inferred membership. Repository Missions remain repository Missions. The grant is unavailable when that peer configuration is absent, invalid, detached or changed, or when the selected instance ID differs. The Workspace Server additionally pins its expected Forge instance and repository, validates both responses, labels status freshness truthfully and records its own retrieval time separately. This producer contract does not qualify the Workspace consumer.
+
+## Explicit credential lifecycle
+
+An operator uses the installed `forge-workspace-read-grant` command against one already initialized `--data-root`, after the repository binding exists. `issue --repository-id <id> --token-file <new-private-path>` generates a random token and writes it to a new private file; the instance's private `credentials/workspace-read-grant.json` stores only its SHA-256 digest, instance/repository bindings, revision and ACTIVE state. The token is never printed. `rotate` requires the existing bound grant and a new token output path; old tokens fail immediately. `revoke` advances the revision and makes the bearer unusable. The Server rereads the private grant and current peer binding for each request. Missing, malformed, public-mode or symbolic-link grant files fail closed. The grant file stays inside the selected instance root. Provisioning, storage and conveyance of the token to Workspace are operator-owned and require an exact installation handoff; this source delivery changes no live credential.
+
+`forge --data-root <root> server run --credential-file <admin-file> --host 127.0.0.1 --port <port>` keeps the frozen installer process arguments. A read grant takes effect only after explicit issue into that instance root. This extension changes neither the historical installer baseline nor its admin credential. There is no Workspace CLI, import, SQL or File Inbox read fallback.
+
+The scoped bearer returns 401 for missing, wrong, revoked or mismatched credentials and 403 for any other route or non-GET method. Authentication and scope denial happen before a request body is read or application mutation is invoked. Instance-root drift still fails closed. For a valid scoped bearer, a temporarily unavailable projection returns 503; a 200 status with stale, unknown or unavailable freshness remains a Forge observation and is not a Workspace health PASS.
+
+## Qualification and remaining gates
+
+The producer slice requires one exact built wheel installed non-editably under Python 3.14.x, positive HTTP reads, wrong/missing/revoked/foreign-instance/foreign-or-absent-repository/write negatives, schema validation, no-storage-mutation proof, full source validation, strict changed-product-source coverage above 80.2%, independent exact-head Quality/Security review, hosted checks and protected merge. The final #207 producer receipt must pin source, wheel digest and installed test output. Only LANE_4 can record actual Workspace Server acceptance and its own TLS/schema/timeout/redirect/error tests in #208. Full Forge HTTP, project loop, EP execution, installer readiness and native Workspace app remain separate open gates.
