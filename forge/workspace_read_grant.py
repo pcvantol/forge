@@ -47,6 +47,10 @@ def _document(path: Path) -> dict[str, object]:
         value = json.loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("read grant file is invalid") from error
+    return _validate_document(value)
+
+
+def _validate_document(value: object) -> dict[str, object]:
     if not isinstance(value, dict) or set(value) != {
         "contract_version", "instance_id", "repository_id", "token_sha256", "revision", "state",
     }:
@@ -55,13 +59,20 @@ def _document(path: Path) -> dict[str, object]:
         raise ValueError("read grant document is invalid")
     if type(value["revision"]) is not int or value["revision"] < 1:
         raise ValueError("read grant document is invalid")
+    _validate_binding_fields(value)
+    _validate_digest(value["token_sha256"])
+    return value
+
+
+def _validate_binding_fields(value: dict[str, object]) -> None:
     for name in ("instance_id", "repository_id"):
         if not isinstance(value[name], str) or not value[name] or len(value[name]) > 256:
             raise ValueError("read grant document is invalid")
-    digest = value["token_sha256"]
+
+
+def _validate_digest(digest: object) -> None:
     if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
         raise ValueError("read grant document is invalid")
-    return value
 
 
 def _repository_id(root: Path) -> str:
@@ -181,19 +192,7 @@ class WorkspaceReadGrant:
             raise ValueError("token output and read grant paths must differ")
         if token_path.exists() or token_path.is_symlink():
             raise ValueError("token output path already exists")
-        if self.path.exists() or self.path.is_symlink():
-            if not rotate:
-                raise ValueError("read grant already exists")
-            previous = _document(self.path)
-            if previous["instance_id"] != self.instance_id or previous["repository_id"] != repository_id:
-                raise ValueError("read grant binding does not match")
-            if previous["state"] != "ACTIVE":
-                raise ValueError("revoked read grant cannot be rotated")
-            revision = previous["revision"] + 1
-        elif rotate:
-            raise ValueError("read grant does not exist")
-        else:
-            revision = 1
+        revision = self._next_revision(repository_id, rotate=rotate)
         token = secrets.token_urlsafe(48)
         document = {
             "contract_version": CONTRACT_VERSION,
@@ -206,6 +205,20 @@ class WorkspaceReadGrant:
         _write_new_private(token_path, (token + "\n").encode("utf-8"))
         _write_private(self.path, json.dumps(document, sort_keys=True).encode("utf-8"))
         return revision
+
+    def _next_revision(self, repository_id: str, *, rotate: bool) -> int:
+        if self.path.exists() or self.path.is_symlink():
+            if not rotate:
+                raise ValueError("read grant already exists")
+            previous = _document(self.path)
+            if previous["instance_id"] != self.instance_id or previous["repository_id"] != repository_id:
+                raise ValueError("read grant binding does not match")
+            if previous["state"] != "ACTIVE":
+                raise ValueError("revoked read grant cannot be rotated")
+            return previous["revision"] + 1
+        elif rotate:
+            raise ValueError("read grant does not exist")
+        return 1
 
     def revoke(self) -> int:
         with _lifecycle_lock(self.path):

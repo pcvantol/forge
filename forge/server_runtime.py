@@ -617,54 +617,14 @@ class ForgeServerAPI:
         ):
             return self._read_api.handle(method, target, authorization)
         try:
-            if method == "GET" and path == "/v1/project-dag/capability":
-                return APIResponse(200, self.services.project_dag_capability(), headers)
-            if method == "GET" and path == "/v1/instance":
-                return APIResponse(200, self.services.instance(), headers)
-            if method == "GET" and path == "/v1/readiness":
-                value = self.services.readiness()
-                return APIResponse(200 if value["ready"] else 503, value, headers)
-            if method == "GET" and path == "/v1/readiness/standalone":
-                value = self.services.standalone_readiness()
-                return APIResponse(200 if value["ready"] else 503, value, headers)
-            if method == "GET" and path == "/v1/version":
-                instance = existing_instance(self.services.root)
-                return APIResponse(200, {
-                    "api_version": SERVER_API_VERSION,
-                    "product": "forge-autonomy",
-                    "product_version": instance.product_version,
-                    "storage_schema": instance.storage_schema,
-                    "instance_id": instance.instance_id,
-                }, headers)
-            if method == "GET" and path == "/v1/provider-context":
-                return APIResponse(200, self.services.provider_context(), headers)
-            if method == "GET" and path == "/v1/execution-host/preflight":
-                return APIResponse(200, self.services.execution_host_preflight(), headers)
-            if method == "POST" and path == "/v1/provider-context":
-                return APIResponse(200, self.services.configure_provider_context(body or {}), headers)
-            if method == "POST" and path == "/v1/execution-host/configure":
-                return APIResponse(200, self.services.configure_execution_host(body or {}), headers)
-            if method == "POST" and path == "/v1/execution-host/detach":
-                return APIResponse(200, self.services.detach_execution_host(body or {}), headers)
-            if method == "GET" and path.startswith("/v1/execution-host/detach/"):
-                operation_id = unquote(path.removeprefix("/v1/execution-host/detach/"))
-                return APIResponse(200, self.services.detach_execution_host_status(operation_id), headers)
-            if method == "POST" and path in {
-                "/v1/missions/inspect", "/v1/missions/approve-business",
-                "/v1/missions/approve-architecture", "/v1/missions/admit",
-            }:
-                return APIResponse(200, self.services.mission_document(path.rsplit("/", 1)[1], body or {}), headers)
-            if method == "POST" and path.startswith("/v1/missions/"):
-                parts = path.split("/")
-                if len(parts) == 6 and parts[4] == "controller":
-                    mission_id = unquote(parts[3])
-                    if parts[5] == "start":
-                        truth = (body or {}).get("repository_truth")
-                        if not isinstance(truth, Mapping):
-                            raise ValueError("controller start requires Repository Truth")
-                        return APIResponse(200, self.services.mission_start(mission_id, truth), headers)
-                    if parts[5] == "reopen":
-                        return APIResponse(200, self.services.mission_reopen(mission_id), headers)
+            if method == "GET":
+                response = self._admin_get(path, headers)
+            elif method == "POST":
+                response = self._admin_post(path, body or {}, headers)
+            else:
+                response = None
+            if response is not None:
+                return response
             return APIResponse(404, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "ROUTE_NOT_FOUND", "message": "Route was not found",
             }}, headers)
@@ -677,6 +637,60 @@ class ForgeServerAPI:
             return APIResponse(409, {"api_version": SERVER_API_VERSION, "error": {
                 "code": type(error).__name__.upper(), "message": str(error),
             }}, headers)
+
+    def _admin_get(self, path: str, headers: dict[str, str]) -> APIResponse | None:
+        if path == "/v1/project-dag/capability":
+            return APIResponse(200, self.services.project_dag_capability(), headers)
+        if path == "/v1/instance":
+            return APIResponse(200, self.services.instance(), headers)
+        if path == "/v1/readiness":
+            value = self.services.readiness()
+            return APIResponse(200 if value["ready"] else 503, value, headers)
+        if path == "/v1/readiness/standalone":
+            value = self.services.standalone_readiness()
+            return APIResponse(200 if value["ready"] else 503, value, headers)
+        if path == "/v1/version":
+            instance = existing_instance(self.services.root)
+            return APIResponse(200, {
+                "api_version": SERVER_API_VERSION,
+                "product": "forge-autonomy",
+                "product_version": instance.product_version,
+                "storage_schema": instance.storage_schema,
+                "instance_id": instance.instance_id,
+            }, headers)
+        if path == "/v1/provider-context":
+            return APIResponse(200, self.services.provider_context(), headers)
+        if path == "/v1/execution-host/preflight":
+            return APIResponse(200, self.services.execution_host_preflight(), headers)
+        if path.startswith("/v1/execution-host/detach/"):
+            operation_id = unquote(path.removeprefix("/v1/execution-host/detach/"))
+            return APIResponse(200, self.services.detach_execution_host_status(operation_id), headers)
+        return None
+
+    def _admin_post(self, path: str, body: Mapping[str, Any], headers: dict[str, str]) -> APIResponse | None:
+        if path == "/v1/provider-context":
+            return APIResponse(200, self.services.configure_provider_context(body), headers)
+        if path == "/v1/execution-host/configure":
+            return APIResponse(200, self.services.configure_execution_host(body), headers)
+        if path == "/v1/execution-host/detach":
+            return APIResponse(200, self.services.detach_execution_host(body), headers)
+        if path in {
+            "/v1/missions/inspect", "/v1/missions/approve-business",
+            "/v1/missions/approve-architecture", "/v1/missions/admit",
+        }:
+            return APIResponse(200, self.services.mission_document(path.rsplit("/", 1)[1], body), headers)
+        if path.startswith("/v1/missions/"):
+            parts = path.split("/")
+            if len(parts) == 6 and parts[4] == "controller":
+                mission_id = unquote(parts[3])
+                if parts[5] == "start":
+                    truth = body.get("repository_truth")
+                    if not isinstance(truth, Mapping):
+                        raise ValueError("controller start requires Repository Truth")
+                    return APIResponse(200, self.services.mission_start(mission_id, truth), headers)
+                if parts[5] == "reopen":
+                    return APIResponse(200, self.services.mission_reopen(mission_id), headers)
+        return None
 
 
 class _Server(ThreadingHTTPServer):
