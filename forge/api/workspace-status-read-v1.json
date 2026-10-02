@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:forge:workspace-status-read:v1",
+  "title": "Forge Server Workspace status read grant responses",
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_version", "instance_id", "repository_id"],
+      "properties": {
+        "contract_version": {"const": "forge-workspace-status-read/v1"},
+        "instance_id": {"type": "string", "minLength": 1},
+        "repository_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "contract_version", "instance", "listener", "provider_context", "execution_host_peer", "read_only", "workspace_read_scope"],
+      "properties": {
+        "api_version": {"const": "1"},
+        "contract_version": {"const": "1.0"},
+        "instance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["data_root", "instance_id", "storage_schema", "product_version"],
+          "properties": {
+            "data_root": {"type": "string"},
+            "instance_id": {"type": "string", "minLength": 1},
+            "storage_schema": {"type": "integer"},
+            "product_version": {"type": "string", "minLength": 1}
+          }
+        },
+        "listener": {"type": "object"},
+        "provider_context": {"type": "object"},
+        "execution_host_peer": {"type": "object"},
+        "read_only": {"const": true},
+        "workspace_read_scope": {"$ref": "#/$defs/scope"}
+      }
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_version", "availability", "freshness", "source_observed_at", "read_only", "runtime", "workspace_read_scope"],
+      "properties": {
+        "api_version": {"const": "1"},
+        "availability": {"enum": ["AVAILABLE", "UNAVAILABLE"]},
+        "freshness": {"enum": ["CURRENT", "STALE", "UNKNOWN", "UNAVAILABLE"]},
+        "source_observed_at": {"type": ["string", "null"], "format": "date-time"},
+        "read_only": {"const": true},
+        "runtime": {
+          "type": "object",
+          "required": ["instance_id", "product_version", "initialized", "runtime_status"],
+          "properties": {
+            "instance_id": {"type": "string", "minLength": 1},
+            "product_version": {"type": "string", "minLength": 1},
+            "initialized": {"type": "boolean"},
+            "runtime_status": {"type": "string"}
+          }
+        },
+        "workspace_read_scope": {"$ref": "#/$defs/scope"}
+      }
+    }
+  }
+}

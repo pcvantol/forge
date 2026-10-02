@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ from urllib.request import Request, urlopen
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
+from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.provider_security import (
@@ -32,6 +34,7 @@ from forge.server_runtime import (
 )
 from forge.secure_store import SecretState
 from forge.secure_store import SecretReference
+from forge.workspace_read_grant import WorkspaceReadGrant, main as read_grant_main
 
 
 class _Store:
@@ -128,6 +131,111 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                 self.assertEqual(accepted.body["instance_id"], existing_instance(root).instance_id)
             finally:
                 server.server.server_close()
+
+    def test_installed_workspace_grant_limits_http_reads_and_revokes_immediately(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "workspace")
+            EngineeringPlatformPeerConfigurationService(root).configure(
+                binding_id="ep", endpoint="https://ep.test", expected_ep_instance_id="ep-instance",
+                ep_consumer_id="consumer", execution_host_id="ep-host", ep_project_id="project",
+                ep_repository_id="repository", repository_identity="forge-repository",
+                credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+                operator_id="operator",
+            )
+            grant_path = root / "credentials" / "workspace-read-grant.json"
+            token_path = root / "workspace-token"
+            instance_id = existing_instance(root).instance_id
+            grant = WorkspaceReadGrant(root, instance_id, grant_path)
+            with self.assertRaisesRegex(ValueError, "repository binding"):
+                grant.issue("foreign-repository", token_path)
+            with patch("builtins.print") as output:
+                self.assertEqual(read_grant_main([
+                    "--data-root", str(root), "issue", "--repository-id", "repository",
+                    "--token-file", str(token_path),
+                ]), 0)
+            self.assertEqual(json.loads(output.call_args.args[0])["revision"], 1)
+            token = token_path.read_text(encoding="utf-8").strip()
+            server = ForgeServerRuntime(
+                data_root=root, credential_file=self._credential(root),
+                host="127.0.0.1", port=0,
+            )
+            thread = Thread(target=server.server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                database_digest = hashlib.sha256((root / "forge.db").read_bytes()).hexdigest()
+                contract = json.loads((Path(__file__).parents[1] / "forge" / "api" /
+                                       "workspace-status-read-v1.json").read_text(encoding="utf-8"))
+                Draft202012Validator.check_schema(contract)
+                def request(path: str, bearer: str, method: str = "GET") -> tuple[int, dict]:
+                    item = Request(f"http://127.0.0.1:{server.server.server_port}{path}",
+                                   headers={"Authorization": f"Bearer {bearer}"}, method=method)
+                    try:
+                        with urlopen(item, timeout=2) as response:
+                            return response.status, json.load(response)
+                    except HTTPError as error:
+                        with error:
+                            return error.code, json.load(error)
+
+                for path in ("/v1/instance", "/v1/status"):
+                    status, body = request(path, token)
+                    self.assertEqual(status, 200)
+                    kind = "instance" if path == "/v1/instance" else "status"
+                    validator = Draft202012Validator(contract | {"$ref": f"#/$defs/{kind}"},
+                                                       format_checker=FormatChecker())
+                    validator.validate(body)
+                    self.assertEqual(body["workspace_read_scope"], {
+                        "contract_version": "forge-workspace-status-read/v1",
+                        "instance_id": instance_id,
+                        "repository_id": "repository",
+                    })
+                    body["workspace_read_scope"]["repository_id"] = ""
+                    with self.assertRaises(ValidationError):
+                        validator.validate(body)
+                self.assertEqual(request("/v1/version", token)[0], 403)
+                self.assertEqual(request("/v1/provider-context", token, "POST")[0], 403)
+                self.assertEqual(request("/v1/instance", "wrong-token")[0], 401)
+                self.assertEqual(request("/v1/instance", "server-test-credential")[0], 200)
+                original = grant_path.read_bytes()
+                foreign = json.loads(original)
+                foreign["repository_id"] = "foreign-repository"
+                grant_path.write_text(json.dumps(foreign), encoding="utf-8")
+                self.assertEqual(request("/v1/instance", token)[0], 401)
+                grant_path.write_bytes(original)
+                other_root = self._root(temporary, "foreign-instance")
+                EngineeringPlatformPeerConfigurationService(other_root).configure(
+                    binding_id="ep", endpoint="https://ep.test", expected_ep_instance_id="ep-instance",
+                    ep_consumer_id="consumer", execution_host_id="ep-host", ep_project_id="project",
+                    ep_repository_id="repository", repository_identity="forge-repository",
+                    credential_reference=SecretReference.parse("keychain://forge.ep/consumer"),
+                    operator_id="operator",
+                )
+                other = ForgeServerRuntime(
+                    data_root=other_root, credential_file=self._credential(other_root),
+                    read_grant_file=grant_path, host="127.0.0.1", port=0,
+                )
+                try:
+                    self.assertEqual(other.api.handle("GET", "/v1/instance", f"Bearer {token}").status, 401)
+                finally:
+                    other.server.server_close()
+                new_token_path = root / "rotated-token"
+                with patch("builtins.print") as output:
+                    self.assertEqual(read_grant_main([
+                        "--data-root", str(root), "rotate", "--repository-id", "repository",
+                        "--token-file", str(new_token_path),
+                    ]), 0)
+                self.assertEqual(json.loads(output.call_args.args[0])["revision"], 2)
+                rotated = new_token_path.read_text(encoding="utf-8").strip()
+                self.assertEqual(request("/v1/instance", token)[0], 401)
+                self.assertEqual(request("/v1/instance", rotated)[0], 200)
+                with patch("builtins.print") as output:
+                    self.assertEqual(read_grant_main(["--data-root", str(root), "revoke"]), 0)
+                self.assertEqual(json.loads(output.call_args.args[0])["revision"], 3)
+                self.assertEqual(request("/v1/instance", rotated)[0], 401)
+                self.assertEqual(hashlib.sha256((root / "forge.db").read_bytes()).hexdigest(), database_digest)
+            finally:
+                server.server.shutdown()
+                server.server.server_close()
+                thread.join(timeout=2)
 
     def test_running_server_rejects_replaced_instance_root_before_work(self) -> None:
         for replacement in ("symlink", "directory"):

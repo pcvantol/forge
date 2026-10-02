@@ -7,7 +7,7 @@ name = "forge-autonomy"
 dynamic = ["version"]
 description = "Forge mission planning, producer contracts, and evidence interpretation runtime."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14,<3.15"
 license = "Apache-2.0"
 authors = [{ name = "Forge maintainers" }]
 dependencies = []
@@ -16,8 +16,11 @@ classifiers = [
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.14",
 ]
+
+[project.optional-dependencies]
+validation = ["coverage>=7,<8", "jsonschema>=4,<5"]
 
 [project.urls]
 Homepage = "https://github.com/pcvantol/forge"
@@ -26,6 +29,7 @@ Issues = "https://github.com/pcvantol/forge/issues"
 
 [project.scripts]
 forge = "forge.__main__:main"
+forge-workspace-read-grant = "forge.workspace_read_grant:main"
 
 [tool.setuptools]
 include-package-data = true

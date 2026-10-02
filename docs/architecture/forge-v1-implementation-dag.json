@@ -29,7 +29,24 @@
       "owner": "Forge",
       "documentary_refinement": "docs/roadmap/forge-http-api-v1.json",
       "refinement_scope": "HTTP-only peer integration and thin own CLI; qualified per-capability slices for Server, Console and Workspace; no new prerequisite for the existing canary",
-      "state": "CONTRACT_ONLY",
+      "state": "PARTIALLY_IMPLEMENTED",
+      "qualified_subsets": [
+        {
+          "id": "FORGE_PROJECT_DAG_HTTP_READ_V1",
+          "evidence": "https://github.com/pcvantol/forge/pull/230",
+          "protected_main_sha": "cdaa1570bf78021d1d53245072133aea96a4ab3e",
+          "scope": "installed repository-scoped project-DAG HTTP read; no project membership inference"
+        }
+      ],
+      "selected_consumer_subset": {
+        "id": "FORGE_WORKSPACE_STATUS_HTTP_READ_V1",
+        "producer_register": "https://github.com/pcvantol/forge/issues/207",
+        "consumer_register": "https://github.com/pcvantol/forge/issues/208",
+        "contract": "docs/architecture/FORGE_WORKSPACE_STATUS_HTTP_READ_V1.md",
+        "producer_qualification": "EXACT_PROTECTED_SOURCE_AND_INSTALLED_HTTP_REQUIRED",
+        "consumer_acceptance": "SEPARATE_WORKSPACE_EVIDENCE_REQUIRED"
+      },
+      "remaining_gates": ["FULL_FH_HTTP_AND_CLI_QUALIFICATION", "WORKSPACE_INSTALLED_CONSUMPTION", "EP_AND_INSTALLER_OWNED_LIVE_GATES"],
       "predecessors": ["F1"],
       "external_gates": [],
       "dor": "F1",

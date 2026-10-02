@@ -63,6 +63,7 @@ from .runtime.data_root import DataRootResolver
 from .root_identity import RootIdentity
 from .runtime.dynamic_mission import DynamicMissionRunResult, InstalledDynamicMissionRuntime
 from .runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeServiceLock
+from .workspace_read_grant import WorkspaceReadGrant
 
 
 SERVER_API_VERSION = "1"
@@ -525,12 +526,14 @@ class ForgeServerAPI:
     """Authenticated versioned HTTP transport; application semantics stay elsewhere."""
 
     def __init__(self, services: ForgeServerApplicationServices, bearer_credential: str,
-                 *, root_identity: RootIdentity | None = None) -> None:
+                 *, root_identity: RootIdentity | None = None,
+                 read_grant: WorkspaceReadGrant | None = None) -> None:
         if not bearer_credential:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
         self._credential = bearer_credential
         self.root_identity = root_identity or RootIdentity(services.root)
+        self.read_grant = read_grant
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
 
     @staticmethod
@@ -549,6 +552,35 @@ class ForgeServerAPI:
             and secrets.compare_digest(authorization[7:], self._credential)
         )
 
+    def _authentication_kind(self, authorization: str | None) -> str | None:
+        if self._authenticated(authorization):
+            return "ADMIN"
+        if self.read_grant is not None and self.read_grant.authenticate(authorization):
+            return "WORKSPACE_READ"
+        return None
+
+    @staticmethod
+    def _read_scope_denied() -> APIResponse:
+        return APIResponse(403, {"api_version": SERVER_API_VERSION, "error": {
+            "code": "READ_SCOPE_DENIED", "message": "Read grant does not authorize this route",
+        }}, ForgeServerAPI._headers())
+
+    def _workspace_read(self, method: str, path: str) -> APIResponse:
+        if method != "GET" or path not in {"/v1/instance", "/v1/status"}:
+            return self._read_scope_denied()
+        try:
+            document = (self.services.instance() if path == "/v1/instance"
+                        else InstalledOperationsReadService(self.services.root).installed_status())
+            if self.read_grant is None:
+                raise ValueError("read grant is unavailable")
+            document["workspace_read_scope"] = self.read_grant.scope()
+            return APIResponse(200, document, self._headers())
+        except (ForgeServerRuntimeError, PeerConfigurationError, OSError, ValueError,
+                sqlite3.Error, RuntimeError) as error:
+            return APIResponse(503, {"api_version": SERVER_API_VERSION, "error": {
+                "code": "READ_UNAVAILABLE", "message": type(error).__name__,
+            }}, self._headers())
+
     @staticmethod
     def _authentication_required() -> APIResponse:
         return APIResponse(401, {"api_version": SERVER_API_VERSION, "error": {
@@ -564,7 +596,8 @@ class ForgeServerAPI:
     def handle(self, method: str, target: str, authorization: str | None,
                body: Mapping[str, Any] | None = None) -> APIResponse:
         headers = self._headers()
-        if not self._authenticated(authorization):
+        kind = self._authentication_kind(authorization)
+        if kind is None:
             return self._authentication_required()
         if self.root_identity.drifted():
             return self._root_unavailable()
@@ -574,6 +607,8 @@ class ForgeServerAPI:
             return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
             }}, headers)
+        if kind == "WORKSPACE_READ":
+            return self._workspace_read(method, path)
         if path == "/v1/projects" or path.startswith("/v1/projects/"):
             return self._read_api.handle(method, target, authorization)
         if method == "GET" and (
@@ -582,54 +617,14 @@ class ForgeServerAPI:
         ):
             return self._read_api.handle(method, target, authorization)
         try:
-            if method == "GET" and path == "/v1/project-dag/capability":
-                return APIResponse(200, self.services.project_dag_capability(), headers)
-            if method == "GET" and path == "/v1/instance":
-                return APIResponse(200, self.services.instance(), headers)
-            if method == "GET" and path == "/v1/readiness":
-                value = self.services.readiness()
-                return APIResponse(200 if value["ready"] else 503, value, headers)
-            if method == "GET" and path == "/v1/readiness/standalone":
-                value = self.services.standalone_readiness()
-                return APIResponse(200 if value["ready"] else 503, value, headers)
-            if method == "GET" and path == "/v1/version":
-                instance = existing_instance(self.services.root)
-                return APIResponse(200, {
-                    "api_version": SERVER_API_VERSION,
-                    "product": "forge-autonomy",
-                    "product_version": instance.product_version,
-                    "storage_schema": instance.storage_schema,
-                    "instance_id": instance.instance_id,
-                }, headers)
-            if method == "GET" and path == "/v1/provider-context":
-                return APIResponse(200, self.services.provider_context(), headers)
-            if method == "GET" and path == "/v1/execution-host/preflight":
-                return APIResponse(200, self.services.execution_host_preflight(), headers)
-            if method == "POST" and path == "/v1/provider-context":
-                return APIResponse(200, self.services.configure_provider_context(body or {}), headers)
-            if method == "POST" and path == "/v1/execution-host/configure":
-                return APIResponse(200, self.services.configure_execution_host(body or {}), headers)
-            if method == "POST" and path == "/v1/execution-host/detach":
-                return APIResponse(200, self.services.detach_execution_host(body or {}), headers)
-            if method == "GET" and path.startswith("/v1/execution-host/detach/"):
-                operation_id = unquote(path.removeprefix("/v1/execution-host/detach/"))
-                return APIResponse(200, self.services.detach_execution_host_status(operation_id), headers)
-            if method == "POST" and path in {
-                "/v1/missions/inspect", "/v1/missions/approve-business",
-                "/v1/missions/approve-architecture", "/v1/missions/admit",
-            }:
-                return APIResponse(200, self.services.mission_document(path.rsplit("/", 1)[1], body or {}), headers)
-            if method == "POST" and path.startswith("/v1/missions/"):
-                parts = path.split("/")
-                if len(parts) == 6 and parts[4] == "controller":
-                    mission_id = unquote(parts[3])
-                    if parts[5] == "start":
-                        truth = (body or {}).get("repository_truth")
-                        if not isinstance(truth, Mapping):
-                            raise ValueError("controller start requires Repository Truth")
-                        return APIResponse(200, self.services.mission_start(mission_id, truth), headers)
-                    if parts[5] == "reopen":
-                        return APIResponse(200, self.services.mission_reopen(mission_id), headers)
+            if method == "GET":
+                response = self._admin_get(path, headers)
+            elif method == "POST":
+                response = self._admin_post(path, body or {}, headers)
+            else:
+                response = None
+            if response is not None:
+                return response
             return APIResponse(404, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "ROUTE_NOT_FOUND", "message": "Route was not found",
             }}, headers)
@@ -642,6 +637,60 @@ class ForgeServerAPI:
             return APIResponse(409, {"api_version": SERVER_API_VERSION, "error": {
                 "code": type(error).__name__.upper(), "message": str(error),
             }}, headers)
+
+    def _admin_get(self, path: str, headers: dict[str, str]) -> APIResponse | None:
+        if path == "/v1/project-dag/capability":
+            return APIResponse(200, self.services.project_dag_capability(), headers)
+        if path == "/v1/instance":
+            return APIResponse(200, self.services.instance(), headers)
+        if path == "/v1/readiness":
+            value = self.services.readiness()
+            return APIResponse(200 if value["ready"] else 503, value, headers)
+        if path == "/v1/readiness/standalone":
+            value = self.services.standalone_readiness()
+            return APIResponse(200 if value["ready"] else 503, value, headers)
+        if path == "/v1/version":
+            instance = existing_instance(self.services.root)
+            return APIResponse(200, {
+                "api_version": SERVER_API_VERSION,
+                "product": "forge-autonomy",
+                "product_version": instance.product_version,
+                "storage_schema": instance.storage_schema,
+                "instance_id": instance.instance_id,
+            }, headers)
+        if path == "/v1/provider-context":
+            return APIResponse(200, self.services.provider_context(), headers)
+        if path == "/v1/execution-host/preflight":
+            return APIResponse(200, self.services.execution_host_preflight(), headers)
+        if path.startswith("/v1/execution-host/detach/"):
+            operation_id = unquote(path.removeprefix("/v1/execution-host/detach/"))
+            return APIResponse(200, self.services.detach_execution_host_status(operation_id), headers)
+        return None
+
+    def _admin_post(self, path: str, body: Mapping[str, Any], headers: dict[str, str]) -> APIResponse | None:
+        if path == "/v1/provider-context":
+            return APIResponse(200, self.services.configure_provider_context(body), headers)
+        if path == "/v1/execution-host/configure":
+            return APIResponse(200, self.services.configure_execution_host(body), headers)
+        if path == "/v1/execution-host/detach":
+            return APIResponse(200, self.services.detach_execution_host(body), headers)
+        if path in {
+            "/v1/missions/inspect", "/v1/missions/approve-business",
+            "/v1/missions/approve-architecture", "/v1/missions/admit",
+        }:
+            return APIResponse(200, self.services.mission_document(path.rsplit("/", 1)[1], body), headers)
+        if path.startswith("/v1/missions/"):
+            parts = path.split("/")
+            if len(parts) == 6 and parts[4] == "controller":
+                mission_id = unquote(parts[3])
+                if parts[5] == "start":
+                    truth = body.get("repository_truth")
+                    if not isinstance(truth, Mapping):
+                        raise ValueError("controller start requires Repository Truth")
+                    return APIResponse(200, self.services.mission_start(mission_id, truth), headers)
+                if parts[5] == "reopen":
+                    return APIResponse(200, self.services.mission_reopen(mission_id), headers)
+        return None
 
 
 class _Server(ThreadingHTTPServer):
@@ -731,12 +780,13 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 if len(authorizations) > 1:
                     raise ValueError("request Authorization is ambiguous")
                 authorization = authorizations[0] if authorizations else None
-                if not api._authenticated(authorization):
+                kind = api._authentication_kind(authorization)
+                if kind is None:
                     response = api._authentication_required()
                 elif api.root_identity.drifted():
                     response = api._root_unavailable()
                 else:
-                    body = self._body()
+                    body = self._body() if kind == "ADMIN" else None
                     target = raw_request_target(self.raw_requestline)
                     response = api.handle(self.command, target, authorization, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
@@ -771,7 +821,8 @@ class ForgeServerRuntime:
 
     def __init__(self, *, data_root: str | Path, credential_file: str | Path,
                  host: str, port: int, provider_id: str = DEFAULT_PROVIDER_ID,
-                 tick_interval: float = 0.25) -> None:
+                 tick_interval: float = 0.25,
+                 read_grant_file: str | Path | None = None) -> None:
         if not str(data_root):
             raise ValueError("Forge Server requires an explicit data root")
         if tick_interval <= 0:
@@ -784,7 +835,11 @@ class ForgeServerRuntime:
         self._credential = read_bearer_credential(credential_file)
         self.state = ServerRuntimeState(self.instance, provider_id)
         self.services = ForgeServerApplicationServices(self.root, self.state, provider_id=provider_id)
-        self.api = ForgeServerAPI(self.services, self._credential, root_identity=self.root_identity)
+        grant_path = (Path(read_grant_file) if read_grant_file is not None
+                      else self.root / "credentials" / "workspace-read-grant.json")
+        read_grant = WorkspaceReadGrant(self.root, self.instance.instance_id, grant_path)
+        self.api = ForgeServerAPI(self.services, self._credential, root_identity=self.root_identity,
+                                  read_grant=read_grant)
         self.server = make_server(host, port, self.api)
         address, actual_port = self.server.server_address
         self.state.update(listener={"host": address, "port": actual_port}, lifecycle="STARTING")
