@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.56",
+  "classification_rationale": "L3-FORGE-HTTP-PARSER-ERROR-CONTRACT-V1-20261002",
+  "component": "product",
+  "event_lineage": "L3-FORGE-HTTP-PARSER-ERROR-CONTRACT-V1-20261002",
+  "expected_head": "0105aa4e176be797fd86b4ddc23f3d22fe10b277",
+  "operation_id": "l3-forge-http-parser-error-20261002",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.57"
+}

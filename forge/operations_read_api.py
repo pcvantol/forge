@@ -750,7 +750,16 @@ def make_server(host: str, port: int, api: OperationsReadAPI) -> ThreadingHTTPSe
         def send_error(self, code: int, message: str | None = None,
                        explain: str | None = None) -> None:
             # Parser errors can include the raw request line or method.
-            super().send_error(code)
+            self.close_connection = True
+            response = APIResponse(code, OperationsReadAPI._error(
+                "REQUEST_INVALID", "HTTP request was rejected",
+            ), {
+                "Cache-Control": "no-store",
+                "Content-Type": "application/json; charset=utf-8",
+                "X-Content-Type-Options": "nosniff",
+                "Connection": "close",
+            })
+            self._respond(response, body=getattr(self, "command", None) != "HEAD")
 
         def _dispatch(self, method: str, *, body: bool = True) -> None:
             authorizations = self.headers.get_all("Authorization", [])
@@ -761,7 +770,8 @@ def make_server(host: str, port: int, api: OperationsReadAPI) -> ThreadingHTTPSe
             if len(authorizations) > 1 or target is None:
                 response = APIResponse(400, OperationsReadAPI._error(
                     "REQUEST_INVALID", "request Authorization or target is invalid",
-                ), {"Content-Type": "application/json; charset=utf-8",
+                ), {"Cache-Control": "no-store",
+                    "Content-Type": "application/json; charset=utf-8",
                     "X-Content-Type-Options": "nosniff"})
             else:
                 response = api.handle(method, target,

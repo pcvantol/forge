@@ -117,6 +117,10 @@ selecting one credential. Body-bearing Forge Server requests reject repeated
 `Transfer-Encoding` framing before dispatch.
 These transport errors grant no application authority and do not change the
 versioned business contract.
+Parser-level malformed-request and unsupported-method responses from both
+foreground loopback listeners use generic JSON with `no-store`, `nosniff`,
+explicit length and connection close. They do not echo the raw request line,
+enter the application service or send a body for an identified `HEAD` request.
 The Forge Server and operations read listener also route only origin-form
 request targets. Absolute URLs, authority-bearing `//` targets, relative paths,
 fragments and control characters fail before application-service dispatch;
