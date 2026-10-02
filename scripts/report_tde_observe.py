@@ -41,15 +41,17 @@ def _exit_codes(path: Path) -> tuple[str, str]:
     except (OSError, UnicodeError):
         return "UNAVAILABLE", "UNAVAILABLE"
     entries: dict[str, str] = {}
+    seen: set[str] = set()
     for line in lines:
         if "=" not in line:
             continue
         key, value = line.split("=", 1)
         if key in {"assessment_exit", "qualification_exit"}:
-            if key in entries or not _EXIT.fullmatch(value):
+            if key in seen or not _EXIT.fullmatch(value):
                 entries[key] = "UNAVAILABLE"
             else:
                 entries[key] = value
+            seen.add(key)
     return entries.get("assessment_exit", "UNAVAILABLE"), entries.get("qualification_exit", "UNAVAILABLE")
 
 

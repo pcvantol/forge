@@ -45,7 +45,11 @@ class TDEObserveReportTests(unittest.TestCase):
     def test_missing_or_inconsistent_evidence_never_looks_green(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
-            self._evidence(root, exits="assessment_exit=0\nassessment_exit=2\nqualification_exit=0\n")
+            self._evidence(root, exits="assessment_exit=2\nassessment_exit=0\nassessment_exit=0\nqualification_exit=0\n")
+            summary, warning = report(root)
+            self.assertTrue(warning)
+            self.assertIn("| Assessment decision | `PASS` |", summary)
+            self.assertIn("| Assessment command exit | `UNAVAILABLE` |", summary)
             assessment = json.loads((root / "assessment.json").read_text())
             assessment["qualification"]["policyDecision"] = "FAIL"
             (root / "assessment.json").write_text(json.dumps(assessment), encoding="utf-8")
