@@ -74,6 +74,15 @@ The installer must provision/select an explicit data root before Server start. E
 
 Human instance names are external labels only. The opaque instance ID is authoritative.
 
+The running Server and standalone operations-read listener pin the selected
+data-root directory identity when they start. If the path is subsequently
+missing or replaced, authenticated requests fail with 503
+`INSTANCE_UNAVAILABLE` before application dispatch; the Server scheduler and
+lifecycle logger do not follow the replacement path. An unchanged root may
+continue to change its own files normally. This entry-boundary guard detects
+already-observed path drift; it is not an atomic defense against a same-user
+actor renaming directories during an operation already in progress.
+
 ### Multi-instance rules
 
 Every managed Forge instance has its own:

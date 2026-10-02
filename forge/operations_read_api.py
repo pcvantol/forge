@@ -28,6 +28,7 @@ from .mission_cli import _status_projection as mission_status_projection
 from .models.producer import redact_action_summary
 from .parallel_action_contract import ParallelActionContractError, validate_peer_graph
 from .runtime.data_root import DataRootResolver
+from .root_identity import RootIdentity
 from .serial_correlation_projection import project_serial_correlation
 
 
@@ -290,6 +291,7 @@ class InstalledOperationsReadService:
         if stale_after.total_seconds() <= 0:
             raise ValueError("stale-after interval must be positive")
         self.root = DataRootResolver(cli_data_root=data_root).resolve()
+        self.root_identity = RootIdentity(self.root)
         self.stale_after = stale_after
         self.clock = clock
 
@@ -659,6 +661,8 @@ class OperationsReadAPI:
         }
         if not self._authenticated(authorization):
             return APIResponse(401, self._error("AUTHENTICATION_REQUIRED", "Authentication is required"), headers)
+        if self.service.root_identity.drifted():
+            return APIResponse(503, self._error("INSTANCE_UNAVAILABLE", "Selected instance is unavailable"), headers)
         try:
             path = origin_form_path(target)
         except ValueError:

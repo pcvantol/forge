@@ -129,6 +129,72 @@ class ForgeServerRuntimeTests(unittest.TestCase):
             finally:
                 server.server.server_close()
 
+    def test_running_server_rejects_replaced_instance_root_before_work(self) -> None:
+        for replacement in ("symlink", "directory"):
+            with self.subTest(replacement=replacement), TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                root_a = self._root(temporary, "alpha")
+                root_b = self._root(temporary, "beta")
+                other_id = existing_instance(root_b).instance_id
+                server = ForgeServerRuntime(
+                    data_root=root_a, credential_file=self._credential(root_a),
+                    host="127.0.0.1", port=0,
+                )
+                thread = Thread(target=server.server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    endpoint = f"http://127.0.0.1:{server.server.server_port}/v1/version"
+                    authorized = Request(endpoint, headers={
+                        "Authorization": "Bearer server-test-credential",
+                    })
+                    with urlopen(authorized, timeout=2) as response:
+                        self.assertEqual(json.load(response)["instance_id"], server.instance.instance_id)
+                    root_a.rename(base / "alpha-parked")
+                    if replacement == "symlink":
+                        root_a.symlink_to(root_b, target_is_directory=True)
+                    else:
+                        root_b.rename(root_a)
+                    with patch.object(server.services, "configure_provider_context",
+                                      side_effect=AssertionError("B mutation")) as mutation:
+                        for request in (
+                            authorized,
+                            Request(endpoint.replace("/v1/version", "/v1/provider-context"),
+                                    data=b"{}", method="POST", headers={
+                                        "Authorization": "Bearer server-test-credential",
+                                    }),
+                        ):
+                            with self.assertRaises(HTTPError) as unavailable:
+                                urlopen(request, timeout=2)
+                            self.assertEqual(unavailable.exception.code, 503)
+                            body = unavailable.exception.read()
+                            self.assertEqual(json.loads(body)["error"]["code"], "INSTANCE_UNAVAILABLE")
+                            self.assertNotIn(other_id.encode(), body)
+                            unavailable.exception.close()
+                        mutation.assert_not_called()
+                    self.assertEqual(server.api.handle(
+                        "GET", "/v1/version", "Bearer server-test-credential",
+                    ).status, 503)
+                    with socket.create_connection(("127.0.0.1", server.server.server_port),
+                                                  timeout=2) as client:
+                        client.settimeout(0.75)
+                        client.sendall(
+                            b"POST /v1/provider-context HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                            b"Authorization: Bearer server-test-credential\r\n"
+                            b"Content-Length: 50\r\n\r\n{"
+                        )
+                        with client.makefile("rb") as reply:
+                            self.assertEqual(int(reply.readline().split()[1]), 503)
+                    with self.assertRaisesRegex(ForgeServerRuntimeError, "root changed"):
+                        server._tick()  # noqa: SLF001 - scheduler drift boundary
+                    with self.assertRaisesRegex(ForgeServerRuntimeError, "root changed"):
+                        server.serve_forever()
+                    server._log.write("drifted")  # noqa: SLF001 - must not write into B
+                    self.assertFalse((root_a / "logs" / "server-runtime.jsonl").exists())
+                finally:
+                    server.server.shutdown()
+                    server.server.server_close()
+                    thread.join(timeout=2)
+
     def test_explicit_standalone_readiness_does_not_authorize_ep_execution(self) -> None:
         with TemporaryDirectory() as temporary:
             root = self._root(temporary, "standalone")

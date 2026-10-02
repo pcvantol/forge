@@ -54,6 +54,44 @@ class _InstalledFixture(unittest.TestCase):
 
 
 class TestStatusEndpoint(_InstalledFixture):
+    def test_running_read_listener_rejects_replaced_instance_root(self) -> None:
+        for replacement in ("symlink", "directory"):
+            with self.subTest(replacement=replacement), TemporaryDirectory() as temporary:
+                base = Path(temporary)
+                root_a, root_b = base / "a", base / "b"
+                for root in (root_a, root_b):
+                    RuntimeBootstrap(data_root=root, forge_version="test").open().close()
+                other_id = (root_b / "instance" / "runtime-instance.json").read_text().strip()
+                api = OperationsReadAPI(InstalledOperationsReadService(root_a), CREDENTIAL)
+                server = make_server("127.0.0.1", 0, api)
+                thread = Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    endpoint = f"http://127.0.0.1:{server.server_port}/v1/status"
+                    authorized = Request(endpoint, headers={"Authorization": "Bearer " + CREDENTIAL})
+                    with urlopen(authorized, timeout=2) as response:
+                        self.assertEqual(response.status, 200)
+                    root_a.rename(base / "a-parked")
+                    if replacement == "symlink":
+                        root_a.symlink_to(root_b, target_is_directory=True)
+                    else:
+                        root_b.rename(root_a)
+                    with self.assertRaises(HTTPError) as unavailable:
+                        urlopen(authorized, timeout=2)
+                    self.assertEqual(unavailable.exception.code, 503)
+                    payload = unavailable.exception.read()
+                    self.assertEqual(json.loads(payload)["error"]["code"], "INSTANCE_UNAVAILABLE")
+                    self.assertNotIn(other_id.encode(), payload)
+                    unavailable.exception.close()
+                    with self.assertRaises(HTTPError) as denied:
+                        urlopen(Request(endpoint), timeout=2)
+                    self.assertEqual(denied.exception.code, 401)
+                    denied.exception.close()
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
     def test_installed_status_auth_and_redaction(self) -> None:
         denied = self.api.handle("GET", "/v1/status", None)
         wrong = self.api.handle("GET", "/v1/status", "Bearer " + CREDENTIAL + "-wrong")
