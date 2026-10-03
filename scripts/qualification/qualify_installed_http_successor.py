@@ -865,6 +865,16 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             "planner_invocations": len(fixture._read(root / "provider-inputs.private.json"))}
 
 
+def _run_preflight_child(args: argparse.Namespace, parser: argparse.ArgumentParser,
+                         root: Path) -> bool:
+    if not args.phase or not args.phase.startswith("preflight-"):
+        return False
+    if not args.preflight_case or not args.endpoint or args.scenario or args.governance_case:
+        parser.error("preflight child phase requires case and loopback endpoint")
+    _preflight_phase(root, args.preflight_case, args.phase, args.endpoint)
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wheel", required=True, type=Path)
@@ -884,12 +894,9 @@ def main() -> int:
         parser.error("source revision must be one exact Git commit SHA")
     artifact = _installed_wheel(args.wheel.resolve())
     root = args.output_dir.resolve()
+    if _run_preflight_child(args, parser, root):
+        return 0
     if args.phase:
-        if args.phase.startswith("preflight-"):
-            if not args.preflight_case or not args.endpoint or args.scenario or args.governance_case:
-                parser.error("preflight child phase requires case and loopback endpoint")
-            _preflight_phase(root, args.preflight_case, args.phase, args.endpoint)
-            return 0
         if args.phase.startswith("governance-"):
             if not args.governance_case or not args.endpoint or args.scenario or args.preflight_case:
                 parser.error("governance child phase requires case and loopback endpoint")
