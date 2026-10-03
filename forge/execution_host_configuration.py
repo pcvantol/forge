@@ -24,6 +24,7 @@ PRODUCER_READBACK_CONTRACT = "1.2"
 TERMINAL_EVIDENCE_CONTRACT = "1.4"
 _REPLACEABLE_LEGACY_CONTRACT_PAIRS = frozenset({("1.2", "1.2"), ("1.2", "1.3")})
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_GITHUB_REPOSITORY = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _OPERATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
@@ -112,6 +113,16 @@ def _verified_detach_receipt(raw: str, *, operation_id: str, request_digest: str
 def _identifier(value: object, label: str) -> str:
     if not isinstance(value, str) or _IDENTIFIER.fullmatch(value) is None:
         raise PeerConfigurationError(f"{label} is invalid")
+    return value
+
+
+def _repository_identity(value: object) -> str:
+    """Accept the persisted legacy identity or one exact GitHub owner/repo."""
+    if not isinstance(value, str) or (
+        _IDENTIFIER.fullmatch(value) is None
+        and (_GITHUB_REPOSITORY.fullmatch(value) is None or value.split("/")[1] in {".", ".."})
+    ):
+        raise PeerConfigurationError("Forge repository identity binding is invalid")
     return value
 
 
@@ -221,11 +232,11 @@ class EngineeringPlatformPeerConfiguration:
             (self.execution_host_id, "Execution Host identity"),
             (self.ep_project_id, "EP project identity"),
             (self.ep_repository_id, "EP repository identity"),
-            (self.repository_identity, "Forge repository identity binding"),
             (self.created_by, "creation operator identity"),
             (self.updated_by, "modification operator identity"),
         ):
             _identifier(value, label)
+        _repository_identity(self.repository_identity)
         if (not isinstance(self.configuration_revision, int)
                 or isinstance(self.configuration_revision, bool) or self.configuration_revision < 1):
             raise PeerConfigurationError("EP peer configuration revision is invalid")
@@ -364,11 +375,11 @@ class EngineeringPlatformPeerConfigurationStore:
             (normalized.get("execution_host_id"), "Execution Host identity"),
             (normalized.get("ep_project_id"), "EP project identity"),
             (normalized.get("ep_repository_id"), "EP repository identity"),
-            (normalized.get("repository_identity"), "Forge repository identity binding"),
             (normalized.get("created_by"), "creation operator identity"),
             (normalized.get("updated_by"), "modification operator identity"),
         ):
             _identifier(value, label)
+        _repository_identity(normalized.get("repository_identity"))
         if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION:
             _identifier(normalized.get("ep_consumer_id"), "expected EP consumer identity")
         revision = normalized.get("configuration_revision")

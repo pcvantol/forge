@@ -17,6 +17,21 @@ not claim them collectively as the installed Candidate-to-completion suite:
 the inspected runtime success test directly constructs a Mission, injects an
 in-memory host and reopens inside the same process. Close those seams explicitly.
 
+The bounded LANE_3 r26 installed-HTTP successor qualification joins an isolated,
+canonically approved zero-Action Mission to Forge's persisted EP peer binding,
+real HTTP adapter and strict local EP simulator. A fresh Forge process consumes
+terminal A evidence, proves the first criterion, derives B only for the remaining
+criterion, and completes after B; single-Action and tampered-evidence paths
+prove no extra submission. Its ordinary PR/main check and release qualification
+run against an exact non-editable wheel. This is a **serial write-mode subset** of
+FCI-HARNESS/EP/FLOW/RESTART/NEGATIVE/CI, recorded in the existing
+[DAG](forge-inner-loop-ci-v1.json). It starts with a synthetic approved Mission,
+not a public Candidate lifecycle; all seven full nodes and FIE-01..28 remain
+PLANNED. A simulator PASS is not live EP or provider acceptance and cannot
+unlock FCO-FLOW's full FCI-CI dependency. The parent documentary fixture pin
+still says terminal evidence 1.3; full-suite FCI-CONTRACT must refresh that
+pin against the current 1.4 producer before a complete-suite claim.
+
 ## Delivery DAG
 
 | Node | Deliverable | Hard dependencies |

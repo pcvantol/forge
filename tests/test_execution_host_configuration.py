@@ -87,6 +87,23 @@ class DurableExecutionHostConfigurationTests(unittest.TestCase):
         values.update(changes)
         return values
 
+    def test_canonical_repository_slug_survives_persisted_peer_and_rejects_paths(self) -> None:
+        for invalid in ("owner/repo/extra", "owner//repo", "../repo", "owner/repo%2Fother",
+                        "owner/.", "owner/.."):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(PeerConfigurationError):
+                    self.service.configure(**self.values(repository_identity=invalid))
+        slug = "synthetic-owner/synthetic-repository"
+        configured = self.service.configure(**self.values(repository_identity=slug))
+        self.assertEqual(configured.repository_identity, slug)
+        database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
+        try:
+            host = EngineeringPlatformExecutionHostFactory(_Resolver()).from_database(database)
+            self.assertEqual(host.config.repository_identity, slug)
+        finally:
+            database.close()
+
+
     def test_exact_detach_replay_and_guarded_repair_preserve_generation(self) -> None:
         old = self.service.configure(**self.values())
         request = {
