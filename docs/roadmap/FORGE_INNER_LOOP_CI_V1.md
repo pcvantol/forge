@@ -53,6 +53,21 @@ rejection/authority cases, FIE-10 recovery, other required effect modes,
 producer fixture refresh and live acceptance remain open in the
 [DAG](forge-inner-loop-ci-v1.json).
 
+The bounded LANE_3 r29 serial-write fixture gate checks each captured pending
+and terminal EP simulator response before the installed HTTP scenario may pass.
+Its oracle lives in the installed Forge wheel and independently recomputes the
+EP accepted-request and canonical terminal-artifact digests. It pins EP source
+`5838f496538805c6012cbd6399217bc8b907102e`, the producer serializer,
+the v1.2 readback schema bytes and the v1.4 artifact contract; the ordinary
+PR/main qualification artifact reports the source, wheel, fixture identities
+and rejection cases. The simulator's pending status, immutable queued v1.2
+disposition and v1.4 validation-controls snapshot now follow that producer
+source. EP's v1.2 schema lists nine disposition fields while the same pinned
+producer source and tests emit eleven, adding the retry-resolution fields.
+This gate follows the actual producer source shape and records that EP-owned
+schema inconsistency; it does not claim complete JSON-schema conformance or
+finish FCI-CONTRACT for other effect modes and FIE families.
+
 ## Delivery DAG
 
 | Node | Deliverable | Hard dependencies |
