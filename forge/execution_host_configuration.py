@@ -303,6 +303,92 @@ class EngineeringPlatformPeerConfiguration:
             raise PeerConfigurationError("EP peer configuration record is malformed") from error
 
 
+def _stored_peer_identity(document: Mapping[str, Any]) -> str:
+    schema_version = document.get("schema_version")
+    expected_fields = (
+        _FIELDS if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION
+        else _LEGACY_FIELDS if schema_version == LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION
+        else None
+    )
+    if expected_fields is None:
+        raise PeerConfigurationError("EP peer configuration schema is unsupported")
+    if set(document) != expected_fields:
+        raise PeerConfigurationError("EP peer configuration record is incomplete or contains unknown fields")
+    if document.get("peer_product") != PEER_PRODUCT:
+        raise PeerConfigurationError("EP peer product is incompatible")
+    for value, label in (
+        (document.get("binding_id"), "binding identity"),
+        (document.get("owning_forge_runtime_id"), "owning Forge runtime identity"),
+        (document.get("expected_ep_instance_id"), "expected EP instance identity"),
+        (document.get("execution_host_id"), "Execution Host identity"),
+        (document.get("ep_project_id"), "EP project identity"),
+        (document.get("ep_repository_id"), "EP repository identity"),
+        (document.get("created_by"), "creation operator identity"),
+        (document.get("updated_by"), "modification operator identity"),
+    ):
+        _identifier(value, label)
+    _repository_identity(document.get("repository_identity"))
+    if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION:
+        _identifier(document.get("ep_consumer_id"), "expected EP consumer identity")
+    return schema_version
+
+
+def _stored_peer_transport(document: Mapping[str, Any]) -> None:
+    revision = document.get("configuration_revision")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        raise PeerConfigurationError("EP peer configuration revision is invalid")
+    loopback = document.get("allow_loopback_http")
+    if not isinstance(loopback, bool):
+        raise PeerConfigurationError("EP peer loopback transport setting is invalid")
+    timeout = document.get("timeout_seconds")
+    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < float(timeout) <= 60:
+        raise PeerConfigurationError("EP peer timeout must be greater than zero and at most 60 seconds")
+    endpoint = canonical_endpoint(document.get("endpoint"), allow_loopback_http=loopback)
+    if endpoint != document.get("endpoint"):
+        raise PeerConfigurationError("EP peer endpoint is not canonical")
+    SecretReference.parse(document.get("credential_reference"))
+    if _provenance_timestamp(document.get("updated_at")) < _provenance_timestamp(document.get("created_at")):
+        raise PeerConfigurationError("EP peer configuration modification precedes its creation")
+
+
+def _stored_peer_contract(document: Mapping[str, Any], schema_version: str) -> None:
+    contracts = (document.get("producer_readback_contract"), document.get("terminal_evidence_contract"))
+    if not all(isinstance(value, str) and re.fullmatch(r"[0-9]+\.[0-9]+", value) for value in contracts):
+        raise PeerConfigurationError("EP peer contract version is invalid")
+    if contracts not in _REPLACEABLE_LEGACY_CONTRACT_PAIRS | {
+        (PRODUCER_READBACK_CONTRACT, TERMINAL_EVIDENCE_CONTRACT),
+    }:
+        raise PeerConfigurationError("EP peer contract version is unsupported")
+    basis_fields = [
+        "schema_version", "binding_id", "owning_forge_runtime_id", "peer_product", "endpoint",
+        "expected_ep_instance_id", "execution_host_id", "ep_project_id", "ep_repository_id",
+        "repository_identity", "producer_readback_contract", "terminal_evidence_contract",
+        "credential_reference", "allow_loopback_http", "timeout_seconds",
+    ]
+    if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION:
+        basis_fields.insert(6, "ep_consumer_id")
+    basis = {key: document[key] for key in basis_fields}
+    digest = document.get("configuration_digest")
+    if (not isinstance(digest, str) or _DIGEST.fullmatch(digest) is None
+            or digest != EngineeringPlatformPeerConfiguration.digest_for(basis)):
+        raise PeerConfigurationError("EP peer configuration digest is invalid")
+
+
+def _validated_stored_peer(document: Mapping[str, Any], row: sqlite3.Row,
+                           runtime_id: str) -> _StoredPeerConfiguration:
+    normalized = dict(document)
+    schema_version = _stored_peer_identity(normalized)
+    _stored_peer_transport(normalized)
+    _stored_peer_contract(normalized, schema_version)
+    if (normalized["binding_id"] != row["binding_id"]
+            or normalized["configuration_revision"] != row["configuration_revision"]
+            or normalized["configuration_digest"] != row["configuration_digest"]):
+        raise PeerConfigurationError("EP peer configuration storage columns do not match its record")
+    if normalized["owning_forge_runtime_id"] != runtime_id:
+        raise PeerConfigurationError("EP peer configuration belongs to a different Forge runtime")
+    return _StoredPeerConfiguration(normalized)
+
+
 class EngineeringPlatformPeerConfigurationStore:
     """The narrow Forge-owned SQL boundary for the singleton peer record."""
 
@@ -355,75 +441,7 @@ class EngineeringPlatformPeerConfigurationStore:
             raise PeerConfigurationError("EP peer configuration record is unreadable") from error
         if not isinstance(document, Mapping):
             raise PeerConfigurationError("EP peer configuration record is incomplete or contains unknown fields")
-        normalized = dict(document)
-        schema_version = normalized.get("schema_version")
-        expected_fields = (
-            _FIELDS if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION
-            else _LEGACY_FIELDS if schema_version == LEGACY_PEER_CONFIGURATION_SCHEMA_VERSION
-            else None
-        )
-        if expected_fields is None:
-            raise PeerConfigurationError("EP peer configuration schema is unsupported")
-        if set(normalized) != expected_fields:
-            raise PeerConfigurationError("EP peer configuration record is incomplete or contains unknown fields")
-        if normalized.get("peer_product") != PEER_PRODUCT:
-            raise PeerConfigurationError("EP peer product is incompatible")
-        for value, label in (
-            (normalized.get("binding_id"), "binding identity"),
-            (normalized.get("owning_forge_runtime_id"), "owning Forge runtime identity"),
-            (normalized.get("expected_ep_instance_id"), "expected EP instance identity"),
-            (normalized.get("execution_host_id"), "Execution Host identity"),
-            (normalized.get("ep_project_id"), "EP project identity"),
-            (normalized.get("ep_repository_id"), "EP repository identity"),
-            (normalized.get("created_by"), "creation operator identity"),
-            (normalized.get("updated_by"), "modification operator identity"),
-        ):
-            _identifier(value, label)
-        _repository_identity(normalized.get("repository_identity"))
-        if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION:
-            _identifier(normalized.get("ep_consumer_id"), "expected EP consumer identity")
-        revision = normalized.get("configuration_revision")
-        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
-            raise PeerConfigurationError("EP peer configuration revision is invalid")
-        loopback = normalized.get("allow_loopback_http")
-        if not isinstance(loopback, bool):
-            raise PeerConfigurationError("EP peer loopback transport setting is invalid")
-        timeout = normalized.get("timeout_seconds")
-        if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < float(timeout) <= 60:
-            raise PeerConfigurationError("EP peer timeout must be greater than zero and at most 60 seconds")
-        endpoint = canonical_endpoint(normalized.get("endpoint"), allow_loopback_http=loopback)
-        if endpoint != normalized.get("endpoint"):
-            raise PeerConfigurationError("EP peer endpoint is not canonical")
-        SecretReference.parse(normalized.get("credential_reference"))
-        if _provenance_timestamp(normalized.get("updated_at")) < _provenance_timestamp(normalized.get("created_at")):
-            raise PeerConfigurationError("EP peer configuration modification precedes its creation")
-        contracts = (normalized.get("producer_readback_contract"), normalized.get("terminal_evidence_contract"))
-        if not all(isinstance(value, str) and re.fullmatch(r"[0-9]+\.[0-9]+", value) for value in contracts):
-            raise PeerConfigurationError("EP peer contract version is invalid")
-        if contracts not in _REPLACEABLE_LEGACY_CONTRACT_PAIRS | {
-            (PRODUCER_READBACK_CONTRACT, TERMINAL_EVIDENCE_CONTRACT),
-        }:
-            raise PeerConfigurationError("EP peer contract version is unsupported")
-        basis_fields = [
-            "schema_version", "binding_id", "owning_forge_runtime_id", "peer_product", "endpoint",
-            "expected_ep_instance_id", "execution_host_id", "ep_project_id", "ep_repository_id",
-            "repository_identity", "producer_readback_contract", "terminal_evidence_contract",
-            "credential_reference", "allow_loopback_http", "timeout_seconds",
-        ]
-        if schema_version == PEER_CONFIGURATION_SCHEMA_VERSION:
-            basis_fields.insert(6, "ep_consumer_id")
-        basis = {key: normalized[key] for key in basis_fields}
-        digest = normalized.get("configuration_digest")
-        if (not isinstance(digest, str) or _DIGEST.fullmatch(digest) is None
-                or digest != EngineeringPlatformPeerConfiguration.digest_for(basis)):
-            raise PeerConfigurationError("EP peer configuration digest is invalid")
-        if (normalized["binding_id"] != row["binding_id"]
-                or normalized["configuration_revision"] != row["configuration_revision"]
-                or normalized["configuration_digest"] != row["configuration_digest"]):
-            raise PeerConfigurationError("EP peer configuration storage columns do not match its record")
-        if normalized["owning_forge_runtime_id"] != self.runtime_id:
-            raise PeerConfigurationError("EP peer configuration belongs to a different Forge runtime")
-        return _StoredPeerConfiguration(normalized)
+        return _validated_stored_peer(document, row, self.runtime_id)
 
     def load(self) -> EngineeringPlatformPeerConfiguration | None:
         pending = self._connection.execute(
