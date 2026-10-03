@@ -70,6 +70,33 @@
         "complete FCI-CI qualification before FCO-FLOW",
         "live EP/provider and production Mission acceptance"
       ]
+    },
+    {
+      "assignment_id": "L3-FORGE-INSTALLED-GOVERNANCE-NEGATIVES-V1-20261003",
+      "source_nodes": ["FCI-FLOW", "FCI-NEGATIVE", "FCI-CI"],
+      "consumer": "installed Forge PR and protected-main CI qualification operator",
+      "entry": "isolated canonical Candidate at its public governance and intake boundary",
+      "exit": "typed installed rejection with zero unintended Mission, planning or EP effects, followed by the retained valid HTTP control",
+      "evidence_register": "https://github.com/pcvantol/forge/issues/207#issuecomment-5967275490",
+      "qualification_entrypoint": "scripts/qualification/qualify_installed_http_successor.py",
+      "terminal_evidence_contract": "1.4",
+      "selected_scenario": "FIE-04",
+      "selected_cases": [
+        "candidate-alone", "missing-business", "missing-architecture",
+        "rejected-business", "rejected-architecture",
+        "wrong-business-actor", "wrong-business-role",
+        "wrong-architecture-actor", "wrong-architecture-role",
+        "stale-candidate", "changed-scope", "changed-criteria", "changed-spec"
+      ],
+      "full_node_completion": false,
+      "remaining_gates": [
+        "real Business and Architecture person-level authorization beyond synthetic CI roles",
+        "full-suite FCI-CONTRACT producer fixture refresh from terminal 1.3 to current 1.4",
+        "FIE-10 supported correlation readback and recovery after ambiguous POST",
+        "all other FIE-01..28 families and required effect modes",
+        "complete FCI-CI qualification before FCO-FLOW",
+        "live EP/provider and production Mission acceptance"
+      ]
     }
   ],
   "wire_contracts": {

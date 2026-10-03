@@ -54,6 +54,13 @@ CONSUMER = "isolated-forge-consumer"
 PROJECT = "isolated-project"
 HOST = "synthetic-host"
 SCENARIOS = ("partial", "single", "tampered", "ambiguous")
+GOVERNANCE_CASES = (
+    "candidate-alone", "missing-business", "missing-architecture",
+    "rejected-business", "rejected-architecture",
+    "wrong-business-actor", "wrong-business-role",
+    "wrong-architecture-actor", "wrong-architecture-role",
+    "stale-candidate", "changed-scope", "changed-criteria", "changed-spec",
+)
 
 
 class _SyntheticCredentialResolver:
@@ -95,7 +102,7 @@ def _open(root: Path, stack: ExitStack) -> InstalledDynamicMissionRuntime:
     return stack.enter_context(InstalledDynamicMissionRuntime.open(str(root / "runtime"), provider_id=fixture.PROVIDER))
 
 
-def _prepare(root: Path, scenario: str, endpoint: str) -> None:
+def _configure(root: Path, endpoint: str) -> None:
     assert not (root / "runtime").exists(), "qualification must use a fresh data root"
     with RuntimeBootstrap(data_root=root / "runtime", forge_version="qualification").open() as database:
         operators = InstallationOperatorService(database, lambda: fixture.IDENTITY)
@@ -118,47 +125,60 @@ def _prepare(root: Path, scenario: str, endpoint: str) -> None:
         credential_reference=SecretReference.parse("keychain://synthetic/ep"),
         operator_id="isolated-qualification", allow_loopback_http=True,
     )
+
+
+def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
+                       runtime: InstalledDynamicMissionRuntime) -> tuple[
+                           MissionCandidate, GovernedCandidateIntake,
+                           ArchitectureMission, ArchitecturePlanningEvidence]:
+    options = {"criterion_assessment_contracts": fixture._contracts(), "maximum_actions": 3,
+               "maximum_consecutive_no_progress_actions": 1,
+               "repository_evidence_source": fixture.SOURCE}
+    recommendation = MissionRecommendation(
+        "synthetic-recommendation", "Synthetic export contract", "qualification",
+        "Provide an inspectable contract.", "Publish two explicit JSON properties.",
+        "Inspectability.", "Two verified JSON properties.", "No behavior claim.",
+        ("repository:synthetic",), "architecture-review:synthetic",
+        ("external fixtures",), ("Defer this synthetic proof.",), 90,
+        "2026-09-18T09:59:00Z",
+    )
+    lifecycle.create_recommendation(recommendation, actor="synthetic-portfolio",
+                                    rationale="Isolated installed qualification.")
+    lifecycle.transition(recommendation.id, RecommendationStatus.RECOMMENDED,
+                         actor="synthetic-portfolio", occurred_at="2026-09-18T09:59:01Z",
+                         rationale="Candidate is ready for separate governance.")
+    candidate = lifecycle.create_candidate(MissionCandidate(
+        "synthetic-candidate", recommendation.id, recommendation.title,
+        recommendation.engineering_summary, ("synthetic-contract",),
+        (fixture.K1, fixture.K2), ("no behavior claim",), recommendation.dependencies,
+    ))
+    bridge = GovernedCandidateIntake(lifecycle, runtime, resolve_governance_profile("duo"))
+    revision, _, architecture_id = bridge.decision_ids(candidate.id)
+    mission_preview = ArchitectureMission(
+        "MISSION-PREVIEW", candidate.id, candidate.title, candidate.objective,
+        recommendation.business_summary, recommendation.business_value,
+        architecture_id, recommendation.id, candidate.scope,
+        candidate.architecture_constraints, candidate.acceptance_criteria,
+        ("external fixtures",), candidate.dependencies,
+        (HOST,), (RequiredDiscipline.PLATFORM_ARCHITECTURE,),
+        ("scope-drift",), ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING, **options,
+    )
+    planning = ArchitecturePlanningEvidence(
+        candidate.scope, ("contracts",), candidate.architecture_constraints,
+        ("scope-drift",), ("protected-delivery",), candidate.dependencies,
+        40000, 8000, revision, mission_spec_digest=canonical_digest(mission_preview.to_dict()),
+        **options,
+    )
+    return candidate, bridge, mission_preview, planning
+
+
+def _prepare(root: Path, scenario: str, endpoint: str) -> None:
+    _configure(root, endpoint)
     with ExitStack() as stack:
         runtime = _open(root, stack)
-        options = {"criterion_assessment_contracts": fixture._contracts(), "maximum_actions": 3,
-                   "maximum_consecutive_no_progress_actions": 1,
-                   "repository_evidence_source": fixture.SOURCE}
         with RecommendationLifecycleStore(root / "governance" / "lifecycle.sqlite") as lifecycle:
-            recommendation = MissionRecommendation(
-                "synthetic-recommendation", "Synthetic export contract", "qualification",
-                "Provide an inspectable contract.", "Publish two explicit JSON properties.",
-                "Inspectability.", "Two verified JSON properties.", "No behavior claim.",
-                ("repository:synthetic",), "architecture-review:synthetic",
-                ("external fixtures",), ("Defer this synthetic proof.",), 90,
-                "2026-09-18T09:59:00Z",
-            )
-            lifecycle.create_recommendation(recommendation, actor="synthetic-portfolio",
-                                            rationale="Isolated installed qualification.")
-            lifecycle.transition(recommendation.id, RecommendationStatus.RECOMMENDED,
-                                 actor="synthetic-portfolio", occurred_at="2026-09-18T09:59:01Z",
-                                 rationale="Candidate is ready for separate governance.")
-            candidate = lifecycle.create_candidate(MissionCandidate(
-                "synthetic-candidate", recommendation.id, recommendation.title,
-                recommendation.engineering_summary, ("synthetic-contract",),
-                (fixture.K1, fixture.K2), ("no behavior claim",), recommendation.dependencies,
-            ))
-            bridge = GovernedCandidateIntake(lifecycle, runtime, resolve_governance_profile("duo"))
-            revision, _, architecture_id = bridge.decision_ids(candidate.id)
-            mission_preview = ArchitectureMission(
-                "MISSION-PREVIEW", candidate.id, candidate.title, candidate.objective,
-                recommendation.business_summary, recommendation.business_value,
-                architecture_id, recommendation.id, candidate.scope,
-                candidate.architecture_constraints, candidate.acceptance_criteria,
-                ("external fixtures",), candidate.dependencies,
-                (HOST,), (RequiredDiscipline.PLATFORM_ARCHITECTURE,),
-                ("scope-drift",), ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING, **options,
-            )
-            planning = ArchitecturePlanningEvidence(
-                candidate.scope, ("contracts",), candidate.architecture_constraints,
-                ("scope-drift",), ("protected-delivery",), candidate.dependencies,
-                40000, 8000, revision, mission_spec_digest=canonical_digest(mission_preview.to_dict()),
-                **options,
-            )
+            candidate, bridge, mission_preview, planning = _candidate_fixture(lifecycle, runtime)
+            revision = bridge.decision_ids(candidate.id)[0]
             rejected = []
 
             def reject_unapproved(label: str, proposed: ArchitectureMission) -> None:
@@ -204,6 +224,143 @@ def _prepare(root: Path, scenario: str, endpoint: str) -> None:
         _capture(root, runtime, "prepare")
 
 
+def _approve_business(bridge: GovernedCandidateIntake, candidate: MissionCandidate,
+                      planning: ArchitecturePlanningEvidence) -> None:
+    bridge.approve_business(candidate.id, actor="business_owner",
+                            occurred_at="2026-09-18T09:59:02Z",
+                            rationale="Synthetic Business approval.",
+                            human_gates=planning.human_gates)
+
+
+def _approve_architecture(bridge: GovernedCandidateIntake, candidate: MissionCandidate,
+                          preview: ArchitectureMission,
+                          planning: ArchitecturePlanningEvidence) -> None:
+    bridge.approve_architecture(candidate.id, preview, planning,
+                                actor="platform_architect", occurred_at="2026-09-18T09:59:03Z",
+                                rationale="Synthetic Architecture approval.")
+
+
+def _expected_denial(operation, error_type: type[Exception]) -> dict[str, str]:
+    try:
+        operation()
+    except error_type as error:
+        return {"type": type(error).__name__, "reason": str(error)}
+    raise RuntimeError("an unauthorized governance operation unexpectedly succeeded")
+
+
+def _stage_governance_case(case: str, lifecycle: RecommendationLifecycleStore,
+                           candidate: MissionCandidate, bridge: GovernedCandidateIntake,
+                           preview: ArchitectureMission,
+                           planning: ArchitecturePlanningEvidence) -> tuple[ArchitectureMission, dict | None]:
+    prior_denial = None
+    needs_business = case in {
+        "missing-architecture", "rejected-architecture", "wrong-architecture-actor",
+        "wrong-architecture-role", "stale-candidate", "changed-scope",
+        "changed-criteria", "changed-spec",
+    }
+    needs_architecture = case in {
+        "stale-candidate", "changed-scope", "changed-criteria", "changed-spec",
+    }
+    if needs_business:
+        _approve_business(bridge, candidate, planning)
+    if needs_architecture:
+        _approve_architecture(bridge, candidate, preview, planning)
+    if case == "missing-business":
+        prior_denial = _expected_denial(
+            lambda: _approve_architecture(bridge, candidate, preview, planning),
+            GovernedCandidateIntakeError)
+    elif case in {"rejected-business", "rejected-architecture"}:
+        role, target = (("business_owner", RecommendationStatus.BUSINESS_REJECTED)
+                        if case == "rejected-business" else
+                        ("platform_architect", RecommendationStatus.ARCHITECTURE_REJECTED))
+        lifecycle.transition(candidate.recommendation_id, target, actor=role,
+                             occurred_at="2026-09-18T09:59:04Z",
+                             rationale="Synthetic governance rejection.",
+                             references=(candidate.id, planning.provenance_revision))
+    elif case in {"wrong-business-actor", "wrong-business-role"}:
+        actor = "stranger" if case == "wrong-business-actor" else "platform_architect"
+        prior_denial = _expected_denial(
+            lambda: bridge.approve_business(
+                candidate.id, actor=actor, occurred_at="2026-09-18T09:59:04Z",
+                rationale="Unqualified actor.", human_gates=planning.human_gates),
+            PermissionError)
+    elif case in {"wrong-architecture-actor", "wrong-architecture-role"}:
+        actor = "stranger" if case == "wrong-architecture-actor" else "business_owner"
+        prior_denial = _expected_denial(
+            lambda: bridge.approve_architecture(
+                candidate.id, preview, planning, actor=actor,
+                occurred_at="2026-09-18T09:59:04Z", rationale="Unqualified actor."),
+            PermissionError)
+    elif case == "stale-candidate":
+        lifecycle.update_candidate(candidate.id, objective="Changed after both decisions.")
+    elif case == "changed-scope":
+        preview = replace(preview, scope=("unapproved-repository",))
+    elif case == "changed-criteria":
+        lifecycle.update_candidate(candidate.id, acceptance_criteria=("unapproved criterion",))
+    elif case == "changed-spec":
+        preview = replace(preview, summary="Unapproved Mission specification.")
+    return preview, prior_denial
+
+
+def _negative_observation(root: Path, lifecycle: RecommendationLifecycleStore,
+                          runtime: InstalledDynamicMissionRuntime,
+                          bridge: GovernedCandidateIntake, preview: ArchitectureMission,
+                          planning: ArchitecturePlanningEvidence) -> dict:
+    denial = _expected_denial(
+        lambda: bridge.admit("synthetic-candidate", preview, planning,
+                             occurred_at="2026-09-18T09:59:30Z"),
+        GovernedCandidateIntakeError)
+    allocation = lifecycle.allocation_for_recommendation("synthetic-recommendation")
+    counts = {
+        "lifecycle_allocations": int(allocation is not None),
+        "runtime_allocations": runtime.database._connection.execute(
+            "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0],
+        "admitted_missions": runtime.database._connection.execute(
+            "SELECT COUNT(*) FROM mission_state").fetchone()[0],
+        "planner_invocations": len(fixture._read(root / "provider-inputs.private.json", [])),
+    }
+    if any(counts.values()):
+        raise RuntimeError("rejected Candidate caused an allocation, admission or planning effect")
+    decisions = [item for item in lifecycle.history("synthetic-recommendation")
+                 if item.kind in {"business_decision", "architecture_decision"}]
+    for decision in decisions:
+        if not {"synthetic-candidate", planning.provenance_revision}.issubset(decision.references):
+            raise RuntimeError("governance decision lost the exact Candidate revision")
+    return {
+        "rejection": denial, "counts": counts,
+        "recommendation_status": lifecycle.get_recommendation("synthetic-recommendation").status.value,
+        "candidate_revision": canonical_digest(lifecycle.get_candidate("synthetic-candidate").to_dict()),
+        "decision_lineage": [{"kind": item.kind, "id": item.id} for item in decisions],
+        "canonical_approval_count": runtime.database._connection.execute(
+            "SELECT COUNT(*) FROM governance_decisions").fetchone()[0],
+        "runtime_instance": runtime.database.runtime_identity.runtime_id,
+        "pid": os.getpid(),
+    }
+
+
+def _governance_phase(root: Path, case: str, phase: str, endpoint: str) -> None:
+    if phase == "governance-first":
+        _configure(root, endpoint)
+    with ExitStack() as stack:
+        runtime = _open(root, stack)
+        with RecommendationLifecycleStore(root / "governance" / "lifecycle.sqlite") as lifecycle:
+            if phase == "governance-first":
+                candidate, bridge, preview, planning = _candidate_fixture(lifecycle, runtime)
+                preview, prior_denial = _stage_governance_case(
+                    case, lifecycle, candidate, bridge, preview, planning)
+                fixture._write(root / "governance-input.private.json", {
+                    "preview": preview.to_dict(), "planning": planning.to_dict(),
+                    "prior_denial": prior_denial,
+                })
+            else:
+                saved = fixture._read(root / "governance-input.private.json")
+                bridge = GovernedCandidateIntake(lifecycle, runtime, resolve_governance_profile("duo"))
+                preview = ArchitectureMission.from_dict(saved["preview"])
+                planning = ArchitecturePlanningEvidence.from_dict(saved["planning"])
+            fixture._write(root / f"{phase}.governance.private.json",
+                           _negative_observation(root, lifecycle, runtime, bridge, preview, planning))
+
+
 def _capture(root: Path, runtime: InstalledDynamicMissionRuntime, phase: str) -> dict:
     mission_id = fixture._read(root / "population.private.json")["mission_id"]
     state = runtime.states._as_document(runtime.states.get(mission_id))
@@ -236,6 +393,63 @@ def _run_phase(root: Path, scenario: str, phase: str, endpoint: str, wheel: Path
     if result.returncode:
         raise RuntimeError(f"installed {scenario}/{phase} failed; see private phase log")
     return fixture._read(root / f"{phase}.state.private.json")
+
+
+def _run_governance_phase(root: Path, case: str, phase: str,
+                          endpoint: str, wheel: Path) -> dict:
+    command = [sys.executable, "-I", str(Path(__file__).resolve()),
+               "--wheel", str(wheel), "--output-dir", str(root),
+               "--governance-case", case, "--phase", phase, "--endpoint", endpoint]
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90)
+    (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
+    if result.returncode:
+        raise RuntimeError(f"installed governance {case}/{phase} failed; see private phase log")
+    return fixture._read(root / f"{phase}.governance.private.json")
+
+
+def _governance_case(root: Path, case: str, wheel: Path) -> dict:
+    root.mkdir(parents=True)
+    simulator = EpSimulatorState(
+        project_id=PROJECT, repository_id=fixture.SOURCE.repository_id,
+        repository_identity=fixture.SOURCE.github_repository, consumer_id=CONSUMER,
+        instance_id=INSTANCE, bearer_token=TOKEN,
+    )
+    with EpSimulatorServer(simulator) as server:
+        first = _run_governance_phase(root, case, "governance-first", server.base_url, wheel)
+        repeat = _run_governance_phase(root, case, "governance-repeat", server.base_url, wheel)
+    if first["pid"] == repeat["pid"]:
+        raise RuntimeError(f"{case} was not repeated in a fresh Forge process")
+    for key in ("rejection", "counts", "recommendation_status", "candidate_revision",
+                "decision_lineage", "canonical_approval_count", "runtime_instance"):
+        if first[key] != repeat[key]:
+            raise RuntimeError(f"{case} changed its rejection or identity on fresh-process repeat")
+    expected_status = ("BUSINESS_REJECTED" if case == "rejected-business" else
+                       "ARCHITECTURE_REJECTED" if case == "rejected-architecture" else
+                       "ARCHITECTURE_APPROVED" if case in {
+                           "stale-candidate", "changed-scope", "changed-criteria", "changed-spec"} else
+                       "BUSINESS_APPROVED" if case in {
+                           "missing-architecture", "wrong-architecture-actor", "wrong-architecture-role"} else
+                       "RECOMMENDED")
+    if first["recommendation_status"] != expected_status:
+        raise RuntimeError(f"{case} has the wrong canonical governance state")
+    expected_approvals = (2 if expected_status == "ARCHITECTURE_APPROVED" else
+                          1 if expected_status in {"BUSINESS_APPROVED", "ARCHITECTURE_REJECTED"} else 0)
+    if first["canonical_approval_count"] != expected_approvals:
+        raise RuntimeError(f"{case} persisted an unintended approval")
+    if simulator.audit:
+        raise RuntimeError(f"{case} made an EP HTTP request")
+    saved = fixture._read(root / "governance-input.private.json")
+    return {
+        "case": case, "rejection": first["rejection"],
+        "prior_denial": saved["prior_denial"],
+        "recommendation_status": first["recommendation_status"],
+        "approved_revision": saved["planning"]["provenance_revision"],
+        "candidate_revision": first["candidate_revision"],
+        "decision_lineage": first["decision_lineage"],
+        "canonical_approval_count": first["canonical_approval_count"],
+        "counts": {**first["counts"], "ep_requests": len(simulator.audit)},
+        "forge_processes": 2,
+    }
 
 
 def _ambiguous_result(root: Path, simulator: EpSimulatorState, endpoint: str,
@@ -352,8 +566,9 @@ def main() -> int:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--source-revision")
     parser.add_argument("--scenario", choices=SCENARIOS)
+    parser.add_argument("--governance-case", choices=GOVERNANCE_CASES)
     parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b", "readback",
-                                            "ambiguous-replay"))
+                                            "ambiguous-replay", "governance-first", "governance-repeat"))
     parser.add_argument("--endpoint")
     args = parser.parse_args()
     if args.source_revision is not None and (
@@ -363,22 +578,47 @@ def main() -> int:
     artifact = _installed_wheel(args.wheel.resolve())
     root = args.output_dir.resolve()
     if args.phase:
-        if not args.scenario or not args.endpoint:
+        if args.phase.startswith("governance-"):
+            if not args.governance_case or not args.endpoint or args.scenario:
+                parser.error("governance child phase requires case and loopback endpoint")
+            _governance_phase(root, args.governance_case, args.phase, args.endpoint)
+            return 0
+        if not args.scenario or not args.endpoint or args.governance_case:
             parser.error("child phase requires scenario and loopback endpoint")
         _phase(root, args.scenario, args.phase, args.endpoint)
         return 0
     if root.exists() and any(root.iterdir()):
         raise RuntimeError("qualification output directory must be fresh")
+    if args.governance_case and args.scenario:
+        parser.error("focused governance and HTTP scenario filters cannot be combined")
     root.mkdir(parents=True, exist_ok=True)
     scenarios = SCENARIOS if not args.scenario else (args.scenario,)
     report = {"qualification": "INSTALLED_FORGE_HTTP_SUCCESSOR_V1", "artifact": artifact,
               "source_revision": args.source_revision,
               "qualifier_sha256": "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest(),
               "ep_simulator_contract": SIMULATOR_CONTRACT_VERSION,
+              "required_governance_cases": list(GOVERNANCE_CASES),
+              "required_http_scenarios": list(SCENARIOS),
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
                               "No EP correlation readback; ambiguous POST fails closed without recovery.",
                               "Bounded serial write-mode subset; not full FCI-CI or FCO."]}
+    governance = []
+    for case in (GOVERNANCE_CASES if not args.governance_case else (args.governance_case,)):
+        try:
+            governance.append(_governance_case(root / "governance-matrix" / case, case, args.wheel.resolve()))
+        except Exception as error:
+            report.update(result="FAIL", governance_matrix=governance,
+                          failure={"governance_case": case, "type": type(error).__name__})
+            fixture._write(root / "installed-http-successor.public.json", report)
+            print(json.dumps(report, sort_keys=True))
+            return 1
+    report["governance_matrix"] = governance
+    if args.governance_case:
+        report["result"] = "FOCUSED_PASS"
+        fixture._write(root / "installed-http-successor.public.json", report)
+        print(json.dumps(report, sort_keys=True))
+        return 0
     summaries = []
     for scenario in scenarios:
         try:
@@ -389,7 +629,7 @@ def main() -> int:
             fixture._write(root / "installed-http-successor.public.json", report)
             print(json.dumps(report, sort_keys=True))
             return 1
-    report.update(result="PASS", scenarios=summaries)
+    report.update(result="FOCUSED_PASS" if args.scenario else "PASS", scenarios=summaries)
     fixture._write(root / "installed-http-successor.public.json", report)
     print(json.dumps(report, sort_keys=True))
     return 0
