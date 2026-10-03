@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from threading import Lock
 from unittest.mock import patch
 
 import forge
@@ -407,6 +408,25 @@ def _run_governance_phase(root: Path, case: str, phase: str,
     return fixture._read(root / f"{phase}.governance.private.json")
 
 
+def _count_ep_http_requests(server: EpSimulatorServer) -> list[str]:
+    requests: list[str] = []
+    request_lock = Lock()
+    base_handler = server.server.RequestHandlerClass
+
+    class CountingHandler(base_handler):
+        def parse_request(self) -> bool:
+            parsed = super().parse_request()
+            if parsed:
+                # Observe every HTTP method before route/auth checks; the simulator
+                # audit only records accepted submissions and misses negative traffic.
+                with request_lock:
+                    requests.append(self.command)
+            return parsed
+
+    server.server.RequestHandlerClass = CountingHandler
+    return requests
+
+
 def _governance_case(root: Path, case: str, wheel: Path) -> dict:
     root.mkdir(parents=True)
     simulator = EpSimulatorState(
@@ -414,7 +434,9 @@ def _governance_case(root: Path, case: str, wheel: Path) -> dict:
         repository_identity=fixture.SOURCE.github_repository, consumer_id=CONSUMER,
         instance_id=INSTANCE, bearer_token=TOKEN,
     )
-    with EpSimulatorServer(simulator) as server:
+    server = EpSimulatorServer(simulator)
+    requests = _count_ep_http_requests(server)
+    with server:
         first = _run_governance_phase(root, case, "governance-first", server.base_url, wheel)
         repeat = _run_governance_phase(root, case, "governance-repeat", server.base_url, wheel)
     if first["pid"] == repeat["pid"]:
@@ -436,7 +458,7 @@ def _governance_case(root: Path, case: str, wheel: Path) -> dict:
                           1 if expected_status in {"BUSINESS_APPROVED", "ARCHITECTURE_REJECTED"} else 0)
     if first["canonical_approval_count"] != expected_approvals:
         raise RuntimeError(f"{case} persisted an unintended approval")
-    if simulator.audit:
+    if requests:
         raise RuntimeError(f"{case} made an EP HTTP request")
     saved = fixture._read(root / "governance-input.private.json")
     return {
@@ -447,7 +469,8 @@ def _governance_case(root: Path, case: str, wheel: Path) -> dict:
         "candidate_revision": first["candidate_revision"],
         "decision_lineage": first["decision_lineage"],
         "canonical_approval_count": first["canonical_approval_count"],
-        "counts": {**first["counts"], "ep_requests": len(simulator.audit)},
+        "counts": {**first["counts"], "ep_requests": len(requests),
+                   "ep_accepted_submissions": len(simulator.submission_ids())},
         "forge_processes": 2,
     }
 
