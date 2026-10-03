@@ -21,8 +21,11 @@ The bounded LANE_3 r26 installed-HTTP successor qualification joins an isolated,
 canonically approved zero-Action Mission to Forge's persisted EP peer binding,
 real HTTP adapter and strict local EP simulator. A fresh Forge process consumes
 terminal A evidence, proves the first criterion, derives B only for the remaining
-criterion, and completes after B; single-Action and tampered-evidence paths
-prove no extra submission. Its ordinary PR/main check and release qualification
+criterion, and completes after B. Single-Action and tampered-evidence paths
+prove no extra submission. A post-accept lost response leaves one persisted
+submission and no successor; a new Forge process fails closed as ambiguous
+without another HTTP POST. EP has no supported correlation readback here, so
+this does not claim FIE-10 recovery. Its ordinary PR/main check and release qualification
 run against an exact non-editable wheel. This is a **serial write-mode subset** of
 FCI-HARNESS/EP/FLOW/RESTART/NEGATIVE/CI, recorded in the existing
 [DAG](forge-inner-loop-ci-v1.json). It starts with a synthetic approved Mission,

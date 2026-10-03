@@ -45,6 +45,7 @@
       "remaining_gates": [
         "public Candidate-to-Mission lifecycle",
         "full-suite FCI-CONTRACT producer fixture refresh from terminal 1.3 to current 1.4",
+        "FIE-10 supported correlation readback and recovery after ambiguous POST",
         "all FIE-01..28 and required effect modes",
         "complete FCI-CI qualification before FCO-FLOW",
         "live EP/provider and production Mission acceptance"

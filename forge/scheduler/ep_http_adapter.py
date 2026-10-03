@@ -302,8 +302,8 @@ class EngineeringPlatformHttpExecutionHost:
         return len(matches) == 1
 
     def _binding(self, request: ExecutionRequest, *, allow_historical_readback: bool = False) -> dict[str, Any]:
-        # Saved before any network request: an ambiguous send is retried with
-        # the exact same configuration and idempotency key, never retargeted.
+        # Saved before any network request; an ambiguous send must retain
+        # its exact configuration and idempotency key for later reconciliation.
         existing = self._bindings.execution_host_binding(request.correlation_id)
         if (allow_historical_readback and request.repository_revision_binding is None
                 and existing is not None):
@@ -859,6 +859,13 @@ class EngineeringPlatformHttpExecutionHost:
         self.preflight()
         readback = self._readback(request, binding)
         if readback is None:
+            sent = any(
+                item.get("direction") == "FORGE_TO_EP"
+                and item.get("event_kind") == "FORGE_SUBMISSION_SENT"
+                for item in self._bindings.execution_host_exchange_audit(request.correlation_id)
+            )
+            if sent:
+                raise ValueError("EP_SUBMISSION_OUTCOME_AMBIGUOUS")
             self._bindings.record_execution_host_exchange_audit(
                 request.correlation_id, direction="FORGE_TO_EP", event_kind="FORGE_SUBMISSION_SENT",
                 document=self._audit_document(request, binding),

@@ -22,7 +22,7 @@ import forge
 import forge.runtime.dynamic_mission as composition
 from forge.architecture import ArchitectureWorkspace
 from forge.business import BusinessWorkspace
-from forge.ep_simulator import EpSimulatorServer, EpSimulatorState, SIMULATOR_CONTRACT_VERSION
+from forge.ep_simulator import EpSimulatorScenario, EpSimulatorServer, EpSimulatorState, SIMULATOR_CONTRACT_VERSION
 from forge.execution_host_configuration import (
     EngineeringPlatformExecutionHostFactory, EngineeringPlatformPeerConfigurationService,
 )
@@ -49,7 +49,7 @@ INSTANCE = "isolated-ep-simulator"
 CONSUMER = "isolated-forge-consumer"
 PROJECT = "isolated-project"
 HOST = "synthetic-host"
-SCENARIOS = ("partial", "single", "tampered")
+SCENARIOS = ("partial", "single", "tampered", "ambiguous")
 
 
 class _SyntheticCredentialResolver:
@@ -196,12 +196,40 @@ def _run_phase(root: Path, scenario: str, phase: str, endpoint: str, wheel: Path
     return fixture._read(root / f"{phase}.state.private.json")
 
 
+def _ambiguous_result(root: Path, simulator: EpSimulatorState, endpoint: str,
+                      wheel: Path, initial: dict) -> dict:
+    assert initial["status"] == "WAITING_FOR_EXECUTION"
+    assert len(initial["actions"]) == len(simulator.submission_ids()) == 1
+    assert [event["event"] for event in simulator.audit] == [
+        "submission_accepted", "submission_response_lost",
+    ]
+    replay = _run_phase(root, "ambiguous", "ambiguous-replay", endpoint, wheel)
+    assert replay["status"] == "FAILED" and replay["waiting_reason"] == "host_dispatch_failed"
+    assert len(replay["actions"]) == len(simulator.submission_ids()) == 1
+    assert len(fixture._read(root / "provider-inputs.private.json")) == 1
+    readback = _run_phase(root, "ambiguous", "readback", endpoint, wheel)
+    assert readback == replay
+    assert [event["event"] for event in simulator.audit] == [
+        "submission_accepted", "submission_response_lost",
+    ], "ambiguous dispatch must neither resubmit nor derive a successor"
+    phases = ("prepare", "ambiguous-replay", "readback")
+    processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
+    assert len(processes) == len(phases)
+    return {"scenario": "ambiguous", "status": replay["status"],
+            "waiting_reason": replay["waiting_reason"], "actions": 1,
+            "submissions": 1, "forge_processes": len(processes),
+            "phase_statuses": {phase: fixture._read(root / f"{phase}.state.private.json")["status"]
+                               for phase in phases}, "planner_invocations": 1}
+
+
 def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     root.mkdir()
     simulator = EpSimulatorState(
         project_id=PROJECT, repository_id=fixture.SOURCE.repository_id,
         repository_identity=fixture.SOURCE.github_repository, consumer_id=CONSUMER,
         instance_id=INSTANCE, bearer_token=TOKEN,
+        scenario=(EpSimulatorScenario(connection_loss_at=frozenset({"submission-after-accept-once"}))
+                  if scenario == "ambiguous" else None),
     )
     fixture._write(root / "artifact-a.json", {
         "report": {"fields": ["report_data"]},
@@ -213,6 +241,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     with EpSimulatorServer(simulator) as server:
         initial = _run_phase(root, scenario, "prepare", server.base_url, wheel)
         assert len(initial["actions"]) == len(simulator.submission_ids()) == 1
+        if scenario == "ambiguous":
+            return _ambiguous_result(root, simulator, server.base_url, wheel, initial)
         a = simulator.submission_ids()[0]
         simulator.complete(a, delivery_revision="a" * 40)
         if scenario == "tampered":
@@ -262,7 +292,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
         phases += ["replay-b", "after-b"]
     processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
     assert len(processes) == len(phases), "Forge phases must use distinct OS processes"
-    return {"scenario": scenario, "status": final["status"], "actions": len(final["actions"]),
+    return {"scenario": scenario, "status": final["status"],
+            "waiting_reason": final["waiting_reason"], "actions": len(final["actions"]),
             "submissions": len(simulator.submission_ids()), "forge_processes": len(processes),
             "phase_statuses": {phase: fixture._read(root / f"{phase}.state.private.json")["status"]
                                for phase in phases},
@@ -275,7 +306,8 @@ def main() -> int:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--source-revision")
     parser.add_argument("--scenario", choices=SCENARIOS)
-    parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b", "readback"))
+    parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b", "readback",
+                                            "ambiguous-replay"))
     parser.add_argument("--endpoint")
     args = parser.parse_args()
     if args.source_revision is not None and (
@@ -299,6 +331,7 @@ def main() -> int:
               "ep_simulator_contract": SIMULATOR_CONTRACT_VERSION,
               "limitations": ["Synthetic approvals and repository JSON, deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
+                              "No EP correlation readback; ambiguous POST fails closed without recovery.",
                               "Bounded serial write-mode subset; not full FCI-CI or FCO."]}
     summaries = []
     for scenario in scenarios:
