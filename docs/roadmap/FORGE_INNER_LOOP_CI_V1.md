@@ -39,11 +39,13 @@ The bounded LANE_3 r27 Candidate-to-Intake extension starts with a real
 `RecommendationLifecycleStore` Candidate before either approval. The installed
 wheel records separate synthetic Business and Architecture decisions against
 the exact Candidate content and Mission specification, allocates through the
-canonical Runtime Instance, and admits a zero-Action Mission before reusing the
-r26 HTTP A-to-B completion scenarios. The qualifier rejects missing decisions
+canonical Runtime Instance, binds replay to its installation ID and approval
+envelope digest, and admits a zero-Action Mission before reusing the r26 HTTP
+A-to-B completion scenarios. The qualifier rejects missing decisions
 and changed Mission content before allocation or EP submission; focused tests
 cover wrong profile role, stale Candidate content, foreign installation
-evidence and interrupted allocation/intake replay. The installed operator
+evidence, second-installation allocation denial and interrupted
+allocation/intake replay. The installed operator
 binding authenticates the local test Runtime; synthetic profile actor labels
 are not evidence of separate real people. This is a bounded FIE-01/04 subset,
 not completion of those families or any seven-node parent. Full FIE-04

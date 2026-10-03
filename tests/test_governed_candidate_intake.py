@@ -93,6 +93,20 @@ class GovernedCandidateIntakeTests(unittest.TestCase):
             with RecommendationLifecycleStore(self.root / "governance" / "lifecycle.sqlite") as lifecycle:
                 yield GovernedCandidateIntake(lifecycle, runtime, resolve_governance_profile("duo"))
 
+    @contextmanager
+    def foreign_installation_bridge(self):
+        data_root = self.root / "second-runtime"
+        with RuntimeBootstrap(data_root=data_root, forge_version="test").open() as database:
+            identity = lambda: NamedOperatorIdentity("second-operator", 502)
+            InstallationOperatorService(database, identity).first_bind()
+            repository = CanonicalGovernanceRepository.for_runtime(
+                database, identity, data_root=data_root,
+            )
+            runtime = InstalledDynamicMissionRuntime(
+                database, repository, data_root=str(data_root), provider=object(), host=object(),
+            )
+            yield GovernedCandidateIntake(self.lifecycle, runtime, resolve_governance_profile("duo")), database
+
     def test_exact_candidate_enters_zero_action_runtime_once_and_replays_after_restart(self) -> None:
         preview, planning = self.approved_input()
         self.approve(preview, planning)
@@ -180,6 +194,29 @@ class GovernedCandidateIntakeTests(unittest.TestCase):
                 self.bridge.admit(self.candidate.id, preview, planning, occurred_at="now")
         self.assertEqual(self.database._connection.execute(
             "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0], 0)
+
+    def test_allocated_candidate_cannot_replay_into_a_second_installation(self) -> None:
+        preview, planning = self.approved_input()
+        self.approve(preview, planning)
+        with self.foreign_installation_bridge() as (foreign, database):
+            foreign.approve_business(self.candidate.id, actor="business_owner",
+                                     occurred_at="before-allocation", rationale="Separate synthetic decision.",
+                                     human_gates=planning.human_gates)
+            foreign.approve_architecture(self.candidate.id, preview, planning,
+                                         actor="platform_architect", occurred_at="before-allocation",
+                                         rationale="Separate synthetic planning decision.")
+            original = self.bridge.admit(self.candidate.id, preview, planning, occurred_at="allocate-in-first")
+            self.assertTrue(original.mission_id.startswith("MISSION-"))
+            with self.assertRaisesRegex(GovernedCandidateIntakeError, "allocation differs"):
+                foreign.admit(self.candidate.id, preview, planning, occurred_at="replay-in-second")
+            with self.assertRaisesRegex(GovernedCandidateIntakeError, "another installation"):
+                foreign.approve_business(self.candidate.id, actor="business_owner",
+                                         occurred_at="after-allocation", rationale="Must not replay.",
+                                         human_gates=planning.human_gates)
+            self.assertEqual(database._connection.execute(
+                "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0], 0)
+            self.assertEqual(database._connection.execute(
+                "SELECT COUNT(*) FROM mission_state").fetchone()[0], 0)
 
     def test_restart_after_allocation_before_intake_reuses_mission_id(self) -> None:
         preview, planning = self.approved_input()

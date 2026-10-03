@@ -180,8 +180,18 @@ class MissionAllocation:
     architecture_decision_evidence_id: str
     allocation_decision_evidence_id: str
     allocated_at: str
+    installation_id: str | None = None
+    envelope_digest: str | None = None
 
-    def to_dict(self) -> dict[str, str]:
+    def __post_init__(self) -> None:
+        if (self.installation_id is None) != (self.envelope_digest is None):
+            raise LifecycleError("allocation installation and envelope must be bound together")
+        if self.installation_id is not None and (not self.installation_id
+                or not isinstance(self.envelope_digest, str)
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", self.envelope_digest)):
+            raise LifecycleError("allocation binding is invalid")
+
+    def to_dict(self) -> dict[str, str | None]:
         return asdict(self)
 
 
@@ -299,7 +309,11 @@ class RecommendationLifecycleStore:
             self._connection.execute("UPDATE candidates SET document = ? WHERE candidate_id = ?", (_dump(updated.to_dict()), candidate_id))
         return updated
 
-    def allocate(self, candidate_id: str, *, actor: str, occurred_at: str, rationale: str, allocate_mission_id: Callable[[str, str], str]) -> MissionAllocation:
+    def allocate(self, candidate_id: str, *, actor: str, occurred_at: str, rationale: str,
+                 allocate_mission_id: Callable[[str, str], str],
+                 installation_id: str | None = None, envelope_digest: str | None = None) -> MissionAllocation:
+        if (installation_id is None) != (envelope_digest is None):
+            raise LifecycleError("allocation installation and envelope must be bound together")
         row = self._connection.execute("SELECT recommendation_id, frozen FROM candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
         if row is None or row["frozen"]:
             raise LifecycleError("candidate is unknown or already allocated")
@@ -312,8 +326,13 @@ class RecommendationLifecycleStore:
         mission_id = allocate_mission_id(recommendation.id, occurred_at)
         if not re.fullmatch(r"MISSION-\d{4,}", mission_id):
             raise LifecycleError("allocator returned an invalid mission id")
-        evidence = self._evidence("mission_allocation", recommendation.id, occurred_at, actor, rationale, (candidate_id, mission_id, decisions["business_decision"], decisions["architecture_decision"]))
-        allocation = MissionAllocation(recommendation.id, candidate_id, mission_id, decisions["business_decision"], decisions["architecture_decision"], evidence.id, occurred_at)
+        binding = () if installation_id is None else (installation_id, envelope_digest)
+        evidence = self._evidence("mission_allocation", recommendation.id, occurred_at, actor, rationale,
+                                  (candidate_id, mission_id, decisions["business_decision"],
+                                   decisions["architecture_decision"], *binding))
+        allocation = MissionAllocation(recommendation.id, candidate_id, mission_id,
+                                       decisions["business_decision"], decisions["architecture_decision"],
+                                       evidence.id, occurred_at, installation_id, envelope_digest)
         with self._connection:
             self._append_evidence(evidence)
             self._connection.execute("INSERT INTO transitions(recommendation_id, from_status, to_status, evidence_id) VALUES (?, ?, ?, ?)", (recommendation.id, recommendation.status.value, RecommendationStatus.MISSION_ALLOCATED.value, evidence.id))

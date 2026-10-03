@@ -49,6 +49,8 @@ class GovernedCandidateIntake:
                                          RecommendationStatus.ARCHITECTURE_APPROVED,
                                          RecommendationStatus.MISSION_ALLOCATED}:
             raise GovernedCandidateIntakeError("Candidate is not eligible for Business approval")
+        if recommendation.status is RecommendationStatus.MISSION_ALLOCATED:
+            self._require_current_installation_allocation(candidate.recommendation_id)
         if not human_gates or any(not gate for gate in human_gates):
             raise GovernedCandidateIntakeError("Business approval requires exact human gates")
         decision_id = self._decision_id("business", candidate_id, revision)
@@ -74,6 +76,8 @@ class GovernedCandidateIntake:
                                          RecommendationStatus.ARCHITECTURE_APPROVED,
                                          RecommendationStatus.MISSION_ALLOCATED}:
             raise GovernedCandidateIntakeError("Business approval is required before Architecture approval")
+        if recommendation.status is RecommendationStatus.MISSION_ALLOCATED:
+            self._require_current_installation_allocation(candidate.recommendation_id)
         business_id = self._decision_id("business", candidate_id, revision)
         self._require_lifecycle_decision(candidate.recommendation_id, "business_decision",
                                          candidate_id, revision, business_id)
@@ -131,9 +135,12 @@ class GovernedCandidateIntake:
                 rationale="Exact Business and Architecture approvals permit canonical Mission Intake.",
                 allocate_mission_id=lambda _source, timestamp: self.runtime.database.allocate_next_mission_id(
                     source="canonical-governance-envelope:" + envelope.digest, allocated_at=timestamp),
+                installation_id=envelope.installation_id, envelope_digest=envelope.digest,
             )
         mission = replace(mission_preview, id=allocation.mission_id)
         if (allocation.candidate_id != candidate_id
+                or allocation.installation_id != envelope.installation_id
+                or allocation.envelope_digest != envelope.digest
                 or allocation.business_decision_evidence_id != self._lifecycle_decision_id(
                     candidate.recommendation_id, "business_decision")
                 or allocation.architecture_decision_evidence_id != self._lifecycle_decision_id(
@@ -158,6 +165,12 @@ class GovernedCandidateIntake:
                 raise GovernedCandidateIntakeError("existing Mission has conflicting Candidate lineage")
             return state
         return self.runtime.admit(mission, envelope)
+
+    def _require_current_installation_allocation(self, recommendation_id: str) -> None:
+        allocation = self.lifecycle.allocation_for_recommendation(recommendation_id)
+        if (allocation is None
+                or allocation.installation_id != self.runtime.repository.operators.installation_id()):
+            raise GovernedCandidateIntakeError("Candidate allocation belongs to another installation")
 
     def _candidate(self, candidate_id: str) -> tuple[MissionCandidate, str]:
         candidate = self.lifecycle.get_candidate(candidate_id)
