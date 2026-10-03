@@ -43,6 +43,9 @@ from forge.provider_security import (
     PlanningProviderSecurityService, ProviderAuthenticationMode,
 )
 from forge.qualification import criterion_completion as fixture
+from forge.qualification.producer_fixture_conformance import (
+    rejection_matrix, source_receipt, validate_fixture,
+)
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
@@ -519,14 +522,32 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     })
     with EpSimulatorServer(simulator) as server:
         initial = _run_phase(root, scenario, "prepare", server.base_url, wheel)
+        fixture_receipts = []
+        fixture_negatives = []
         governance_negative = fixture._read(root / "governance-negative.private.json")["rejected"]
         assert governance_negative == ["missing-business", "missing-architecture", "changed-objective"]
         assert len(initial["actions"]) == len(simulator.submission_ids()) == 1
+        a = simulator.submission_ids()[0]
+        request_a = simulator.submitted_payload(a)
+        fixture_receipts.append(validate_fixture(
+            request_a, simulator.readback(a), None, project_id=PROJECT,
+            repository_id=fixture.SOURCE.repository_id, submission_id=a,
+        ))
         if scenario == "ambiguous":
             return {**_ambiguous_result(root, simulator, server.base_url, wheel, initial),
-                    "governance_rejections": governance_negative}
-        a = simulator.submission_ids()[0]
+                    "governance_rejections": governance_negative,
+                    "producer_fixtures": fixture_receipts, "producer_fixture_negatives": fixture_negatives}
         simulator.complete(a, delivery_revision="a" * 40)
+        source_readback, source_artifact = simulator.terminal_documents(a)
+        fixture_receipts.append(validate_fixture(
+            request_a, source_readback, source_artifact, project_id=PROJECT,
+            repository_id=fixture.SOURCE.repository_id, submission_id=a,
+        ))
+        if scenario == "partial":
+            fixture_negatives = rejection_matrix(
+                request_a, source_readback, source_artifact, project_id=PROJECT,
+                repository_id=fixture.SOURCE.repository_id, submission_id=a,
+            )
         if scenario == "tampered":
             readback, artifact = simulator.terminal_documents(a)
             readback["correlation"]["mission_id"] = "wrong-mission"
@@ -547,9 +568,19 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert len(fixture._read(root / "provider-inputs.private.json")) == 2
             assert not any(event["event"] == "submission_duplicate" for event in simulator.audit)
             b = next(item for item in simulator.submission_ids() if item != a)
+            request_b = simulator.submitted_payload(b)
+            fixture_receipts.append(validate_fixture(
+                request_b, simulator.readback(b), None, project_id=PROJECT,
+                repository_id=fixture.SOURCE.repository_id, submission_id=b,
+            ))
             timeline = [(event["event"], event.get("submission_id")) for event in simulator.audit]
             assert timeline.index(("terminal_produced", a)) < timeline.index(("submission_accepted", b))
             simulator.complete(b, delivery_revision="b" * 40)
+            b_readback, b_artifact = simulator.terminal_documents(b)
+            fixture_receipts.append(validate_fixture(
+                request_b, b_readback, b_artifact, project_id=PROJECT,
+                repository_id=fixture.SOURCE.repository_id, submission_id=b,
+            ))
             final = _run_phase(root, scenario, "after-b", server.base_url, wheel)
             assert final["status"] == "COMPLETED" and len(final["actions"]) == 2
             assert all(item["status"] == "PROVEN" for item in final["completion"]["criteria"])
@@ -578,6 +609,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             "waiting_reason": final["waiting_reason"], "actions": len(final["actions"]),
             "submissions": len(simulator.submission_ids()), "forge_processes": len(processes),
             "governance_rejections": governance_negative,
+            "producer_fixtures": fixture_receipts,
+            "producer_fixture_negatives": fixture_negatives,
             "phase_statuses": {phase: fixture._read(root / f"{phase}.state.private.json")["status"]
                                for phase in phases},
             "planner_invocations": len(fixture._read(root / "provider-inputs.private.json"))}
@@ -615,16 +648,38 @@ def main() -> int:
     if args.governance_case and args.scenario:
         parser.error("focused governance and HTTP scenario filters cannot be combined")
     root.mkdir(parents=True, exist_ok=True)
+    try:
+        producer_source = source_receipt()
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        report = {"qualification": "INSTALLED_FORGE_HTTP_SUCCESSOR_V1", "artifact": artifact,
+                  "source_revision": args.source_revision, "result": "FAIL",
+                  "failure": {"stage": "producer_fixture_source", "type": type(error).__name__}}
+        fixture._write(root / "installed-http-successor.public.json", report)
+        print(json.dumps(report, sort_keys=True))
+        return 1
     scenarios = SCENARIOS if not args.scenario else (args.scenario,)
     report = {"qualification": "INSTALLED_FORGE_HTTP_SUCCESSOR_V1", "artifact": artifact,
               "source_revision": args.source_revision,
               "qualifier_sha256": "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest(),
+              "producer_fixture_source": producer_source,
+              "required_producer_fixture_negatives": [
+                  "missing-provenance", "changed-provenance", "wrong-version", "changed-digest",
+                  "foreign-project", "foreign-repository", "foreign-submission", "foreign-run",
+                  "unexpected-field", "missing-field", "queued-operation", "queued-reason",
+                  "queued-submission-state",
+                  "terminal-run-state", "terminal-delivery-qualified", "changed-artifact-bytes",
+                  "artifact-unexpected-field", "artifact-missing-field", "artifact-foreign-run",
+                  "artifact-run-timing", "artifact-host-null", "artifact-host-empty",
+                  "artifact-host-commit", "artifact-host-digest", "artifact-requested-revision",
+                  "artifact-delivery-revision", "artifact-baseline-transition", "artifact-report-id",
+              ],
               "ep_simulator_contract": SIMULATOR_CONTRACT_VERSION,
               "required_governance_cases": list(GOVERNANCE_CASES),
               "required_http_scenarios": list(SCENARIOS),
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
                               "No EP correlation readback; ambiguous POST fails closed without recovery.",
+                              "EP producer v1.2 schema omits two retry-resolution fields emitted by its source; this subset validates source shape, not full schema conformance.",
                               "Bounded serial write-mode subset; not full FCI-CI or FCO."]}
     governance = []
     for case in (GOVERNANCE_CASES if not args.governance_case else (args.governance_case,)):
@@ -649,6 +704,14 @@ def main() -> int:
         except Exception as error:
             report.update(result="FAIL", scenarios=summaries,
                           failure={"scenario": scenario, "type": type(error).__name__})
+            fixture._write(root / "installed-http-successor.public.json", report)
+            print(json.dumps(report, sort_keys=True))
+            return 1
+    if not args.scenario:
+        observed = [item["case"] for item in summaries[0]["producer_fixture_negatives"]]
+        if observed != report["required_producer_fixture_negatives"]:
+            report.update(result="FAIL", scenarios=summaries,
+                          failure={"type": "ProducerFixtureMatrixIncomplete"})
             fixture._write(root / "installed-http-successor.public.json", report)
             print(json.dumps(report, sort_keys=True))
             return 1

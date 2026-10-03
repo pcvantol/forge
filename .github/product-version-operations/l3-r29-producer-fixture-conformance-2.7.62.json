@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.61",
+  "classification_rationale": "forge-l3-r29-producer-fixture-conformance",
+  "component": "product",
+  "event_lineage": "forge-l3-r29-producer-fixture-conformance",
+  "expected_head": "8e80699355dfde28566f84c860e59e52c075d4ea",
+  "operation_id": "l3-r29-producer-fixture-conformance-2.7.62",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.62"
+}

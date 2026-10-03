@@ -97,6 +97,30 @@
         "complete FCI-CI qualification before FCO-FLOW",
         "live EP/provider and production Mission acceptance"
       ]
+    },
+    {
+      "assignment_id": "L3-FORGE-PRODUCER-FIXTURE-CONFORMANCE-V1-20261003",
+      "source_nodes": ["FCI-CONTRACT", "FCI-EP", "FCI-CI"],
+      "consumer": "installed Forge ordinary PR and protected-main CI qualification operator",
+      "entry": "captured serial-write EP HTTP submission and immutable producer readback",
+      "exit": "source-pinned independent pending/terminal fixture validation and rejection matrix before scenario PASS",
+      "evidence_register": "https://github.com/pcvantol/forge/issues/207#issuecomment-5967745470",
+      "qualification_entrypoint": "scripts/qualification/qualify_installed_http_successor.py",
+      "producer_repository": "pcvantol/engineering-platform",
+      "producer_revision": "5838f496538805c6012cbd6399217bc8b907102e",
+      "producer_serializer_sha256": "sha256:2c5c9e413179f1102034d042d89a2ffeb7b254cea176690cd73c8e4ee6f98a67",
+      "producer_schema_sha256": "sha256:2381647f1d35695c6d826b86ff52c294325f76aa984ae66984d722d696ff8c15",
+      "producer_readback_contract": "1.2",
+      "terminal_evidence_contract": "1.4",
+      "selected_effect_mode": "BOUNDED_REPOSITORY_CHANGE",
+      "full_node_completion": false,
+      "remaining_gates": [
+        "full-suite FCI-CONTRACT for all effect modes and FIE families",
+        "producer v1.2 readback schema/source disposition-field discrepancy remains EP-owned",
+        "FIE-10 supported correlation readback and recovery after ambiguous POST",
+        "complete FCI-CI qualification before FCO-FLOW",
+        "live EP/provider and production Mission acceptance"
+      ]
     }
   ],
   "wire_contracts": {

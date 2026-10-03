@@ -250,11 +250,12 @@ class EpSimulatorState:
                     "state": "QUEUED", "terminal": False, "execution_eligible": True,
                     "revision": 0, "operation_id": None, "event_reference": None,
                     "reason": "NOT_RECORDED", "actor_reference": "NOT_RECORDED", "recorded_at": None,
+                    "resolution_submission_id": None, "retry_parent_run_id": None,
                 },
                 "run": None,
-                "result": {"terminal": False, "outcome": None, "delivery_qualified": False},
+                "result": {"terminal": False, "outcome": "NOT_STARTED", "delivery_qualified": False},
                 "evidence": {
-                    "status": "PENDING",
+                    "status": "NOT_TERMINAL",
                     "repository": {"id": self.repository_id, "revision": None},
                     "terminal_artifact": None,
                 },
@@ -349,6 +350,13 @@ class EpSimulatorState:
                 "to": baseline,
                 "allowed_to": allowed,
             }
+            start_inventory_digest = "sha256:" + sha256(
+                ("inventory:start:" + submission_id).encode()
+            ).hexdigest()
+            checkout_identity_digest = "sha256:" + sha256(_canonical_bytes({
+                "target_branch": "main", "target_commit": baseline,
+                "inventory_digest": start_inventory_digest,
+            })).hexdigest()
             artifact_id = "terminal-evidence:" + item.run_id
             artifact_document: dict[str, Any] = {
                 "artifact_type": "EP_TERMINAL_EVIDENCE",
@@ -380,13 +388,9 @@ class EpSimulatorState:
                         "status": "AVAILABLE",
                         "target_branch": "main",
                         "target_commit": baseline,
-                        "checkout_identity_digest": "sha256:" + sha256(
-                            ("checkout:" + submission_id).encode()
-                        ).hexdigest(),
+                        "checkout_identity_digest": checkout_identity_digest,
                         "tracked_file_count": 1,
-                        "inventory_digest": "sha256:" + sha256(
-                            ("inventory:start:" + submission_id).encode()
-                        ).hexdigest(),
+                        "inventory_digest": start_inventory_digest,
                     },
                     "terminal": {
                         "status": "AVAILABLE",
@@ -399,6 +403,7 @@ class EpSimulatorState:
                         "activity": {"provider_invocations": 1, "host_validation_actions": 1},
                     },
                 },
+                "validation_controls": {"contract_version": "1.0", "status": "UNAVAILABLE"},
                 "repository": {
                     "id": self.repository_id,
                     "requested_revision": requested,
@@ -430,7 +435,7 @@ class EpSimulatorState:
                     "id": item.submission_id,
                     "project_id": self.project_id,
                     "repository_id": self.repository_id,
-                    "state": normalized_outcome,
+                    "state": "QUEUED",
                     "transport": "HTTP",
                     "admission": "ADMITTED",
                     "created_at": "2026-09-22T00:00:00+00:00",
@@ -440,15 +445,17 @@ class EpSimulatorState:
                 "correlation": artifact_document["correlation"],
                 "provenance": {"status": "PERSISTED", "forge_execution": dict(forge_execution)},
                 "disposition": {
-                    "state": normalized_outcome,
-                    "terminal": True,
-                    "execution_eligible": False,
-                    "revision": 1,
+                    "state": "QUEUED",
+                    "terminal": False,
+                    "execution_eligible": True,
+                    "revision": 0,
                     "operation_id": None,
                     "event_reference": None,
-                    "reason": "SIMULATED_TERMINAL",
-                    "actor_reference": "EP_SIMULATOR",
-                    "recorded_at": completed,
+                    "reason": "NOT_RECORDED",
+                    "actor_reference": "NOT_RECORDED",
+                    "recorded_at": None,
+                    "resolution_submission_id": None,
+                    "retry_parent_run_id": None,
                 },
                 "run": {
                     "id": item.run_id,
@@ -524,6 +531,11 @@ class EpSimulatorState:
     def submission_ids(self) -> tuple[str, ...]:
         with self._lock:
             return tuple(sorted(self._by_id))
+
+    def submitted_payload(self, submission_id: str) -> dict[str, Any]:
+        """Expose a copy of the accepted HTTP request to qualification only."""
+        with self._lock:
+            return json.loads(json.dumps(self._by_id[submission_id].payload))
 
     def terminal_documents(self, submission_id: str) -> tuple[dict[str, Any], bytes]:
         """Return copies for negative qualification without exposing request payloads."""
