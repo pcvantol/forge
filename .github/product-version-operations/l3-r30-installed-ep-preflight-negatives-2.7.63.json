@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.62",
+  "classification_rationale": "forge-l3-r30-installed-ep-preflight-negatives",
+  "component": "product",
+  "event_lineage": "forge-l3-r30-installed-ep-preflight-negatives",
+  "expected_head": "a2b40d546177397b647d7650fa10e21c8fe4e029",
+  "operation_id": "l3-r30-installed-ep-preflight-negatives-2.7.63",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.63"
+}

@@ -121,6 +121,40 @@
         "complete FCI-CI qualification before FCO-FLOW",
         "live EP/provider and production Mission acceptance"
       ]
+    },
+    {
+      "assignment_id": "L3-FORGE-INSTALLED-EP-PREFLIGHT-NEGATIVES-V1-20261003",
+      "source_nodes": ["FCI-EP", "FCI-NEGATIVE", "FCI-CI"],
+      "consumer": "installed Forge ordinary PR and protected-main CI qualification operator",
+      "entry": "public Candidate/governance/intake and persisted EP peer before Mission start",
+      "exit": "typed preflight denial across fresh processes with zero submission POST or EP acceptance",
+      "evidence_register": "https://github.com/pcvantol/forge/issues/207#issuecomment-5968465244",
+      "qualification_entrypoint": "scripts/qualification/qualify_installed_http_successor.py",
+      "selected_scenario": "FIE-08",
+      "producer_repository": "pcvantol/engineering-platform",
+      "producer_revision": "5838f496538805c6012cbd6399217bc8b907102e",
+      "producer_preflight_source_sha256": "sha256:948ab98fe5162b257c08528f3a3ee6004d46644a196ef94ab037c5277539489c",
+      "compatibility_declaration_contract": "1.1",
+      "producer_readback_contract": "1.2",
+      "terminal_evidence_contract": "1.4",
+      "selected_cases": [
+        "readback-absent", "readback-incompatible",
+        "terminal-absent", "terminal-incompatible",
+        "wrong-instance", "wrong-consumer", "wrong-project", "wrong-repository",
+        "inactive-consumer", "inactive-project", "repository-not-authority",
+        "repository-unbound", "scope-unauthorized",
+        "credential-missing", "credential-invalid", "http-401", "http-403",
+        "declaration-public-version", "declaration-missing-producer",
+        "declaration-missing-auth-field"
+      ],
+      "full_node_completion": false,
+      "remaining_gates": [
+        "full FCI-CONTRACT, FCI-CI and all required effect modes",
+        "producer v1.2 readback schema/source disposition-field discrepancy remains EP-owned",
+        "FIE-10 supported correlation readback and recovery after ambiguous POST",
+        "real Business and Architecture person-level authorization beyond synthetic CI roles",
+        "live EP/provider and production Mission acceptance"
+      ]
     }
   ],
   "wire_contracts": {

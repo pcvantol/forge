@@ -71,6 +71,25 @@ This gate follows the actual producer source shape and records that EP-owned
 schema inconsistency; it does not claim complete JSON-schema conformance or
 finish FCI-CONTRACT for other effect modes and FIE families.
 
+The bounded LANE_3 r30 FIE-08 subset keeps that same installed-wheel
+Candidate/governance/intake and persisted-peer/factory/HTTP/runtime route. It
+checks 20 adversarial preflight cases derived from EP
+`5838f496538805c6012cbd6399217bc8b907102e`: absent or incompatible
+readback/terminal contracts, instance and authenticated consumer/scope drift,
+missing or invalid credentials, real HTTP 401/403 and malformed declarations.
+Each rejected case persists the admitted zero-Action Mission without planning
+or execution bindings across two fresh-process attempts. The exact persisted
+peer document digest, revision and generation remain unchanged, so restart
+cannot silently retarget the selected EP peer. The listener counts
+all HTTP methods before auth/route rejection, so allowed preflight GETs remain
+distinct from zero submission POSTs and zero accepted submissions. The 13
+governance negatives, 28 producer-fixture negatives and four successful HTTP
+controls remain mandatory in the ordinary PR/main installed qualifier. This
+closes only the selected FCI-EP/FCI-NEGATIVE/FCI-CI preflight subset. Full
+FCI/FCO, FIE-10, the EP-owned v1.2 schema/source discrepancy, other effect
+modes and live EP/provider acceptance remain open. The historical full-suite
+terminal 1.3 pin is not a downgrade of this installed 1.4 boundary.
+
 ## Delivery DAG
 
 | Node | Deliverable | Hard dependencies |
