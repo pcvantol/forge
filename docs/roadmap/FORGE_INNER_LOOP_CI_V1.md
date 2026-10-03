@@ -58,7 +58,10 @@ and terminal EP simulator response before the installed HTTP scenario may pass.
 Its oracle lives in the installed Forge wheel and independently recomputes the
 EP accepted-request and canonical terminal-artifact digests. It pins EP source
 `5838f496538805c6012cbd6399217bc8b907102e`, the producer serializer,
-the v1.2 readback schema bytes and the v1.4 artifact contract; the ordinary
+the Execution Host evidence producer, the v1.2 readback schema bytes and the
+v1.4 artifact contract. The selected serial-write fixture gate binds the
+queued disposition, run timing, host snapshot, requested/baseline/delivery
+revisions and terminal report as well as the artifact digest; the ordinary
 PR/main qualification artifact reports the source, wheel, fixture identities
 and rejection cases. The simulator's pending status, immutable queued v1.2
 disposition and v1.4 validation-controls snapshot now follow that producer

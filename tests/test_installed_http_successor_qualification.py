@@ -54,10 +54,15 @@ class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
             repository_id="test-repository", submission_id=submission_id,
         )
         self.assertEqual(result["run_id"], "sim-run-0001")
-        self.assertEqual(len(rejection_matrix(
+        negatives = rejection_matrix(
             payload, readback, raw, project_id="test-project",
             repository_id="test-repository", submission_id=submission_id,
-        )), 14)
+        )
+        self.assertEqual(len(negatives), 28)
+        self.assertEqual({item["result"] for item in negatives}, {"REJECTED"})
+        self.assertTrue({"artifact-host-null", "queued-operation",
+                         "artifact-requested-revision", "artifact-delivery-revision"}
+                        <= {item["case"] for item in negatives})
         changed = deepcopy(readback)
         changed["provenance"]["forge_execution"]["contract_version"] = "wrong"
         with self.assertRaises(ProducerFixtureError):

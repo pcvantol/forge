@@ -350,6 +350,13 @@ class EpSimulatorState:
                 "to": baseline,
                 "allowed_to": allowed,
             }
+            start_inventory_digest = "sha256:" + sha256(
+                ("inventory:start:" + submission_id).encode()
+            ).hexdigest()
+            checkout_identity_digest = "sha256:" + sha256(_canonical_bytes({
+                "target_branch": "main", "target_commit": baseline,
+                "inventory_digest": start_inventory_digest,
+            })).hexdigest()
             artifact_id = "terminal-evidence:" + item.run_id
             artifact_document: dict[str, Any] = {
                 "artifact_type": "EP_TERMINAL_EVIDENCE",
@@ -381,13 +388,9 @@ class EpSimulatorState:
                         "status": "AVAILABLE",
                         "target_branch": "main",
                         "target_commit": baseline,
-                        "checkout_identity_digest": "sha256:" + sha256(
-                            ("checkout:" + submission_id).encode()
-                        ).hexdigest(),
+                        "checkout_identity_digest": checkout_identity_digest,
                         "tracked_file_count": 1,
-                        "inventory_digest": "sha256:" + sha256(
-                            ("inventory:start:" + submission_id).encode()
-                        ).hexdigest(),
+                        "inventory_digest": start_inventory_digest,
                     },
                     "terminal": {
                         "status": "AVAILABLE",
