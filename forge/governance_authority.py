@@ -328,4 +328,4 @@ class CanonicalArchitectureWorkspace:
             GovernanceDecision(decision_id, candidate_id, revision, GovernanceCapability.ARCHITECTURE_APPROVAL,
                                "approved", planning.scope, planning.human_gates,
                                evidence={"planning_digest": planning.digest}
-                               if planning.criterion_assessment_contracts else None), self.context)
+                               if planning.criterion_assessment_contracts or planning.mission_spec_digest else None), self.context)
