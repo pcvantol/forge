@@ -250,8 +250,8 @@ class InstalledDynamicMissionRuntime:
         """Use canonical Mission Intake without creating an Action."""
         if mission.status is not ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING:
             raise InstalledDynamicMissionError("public Mission admission requires Architecture approval")
-        if len(mission.scope) != 1:
-            raise InstalledDynamicMissionError("the serial installed Mission requires exactly one approved scope")
+        if len(mission.scope) != 1 and not mission.repository_evidence_sources:
+            raise InstalledDynamicMissionError("multi-repository Mission lacks approved per-target sources")
         state = MissionIntake(self.states, self.clock).admit_canonical_approved_mission(
             mission, envelope, self.repository,
         )
@@ -640,6 +640,8 @@ class InstalledDynamicMissionRuntime:
 
     def _approved_origin(self, state: MissionExecutionState) -> str:
         mission = ArchitectureMission.from_dict(dict(state.mission))
+        if len(mission.scope) != 1:
+            raise InstalledDynamicMissionError("serial execution cannot consume a multi-repository Mission")
         source = mission.repository_evidence_source
         if source is None or source.repository_id != self.host.config.repository_id:
             raise InstalledDynamicMissionError(

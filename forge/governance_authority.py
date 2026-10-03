@@ -201,6 +201,7 @@ class ArchitecturePlanningEvidence:
     maximum_actions: int | None = None
     maximum_consecutive_no_progress_actions: int | None = None
     repository_evidence_source: ApprovedRepositoryEvidenceSource | None = None
+    repository_evidence_sources: tuple[ApprovedRepositoryEvidenceSource, ...] = ()
     mission_spec_digest: str | None = None
 
     def __post_init__(self) -> None:
@@ -212,6 +213,15 @@ class ArchitecturePlanningEvidence:
             self.criterion_assessment_contracts, self.maximum_actions,
             self.maximum_consecutive_no_progress_actions, self.repository_evidence_source,
         ))
+        sources = self.repository_evidence_sources
+        if (not isinstance(sources, tuple)
+                or any(not isinstance(item, ApprovedRepositoryEvidenceSource) for item in sources)
+                or len({item.repository_id for item in sources}) != len(sources)
+                or (sources and {item.repository_id for item in sources} != set(self.scope))
+                or (sources and self.repository_evidence_source is not None
+                    and self.repository_evidence_source not in sources)):
+            raise ValueError("planning per-repository evidence sources must match exact scope")
+        object.__setattr__(self, "repository_evidence_sources", tuple(sorted(sources, key=lambda item: item.repository_id)))
         if self.mission_spec_digest is not None and (not isinstance(self.mission_spec_digest, str)
                 or len(self.mission_spec_digest) != 71 or not self.mission_spec_digest.startswith("sha256:")
                 or any(character not in "0123456789abcdef" for character in self.mission_spec_digest[7:])):
@@ -232,6 +242,10 @@ class ArchitecturePlanningEvidence:
             value.pop("repository_evidence_source")
         else:
             value["repository_evidence_source"] = self.repository_evidence_source.to_dict()
+        if not self.repository_evidence_sources:
+            value.pop("repository_evidence_sources")
+        else:
+            value["repository_evidence_sources"] = [item.to_dict() for item in self.repository_evidence_sources]
         if self.mission_spec_digest is None:
             value.pop("mission_spec_digest")
         return value
@@ -249,6 +263,8 @@ class ArchitecturePlanningEvidence:
                                                         for item in fields.get("criterion_assessment_contracts", ()))
         source = fields.get("repository_evidence_source")
         fields["repository_evidence_source"] = None if source is None else ApprovedRepositoryEvidenceSource.from_dict(source)
+        fields["repository_evidence_sources"] = tuple(ApprovedRepositoryEvidenceSource.from_dict(item)
+                                                       for item in fields.get("repository_evidence_sources", ()))
         return cls(**fields)
 
 

@@ -13,7 +13,7 @@ from pathlib import Path
 from forge.completion.host_control_observer import HostControlCriterionObserver
 from forge.completion.mission import MissionCompletionEvaluator
 from forge.governance_authority import ArchitecturePlanningEvidence
-from forge.mission_cli import inspect, _github_default_head, _require_ep_mission_capabilities, _verified_initial_truth
+from forge.mission_cli import inspect, approve, admit, status, _github_default_head, _require_ep_mission_capabilities, _verified_initial_truth
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.criterion_assessment import (
     ApprovedRepositoryEvidenceSource, CriterionAssessmentContract, CriterionEvidenceRequirement,
@@ -24,7 +24,9 @@ from forge.models.mission_completion import (
     MissionCriterionEvidenceBinding, RepositoryTruthReference, mission_criterion_id,
 )
 from forge.models.mission_recommendation import RequiredDiscipline
+from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
+from forge.runtime.bootstrap import RuntimeBootstrap
 from forge.state import MissionExecutionStatus
 
 
@@ -164,7 +166,7 @@ class HostControlCompletionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "merge delegation"):
                     inspect(str(path))
 
-    def test_inspect_rejects_multiple_scopes_before_admission(self):
+    def test_inspect_rejects_multi_scope_without_approved_per_target_sources(self):
         planning = ArchitecturePlanningEvidence(
             ("target", "other"), ("parser.py",), ("no unrelated work",), ("scope drift",),
             ("protected delivery",), ("ep",), 1000, 1000, "1",
@@ -178,8 +180,58 @@ class HostControlCompletionTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "mission.json"
             path.write_text(json.dumps(document), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "exactly one approved scope"):
+            with self.assertRaisesRegex(ValueError, "approved per-target sources"):
                 inspect(str(path))
+
+    def test_inspect_accepts_exact_approved_multi_repository_sources(self):
+        sources = (self.mission.repository_evidence_source,
+                   ApprovedRepositoryEvidenceSource("other", "example/other"))
+        mission = replace(self.mission, scope=("target", "other"),
+                          repository_evidence_sources=sources)
+        planning = ArchitecturePlanningEvidence(
+            mission.scope, ("parser.py",), ("no unrelated work",), ("scope drift",),
+            ("protected delivery",), ("ep",), 1000, 1000, "1",
+            criterion_assessment_contracts=mission.criterion_assessment_contracts,
+            maximum_actions=3, maximum_consecutive_no_progress_actions=1,
+            repository_evidence_source=mission.repository_evidence_source,
+            repository_evidence_sources=sources)
+        document = {"candidate_id": "candidate", "subject_revision": "1",
+                    "business_decision_id": "business", "architecture_decision_id": "architecture",
+                    "planning": planning.to_dict(), "mission": mission.to_dict()}
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "mission.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            self.assertEqual(inspect(str(path))["status"], "VALID")
+
+    def test_public_approved_multi_repository_mission_admits_without_execution(self):
+        sources = (self.mission.repository_evidence_source,
+                   ApprovedRepositoryEvidenceSource("other", "example/other"))
+        mission = replace(self.mission, scope=("target", "other"),
+                          repository_evidence_sources=sources)
+        planning = ArchitecturePlanningEvidence(
+            mission.scope, ("parser.py",), ("no unrelated work",), ("scope drift",),
+            ("protected delivery",), ("ep",), 1000, 1000, "1",
+            criterion_assessment_contracts=mission.criterion_assessment_contracts,
+            maximum_actions=3, maximum_consecutive_no_progress_actions=1,
+            repository_evidence_source=mission.repository_evidence_source,
+            repository_evidence_sources=sources)
+        document = {"candidate_id": "candidate", "subject_revision": "1",
+                    "business_decision_id": "business", "architecture_decision_id": "architecture",
+                    "planning": planning.to_dict(), "mission": mission.to_dict()}
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            data_root = root / "runtime"
+            identity = lambda: NamedOperatorIdentity("qualified-operator", 501)
+            with RuntimeBootstrap(data_root=data_root, forge_version="test").open() as database:
+                InstallationOperatorService(database, identity).first_bind()
+            path = root / "mission.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with patch("forge.mission_cli.MacOSGeneratedUIDIdentityAdapter.resolve", lambda _: identity()):
+                self.assertEqual(approve(str(data_root), str(path), "business")["status"], "RECORDED")
+                self.assertEqual(approve(str(data_root), str(path), "architecture")["status"], "RECORDED")
+                admitted = admit(str(data_root), str(path))
+            self.assertEqual(admitted["action_count"], 0)
+            self.assertEqual(status(str(data_root), admitted["mission_id"])["action_ids"], [])
 
     def test_inspect_enforces_ep_constraint_envelope_limits(self):
         planning = ArchitecturePlanningEvidence(

@@ -2472,6 +2472,41 @@ class RuntimeDatabase:
         except ActionIntentError as error:
             raise RuntimeDatabaseError(str(error)) from error
 
+    def verify_action_intent_target(self, mission_id: str, action_id: str) -> dict[str, Any]:
+        """Verify one Action through the configured EP bearer and current repository head."""
+        from forge.execution_host_configuration import (
+            EngineeringPlatformExecutionHostFactory, EngineeringPlatformPeerConfigurationStore,
+        )
+        from .action_authority import RepositoryAuthorityScope
+        from .action_intents import ActionIntentError, ActionIntentLedger
+
+        self._reject_reset_retired_identity("mission_id", mission_id)
+        config = EngineeringPlatformExecutionHostFactory().from_database(self).config
+        scope = RepositoryAuthorityScope(
+            base_url=config.base_url, bearer_token=config.bearer_token,
+            instance_id=config.expected_instance_id, project_id=config.project_id,
+            consumer_id=config.expected_consumer_id,
+            peer_binding_id=config.peer_binding_id,
+            peer_configuration_revision=config.peer_configuration_revision,
+            peer_configuration_digest=config.peer_configuration_digest,
+            allow_loopback_http=config.allow_loopback_http, timeout=config.timeout,
+        )
+        def require_current_peer() -> None:
+            selected = EngineeringPlatformPeerConfigurationStore(
+                self._connection, self.runtime_identity.runtime_id, writable=False,
+            ).load()
+            if (selected is None or selected.binding_id != scope.peer_binding_id
+                    or selected.configuration_revision != scope.peer_configuration_revision
+                    or selected.configuration_digest != scope.peer_configuration_digest):
+                raise ActionIntentError("selected EP peer changed during authority verification")
+
+        try:
+            return ActionIntentLedger(self._connection).verify(
+                mission_id, action_id, scope, assert_selected_peer=require_current_peer,
+            )
+        except ActionIntentError as error:
+            raise RuntimeDatabaseError(str(error)) from error
+
     def create_mission_state(self, state: Any) -> dict[str, Any]:
         """Create one Mission state without replacing an existing record."""
         document = _document(state, "mission state")
