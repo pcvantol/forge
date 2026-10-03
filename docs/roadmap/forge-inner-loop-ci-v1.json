@@ -50,6 +50,26 @@
         "complete FCI-CI qualification before FCO-FLOW",
         "live EP/provider and production Mission acceptance"
       ]
+    },
+    {
+      "assignment_id": "L3-FORGE-GOVERNED-CANDIDATE-INTAKE-V1-20261003",
+      "source_nodes": ["FCI-FLOW", "FCI-RESTART", "FCI-NEGATIVE", "FCI-CI"],
+      "consumer": "installed Forge release and PR qualification operator",
+      "entry": "isolated canonical Recommendation and mutable Candidate before approval",
+      "exit": "Candidate-bound Mission allocation and serial HTTP evidence-derived completion",
+      "evidence_register": "https://github.com/pcvantol/forge/issues/207#issuecomment-5966693340",
+      "qualification_entrypoint": "scripts/qualification/qualify_installed_http_successor.py",
+      "terminal_evidence_contract": "1.4",
+      "full_node_completion": false,
+      "remaining_gates": [
+        "real Business and Architecture actor authorization beyond synthetic CI roles",
+        "full-suite FCI-CONTRACT producer fixture refresh from terminal 1.3 to current 1.4",
+        "FIE-04 rejected-approval and complete authority matrix",
+        "FIE-10 supported correlation readback and recovery after ambiguous POST",
+        "all FIE-01..28 and required effect modes",
+        "complete FCI-CI qualification before FCO-FLOW",
+        "live EP/provider and production Mission acceptance"
+      ]
     }
   ],
   "wire_contracts": {

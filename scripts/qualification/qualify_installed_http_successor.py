@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import ExitStack
+from dataclasses import replace
 from hashlib import sha256
 from importlib.metadata import distribution
 import json
@@ -20,14 +21,17 @@ from unittest.mock import patch
 
 import forge
 import forge.runtime.dynamic_mission as composition
-from forge.architecture import ArchitectureWorkspace
-from forge.business import BusinessWorkspace
 from forge.ep_simulator import EpSimulatorScenario, EpSimulatorServer, EpSimulatorState, SIMULATOR_CONTRACT_VERSION
 from forge.execution_host_configuration import (
     EngineeringPlatformExecutionHostFactory, EngineeringPlatformPeerConfigurationService,
 )
-from forge.governance_authority import ArchitecturePlanningEvidence, MissionPlanningEvidenceEnvelope
+from forge.governance_authority import ArchitecturePlanningEvidence
+from forge.governance import resolve_governance_profile
+from forge.governed_candidate_intake import GovernedCandidateIntake, GovernedCandidateIntakeError
+from forge.lifecycle import (MissionCandidate, MissionRecommendation,
+                             RecommendationLifecycleStore, RecommendationStatus)
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.criterion_observation import canonical_digest
 from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService
 from forge.planner.codex_cli_session import (
@@ -116,38 +120,76 @@ def _prepare(root: Path, scenario: str, endpoint: str) -> None:
     )
     with ExitStack() as stack:
         runtime = _open(root, stack)
-        repository, context = runtime.repository, runtime.repository.operators.context()
         options = {"criterion_assessment_contracts": fixture._contracts(), "maximum_actions": 3,
                    "maximum_consecutive_no_progress_actions": 1,
                    "repository_evidence_source": fixture.SOURCE}
-        planning = ArchitecturePlanningEvidence(
-            ("synthetic-contract",), ("contracts",), ("no behavior claim",),
-            ("scope-drift",), ("protected-delivery",), (HOST,), 40000, 8000, "1", **options,
-        )
-        BusinessWorkspace.for_runtime(runtime.database, repository, context).approve(
-            decision_id="business", candidate_id="synthetic-candidate", revision="1",
-            scope=planning.scope, gates=planning.human_gates,
-        )
-        ArchitectureWorkspace.for_runtime(runtime.database, repository, context).approve(
-            decision_id="architecture", candidate_id="synthetic-candidate", revision="1", planning=planning,
-        )
-        envelope = MissionPlanningEvidenceEnvelope.compose(
-            repository, subject_id="synthetic-candidate", subject_revision="1",
-            business_decision_id="business", architecture_decision_id="architecture", planning=planning,
-        )
-        mission_id = runtime.database.allocate_next_mission_id(
-            source="canonical-governance-envelope:" + envelope.digest,
-            allocated_at="2026-09-18T10:00:00Z",
-        )
-        mission = ArchitectureMission(
-            mission_id, "synthetic-candidate", "Synthetic export contract",
-            "Publish two explicit JSON properties.", "Provide an inspectable contract.", "Inspectability.",
-            "architecture", "synthetic-recommendation", ("synthetic-contract",),
-            ("no behavior claim",), (fixture.K1, fixture.K2), ("external fixtures",),
-            (HOST,), ("contract",), (RequiredDiscipline.PLATFORM_ARCHITECTURE,),
-            ("scope-drift",), ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING, **options,
-        )
-        admitted = runtime.admit(mission, envelope)
+        with RecommendationLifecycleStore(root / "governance" / "lifecycle.sqlite") as lifecycle:
+            recommendation = MissionRecommendation(
+                "synthetic-recommendation", "Synthetic export contract", "qualification",
+                "Provide an inspectable contract.", "Publish two explicit JSON properties.",
+                "Inspectability.", "Two verified JSON properties.", "No behavior claim.",
+                ("repository:synthetic",), "architecture-review:synthetic",
+                ("external fixtures",), ("Defer this synthetic proof.",), 90,
+                "2026-09-18T09:59:00Z",
+            )
+            lifecycle.create_recommendation(recommendation, actor="synthetic-portfolio",
+                                            rationale="Isolated installed qualification.")
+            lifecycle.transition(recommendation.id, RecommendationStatus.RECOMMENDED,
+                                 actor="synthetic-portfolio", occurred_at="2026-09-18T09:59:01Z",
+                                 rationale="Candidate is ready for separate governance.")
+            candidate = lifecycle.create_candidate(MissionCandidate(
+                "synthetic-candidate", recommendation.id, recommendation.title,
+                recommendation.engineering_summary, ("synthetic-contract",),
+                (fixture.K1, fixture.K2), ("no behavior claim",), recommendation.dependencies,
+            ))
+            bridge = GovernedCandidateIntake(lifecycle, runtime, resolve_governance_profile("duo"))
+            revision, _, architecture_id = bridge.decision_ids(candidate.id)
+            mission_preview = ArchitectureMission(
+                "MISSION-PREVIEW", candidate.id, candidate.title, candidate.objective,
+                recommendation.business_summary, recommendation.business_value,
+                architecture_id, recommendation.id, candidate.scope,
+                candidate.architecture_constraints, candidate.acceptance_criteria,
+                ("external fixtures",), candidate.dependencies,
+                (HOST,), (RequiredDiscipline.PLATFORM_ARCHITECTURE,),
+                ("scope-drift",), ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING, **options,
+            )
+            planning = ArchitecturePlanningEvidence(
+                candidate.scope, ("contracts",), candidate.architecture_constraints,
+                ("scope-drift",), ("protected-delivery",), candidate.dependencies,
+                40000, 8000, revision, mission_spec_digest=canonical_digest(mission_preview.to_dict()),
+                **options,
+            )
+            rejected = []
+
+            def reject_unapproved(label: str, proposed: ArchitectureMission) -> None:
+                try:
+                    bridge.admit(candidate.id, proposed, planning,
+                                 occurred_at="2026-09-18T09:59:30Z")
+                except GovernedCandidateIntakeError:
+                    pass
+                else:
+                    raise RuntimeError(f"{label} unexpectedly allocated a Mission")
+                if (runtime.database._connection.execute(
+                        "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0]
+                        or runtime.database._connection.execute(
+                            "SELECT COUNT(*) FROM mission_state").fetchone()[0]):
+                    raise RuntimeError(f"{label} created a Mission before exact approval")
+                rejected.append(label)
+
+            reject_unapproved("missing-business", mission_preview)
+            bridge.approve_business(candidate.id, actor="business_owner",
+                                    occurred_at="2026-09-18T09:59:02Z", rationale="Business value approved.",
+                                    human_gates=planning.human_gates)
+            reject_unapproved("missing-architecture", mission_preview)
+            bridge.approve_architecture(candidate.id, mission_preview, planning,
+                                        actor="platform_architect", occurred_at="2026-09-18T09:59:03Z",
+                                        rationale="Exact technical contract approved.")
+            reject_unapproved("changed-objective", replace(
+                mission_preview, summary="Unapproved objective."))
+            fixture._write(root / "governance-negative.private.json", {"rejected": rejected})
+            admitted = bridge.admit(candidate.id, mission_preview, planning,
+                                    occurred_at="2026-09-18T10:00:00Z")
+        mission_id = admitted.mission_id
         assert not admitted.actions
         initial = RepositoryTruthSnapshot(
             "initial", fixture.SOURCE.repository_id, "0" * 40, "2026-09-18T09:59:00Z",
@@ -240,9 +282,12 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     })
     with EpSimulatorServer(simulator) as server:
         initial = _run_phase(root, scenario, "prepare", server.base_url, wheel)
+        governance_negative = fixture._read(root / "governance-negative.private.json")["rejected"]
+        assert governance_negative == ["missing-business", "missing-architecture", "changed-objective"]
         assert len(initial["actions"]) == len(simulator.submission_ids()) == 1
         if scenario == "ambiguous":
-            return _ambiguous_result(root, simulator, server.base_url, wheel, initial)
+            return {**_ambiguous_result(root, simulator, server.base_url, wheel, initial),
+                    "governance_rejections": governance_negative}
         a = simulator.submission_ids()[0]
         simulator.complete(a, delivery_revision="a" * 40)
         if scenario == "tampered":
@@ -295,6 +340,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     return {"scenario": scenario, "status": final["status"],
             "waiting_reason": final["waiting_reason"], "actions": len(final["actions"]),
             "submissions": len(simulator.submission_ids()), "forge_processes": len(processes),
+            "governance_rejections": governance_negative,
             "phase_statuses": {phase: fixture._read(root / f"{phase}.state.private.json")["status"]
                                for phase in phases},
             "planner_invocations": len(fixture._read(root / "provider-inputs.private.json"))}
@@ -329,7 +375,7 @@ def main() -> int:
               "source_revision": args.source_revision,
               "qualifier_sha256": "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest(),
               "ep_simulator_contract": SIMULATOR_CONTRACT_VERSION,
-              "limitations": ["Synthetic approvals and repository JSON, deterministic external Codex transport.",
+              "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
                               "No EP correlation readback; ambiguous POST fails closed without recovery.",
                               "Bounded serial write-mode subset; not full FCI-CI or FCO."]}

@@ -35,6 +35,22 @@ unlock FCO-FLOW's full FCI-CI dependency. The parent documentary fixture pin
 still says terminal evidence 1.3; full-suite FCI-CONTRACT must refresh that
 pin against the current 1.4 producer before a complete-suite claim.
 
+The bounded LANE_3 r27 Candidate-to-Intake extension starts with a real
+`RecommendationLifecycleStore` Candidate before either approval. The installed
+wheel records separate synthetic Business and Architecture decisions against
+the exact Candidate content and Mission specification, allocates through the
+canonical Runtime Instance, and admits a zero-Action Mission before reusing the
+r26 HTTP A-to-B completion scenarios. The qualifier rejects missing decisions
+and changed Mission content before allocation or EP submission; focused tests
+cover wrong profile role, stale Candidate content, foreign installation
+evidence and interrupted allocation/intake replay. The installed operator
+binding authenticates the local test Runtime; synthetic profile actor labels
+are not evidence of separate real people. This is a bounded FIE-01/04 subset,
+not completion of those families or any seven-node parent. Full FIE-04
+rejection/authority cases, FIE-10 recovery, other required effect modes,
+producer fixture refresh and live acceptance remain open in the
+[DAG](forge-inner-loop-ci-v1.json).
+
 ## Delivery DAG
 
 | Node | Deliverable | Hard dependencies |

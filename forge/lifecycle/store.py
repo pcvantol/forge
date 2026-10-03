@@ -269,11 +269,20 @@ class RecommendationLifecycleStore:
 
     def create_candidate(self, candidate: MissionCandidate) -> MissionCandidate:
         recommendation = self.get_recommendation(candidate.recommendation_id)
-        if recommendation.status is not RecommendationStatus.ARCHITECTURE_APPROVED:
-            raise LifecycleError("a candidate may enter allocation only after architecture approval")
+        if recommendation.status not in {RecommendationStatus.RECOMMENDED, RecommendationStatus.ARCHITECTURE_APPROVED}:
+            raise LifecycleError("a candidate requires a current recommendation or architecture approval")
         with self._connection:
             self._connection.execute("INSERT INTO candidates VALUES (?, ?, 0, ?)", (candidate.id, candidate.recommendation_id, _dump(candidate.to_dict())))
         return candidate
+
+    def get_candidate(self, candidate_id: str) -> MissionCandidate:
+        """Resolve an exact canonical Candidate without creating or approving it."""
+        row = self._connection.execute(
+            "SELECT document FROM candidates WHERE candidate_id = ?", (candidate_id,)
+        ).fetchone()
+        if row is None:
+            raise LifecycleError(f"unknown mission candidate: {candidate_id}")
+        return MissionCandidate.from_dict(json.loads(row["document"]))
 
     def update_candidate(self, candidate_id: str, **changes: object) -> MissionCandidate:
         row = self._connection.execute("SELECT frozen, document FROM candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
