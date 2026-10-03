@@ -62,6 +62,25 @@ class EpSimulatorTests(unittest.TestCase):
             events = [item["event"] for item in state.audit]
             self.assertIn("submission_accepted", events)
 
+    def test_accepted_post_lost_response_stays_ambiguous_without_resubmission(self) -> None:
+        state = self._state(EpSimulatorScenario(
+            name="accepted-response-lost",
+            connection_loss_at=frozenset({"submission-after-accept-once"}),
+        ))
+        with EpSimulatorServer(state) as server:
+            request = _request()
+            with self.assertRaises(ExecutionHostTemporaryUnavailable):
+                self._host(server).dispatch(request)
+            self.assertEqual(len(state.submission_ids()), 1)
+            self.assertIsNone(self._host(server).recover_dispatch(request))
+            with self.assertRaisesRegex(ValueError, "EP_SUBMISSION_OUTCOME_AMBIGUOUS"):
+                self._host(server).dispatch(request)
+            self.assertEqual(len(state.submission_ids()), 1)
+            self.assertEqual(
+                [item["event"] for item in state.audit],
+                ["submission_accepted", "submission_response_lost"],
+            )
+
     def test_success_terminal_evidence_round_trips_through_production_client(self) -> None:
         state = self._state()
         request = _request()

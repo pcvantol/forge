@@ -112,7 +112,18 @@ class EpSimulatorState:
         self._counter = 0
         self._by_key: dict[str, _Submission] = {}
         self._by_id: dict[str, _Submission] = {}
+        self._post_accept_response_lost = False
         self.audit: list[dict[str, Any]] = []
+
+    def lose_first_accepted_response(self, submission_id: str) -> bool:
+        """Model an accepted POST whose acknowledgement never reaches Forge."""
+        with self._lock:
+            if ("submission-after-accept-once" not in self.scenario.connection_loss_at
+                    or self._post_accept_response_lost):
+                return False
+            self._post_accept_response_lost = True
+            self.audit.append({"event": "submission_response_lost", "submission_id": submission_id})
+            return True
 
     def set_scenario(self, scenario: EpSimulatorScenario) -> None:
         with self._lock:
@@ -651,7 +662,11 @@ class EpSimulatorServer:
                     self._error(scenario.submission_http_status, "SUBMISSION_FAULT")
                     return
                 try:
-                    self._send_json(202, state_ref.accept(self._body()))
+                    accepted = state_ref.accept(self._body())
+                    if state_ref.lose_first_accepted_response(accepted["submission_id"]):
+                        self.close_connection = True
+                        return
+                    self._send_json(202, accepted)
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError):
                     self._error(409, "SUBMISSION_REJECTED")
 

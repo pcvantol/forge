@@ -31,6 +31,27 @@
     "DURABLE_STORAGE_AND_RECONCILIATION",
     "RECOVERY_AND_COMPLETION"
   ],
+  "bounded_subsets": [
+    {
+      "assignment_id": "L3-FORGE-INSTALLED-HTTP-SUCCESSOR-V1-20261003",
+      "source_nodes": ["FCI-HARNESS", "FCI-EP", "FCI-FLOW", "FCI-RESTART", "FCI-NEGATIVE", "FCI-CI"],
+      "consumer": "installed Forge release and PR qualification operator",
+      "entry": "isolated canonical approved zero-Action Mission",
+      "exit": "evidence-proven serial Mission completion after HTTP A-to-B successor",
+      "evidence_register": "https://github.com/pcvantol/forge/issues/207#issuecomment-5966241394",
+      "qualification_entrypoint": "scripts/qualification/qualify_installed_http_successor.py",
+      "terminal_evidence_contract": "1.4",
+      "full_node_completion": false,
+      "remaining_gates": [
+        "public Candidate-to-Mission lifecycle",
+        "full-suite FCI-CONTRACT producer fixture refresh from terminal 1.3 to current 1.4",
+        "FIE-10 supported correlation readback and recovery after ambiguous POST",
+        "all FIE-01..28 and required effect modes",
+        "complete FCI-CI qualification before FCO-FLOW",
+        "live EP/provider and production Mission acceptance"
+      ]
+    }
+  ],
   "wire_contracts": {
     "producer_readback": "1.2",
     "terminal_evidence": "1.3",
