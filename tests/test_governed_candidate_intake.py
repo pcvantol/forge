@@ -4,13 +4,14 @@ from dataclasses import replace
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event, Thread, current_thread
 import unittest
 from unittest.mock import patch
 
 from forge.governance import resolve_governance_profile
 from forge.governance_authority import ArchitecturePlanningEvidence, CanonicalGovernanceRepository
 from forge.governed_candidate_intake import GovernedCandidateIntake, GovernedCandidateIntakeError
-from forge.lifecycle import MissionCandidate, MissionRecommendation, RecommendationLifecycleStore, RecommendationStatus
+from forge.lifecycle import LifecycleError, MissionCandidate, MissionRecommendation, RecommendationLifecycleStore, RecommendationStatus
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.criterion_observation import canonical_digest
 from forge.models.mission_recommendation import RequiredDiscipline
@@ -177,6 +178,68 @@ class GovernedCandidateIntakeTests(unittest.TestCase):
             self.bridge.admit(self.candidate.id, preview, planning, occurred_at="now")
         self.assertEqual(self.database._connection.execute(
             "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0], 0)
+
+    def test_candidate_change_between_bridge_read_and_allocation_rejects_before_id(self) -> None:
+        preview, planning = self.approved_input()
+        self.approve(preview, planning)
+        original_allocate = self.lifecycle.allocate
+        with RecommendationLifecycleStore(self.root / "governance" / "lifecycle.sqlite") as competing:
+            def update_before_allocate(*args, **kwargs):
+                competing.update_candidate(self.candidate.id, objective="Changed between read and allocation.")
+                return original_allocate(*args, **kwargs)
+
+            with patch.object(self.lifecycle, "allocate", side_effect=update_before_allocate):
+                with self.assertRaisesRegex(LifecycleError, "Candidate content changed"):
+                    self.bridge.admit(self.candidate.id, preview, planning, occurred_at="now")
+        self.assertIsNone(self.lifecycle.allocation_for_recommendation(self.candidate.recommendation_id))
+        self.assertEqual(self.database._connection.execute(
+            "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0], 0)
+
+    def test_candidate_update_waiting_on_allocation_cannot_overwrite_frozen_row(self) -> None:
+        preview, planning = self.approved_input()
+        self.approve(preview, planning)
+        revision = canonical_digest(self.candidate.to_dict())
+        ready, start, read_unfrozen = Event(), Event(), Event()
+        outcomes: list[object] = []
+        original_from_dict = MissionCandidate.from_dict
+
+        def mark_candidate_read(document):
+            if current_thread().name == "candidate-updater":
+                read_unfrozen.set()
+            return original_from_dict(document)
+
+        def competing_update() -> None:
+            with RecommendationLifecycleStore(self.root / "governance" / "lifecycle.sqlite") as competing:
+                ready.set()
+                if not start.wait(5):
+                    outcomes.append(TimeoutError("allocation did not start"))
+                    return
+                try:
+                    competing.update_candidate(self.candidate.id, objective="Late competing update.")
+                    outcomes.append("updated")
+                except LifecycleError as error:
+                    outcomes.append(error)
+
+        worker = Thread(target=competing_update, name="candidate-updater")
+        with patch.object(MissionCandidate, "from_dict", side_effect=mark_candidate_read):
+            worker.start()
+            self.assertTrue(ready.wait(5))
+
+            def allocate_id(_source: str, _timestamp: str) -> str:
+                start.set()
+                read_unfrozen.wait(1)
+                return "MISSION-0001"
+
+            allocation = self.lifecycle.allocate(
+                self.candidate.id, actor="forge", occurred_at="now", rationale="Approved Candidate.",
+                allocate_mission_id=allocate_id, expected_candidate_digest=revision,
+            )
+            worker.join(5)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(allocation.mission_id, "MISSION-0001")
+        self.assertEqual(len(outcomes), 1)
+        self.assertIsInstance(outcomes[0], LifecycleError)
+        self.assertEqual(self.lifecycle.get_candidate(self.candidate.id), self.candidate)
 
     def test_foreign_installation_decision_cannot_allocate(self) -> None:
         preview, planning = self.approved_input()

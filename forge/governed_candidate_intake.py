@@ -136,6 +136,7 @@ class GovernedCandidateIntake:
                 allocate_mission_id=lambda _source, timestamp: self.runtime.database.allocate_next_mission_id(
                     source="canonical-governance-envelope:" + envelope.digest, allocated_at=timestamp),
                 installation_id=envelope.installation_id, envelope_digest=envelope.digest,
+                expected_candidate_digest=revision,
             )
         mission = replace(mission_preview, id=allocation.mission_id)
         if (allocation.candidate_id != candidate_id

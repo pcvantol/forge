@@ -295,49 +295,70 @@ class RecommendationLifecycleStore:
         return MissionCandidate.from_dict(json.loads(row["document"]))
 
     def update_candidate(self, candidate_id: str, **changes: object) -> MissionCandidate:
-        row = self._connection.execute("SELECT frozen, document FROM candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
-        if row is None:
-            raise LifecycleError(f"unknown mission candidate: {candidate_id}")
-        if row["frozen"]:
-            raise LifecycleError("allocated mission candidates are immutable")
-        candidate = MissionCandidate.from_dict(json.loads(row["document"]))
         allowed = {"title", "objective", "scope", "acceptance_criteria", "architecture_constraints", "dependencies"}
         if not changes or set(changes) - allowed:
             raise LifecycleError("candidate update contains an unsupported field")
-        updated = replace(candidate, **changes)
         with self._connection:
-            self._connection.execute("UPDATE candidates SET document = ? WHERE candidate_id = ?", (_dump(updated.to_dict()), candidate_id))
+            self._connection.execute("BEGIN IMMEDIATE")
+            row = self._connection.execute("SELECT frozen, document FROM candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
+            if row is None:
+                raise LifecycleError(f"unknown mission candidate: {candidate_id}")
+            if row["frozen"]:
+                raise LifecycleError("allocated mission candidates are immutable")
+            candidate = MissionCandidate.from_dict(json.loads(row["document"]))
+            updated = replace(candidate, **changes)
+            result = self._connection.execute(
+                "UPDATE candidates SET document = ? WHERE candidate_id = ? AND frozen = 0",
+                (_dump(updated.to_dict()), candidate_id),
+            )
+            if result.rowcount != 1:
+                raise LifecycleError("allocated mission candidates are immutable")
         return updated
 
     def allocate(self, candidate_id: str, *, actor: str, occurred_at: str, rationale: str,
                  allocate_mission_id: Callable[[str, str], str],
-                 installation_id: str | None = None, envelope_digest: str | None = None) -> MissionAllocation:
+                 installation_id: str | None = None, envelope_digest: str | None = None,
+                 expected_candidate_digest: str | None = None) -> MissionAllocation:
         if (installation_id is None) != (envelope_digest is None):
             raise LifecycleError("allocation installation and envelope must be bound together")
-        row = self._connection.execute("SELECT recommendation_id, frozen FROM candidates WHERE candidate_id = ?", (candidate_id,)).fetchone()
-        if row is None or row["frozen"]:
-            raise LifecycleError("candidate is unknown or already allocated")
-        recommendation = self.get_recommendation(row["recommendation_id"])
-        if recommendation.status is not RecommendationStatus.ARCHITECTURE_APPROVED:
-            raise LifecycleError("mission allocation requires recorded Business and Architecture approvals")
-        decisions = self._approval_evidence(recommendation.id)
-        if "business_decision" not in decisions or "architecture_decision" not in decisions:
-            raise LifecycleError("mission allocation requires immutable Business and Architecture Decision Evidence")
-        mission_id = allocate_mission_id(recommendation.id, occurred_at)
-        if not re.fullmatch(r"MISSION-\d{4,}", mission_id):
-            raise LifecycleError("allocator returned an invalid mission id")
-        binding = () if installation_id is None else (installation_id, envelope_digest)
-        evidence = self._evidence("mission_allocation", recommendation.id, occurred_at, actor, rationale,
-                                  (candidate_id, mission_id, decisions["business_decision"],
-                                   decisions["architecture_decision"], *binding))
-        allocation = MissionAllocation(recommendation.id, candidate_id, mission_id,
-                                       decisions["business_decision"], decisions["architecture_decision"],
-                                       evidence.id, occurred_at, installation_id, envelope_digest)
+        if (expected_candidate_digest is not None
+                and not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_candidate_digest)):
+            raise LifecycleError("expected Candidate digest is invalid")
         with self._connection:
+            self._connection.execute("BEGIN IMMEDIATE")
+            row = self._connection.execute(
+                "SELECT recommendation_id, frozen, document FROM candidates WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+            if row is None or row["frozen"]:
+                raise LifecycleError("candidate is unknown or already allocated")
+            candidate_digest = "sha256:" + sha256(_dump(json.loads(row["document"])).encode()).hexdigest()
+            if expected_candidate_digest is not None and candidate_digest != expected_candidate_digest:
+                raise LifecycleError("Candidate content changed before allocation")
+            recommendation = self.get_recommendation(row["recommendation_id"])
+            if recommendation.status is not RecommendationStatus.ARCHITECTURE_APPROVED:
+                raise LifecycleError("mission allocation requires recorded Business and Architecture approvals")
+            decisions = self._approval_evidence(recommendation.id)
+            if "business_decision" not in decisions or "architecture_decision" not in decisions:
+                raise LifecycleError("mission allocation requires immutable Business and Architecture Decision Evidence")
+            mission_id = allocate_mission_id(recommendation.id, occurred_at)
+            if not re.fullmatch(r"MISSION-\d{4,}", mission_id):
+                raise LifecycleError("allocator returned an invalid mission id")
+            binding = () if installation_id is None else (installation_id, envelope_digest)
+            evidence = self._evidence("mission_allocation", recommendation.id, occurred_at, actor, rationale,
+                                      (candidate_id, mission_id, decisions["business_decision"],
+                                       decisions["architecture_decision"], *binding))
+            allocation = MissionAllocation(recommendation.id, candidate_id, mission_id,
+                                           decisions["business_decision"], decisions["architecture_decision"],
+                                           evidence.id, occurred_at, installation_id, envelope_digest)
             self._append_evidence(evidence)
             self._connection.execute("INSERT INTO transitions(recommendation_id, from_status, to_status, evidence_id) VALUES (?, ?, ?, ?)", (recommendation.id, recommendation.status.value, RecommendationStatus.MISSION_ALLOCATED.value, evidence.id))
             self._connection.execute("INSERT INTO allocations VALUES (?, ?, ?, ?)", (recommendation.id, candidate_id, mission_id, _dump(allocation.to_dict())))
-            self._connection.execute("UPDATE candidates SET frozen = 1 WHERE candidate_id = ?", (candidate_id,))
+            result = self._connection.execute(
+                "UPDATE candidates SET frozen = 1 WHERE candidate_id = ? AND frozen = 0", (candidate_id,)
+            )
+            if result.rowcount != 1:
+                raise LifecycleError("candidate changed before allocation")
         return allocation
 
     def record_completion(self, mission_id: str, *, actor: str, occurred_at: str, rationale: str, references: tuple[str, ...]) -> LifecycleDecisionEvidence:

@@ -36,6 +36,11 @@ Decision Evidence with actor, time, rationale, and resolved references.
 Candidate content is mutable only while unallocated. Allocation freezes the
 candidate and creates an immutable record connecting the recommendation,
 candidate, both approval records, Mission ID, and allocation evidence.
+The installed bridge passes its approved Candidate content digest into an
+immediate lifecycle write transaction. The stored digest is checked before
+the Mission ID allocator runs; Candidate updates and the frozen transition
+share the same write lock, so a competing update cannot replace approved
+content during or after allocation.
 The installed Candidate-to-Intake bridge additionally pins that allocation to
 the originating installation identity and exact canonical approval envelope
 digest. A resumed Intake checks both bindings before requesting a Runtime
