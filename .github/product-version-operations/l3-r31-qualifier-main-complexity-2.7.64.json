@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.63",
+  "classification_rationale": "codex/l3-r31-qualifier-main-complexity",
+  "component": "product",
+  "event_lineage": "codex/l3-r31-qualifier-main-complexity",
+  "expected_head": "f58d3acf9256444543cf8c0f935d3436550a125f",
+  "operation_id": "l3-r31-qualifier-main-complexity-2.7.64",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.64"
+}
