@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import ExitStack
+from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
 from importlib.metadata import distribution
@@ -58,6 +59,39 @@ CONSUMER = "isolated-forge-consumer"
 PROJECT = "isolated-project"
 HOST = "synthetic-host"
 SCENARIOS = ("partial", "single", "tampered", "ambiguous")
+# These are adversarial EP-boundary fixtures, not Forge preflight stubs.  The
+# expected reasons are the product adapter/factory's stable, secret-free errors.
+PREFLIGHT_CASES = {
+    "readback-absent": "EP_CAPABILITY_DECLARATION_MALFORMED",
+    "readback-incompatible": "EP_READBACK_CONTRACT_INCOMPATIBLE",
+    "terminal-absent": "EP_CAPABILITY_DECLARATION_MALFORMED",
+    "terminal-incompatible": "EP_TERMINAL_CONTRACT_INCOMPATIBLE",
+    "wrong-instance": "EP_INSTANCE_IDENTITY_MISMATCH",
+    "wrong-consumer": "EP_AUTHENTICATED_CONSUMER_IDENTITY_MISMATCH",
+    "wrong-project": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
+    "wrong-repository": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
+    "inactive-consumer": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
+    "inactive-project": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
+    "repository-not-authority": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
+    "repository-unbound": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
+    "scope-unauthorized": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
+    "credential-missing": "EP credential reference is not resolvable: MISSING",
+    "credential-invalid": "EP rejected request: 401",
+    "http-401": "EP rejected request: 401",
+    "http-403": "EP rejected request: 403",
+    "declaration-public-version": "EP_CAPABILITY_DECLARATION_MALFORMED",
+    "declaration-missing-producer": "EP_CAPABILITY_DECLARATION_MALFORMED",
+    "declaration-missing-auth-field": "EP_CAPABILITY_DECLARATION_MALFORMED",
+}
+EP_PREFLIGHT_SOURCE = {
+    "repository": "pcvantol/engineering-platform",
+    "revision": "5838f496538805c6012cbd6399217bc8b907102e",
+    "path": "src/engineering_platform/server.py",
+    "sha256": "sha256:948ab98fe5162b257c08528f3a3ee6004d46644a196ef94ab037c5277539489c",
+    "declaration_contract": "1.1",
+    "producer_readback_contract": "1.2",
+    "terminal_evidence_contract": "1.4",
+}
 GOVERNANCE_CASES = (
     "candidate-alone", "missing-business", "missing-architecture",
     "rejected-business", "rejected-architecture",
@@ -71,6 +105,18 @@ class _SyntheticCredentialResolver:
     def resolve(self, reference: SecretReference) -> tuple[SecretState, str | None]:
         assert reference.serialized == "keychain://synthetic/ep"
         return SecretState.RESOLVABLE, TOKEN
+
+
+class _PreflightCredentialResolver(_SyntheticCredentialResolver):
+    def __init__(self, case: str) -> None:
+        self.case = case
+
+    def resolve(self, reference: SecretReference) -> tuple[SecretState, str | None]:
+        if self.case == "credential-missing":
+            return SecretState.MISSING, None
+        if self.case == "credential-invalid":
+            return SecretState.RESOLVABLE, "invalid-isolated-token"
+        return super().resolve(reference)
 
 
 def _installed_wheel(wheel: Path) -> dict[str, str]:
@@ -90,7 +136,8 @@ def _installed_wheel(wheel: Path) -> dict[str, str]:
     return {"version": installed.version, "wheel_sha256": "sha256:" + digest}
 
 
-def _open(root: Path, stack: ExitStack) -> InstalledDynamicMissionRuntime:
+def _open(root: Path, stack: ExitStack, *,
+          credential_case: str = "") -> InstalledDynamicMissionRuntime:
     transport = fixture._CodexTransport(root)
     checker = CodexCliSessionReadinessChecker(runner=transport, path_usable=lambda _: True)
     stack.enter_context(patch.object(composition.MacOSGeneratedUIDIdentityAdapter, "resolve",
@@ -100,7 +147,8 @@ def _open(root: Path, stack: ExitStack) -> InstalledDynamicMissionRuntime:
             configuration, runner=transport, readiness_checker=checker)))
     # The actual persisted-binding factory and HTTP adapter remain production code.
     stack.enter_context(patch.object(composition, "EngineeringPlatformExecutionHostFactory",
-                                     lambda: EngineeringPlatformExecutionHostFactory(_SyntheticCredentialResolver())))
+                                     lambda: EngineeringPlatformExecutionHostFactory(
+                                         _PreflightCredentialResolver(credential_case))))
     stack.enter_context(patch("forge.completion.repository_observer.GitHubRepositoryArtifactReader.read",
         side_effect=lambda repository, revision, path: fixture._raw_reader(root, repository, revision, path)))
     return stack.enter_context(InstalledDynamicMissionRuntime.open(str(root / "runtime"), provider_id=fixture.PROVIDER))
@@ -176,7 +224,16 @@ def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
     return candidate, bridge, mission_preview, planning
 
 
-def _prepare(root: Path, scenario: str, endpoint: str) -> None:
+def _initial_truth() -> RepositoryTruthSnapshot:
+    return RepositoryTruthSnapshot(
+        "initial", fixture.SOURCE.repository_id, "0" * 40, "2026-09-18T09:59:00Z",
+        (RepositoryTruthEvidence("initial-revision", "git_commit", "0" * 40,
+            "repository://synthetic/initial", fixture._digest("initial")),),
+    )
+
+
+def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
+             capture_phase: str = "prepare") -> None:
     _configure(root, endpoint)
     with ExitStack() as stack:
         runtime = _open(root, stack)
@@ -215,17 +272,16 @@ def _prepare(root: Path, scenario: str, endpoint: str) -> None:
                                     occurred_at="2026-09-18T10:00:00Z")
         mission_id = admitted.mission_id
         assert not admitted.actions
-        initial = RepositoryTruthSnapshot(
-            "initial", fixture.SOURCE.repository_id, "0" * 40, "2026-09-18T09:59:00Z",
-            (RepositoryTruthEvidence("initial-revision", "git_commit", "0" * 40,
-                "repository://synthetic/initial", fixture._digest("initial")),),
-        )
-        runtime.start(mission_id, initial)
+        if start:
+            runtime.start(mission_id, _initial_truth())
         fixture._write(root / "population.private.json", {
             "mission_id": mission_id, "scenario": scenario,
             "runtime_id": runtime.database.runtime_identity.runtime_id,
         })
-        _capture(root, runtime, "prepare")
+        _capture(root, runtime, capture_phase)
+        if capture_phase == "preflight-stage":
+            fixture._write(root / f"{capture_phase}.peer.private.json",
+                           _peer_binding_snapshot(runtime))
 
 
 def _approve_business(bridge: GovernedCandidateIntake, candidate: MissionCandidate,
@@ -420,14 +476,207 @@ def _count_ep_http_requests(server: EpSimulatorServer) -> list[str]:
         def parse_request(self) -> bool:
             parsed = super().parse_request()
             if parsed:
-                # Observe every HTTP method before route/auth checks; the simulator
+                # Observe every HTTP path and method before route/auth checks; the simulator
                 # audit only records accepted submissions and misses negative traffic.
                 with request_lock:
-                    requests.append(self.command)
+                    requests.append(f"{self.command} {self.path}")
             return parsed
 
     server.server.RequestHandlerClass = CountingHandler
     return requests
+
+
+_REMOVE = object()
+_DECLARATION_CHANGES = {
+    "readback-absent": (("contracts", "producer_readback"), _REMOVE),
+    "readback-incompatible": (("contracts", "producer_readback"), ["1.3"]),
+    "terminal-absent": (("contracts", "terminal_evidence"), _REMOVE),
+    "terminal-incompatible": (("contracts", "terminal_evidence"), ["1.3"]),
+    "inactive-consumer": (("authentication", "consumer_status"), "INACTIVE"),
+    "inactive-project": (("authentication", "project_status"), "INACTIVE"),
+    "repository-not-authority": (("authentication", "repository_role"), "observer"),
+    "repository-unbound": (("authentication", "local_repository_binding"), "UNBOUND"),
+    "scope-unauthorized": (("authentication", "submission_authorization"), "DENIED"),
+    "declaration-public-version": (("contract_version",), "1.0"),
+    "declaration-missing-producer": (("producer",), _REMOVE),
+    "declaration-missing-auth-field": (("authentication", "consumer_status"), _REMOVE),
+}
+
+
+def _preflight_fixture(case: str) -> tuple[EpSimulatorState, dict | None]:
+    """Change only the external EP declaration or HTTP/identity fixture."""
+    identities = {
+        "wrong-instance": {"instance_id": "foreign-ep-instance"},
+        "wrong-consumer": {"consumer_id": "foreign-consumer"},
+        "wrong-project": {"project_id": "foreign-project"},
+        "wrong-repository": {"repository_id": "foreign-repository"},
+    }
+    http_status = {"http-401": 401, "http-403": 403}.get(case)
+    scenario = (EpSimulatorScenario(preflight_http_status=http_status)
+                if http_status is not None else None)
+    settings = {
+        "project_id": PROJECT, "repository_id": fixture.SOURCE.repository_id,
+        "repository_identity": fixture.SOURCE.github_repository, "consumer_id": CONSUMER,
+        "instance_id": INSTANCE, "bearer_token": TOKEN, "scenario": scenario,
+    }
+    settings.update(identities.get(case, {}))
+    state = EpSimulatorState(**settings)
+    change = _DECLARATION_CHANGES.get(case)
+    if change is None:
+        return state, None
+    declaration = deepcopy(state.compatibility())
+    path, replacement = change
+    target = declaration
+    for segment in path[:-1]:
+        target = target[segment]
+    if replacement is _REMOVE:
+        del target[path[-1]]
+    else:
+        target[path[-1]] = replacement
+    return state, declaration
+
+
+def _peer_binding_snapshot(runtime: InstalledDynamicMissionRuntime) -> dict:
+    """Read the exact selected peer and generation without exposing its document."""
+    connection = runtime.database._connection
+    binding = connection.execute(
+        "SELECT binding_id,configuration_revision,configuration_digest,document "
+        "FROM execution_host_peer_configuration WHERE singleton=1"
+    ).fetchone()
+    generation = connection.execute(
+        "SELECT generation,last_digest FROM execution_host_peer_generation WHERE singleton=1"
+    ).fetchone()
+    if binding is None or generation is None:
+        raise RuntimeError("preflight qualification lost the selected EP peer")
+    return {
+        "binding_id": binding[0], "configuration_revision": binding[1],
+        "configuration_digest": binding[2],
+        "document_sha256": "sha256:" + sha256(binding[3].encode()).hexdigest(),
+        "generation": generation[0], "generation_last_digest": generation[1],
+        "detach_operations": connection.execute(
+            "SELECT COUNT(*) FROM execution_host_peer_detach_operations"
+        ).fetchone()[0],
+    }
+
+
+def _preflight_phase(root: Path, case: str, phase: str, endpoint: str) -> None:
+    if phase == "preflight-stage":
+        _prepare(root, case, endpoint, start=False, capture_phase=phase)
+        return
+    mission_id = fixture._read(root / "population.private.json")["mission_id"]
+    expected_reason = PREFLIGHT_CASES[case]
+    expected_type = "PeerConfigurationError" if case == "credential-missing" else "ValueError"
+    try:
+        with ExitStack() as stack:
+            runtime = _open(root, stack, credential_case=case)
+            runtime.start(mission_id, _initial_truth())
+    except Exception as error:
+        if type(error).__name__ != expected_type or str(error) != expected_reason:
+            raise RuntimeError(f"{case} failed at the wrong product gate") from error
+        observed_type, observed_reason = type(error).__name__, str(error)
+    else:
+        raise RuntimeError(f"{case} unexpectedly started a Mission")
+    # Observation reopens the canonical store with a valid synthetic resolver,
+    # but performs no preflight, planner call, retarget or submission.
+    with ExitStack() as stack:
+        runtime = _open(root, stack)
+        state = _capture(root, runtime, phase)
+        fixture._write(root / f"{phase}.peer.private.json",
+                       _peer_binding_snapshot(runtime))
+        connection = runtime.database._connection
+        counts = {
+            "mission_allocations": connection.execute(
+                "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0],
+            "admitted_missions": connection.execute(
+                "SELECT COUNT(*) FROM mission_state").fetchone()[0],
+            "execution_bindings": connection.execute(
+                "SELECT COUNT(*) FROM execution_host_bindings").fetchone()[0],
+            "exchange_audit": connection.execute(
+                "SELECT COUNT(*) FROM execution_host_exchange_audit").fetchone()[0],
+            "planner_invocations": len(fixture._read(root / "provider-inputs.private.json", [])),
+        }
+    fixture._write(root / f"{phase}.preflight.private.json", {
+        "pid": os.getpid(), "reason": observed_reason, "type": observed_type,
+        "status": state["status"], "counts": counts,
+    })
+
+
+def _run_preflight_phase(root: Path, case: str, phase: str,
+                         endpoint: str, wheel: Path) -> dict:
+    command = [sys.executable, "-I", str(Path(__file__).resolve()),
+               "--wheel", str(wheel), "--output-dir", str(root),
+               "--preflight-case", case, "--phase", phase, "--endpoint", endpoint]
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90)
+    (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
+    if result.returncode:
+        raise RuntimeError(f"installed preflight {case}/{phase} failed; see private phase log")
+    if phase == "preflight-stage":
+        return fixture._read(root / f"{phase}.state.private.json")
+    return fixture._read(root / f"{phase}.preflight.private.json")
+
+
+def _preflight_case(root: Path, case: str, wheel: Path) -> dict:
+    root.mkdir(parents=True)
+    simulator, declaration = _preflight_fixture(case)
+    fixture_identity = {
+        "declaration": declaration if declaration is not None else simulator.compatibility(),
+        "instance_id": simulator.instance_id, "consumer_id": simulator.consumer_id,
+        "project_id": simulator.project_id, "repository_id": simulator.repository_id,
+        "preflight_http_status": simulator.scenario.preflight_http_status,
+        "credential_mode": ("missing" if case == "credential-missing" else
+                            "invalid" if case == "credential-invalid" else "valid"),
+    }
+    fixture_digest = "sha256:" + sha256(json.dumps(
+        fixture_identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode()).hexdigest()
+    server = EpSimulatorServer(simulator)
+    requests = _count_ep_http_requests(server)
+    with ExitStack() as stack:
+        if declaration is not None:
+            stack.enter_context(patch.object(simulator, "compatibility",
+                                             return_value=declaration))
+        stack.enter_context(server)
+        staged = _run_preflight_phase(root, case, "preflight-stage", server.base_url, wheel)
+        first = _run_preflight_phase(root, case, "preflight-first", server.base_url, wheel)
+        repeat = _run_preflight_phase(root, case, "preflight-repeat", server.base_url, wheel)
+    states = [fixture._read(root / f"{phase}.state.private.json") for phase in (
+        "preflight-stage", "preflight-first", "preflight-repeat")]
+    processes = [fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in (
+        "preflight-stage", "preflight-first", "preflight-repeat")]
+    peers = [fixture._read(root / f"{phase}.peer.private.json") for phase in (
+        "preflight-stage", "preflight-first", "preflight-repeat")]
+    if len(set(processes)) != 3 or states != [staged] * 3:
+        raise RuntimeError(f"{case} changed durable Mission state or reused a Forge process")
+    if (peers != [peers[0]] * 3 or peers[0]["binding_id"] != "isolated-ep-peer"
+            or peers[0]["configuration_revision"] != 1
+            or peers[0]["generation"] != 1 or peers[0]["detach_operations"] != 0):
+        raise RuntimeError(f"{case} retargeted or detached the selected EP peer")
+    if (staged["status"] != "APPROVED_PLANNABLE" or staged["actions"] or staged["intents"]
+            or staged["execution_correlation"] is not None):
+        raise RuntimeError(f"{case} crossed the Action or execution gate")
+    expected_gets = 0 if case == "credential-missing" else 2
+    if (requests != ["GET /v1/producer-compatibility"] * expected_gets
+            or simulator.submission_ids() or simulator.audit):
+        raise RuntimeError(f"{case} made unexpected listener traffic or EP submission")
+    expected_counts = {
+        "mission_allocations": 1, "admitted_missions": 1,
+        "execution_bindings": 0, "exchange_audit": 0, "planner_invocations": 0,
+    }
+    if (first["counts"] != repeat["counts"] or first["counts"] != expected_counts
+            or any(first[key] != repeat[key] for key in ("reason", "type", "status"))
+            or first["reason"] != PREFLIGHT_CASES[case]):
+        raise RuntimeError(f"{case} changed its denial or durable counters on restart")
+    return {
+        "case": case, "result": "REJECTED", "reason": first["reason"],
+        "error_type": first["type"], "fixture_sha256": fixture_digest,
+        "durable_status": staged["status"],
+        "peer_binding_unchanged": True,
+        "peer_configuration_digest": peers[0]["configuration_digest"],
+        "forge_processes": len(processes), "preflight_gets": len(requests),
+        "submission_posts": sum(request.startswith("POST ") for request in requests),
+        "ep_accepted_submissions": len(simulator.submission_ids()),
+        "counts": first["counts"],
+    }
 
 
 def _governance_case(root: Path, case: str, wheel: Path) -> dict:
@@ -623,8 +872,10 @@ def main() -> int:
     parser.add_argument("--source-revision")
     parser.add_argument("--scenario", choices=SCENARIOS)
     parser.add_argument("--governance-case", choices=GOVERNANCE_CASES)
+    parser.add_argument("--preflight-case", choices=tuple(PREFLIGHT_CASES))
     parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b", "readback",
-                                            "ambiguous-replay", "governance-first", "governance-repeat"))
+                                            "ambiguous-replay", "governance-first", "governance-repeat",
+                                            "preflight-stage", "preflight-first", "preflight-repeat"))
     parser.add_argument("--endpoint")
     args = parser.parse_args()
     if args.source_revision is not None and (
@@ -634,19 +885,24 @@ def main() -> int:
     artifact = _installed_wheel(args.wheel.resolve())
     root = args.output_dir.resolve()
     if args.phase:
+        if args.phase.startswith("preflight-"):
+            if not args.preflight_case or not args.endpoint or args.scenario or args.governance_case:
+                parser.error("preflight child phase requires case and loopback endpoint")
+            _preflight_phase(root, args.preflight_case, args.phase, args.endpoint)
+            return 0
         if args.phase.startswith("governance-"):
-            if not args.governance_case or not args.endpoint or args.scenario:
+            if not args.governance_case or not args.endpoint or args.scenario or args.preflight_case:
                 parser.error("governance child phase requires case and loopback endpoint")
             _governance_phase(root, args.governance_case, args.phase, args.endpoint)
             return 0
-        if not args.scenario or not args.endpoint or args.governance_case:
+        if not args.scenario or not args.endpoint or args.governance_case or args.preflight_case:
             parser.error("child phase requires scenario and loopback endpoint")
         _phase(root, args.scenario, args.phase, args.endpoint)
         return 0
     if root.exists() and any(root.iterdir()):
         raise RuntimeError("qualification output directory must be fresh")
-    if args.governance_case and args.scenario:
-        parser.error("focused governance and HTTP scenario filters cannot be combined")
+    if sum(bool(value) for value in (args.governance_case, args.scenario, args.preflight_case)) > 1:
+        parser.error("focused qualification filters cannot be combined")
     root.mkdir(parents=True, exist_ok=True)
     try:
         producer_source = source_receipt()
@@ -662,6 +918,7 @@ def main() -> int:
               "source_revision": args.source_revision,
               "qualifier_sha256": "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest(),
               "producer_fixture_source": producer_source,
+              "ep_preflight_source": EP_PREFLIGHT_SOURCE,
               "required_producer_fixture_negatives": [
                   "missing-provenance", "changed-provenance", "wrong-version", "changed-digest",
                   "foreign-project", "foreign-repository", "foreign-submission", "foreign-run",
@@ -674,6 +931,7 @@ def main() -> int:
                   "artifact-delivery-revision", "artifact-baseline-transition", "artifact-report-id",
               ],
               "ep_simulator_contract": SIMULATOR_CONTRACT_VERSION,
+              "required_preflight_cases": list(PREFLIGHT_CASES),
               "required_governance_cases": list(GOVERNANCE_CASES),
               "required_http_scenarios": list(SCENARIOS),
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
@@ -681,8 +939,34 @@ def main() -> int:
                               "No EP correlation readback; ambiguous POST fails closed without recovery.",
                               "EP producer v1.2 schema omits two retry-resolution fields emitted by its source; this subset validates source shape, not full schema conformance.",
                               "Bounded serial write-mode subset; not full FCI-CI or FCO."]}
+    preflight_cases = ()
+    if args.preflight_case:
+        preflight_cases = (args.preflight_case,)
+    elif not args.governance_case and not args.scenario:
+        preflight_cases = PREFLIGHT_CASES
+    preflight = []
+    for case in preflight_cases:
+        try:
+            preflight.append(_preflight_case(root / "preflight-matrix" / case, case, args.wheel.resolve()))
+        except Exception as error:
+            report.update(result="FAIL", preflight_matrix=preflight,
+                          failure={"preflight_case": case, "type": type(error).__name__})
+            fixture._write(root / "installed-http-successor.public.json", report)
+            print(json.dumps(report, sort_keys=True))
+            return 1
+    report["preflight_matrix"] = preflight
+    if args.preflight_case:
+        report["result"] = "FOCUSED_PASS"
+        fixture._write(root / "installed-http-successor.public.json", report)
+        print(json.dumps(report, sort_keys=True))
+        return 0
+    governance_cases = ()
+    if args.governance_case:
+        governance_cases = (args.governance_case,)
+    elif not args.scenario:
+        governance_cases = GOVERNANCE_CASES
     governance = []
-    for case in (GOVERNANCE_CASES if not args.governance_case else (args.governance_case,)):
+    for case in governance_cases:
         try:
             governance.append(_governance_case(root / "governance-matrix" / case, case, args.wheel.resolve()))
         except Exception as error:

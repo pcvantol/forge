@@ -95,6 +95,8 @@ class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
                         urlopen(request, timeout=5)
                     self.assertEqual(error.exception.code, 401)
                     error.exception.close()
-        self.assertEqual(requests, ["GET", "POST"])
+        self.assertEqual(requests, [
+            "GET /v1/producer-compatibility", "POST /v1/producer-compatibility",
+        ])
         self.assertEqual(state.audit, [])
         self.assertEqual(state.submission_ids(), ())
