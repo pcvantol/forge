@@ -363,7 +363,9 @@ class InstalledDynamicMissionRuntime:
             )
         return self._result(updated)
 
-    def derive_two_repository_actions(self, mission_id: str) -> DynamicMissionRunResult:
+    def derive_two_repository_actions(
+        self, mission_id: str, *, ep_repository_ids: Mapping[str, str] | None = None,
+    ) -> DynamicMissionRunResult:
         """Derive and pin two approved repository Actions without a Host effect.
 
         This is a separate installed product route. It never calls the serial
@@ -383,6 +385,13 @@ class InstalledDynamicMissionRuntime:
                     != {item["id"] for item in state.actions}
                     or len(snapshot["actions"]) != 2):
                 raise InstalledDynamicMissionError("no-dispatch Action replay source is incomplete")
+            if ep_repository_ids is not None:
+                pinned_ids = {
+                    item["baseline"].get("approved_scope_id", item["target"]["repository_id"]):
+                    item["target"]["repository_id"] for item in snapshot["actions"]
+                }
+                if dict(ep_repository_ids) != pinned_ids:
+                    raise InstalledDynamicMissionError("no-dispatch replay repository IDs differ from pinned Actions")
             # The ledger's stored VERIFIED slot is an immutable historical pin,
             # not a statement about today's EP grant or repository head. Recheck
             # each sibling through the normal authenticated installed boundary.
@@ -406,6 +415,19 @@ class InstalledDynamicMissionRuntime:
                 or approved_planning.repository_evidence_sources != mission.repository_evidence_sources
                 or approved_planning.write_scopes != ("NONE",)):
             raise InstalledDynamicMissionError("no-dispatch derivation requires two approved read-only repository sources")
+        # Mission scope is a governance identity; EP repository IDs are local
+        # grant identities. The caller selects candidates, but only EP's live
+        # authenticated response can establish each exact GitHub binding.
+        selected_ids = dict(ep_repository_ids) if ep_repository_ids is not None else {
+            scope: scope for scope in sources
+        }
+        if (set(selected_ids) != set(sources)
+                or any(not isinstance(value, str) or not value
+                       or value[0] not in "abcdefghijklmnopqrstuvwxyz0123456789"
+                       or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789._-" for char in value)
+                       or len(value) > 128 for value in selected_ids.values())
+                or len(set(selected_ids.values())) != 2):
+            raise InstalledDynamicMissionError("EP repository IDs must bind each approved scope exactly once")
         operator_context = self.repository.operators.context()
         if not self.repository.operators.authorize(operator_context):
             raise InstalledDynamicMissionError("current operator is not authorized for Mission planning")
@@ -432,10 +454,10 @@ class InstalledDynamicMissionRuntime:
                 raise InstalledDynamicMissionError("approved repository default branch is not main")
             target = {"ep_instance_id": authority_scope.instance_id,
                       "project_id": authority_scope.project_id,
-                      "repository_id": repository_id, "baseline_revision": revision}
+                      "repository_id": selected_ids[repository_id], "baseline_revision": revision}
             targets[repository_id] = target
             initial_authority[repository_id] = read_repository_authority(
-                authority_scope, repository_id=repository_id,
+                authority_scope, repository_id=selected_ids[repository_id],
                 github_repository=source.github_repository,
             )
             initial_baseline[repository_id] = _current_baseline(source, target)
@@ -469,7 +491,7 @@ class InstalledDynamicMissionRuntime:
             for repository_id, source in sorted(sources.items()):
                 prior = initial_authority[repository_id]
                 observed_authority[repository_id] = read_repository_authority(
-                    authority_scope, repository_id=repository_id,
+                    authority_scope, repository_id=selected_ids[repository_id],
                     github_repository=source.github_repository,
                     binding_revision=prior["binding_revision"],
                     authority_digest=prior["authority_digest"],
@@ -487,6 +509,10 @@ class InstalledDynamicMissionRuntime:
                      "actions": [{"action_id": action.id,
                                   "target": targets[by_action[action.id].scope],
                                   "dependencies": []} for action in actions]}
+            if any(scope != selected_ids[scope] for scope in sources):
+                graph["approved_repository_bindings"] = {
+                    selected_ids[scope]: scope for scope in sorted(sources)
+                }
             peer = {"ep_origin": authority_scope.base_url,
                     "binding_id": authority_scope.peer_binding_id,
                     "configuration_revision": authority_scope.peer_configuration_revision,
