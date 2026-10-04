@@ -128,7 +128,8 @@ class MissionIntake:
                     or mission.criterion_assessment_contracts != planning.criterion_assessment_contracts
                     or mission.maximum_actions != planning.maximum_actions
                     or mission.maximum_consecutive_no_progress_actions != planning.maximum_consecutive_no_progress_actions
-                    or mission.repository_evidence_source != planning.repository_evidence_source):
+                    or mission.repository_evidence_source != planning.repository_evidence_source
+                    or mission.repository_evidence_sources != planning.repository_evidence_sources):
                 raise MissionIntakeError("Mission Intake criterion contract differs from canonical Architecture approval")
 
     def admit(

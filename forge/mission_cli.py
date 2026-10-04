@@ -48,8 +48,8 @@ def _contract(document: dict[str, Any]) -> tuple[ArchitecturePlanningEvidence, A
     mission = ArchitectureMission.from_dict(mission_fields)
     if not mission.is_engineering_ready() or not mission.criterion_assessment_contracts:
         raise ValueError("Mission requires complete engineering readiness and criterion contracts")
-    if len(mission.scope) != 1:
-        raise ValueError("the installed serial Mission requires exactly one approved scope")
+    if len(mission.scope) != 1 and not mission.repository_evidence_sources:
+        raise ValueError("multi-repository Mission requires approved per-target sources")
     # EP's versioned Forge provenance contract caps each approved execution
     # constraint at 128 characters. Catch an oversized Mission before Intake
     # allocates an ID or the runner persists an unsendable Action.
@@ -57,8 +57,8 @@ def _contract(document: dict[str, Any]) -> tuple[ArchitecturePlanningEvidence, A
         raise ValueError("EP execution constraint exceeds the 128-character host limit")
     if len(mission.engineering_constraints) > 64:
         raise ValueError("EP execution constraints contain more than 64 entries")
-    if mission.repository_evidence_source is None:
-        raise ValueError("Mission requires an approved repository source for fresh initial Truth")
+    if mission.repository_evidence_source is None and not mission.repository_evidence_sources:
+        raise ValueError("Mission requires approved repository sources for fresh Truth")
     delegation = tuple(value for value in mission.engineering_constraints
                        if value.startswith("ep-merge-delegation:"))
     if len(delegation) != 1 or re.fullmatch(r"ep-merge-delegation:[0-9a-f]{32}", delegation[0]) is None:
@@ -94,7 +94,8 @@ def _contract(document: dict[str, Any]) -> tuple[ArchitecturePlanningEvidence, A
             or mission.criterion_assessment_contracts != planning.criterion_assessment_contracts
             or mission.maximum_actions != planning.maximum_actions
             or mission.maximum_consecutive_no_progress_actions != planning.maximum_consecutive_no_progress_actions
-            or mission.repository_evidence_source != planning.repository_evidence_source):
+            or mission.repository_evidence_source != planning.repository_evidence_source
+            or mission.repository_evidence_sources != planning.repository_evidence_sources):
         raise ValueError("Mission and approved planning contract differ")
     if planning.provenance_revision != document["subject_revision"]:
         raise ValueError("planning provenance revision differs from the subject")

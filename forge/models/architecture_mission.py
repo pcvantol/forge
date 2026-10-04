@@ -55,6 +55,7 @@ class ArchitectureMission:
     maximum_actions: int | None = None
     maximum_consecutive_no_progress_actions: int | None = None
     repository_evidence_source: ApprovedRepositoryEvidenceSource | None = None
+    repository_evidence_sources: tuple[ApprovedRepositoryEvidenceSource, ...] = ()
 
     def __post_init__(self) -> None:
         if self.schema_version != ARCHITECTURE_MISSION_SCHEMA_VERSION:
@@ -69,6 +70,15 @@ class ArchitectureMission:
         if contracts and {item.criterion for item in contracts} != set(self.acceptance_criteria):
             raise ValueError("criterion assessment contracts must cover exactly the approved criteria")
         object.__setattr__(self, "criterion_assessment_contracts", contracts)
+        sources = self.repository_evidence_sources
+        if (not isinstance(sources, tuple)
+                or any(not isinstance(item, ApprovedRepositoryEvidenceSource) for item in sources)
+                or len({item.repository_id for item in sources}) != len(sources)
+                or (sources and {item.repository_id for item in sources} != set(self.scope))
+                or (sources and self.repository_evidence_source is not None
+                    and self.repository_evidence_source not in sources)):
+            raise ValueError("approved per-repository evidence sources must match exact Mission scope")
+        object.__setattr__(self, "repository_evidence_sources", tuple(sorted(sources, key=lambda item: item.repository_id)))
         for values, label in (
             (self.scope, "scope"), (self.engineering_constraints, "engineering constraints"),
             (self.acceptance_criteria, "acceptance criteria"), (self.technical_assumptions, "technical assumptions"),
@@ -118,6 +128,8 @@ class ArchitectureMission:
             document["maximum_consecutive_no_progress_actions"] = self.maximum_consecutive_no_progress_actions
         if self.repository_evidence_source is not None:
             document["repository_evidence_source"] = self.repository_evidence_source.to_dict()
+        if self.repository_evidence_sources:
+            document["repository_evidence_sources"] = [item.to_dict() for item in self.repository_evidence_sources]
         return document
 
     @classmethod
@@ -138,4 +150,6 @@ class ArchitectureMission:
             maximum_consecutive_no_progress_actions=document.get("maximum_consecutive_no_progress_actions"),
             repository_evidence_source=(None if document.get("repository_evidence_source") is None else
                                         ApprovedRepositoryEvidenceSource.from_dict(document["repository_evidence_source"])),
+            repository_evidence_sources=tuple(ApprovedRepositoryEvidenceSource.from_dict(item)
+                                              for item in document.get("repository_evidence_sources", ())),
         )

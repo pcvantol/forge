@@ -13,6 +13,7 @@ from forge.governance_authority import ArchitecturePlanningEvidence, CanonicalGo
 from forge.governed_candidate_intake import GovernedCandidateIntake, GovernedCandidateIntakeError
 from forge.lifecycle import LifecycleError, MissionCandidate, MissionRecommendation, RecommendationLifecycleStore, RecommendationStatus
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.criterion_assessment import ApprovedRepositoryEvidenceSource
 from forge.models.criterion_observation import canonical_digest
 from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
@@ -122,6 +123,25 @@ class GovernedCandidateIntakeTests(unittest.TestCase):
             "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0], 1)
         self.assertEqual(self.lifecycle.get_recommendation("recommendation").status,
                          RecommendationStatus.MISSION_ALLOCATED)
+
+    def test_two_approved_repository_sources_admit_without_serial_execution(self) -> None:
+        self.candidate = self.lifecycle.update_candidate(
+            self.candidate.id, scope=("repository-a", "repository-b"))
+        preview, planning = self.approved_input()
+        sources = (
+            ApprovedRepositoryEvidenceSource("repository-a", "example/repository-a"),
+            ApprovedRepositoryEvidenceSource("repository-b", "example/repository-b"),
+        )
+        preview = replace(preview, repository_evidence_sources=sources)
+        planning = replace(planning, repository_evidence_sources=sources,
+                           mission_spec_digest=canonical_digest(preview.to_dict()))
+        self.approve(preview, planning)
+        state = self.bridge.admit(self.candidate.id, preview, planning,
+                                  occurred_at="2026-10-03T00:00:04Z")
+        self.assertEqual(state.status.value, "APPROVED_PLANNABLE")
+        self.assertEqual(state.actions, ())
+        with self.assertRaisesRegex(ValueError, "serial execution cannot consume"):
+            self.runtime._approved_origin(state)  # noqa: SLF001 - assert serial boundary
 
     def test_missing_or_wrong_actor_approval_creates_no_mission(self) -> None:
         preview, planning = self.approved_input()
