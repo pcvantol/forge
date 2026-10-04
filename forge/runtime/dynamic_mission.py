@@ -377,7 +377,19 @@ class InstalledDynamicMissionRuntime:
         self._assert_single_resumable(mission_id)
         state = self.states.get(mission_id)
         if state.status is MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH:
-            self.database.read_action_intents(mission_id)
+            snapshot = self.database.read_action_intents(mission_id)
+            if (snapshot["source_freshness"] != "CURRENT"
+                    or {item["action_id"] for item in snapshot["actions"]}
+                    != {item["id"] for item in state.actions}
+                    or len(snapshot["actions"]) != 2):
+                raise InstalledDynamicMissionError("no-dispatch Action replay source is incomplete")
+            # The ledger's stored VERIFIED slot is an immutable historical pin,
+            # not a statement about today's EP grant or repository head. Recheck
+            # each sibling through the normal authenticated installed boundary.
+            for item in snapshot["actions"]:
+                if item["target_verification"] != "PINNED_CURRENT_UNCHECKED":
+                    raise InstalledDynamicMissionError("no-dispatch Action replay is not verified")
+                self.database.verify_action_intent_target(mission_id, item["action_id"])
             return self._result(state)
         if (state.status is not MissionExecutionStatus.APPROVED_PLANNABLE
                 or state.actions or state.intents or state.execution_correlation is not None

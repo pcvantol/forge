@@ -3834,6 +3834,7 @@ class RuntimeDatabase:
         invocation is possible in this database layer. A malformed sibling
         rolls back both identities, the attempt marker, and all intent rows.
         """
+        from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationStore
         from forge.parallel_action_contract import validate_peer_graph
         from .action_intents import ActionIntentLedger
 
@@ -3847,8 +3848,32 @@ class RuntimeDatabase:
                 or {item["action_id"] for item in actions} != {item["id"] for item in state["actions"]}
                 or {item["target"]["repository_id"] for item in actions} != set(scopes)
                 or set(bindings) != {item["action_id"] for item in actions}
+                or any(not isinstance(binding, Mapping)
+                       or set(binding) != {"authority", "baseline", "peer", "correlation_id", "request_digest"}
+                       or not isinstance(binding["authority"], Mapping)
+                       or not isinstance(binding["peer"], Mapping)
+                       for binding in bindings.values())
                 or any(item["dependencies"] for item in actions)):
             raise RuntimeDatabaseError("no-dispatch bundle requires two independent approved Actions")
+        # The peer may be replaced by a separate connection after the caller's
+        # preflight. This check shares the BEGIN IMMEDIATE transaction with the
+        # state, graph and intents, so a replacement cannot commit in between.
+        selected = EngineeringPlatformPeerConfigurationStore(
+            self._connection, self.runtime_identity.runtime_id, writable=False,
+        ).load()
+        if selected is None or any(
+            binding["peer"] != {
+                "ep_origin": selected.endpoint,
+                "binding_id": selected.binding_id,
+                "configuration_revision": selected.configuration_revision,
+                "configuration_digest": selected.configuration_digest,
+            }
+            or binding["authority"]["instance_id"] != selected.expected_ep_instance_id
+            or binding["authority"]["project_id"] != selected.ep_project_id
+            or binding["authority"]["consumer_id"] != selected.ep_consumer_id
+            for binding in bindings.values()
+        ):
+            raise RuntimeDatabaseError("selected EP peer changed before no-dispatch commit")
         normalized["approved_scope"] = sorted(scopes)
         normalized["mission_source_digest"] = "sha256:" + sha256(self._dump({
             "mission": state["mission"], "admission_contract": state["admission_contract"],

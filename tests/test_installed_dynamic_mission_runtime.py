@@ -417,6 +417,10 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         with patch("forge.mission_cli._github_default_head", side_effect=lambda name: ("main", heads[name])), \
              patch("forge.runtime.dynamic_mission.read_repository_authority",
                    side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)), \
+             patch("forge.runtime.action_intents.read_repository_authority",
+                   side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)), \
+             patch("forge.execution_host_configuration.EngineeringPlatformExecutionHostFactory.from_database",
+                   return_value=self.host), \
              patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
                    return_value=selected_peer):
             result = self.runtime.derive_two_repository_actions(mission.id)
@@ -432,6 +436,20 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
                                 for item in snapshot["actions"]))
             self.runtime.close()
             self.runtime = self._open_runtime()
+            self.assertEqual(self.runtime.derive_two_repository_actions(mission.id), result)
+            with patch("forge.runtime.action_intents.read_repository_authority",
+                       side_effect=lambda _scope, *, repository_id, **_: authority(
+                           repository_id, revision="2" if repository_id == "repository-b" else "1")):
+                with self.assertRaisesRegex(RuntimeDatabaseError, "pinned Action authority"):
+                    self.runtime.derive_two_repository_actions(mission.id)
+            heads["example/repository-b"] = "c" * 40
+            with self.assertRaisesRegex(RuntimeDatabaseError, "baseline differs"):
+                self.runtime.derive_two_repository_actions(mission.id)
+            heads["example/repository-b"] = "b" * 40
+            self.host.config.peer_configuration_digest = "sha256:" + "f" * 64
+            with self.assertRaisesRegex(RuntimeDatabaseError, "selected EP peer binding differs"):
+                self.runtime.derive_two_repository_actions(mission.id)
+            self.host.config.peer_configuration_digest = selected_peer.configuration_digest
             self.assertEqual(self.runtime.derive_two_repository_actions(mission.id), result)
         self.assertEqual(self.provider.calls, 1)
         self.assertEqual(self.host.requests, [])
@@ -488,6 +506,39 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(InstalledDynamicMissionError, "selected EP peer changed"):
                 self.runtime.derive_two_repository_actions(mission.id)
         self.assertEqual(self.provider.calls, 1)
+
+    def test_peer_replacement_at_atomic_commit_rolls_back_both_actions(self) -> None:
+        self.provider = _TwoRepositoryProvider()
+        self.runtime.provider = self.provider
+        self.host.config = SimpleNamespace(
+            base_url="http://127.0.0.1:1", bearer_token="private-fixture", expected_instance_id="ep-fixture-1",
+            project_id="project-fixture-1", expected_consumer_id="forge-consumer", peer_binding_id="peer-fixture",
+            peer_configuration_revision=1, peer_configuration_digest="sha256:" + "e" * 64,
+            allow_loopback_http=True, timeout=1.0,
+        )
+        mission, envelope = self._mission_and_envelope(two_repositories=True)
+        self.runtime.admit(mission, envelope)
+        selected_peer = SimpleNamespace(
+            endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
+            ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
+            binding_id=self.host.config.peer_binding_id,
+            configuration_revision=self.host.config.peer_configuration_revision,
+            configuration_digest=self.host.config.peer_configuration_digest,
+        )
+        replaced_peer = SimpleNamespace(**{**vars(selected_peer),
+                                           "configuration_digest": "sha256:" + "f" * 64})
+        heads = {"example/repository-a": "a" * 40, "example/repository-b": "b" * 40}
+        with patch("forge.mission_cli._github_default_head", side_effect=lambda name: ("main", heads[name])), \
+             patch("forge.runtime.dynamic_mission.read_repository_authority",
+                   side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   side_effect=[selected_peer, selected_peer, replaced_peer]):
+            with self.assertRaisesRegex(RuntimeDatabaseError, "selected EP peer changed before"):
+                self.runtime.derive_two_repository_actions(mission.id)
+        self.assertEqual(self.runtime.states.get(mission.id).status, MissionExecutionStatus.APPROVED_PLANNABLE)
+        self.assertEqual(self.runtime.states.get(mission.id).actions, ())
+        self.assertEqual(self.runtime.database.read_action_intents(mission.id)["actions"], [])
+        self.assertEqual(self.host.requests, [])
 
     def test_invalid_second_action_rolls_back_both_siblings(self) -> None:
         self.provider = _TwoRepositoryProvider()
