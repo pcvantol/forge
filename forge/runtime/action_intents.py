@@ -87,7 +87,23 @@ def _pinned_graph(connection: sqlite3.Connection, mission_id: str,
         )})
     except (TypeError, ValueError, KeyError, ParallelActionContractError) as error:
         raise ActionIntentError("current planning snapshot is invalid") from error
-    if ({key: value for key, value in graph.items() if key != "approved_scope"} != normalized
+    metadata = {"mission_source_digest", "action_set_digest", "repository_truth_digest"}
+    present = metadata & set(graph)
+    if present and present != metadata:
+        raise ActionIntentError("current planning snapshot provenance is incomplete")
+    if present:
+        expected = {
+            "mission_source_digest": _digest(_encode({
+                "mission": state["mission"], "admission_contract": state.get("admission_contract"),
+            })),
+            "action_set_digest": _digest(_encode({
+                "actions": state["actions"], "intents": state.get("intents"),
+            })),
+            "repository_truth_digest": _digest(_encode(state.get("repository_truth"))),
+        }
+        if any(graph[key] != value for key, value in expected.items()):
+            raise ActionIntentError("current Mission, Action or Truth provenance has changed")
+    if ({key: value for key, value in graph.items() if key not in metadata | {"approved_scope"}} != normalized
             or graph.get("mission_id") != mission_id or graph.get("mission_revision") != revision
             or graph.get("approved_scope") != sorted(scope)):
         raise ActionIntentError("planning snapshot has drifted from the Mission")

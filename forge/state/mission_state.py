@@ -39,6 +39,7 @@ class MissionExecutionStatus(str, Enum):
 
     CREATED = "CREATED"
     APPROVED_PLANNABLE = "APPROVED_PLANNABLE"
+    ACTIONS_MATERIALIZED_NO_DISPATCH = "ACTIONS_MATERIALIZED_NO_DISPATCH"
     READY = "READY"
     ACTIVE = "ACTIVE"
     WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
@@ -109,7 +110,8 @@ _ALLOWED_TRANSITIONS: dict[MissionExecutionStatus, frozenset[MissionExecutionSta
     # Canonical Mission Intake intentionally creates no Intent or Action.  A
     # public Runtime composition is the only route that may activate that
     # approved/plannable record for provider-derived planning.
-    MissionExecutionStatus.APPROVED_PLANNABLE: frozenset((MissionExecutionStatus.CREATED, MissionExecutionStatus.ARCHIVED)),
+    MissionExecutionStatus.APPROVED_PLANNABLE: frozenset((MissionExecutionStatus.CREATED, MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH, MissionExecutionStatus.ARCHIVED)),
+    MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH: frozenset((MissionExecutionStatus.ARCHIVED,)),
     MissionExecutionStatus.CREATED: frozenset((MissionExecutionStatus.READY, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.READY: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED, MissionExecutionStatus.ARCHIVED)),
     MissionExecutionStatus.ACTIVE: frozenset((MissionExecutionStatus.ACTIVE, MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.AWAITING_APPROVAL, MissionExecutionStatus.COMPLETED, MissionExecutionStatus.WAITING_EXTERNAL_CAPABILITY, MissionExecutionStatus.WAITING_INTEGRATION, MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED)),
@@ -339,6 +341,8 @@ class MissionStateStore:
         integration: Mapping[str, Any] | None = None,
         planning_history: Sequence[Mapping[str, Any]] | None = None,
         durable_materialization_derivation_id: str | None = None,
+        no_dispatch_graph: Mapping[str, Any] | None = None,
+        no_dispatch_bindings: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> MissionExecutionState:
         if not occurred_at or not reason:
             raise MissionStateStoreError("transition time and reason are required")
@@ -450,7 +454,19 @@ class MissionStateStore:
                     raise MissionStateStoreError("completed approved Mission requires every criterion to be proven") from error
         document["lifecycle"] = status.value
         document.setdefault("state_history", []).append({"sequence": document["revision"], "from_status": current.status.value, "to_status": status.value, "occurred_at": occurred_at, "reason": reason})
-        if durable_materialization_derivation_id is None:
+        if status is MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH and no_dispatch_graph is None:
+            raise MissionStateStoreError("no-dispatch state requires its atomic Action graph")
+        if no_dispatch_graph is not None or no_dispatch_bindings is not None:
+            if (status is not MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH
+                    or current.status is not MissionExecutionStatus.APPROVED_PLANNABLE
+                    or durable_materialization_derivation_id is None
+                    or no_dispatch_graph is None or no_dispatch_bindings is None):
+                raise MissionStateStoreError("no-dispatch Action materialization requires one approved durable attempt")
+            self._runtime.commit_durable_action_derivation_materialization(
+                document, durable_materialization_derivation_id,
+                no_dispatch_graph=no_dispatch_graph, no_dispatch_bindings=no_dispatch_bindings,
+            )
+        elif durable_materialization_derivation_id is None:
             self._runtime.save_mission_state(document)
         else:
             self._runtime.commit_durable_action_derivation_materialization(
