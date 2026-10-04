@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from forge.models import DerivationPolicy, PlanningSnapshot, ProviderSideEffectState
+from forge.models import (
+    DerivationPolicy, PlanningEvidence, PlanningInputKind, PlanningSnapshot, ProviderSideEffectState,
+)
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.planner import (
     AIMissionPlanner, BoundedActionDerivationProvider, CodexCliChatGPTSessionPlanningProvider,
@@ -314,6 +316,68 @@ class CodexCliSessionTests(unittest.TestCase):
                 durable_attempt_specification=specification, durable_result_sink=lambda _response: None,
             )
         self.assertFalse(any("exec" in command for command, _kwargs in runner.calls))
+
+    def test_two_read_only_repository_truths_bind_independent_action_instructions(self):
+        self.configure()
+        scopes = tuple(scope.scope for scope in self.input.approved_scopes)
+        evidence = tuple(item for item in self.input.evidence
+                         if item.kind is not PlanningInputKind.REPOSITORY_TRUTH) + tuple(
+            PlanningEvidence(PlanningInputKind.REPOSITORY_TRUTH, f"repository-truth:{scope}",
+                             f"{'ab'[index] * 40}", f"repository://{scope}/{'ab'[index] * 40}",
+                             "sha256:" + "a" * 64)
+            for index, scope in enumerate(scopes)
+        )
+        planning_input = input_model(evidence=evidence)
+        snapshot = PlanningSnapshot.from_planner_input(planning_input)
+        read_only = DerivationPolicy(("NONE",), ("architecture-review",), ("scope-drift",))
+        runner = Runner()
+        provider = self.provider(runner)
+        specification = provider.prepare_durable_attempt(
+            snapshot, planning_input, read_only, "two-repository-attempt",
+        )
+        provider.derive_with_planning_input(
+            snapshot, planning_input, read_only, derivation_id="two-repository-attempt",
+            durable_attempt_specification=specification, durable_result_sink=lambda _response: None,
+        )
+        self.assertEqual(len(runner.instructions), 1)
+        self.assertIn("exactly one independent, immediately eligible Action for each", runner.instructions[0])
+        self.assertIn("without Host dispatch", runner.instructions[0])
+        self.assertNotIn("only one immediately executable step", runner.instructions[0])
+
+        serial_runner = Runner()
+        serial_provider = self.provider(serial_runner)
+        serial_provider.invoke(
+            self.request(), approved_scopes=("planner-contract",), derivation_policy=self.policy,
+        )
+        self.assertIn("only one immediately executable step", serial_runner.instructions[0])
+
+        first_truth = evidence[-2]
+        ambiguous = (
+            evidence[:-1],
+            evidence + (PlanningEvidence(PlanningInputKind.REPOSITORY_TRUTH, first_truth.source_id,
+                                         "c" * 40, f"repository://{scopes[0]}/{'c' * 40}",
+                                         first_truth.content_digest),),
+            evidence[:-2] + (
+                PlanningEvidence(PlanningInputKind.REPOSITORY_TRUTH, first_truth.source_id,
+                                 "current-main", first_truth.locator, first_truth.content_digest),
+                evidence[-1],
+            ),
+            evidence[:-2] + (
+                PlanningEvidence(PlanningInputKind.REPOSITORY_TRUTH, first_truth.source_id,
+                                 first_truth.revision, "repository://wrong/main", first_truth.content_digest),
+                evidence[-1],
+            ),
+        )
+        for candidate_evidence in ambiguous:
+            with self.subTest(truths=tuple(item.source_id for item in candidate_evidence
+                                           if item.kind is PlanningInputKind.REPOSITORY_TRUTH)):
+                candidate = input_model(evidence=candidate_evidence)
+                candidate_runner = Runner()
+                self.provider(candidate_runner).invoke(
+                    self.request(snapshot=PlanningSnapshot.from_planner_input(candidate)),
+                    approved_scopes=scopes, derivation_policy=read_only,
+                )
+                self.assertIn("only one immediately executable step", candidate_runner.instructions[0])
 
     def test_malformed_or_extra_structured_output_is_never_a_proposal(self):
         self.configure()
