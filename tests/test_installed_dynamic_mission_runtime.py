@@ -115,6 +115,8 @@ class _Provider:
 
 
 class _TwoRepositoryProvider(_Provider):
+    scopes = ("repository-a", "repository-b")
+
     def derive_with_planning_input(self, snapshot, planning_input, policy, *, derivation_id,
                                    attempt_authority_id=None, durable_attempt_specification=None,
                                    durable_result_sink=None):
@@ -122,14 +124,14 @@ class _TwoRepositoryProvider(_Provider):
             raise AssertionError("two-target derivation requires a durable provider result")
         self.calls += 1
         proposals = tuple(DerivedActionProposal(
-            f"action-{scope}", scope, f"Observe approved {scope} baseline.", (),
+            f"action-{scope.replace('/', '-')}", scope, f"Observe approved {scope} baseline.", (),
             ("NONE",), ("current repository baseline",), ("independent source readback",),
             index, False, ("protected-delivery",), ("scope-drift",),
             ProposalProvenance(
                 derivation_id, snapshot.id, snapshot.digest, "fixture-v1", "fixture", None,
                 (f"repository-truth:{scope}",),
             ),
-        ) for index, scope in enumerate(("repository-a", "repository-b"), 1))
+        ) for index, scope in enumerate(self.scopes, 1))
         durable_result_sink(ProviderDerivationResponse(
             ProviderInvocationEvidence(
                 "fixture", None, "fixture-v1", _digest({"derivation": derivation_id,
@@ -291,16 +293,18 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         )
         return runtime
 
-    def _mission_and_envelope(self, *, two_repositories: bool = False):
+    def _mission_and_envelope(self, *, two_repositories: bool = False,
+                              repository_scopes: tuple[str, str] | None = None):
         repository, context = self.runtime.repository, self.runtime.repository.operators.context()
         contracts = (CriterionAssessmentContract(
             "status contract declares durable-state provenance", (CriterionEvidenceRequirement(
                 "durable-status-source", kind="repository_json", artifact_path="contract.json",
                 json_pointer="/source", expected_json='"durable-state"',
             ),)),)
-        scope = (("repository-a", "repository-b") if two_repositories
+        scope = ((repository_scopes or ("repository-a", "repository-b")) if two_repositories
                  else ("durable-status-projection",))
-        sources = tuple(ApprovedRepositoryEvidenceSource(item, f"example/{item}")
+        sources = tuple(ApprovedRepositoryEvidenceSource(
+            item, item if "/" in item else f"example/{item}")
                         for item in scope) if two_repositories else ()
         source = (sources[0] if two_repositories else
                   ApprovedRepositoryEvidenceSource("forge", "synthetic/forge"))
@@ -465,6 +469,105 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(RuntimeDatabaseError, "provenance has changed"):
             self.runtime.database.read_action_intents(mission.id)
+
+    def test_full_approved_scopes_bind_distinct_ep_ids_and_replay_without_dispatch(self) -> None:
+        scopes = ("example/repository-a", "example/repository-b")
+        selected = {scopes[0]: "unrelated-ep-one", scopes[1]: "unrelated-ep-two"}
+        self.provider = _TwoRepositoryProvider()
+        self.provider.scopes = scopes
+        self.runtime.provider = self.provider
+        self.host.config = SimpleNamespace(
+            base_url="http://127.0.0.1:1", bearer_token="private-fixture", expected_instance_id="ep-fixture-1",
+            project_id="project-fixture-1", expected_consumer_id="forge-consumer", peer_binding_id="peer-fixture",
+            peer_configuration_revision=1, peer_configuration_digest="sha256:" + "e" * 64,
+            allow_loopback_http=True, timeout=1.0,
+        )
+        mission, envelope = self._mission_and_envelope(
+            two_repositories=True, repository_scopes=scopes,
+        )
+        self.runtime.admit(mission, envelope)
+        heads = {scopes[0]: "a" * 40, scopes[1]: "b" * 40}
+        selected_peer = SimpleNamespace(
+            endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
+            ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
+            binding_id=self.host.config.peer_binding_id,
+            configuration_revision=self.host.config.peer_configuration_revision,
+            configuration_digest=self.host.config.peer_configuration_digest,
+        )
+        by_ep = {ep_id: scope for scope, ep_id in selected.items()}
+
+        def current_authority(_scope, *, repository_id, github_repository, **_pins):
+            if by_ep.get(repository_id) != github_repository:
+                raise ValueError("EP grant does not match approved GitHub source")
+            document = authority(repository_id)
+            document["github_repository"] = github_repository
+            return document
+
+        with patch("forge.mission_cli._github_default_head", side_effect=lambda name: ("main", heads[name])), \
+             patch("forge.runtime.dynamic_mission.read_repository_authority",
+                   side_effect=current_authority), \
+             patch("forge.runtime.action_intents.read_repository_authority",
+                   side_effect=current_authority), \
+             patch("forge.execution_host_configuration.EngineeringPlatformExecutionHostFactory.from_database",
+                   return_value=self.host), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   return_value=selected_peer):
+            with self.assertRaisesRegex(InstalledDynamicMissionError, "bind each approved scope"):
+                self.runtime.derive_two_repository_actions(mission.id)
+            self.assertEqual(self.provider.calls, 0)
+            with self.assertRaisesRegex(ValueError, "grant does not match"):
+                self.runtime.derive_two_repository_actions(mission.id, ep_repository_ids={
+                    scopes[0]: selected[scopes[1]], scopes[1]: selected[scopes[0]],
+                })
+            self.assertEqual(self.provider.calls, 0)
+            result = self.runtime.derive_two_repository_actions(
+                mission.id, ep_repository_ids=selected,
+            )
+            self.assertEqual(result.status, "ACTIONS_MATERIALIZED_NO_DISPATCH")
+            self.assertEqual(self.provider.calls, 1)
+            self.assertEqual(self.host.requests, [])
+            snapshot = self.runtime.database.read_action_intents(mission.id)
+            self.assertEqual({item["target"]["repository_id"] for item in snapshot["actions"]},
+                             set(selected.values()))
+            self.assertEqual({item["baseline"]["approved_scope_id"] for item in snapshot["actions"]},
+                             set(scopes))
+            self.runtime.close()
+            self.runtime = self._open_runtime()
+            self.assertEqual(self.runtime.derive_two_repository_actions(
+                mission.id, ep_repository_ids=selected,
+            ), result)
+            with self.assertRaisesRegex(InstalledDynamicMissionError, "differ from pinned"):
+                self.runtime.derive_two_repository_actions(mission.id, ep_repository_ids={
+                    scopes[0]: selected[scopes[1]], scopes[1]: selected[scopes[0]],
+                })
+            with patch("forge.runtime.action_intents.read_repository_authority",
+                       side_effect=ValueError("revoked grant")):
+                with self.assertRaisesRegex(ValueError, "revoked grant"):
+                    self.runtime.derive_two_repository_actions(mission.id, ep_repository_ids=selected)
+            heads[scopes[1]] = "c" * 40
+            with self.assertRaisesRegex(RuntimeDatabaseError, "baseline differs"):
+                self.runtime.derive_two_repository_actions(mission.id, ep_repository_ids=selected)
+            heads[scopes[1]] = "b" * 40
+            self.assertEqual(self.runtime.derive_two_repository_actions(
+                mission.id, ep_repository_ids=selected,
+            ), result)
+            self.assertEqual(self.provider.calls, 1)
+            self.assertEqual(self.host.requests, [])
+            row = self.runtime.database._connection.execute(
+                "SELECT document FROM mission_action_slot_snapshots WHERE mission_id=?",
+                (mission.id,),
+            ).fetchone()
+            graph = json.loads(row[0])
+            graph["approved_repository_bindings"] = None
+            encoded = json.dumps(graph, sort_keys=True, separators=(",", ":"))
+            with self.runtime.database._connection:
+                self.runtime.database._connection.execute(
+                    "UPDATE mission_action_slot_snapshots SET document=?,document_digest=? "
+                    "WHERE mission_id=?",
+                    (encoded, _digest(graph), mission.id),
+                )
+            with self.assertRaisesRegex(RuntimeDatabaseError, "identity mapping is invalid"):
+                self.runtime.database.read_action_intents(mission.id)
 
     def test_two_repository_authority_drift_keeps_zero_actions(self) -> None:
         self.provider = _TwoRepositoryProvider()
@@ -631,6 +734,32 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             self.assertEqual(derive_actions_main(["--data-root", str(self.root),
                                                   "--mission-id", "MISSION-0001"]), 0)
         self.assertEqual(json.loads(output.getvalue())["action_ids"], ["action-a", "action-b"])
+        output = StringIO()
+        with patch("forge.mission_no_dispatch.InstalledDynamicMissionRuntime.open") as open_runtime, \
+             redirect_stdout(output):
+            open_runtime.return_value.__enter__.return_value.derive_two_repository_actions.return_value = \
+                DynamicMissionRunResult("MISSION-0001", "runtime-1", "ACTIONS_MATERIALIZED_NO_DISPATCH",
+                                        ("action-a", "action-b"), None, 1)
+            self.assertEqual(derive_actions_main([
+                "--data-root", str(self.root), "--mission-id", "MISSION-0001",
+                "--ep-repository-id", "example/repository-a=unrelated-ep-one",
+                "--ep-repository-id", "example/repository-b=unrelated-ep-two",
+            ]), 0)
+            self.assertEqual(
+                open_runtime.return_value.__enter__.return_value.derive_two_repository_actions.call_args.kwargs,
+                {"ep_repository_ids": {"example/repository-a": "unrelated-ep-one",
+                                       "example/repository-b": "unrelated-ep-two"}},
+            )
+        output = StringIO()
+        with patch("forge.mission_no_dispatch.InstalledDynamicMissionRuntime.open") as open_runtime, \
+             redirect_stdout(output):
+            self.assertEqual(derive_actions_main([
+                "--data-root", str(self.root), "--mission-id", "MISSION-0001",
+                "--ep-repository-id", "example/repository-a=unrelated-ep-one",
+                "--ep-repository-id", "example/repository-a=unrelated-ep-two",
+            ]), 1)
+            open_runtime.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())["status"], "ERROR")
 
     def test_pre_t0_workspace_origin_must_match_approved_mission_source(self) -> None:
         mission, envelope = self._mission_and_envelope()

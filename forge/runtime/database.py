@@ -3838,15 +3838,30 @@ class RuntimeDatabase:
         from forge.parallel_action_contract import validate_peer_graph
         from .action_intents import ActionIntentLedger
 
-        normalized = validate_peer_graph(graph)
+        graph_keys = {"contract_version", "mission_id", "mission_revision", "actions"}
+        if set(graph) not in (graph_keys, graph_keys | {"approved_repository_bindings"}):
+            raise RuntimeDatabaseError("no-dispatch graph identity mapping is invalid")
+        normalized = validate_peer_graph({key: graph[key] for key in graph_keys})
         mission_id, revision = state["mission_id"], state["revision"]
         scopes = state["mission"].get("scope")
         actions = normalized["actions"]
+        targets = {item["target"]["repository_id"] for item in actions}
+        selected_map = graph.get("approved_repository_bindings")
+        if selected_map is None:
+            if "approved_repository_bindings" in graph:
+                raise RuntimeDatabaseError("no-dispatch graph identity mapping is incomplete")
+            selected_map = {repository_id: repository_id for repository_id in targets}
+        if (not isinstance(scopes, list) or len(scopes) != 2
+                or any(not isinstance(scope, str) or not scope for scope in scopes)
+                or not isinstance(selected_map, Mapping)
+                or any(not isinstance(key, str) or not isinstance(value, str)
+                       for key, value in selected_map.items())
+                or set(selected_map) != targets or set(selected_map.values()) != set(scopes or ())):
+            raise RuntimeDatabaseError("no-dispatch graph identity mapping is incomplete")
         if (normalized["mission_id"] != mission_id or normalized["mission_revision"] != revision
-                or not isinstance(scopes, list) or len(scopes) != 2
                 or len(actions) != 2 or len(state["actions"]) != 2
                 or {item["action_id"] for item in actions} != {item["id"] for item in state["actions"]}
-                or {item["target"]["repository_id"] for item in actions} != set(scopes)
+                or set(selected_map.values()) != set(scopes)
                 or set(bindings) != {item["action_id"] for item in actions}
                 or any(not isinstance(binding, Mapping)
                        or set(binding) != {"authority", "baseline", "peer", "correlation_id", "request_digest"}
@@ -3875,6 +3890,8 @@ class RuntimeDatabase:
         ):
             raise RuntimeDatabaseError("selected EP peer changed before no-dispatch commit")
         normalized["approved_scope"] = sorted(scopes)
+        if "approved_repository_bindings" in graph:
+            normalized["approved_repository_bindings"] = dict(selected_map)
         normalized["mission_source_digest"] = "sha256:" + sha256(self._dump({
             "mission": state["mission"], "admission_contract": state["admission_contract"],
         }).encode("utf-8")).hexdigest()

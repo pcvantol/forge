@@ -103,12 +103,26 @@ def _pinned_graph(connection: sqlite3.Connection, mission_id: str,
         }
         if any(graph[key] != value for key, value in expected.items()):
             raise ActionIntentError("current Mission, Action or Truth provenance has changed")
-    if ({key: value for key, value in graph.items() if key not in metadata | {"approved_scope"}} != normalized
+    has_identity_map = "approved_repository_bindings" in graph
+    identity_map = graph.get("approved_repository_bindings")
+    targets = {item["target"]["repository_id"] for item in normalized["actions"]}
+    if has_identity_map:
+        if (not isinstance(identity_map, dict) or set(identity_map) != targets
+                or any(not isinstance(value, str) for value in identity_map.values())
+                or set(identity_map.values()) != set(scope)):
+            raise ActionIntentError("approved repository identity mapping is invalid")
+    else:
+        identity_map = {repository_id: repository_id for repository_id in targets}
+    if ({key: value for key, value in graph.items()
+         if key not in metadata | {"approved_scope", "approved_repository_bindings"}} != normalized
             or graph.get("mission_id") != mission_id or graph.get("mission_revision") != revision
             or graph.get("approved_scope") != sorted(scope)):
         raise ActionIntentError("planning snapshot has drifted from the Mission")
-    if any(item["target"]["repository_id"] not in scope for item in normalized["actions"]):
+    if any(identity_map[item["target"]["repository_id"]] not in scope
+           for item in normalized["actions"]):
         raise ActionIntentError("Action target is outside approved Mission scope")
+    if has_identity_map:
+        normalized["approved_repository_bindings"] = identity_map
     return normalized, row[0]
 
 
@@ -235,9 +249,16 @@ def _check_peer_evidence(peer: object) -> None:
 
 def _check_baseline_evidence(baseline: object, target: dict[str, str],
                              authority: dict[str, Any]) -> None:
+    approved_scope_id = baseline.get("approved_scope_id") if isinstance(baseline, dict) else None
     if (not isinstance(baseline, dict)
-            or set(baseline) != {"source", "repository_id", "github_repository", "branch",
-                                 "revision", "observed_at", "observation_digest", "approved_source_digest"}
+            or set(baseline) not in ({"source", "repository_id", "github_repository", "branch",
+                                      "revision", "observed_at", "observation_digest", "approved_source_digest"},
+                                     {"source", "repository_id", "github_repository", "branch",
+                                      "revision", "observed_at", "observation_digest", "approved_source_digest",
+                                      "approved_scope_id"})
+            or ("approved_scope_id" in baseline and
+                (not isinstance(approved_scope_id, str) or not approved_scope_id
+                 or approved_scope_id == baseline.get("repository_id")))
             or baseline.get("source") != "GITHUB_DEFAULT_HEAD"
             or baseline.get("repository_id") != target["repository_id"]
             or baseline.get("github_repository") != authority.get("github_repository")
@@ -254,7 +275,7 @@ def _check_baseline_evidence(baseline: object, target: dict[str, str],
             or not isinstance(baseline.get("approved_source_digest"), str)
             or _DIGEST.fullmatch(baseline["approved_source_digest"]) is None
             or baseline["approved_source_digest"] != _digest(_encode({
-                "repository_id": baseline["repository_id"],
+                "repository_id": approved_scope_id or baseline["repository_id"],
                 "github_repository": baseline["github_repository"],
             }))):
         raise ActionIntentError("verified Action baseline is inconsistent")
@@ -283,12 +304,15 @@ def _current_baseline(source: ApprovedRepositoryEvidenceSource, target: dict[str
     if branch != "main" or revision != target["baseline_revision"]:
         raise ActionIntentError("Action target baseline differs from the current approved repository head")
     observed = {"repository": source.github_repository, "branch": branch, "revision": revision}
-    return {
-        "source": "GITHUB_DEFAULT_HEAD", "repository_id": source.repository_id,
+    baseline = {
+        "source": "GITHUB_DEFAULT_HEAD", "repository_id": target["repository_id"],
         "github_repository": source.github_repository, "branch": branch, "revision": revision,
         "observed_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "observation_digest": _digest(_encode(observed)), "approved_source_digest": source.digest,
     }
+    if source.repository_id != target["repository_id"]:
+        baseline["approved_scope_id"] = source.repository_id
+    return baseline
 
 
 def _intent_histories(connection: sqlite3.Connection, mission_id: str) -> dict[str, list[dict[str, Any]]]:
@@ -326,7 +350,9 @@ def _check_current_intent_source(connection: sqlite3.Connection, mission_id: str
     for item in actions:
         if "authority" not in item:
             continue
-        source = sources[item["target"]["repository_id"]]
+        repository_id = item["target"]["repository_id"]
+        scope_id = graph.get("approved_repository_bindings", {}).get(repository_id, repository_id)
+        source = sources[scope_id]
         if (item["baseline"]["approved_source_digest"] != source.digest
                 or item["baseline"]["github_repository"] != source.github_repository):
             raise ActionIntentError("verified Action source no longer matches approved provenance")
@@ -473,7 +499,10 @@ class ActionIntentLedger:
                 or re.fullmatch(r"[0-9a-f]{40}", target["baseline_revision"]) is None):
             raise ActionIntentError("Action target is not ready for current authority verification")
         state, approved_scope = _approved_state(self.connection, mission_id)
-        source = _approved_sources(state, approved_scope)[target["repository_id"]]
+        scope_id = graph.get("approved_repository_bindings", {}).get(
+            target["repository_id"], target["repository_id"],
+        )
+        source = _approved_sources(state, approved_scope)[scope_id]
         return graph, source_digest, target, current, source
 
     def _commit_verification(self, mission_id: str, action_id: str, graph: dict[str, Any],
