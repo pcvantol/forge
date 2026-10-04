@@ -20,8 +20,11 @@ from forge.completion.host_control_observer import HostControlCriterionObserver
 from forge.models.criterion_observation import CriterionObservation
 from forge.execution import ExecutionLoop, RecoveryAuthorization
 from forge.execution_host_configuration import EngineeringPlatformExecutionHostFactory
+from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationStore
 from forge.governance import ExecutionPolicy, ExecutionPolicyKind
-from forge.governance_authority import CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope
+from forge.governance_authority import (
+    ArchitecturePlanningEvidence, CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope,
+)
 from forge.intake import MissionIntake
 from forge.models.action import EngineeringAction
 from forge.models.action_derivation import DerivationPolicy, GovernanceRefinementRequired
@@ -62,7 +65,10 @@ from forge.planner import (
 from forge.provider_security import PlanningProviderSecurityService
 from forge.repository_truth import RepositoryTruthSnapshot
 from forge.runtime.bootstrap import RuntimeBootstrap
+from forge.runtime.action_authority import RepositoryAuthorityScope, read_repository_authority
+from forge.runtime.action_intents import _current_baseline
 from forge.runtime.service import ForgeRuntimeService
+from forge.runtime.service import RuntimeServiceLock
 from forge.secure_store import MacOSKeychainSecureStoreAdapter
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
 
@@ -110,6 +116,7 @@ class _InstalledMissionDispatcher:
     def dispatch(self):
         state = self._states.get(self._mission_id)
         if state.status in {MissionExecutionStatus.BLOCKED, MissionExecutionStatus.FAILED,
+                            MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH,
                             MissionExecutionStatus.COMPLETED, MissionExecutionStatus.ARCHIVED}:
             return None
         row = self._database._connection.execute(
@@ -355,6 +362,210 @@ class InstalledDynamicMissionRuntime:
                 governance_repository=self.repository, operator_context=self.repository.operators.context(),
             )
         return self._result(updated)
+
+    def derive_two_repository_actions(self, mission_id: str) -> DynamicMissionRunResult:
+        """Derive and pin two approved repository Actions without a Host effect.
+
+        This is a separate installed product route. It never calls the serial
+        ExecutionLoop, runner, dispatcher or Host transport. Both proposals
+        must be justified by one durable provider result and the same current
+        two-target authority/Truth vector. The final state, graph and verified
+        Action intents commit in one database transaction.
+        """
+        from forge.models.action_derivation import PlanningSnapshot
+
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        if state.status is MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH:
+            snapshot = self.database.read_action_intents(mission_id)
+            if (snapshot["source_freshness"] != "CURRENT"
+                    or {item["action_id"] for item in snapshot["actions"]}
+                    != {item["id"] for item in state.actions}
+                    or len(snapshot["actions"]) != 2):
+                raise InstalledDynamicMissionError("no-dispatch Action replay source is incomplete")
+            # The ledger's stored VERIFIED slot is an immutable historical pin,
+            # not a statement about today's EP grant or repository head. Recheck
+            # each sibling through the normal authenticated installed boundary.
+            for item in snapshot["actions"]:
+                if item["target_verification"] != "PINNED_CURRENT_UNCHECKED":
+                    raise InstalledDynamicMissionError("no-dispatch Action replay is not verified")
+                self.database.verify_action_intent_target(mission_id, item["action_id"])
+            return self._result(state)
+        if (state.status is not MissionExecutionStatus.APPROVED_PLANNABLE
+                or state.actions or state.intents or state.execution_correlation is not None
+                or state.current_engineering_action is not None
+                or state.current_engineering_intent is not None):
+            raise InstalledDynamicMissionError("no-dispatch derivation requires the admitted zero-Action Mission")
+        mission = ArchitectureMission.from_dict(dict(state.mission))
+        approved_planning = ArchitecturePlanningEvidence.from_dict(
+            dict(self._admission_contract(state)["planning"]),
+        )
+        sources = {item.repository_id: item for item in mission.repository_evidence_sources}
+        if (len(mission.scope) != 2 or set(sources) != set(mission.scope)
+                or approved_planning.scope != mission.scope
+                or approved_planning.repository_evidence_sources != mission.repository_evidence_sources
+                or approved_planning.write_scopes != ("NONE",)):
+            raise InstalledDynamicMissionError("no-dispatch derivation requires two approved read-only repository sources")
+        operator_context = self.repository.operators.context()
+        if not self.repository.operators.authorize(operator_context):
+            raise InstalledDynamicMissionError("current operator is not authorized for Mission planning")
+        readiness = self.provider.preflight()
+        if not getattr(readiness, "ready", False):
+            raise InstalledDynamicMissionError("configured planning provider is not ready")
+        config = self.host.config
+        authority_scope = RepositoryAuthorityScope(
+            base_url=config.base_url, bearer_token=config.bearer_token,
+            instance_id=config.expected_instance_id, project_id=config.project_id,
+            consumer_id=config.expected_consumer_id, peer_binding_id=config.peer_binding_id,
+            peer_configuration_revision=config.peer_configuration_revision,
+            peer_configuration_digest=config.peer_configuration_digest,
+            allow_loopback_http=config.allow_loopback_http, timeout=config.timeout,
+        )
+        self._require_current_no_dispatch_peer(authority_scope)
+        targets: dict[str, dict[str, str]] = {}
+        initial_authority: dict[str, dict[str, Any]] = {}
+        initial_baseline: dict[str, dict[str, str]] = {}
+        from forge.mission_cli import _github_default_head
+        for repository_id, source in sorted(sources.items()):
+            branch, revision = _github_default_head(source.github_repository)
+            if branch != "main":
+                raise InstalledDynamicMissionError("approved repository default branch is not main")
+            target = {"ep_instance_id": authority_scope.instance_id,
+                      "project_id": authority_scope.project_id,
+                      "repository_id": repository_id, "baseline_revision": revision}
+            targets[repository_id] = target
+            initial_authority[repository_id] = read_repository_authority(
+                authority_scope, repository_id=repository_id,
+                github_repository=source.github_repository,
+            )
+            initial_baseline[repository_id] = _current_baseline(source, target)
+        truth_vector = self._no_dispatch_truth_vector(mission_id, targets, initial_authority, initial_baseline)
+        self._initial_truth[mission_id] = truth_vector
+        planning_input = self._planning_input(state)
+        planning = self._admission_contract(state)["planning"]
+        policy = DerivationPolicy(
+            tuple(planning["write_scopes"]), tuple(planning["human_gates"]),
+            tuple(planning["risk_inputs"]),
+        )
+        planner = DurableAIMissionPlanner(self.database, _OneActionProvider(self.provider))
+        result = planner.plan(planning_input, policy)
+        derivation_id = planner.current_derivation_id
+        try:
+            if result.validated is None or result.plan is None:
+                raise InstalledDynamicMissionError("provider requested governance refinement, not two Actions")
+            proposals = result.validated.proposals
+            actions = tuple(action for intent in result.plan.intents for action in intent.actions)
+            if (len(proposals) != 2 or {item.scope for item in proposals} != set(sources)
+                    or any(item.dependencies or item.postponed for item in proposals)
+                    or any(f"repository-truth:{item.scope}" not in item.provenance.source_evidence_refs
+                           for item in proposals)
+                    or len(actions) != 2
+                    or {item.id for item in actions} != {item.logical_action_id for item in proposals}
+                    or any(item.status.value != "READY" or item.dependencies for item in actions)
+                    or mission.maximum_actions is not None and mission.maximum_actions < 2):
+                raise InstalledDynamicMissionError("validated provider result is not two independent approved Actions")
+            observed_authority: dict[str, dict[str, Any]] = {}
+            observed_baseline: dict[str, dict[str, str]] = {}
+            for repository_id, source in sorted(sources.items()):
+                prior = initial_authority[repository_id]
+                observed_authority[repository_id] = read_repository_authority(
+                    authority_scope, repository_id=repository_id,
+                    github_repository=source.github_repository,
+                    binding_revision=prior["binding_revision"],
+                    authority_digest=prior["authority_digest"],
+                )
+                observed_baseline[repository_id] = _current_baseline(source, targets[repository_id])
+                if (observed_authority[repository_id] != prior
+                        or {key: value for key, value in observed_baseline[repository_id].items()
+                            if key != "observed_at"}
+                        != {key: value for key, value in initial_baseline[repository_id].items()
+                            if key != "observed_at"}):
+                    raise InstalledDynamicMissionError("repository authority or baseline changed during planning")
+            by_action = {item.logical_action_id: item for item in proposals}
+            graph = {"contract_version": "parallel-action-graph/v1", "mission_id": mission_id,
+                     "mission_revision": state.revision + 1,
+                     "actions": [{"action_id": action.id,
+                                  "target": targets[by_action[action.id].scope],
+                                  "dependencies": []} for action in actions]}
+            peer = {"ep_origin": authority_scope.base_url,
+                    "binding_id": authority_scope.peer_binding_id,
+                    "configuration_revision": authority_scope.peer_configuration_revision,
+                    "configuration_digest": authority_scope.peer_configuration_digest}
+            bindings: dict[str, dict[str, Any]] = {}
+            for action in actions:
+                repository_id = by_action[action.id].scope
+                request_digest = _digest({"mission_id": mission_id, "action": action.to_dict(),
+                                          "target": targets[repository_id],
+                                          "proposal_digest": by_action[action.id].semantic_digest(),
+                                          "derivation_id": derivation_id})
+                bindings[action.id] = {
+                    "authority": observed_authority[repository_id],
+                    "baseline": observed_baseline[repository_id], "peer": peer,
+                    "correlation_id": "forge-plan-" + request_digest[7:31],
+                    "request_digest": request_digest,
+                }
+            derivation = {
+                "schema_version": "1.1", "derivation_id": derivation_id,
+                "mission_id": mission_id, "lifecycle": "MATERIALIZED",
+                "planning_snapshot": result.snapshot.to_dict(),
+                "planning_snapshot_digest": result.snapshot.digest,
+                "provider_id": proposals[0].provenance.provider_id,
+                "provider_model": proposals[0].provenance.provider_model,
+                "implementation_version": proposals[0].provenance.implementation_version,
+                "validation_status": "PASS", "validated_before_materialization": True,
+                "materialized_plan_id": result.plan.id,
+                "materialized_plan_digest": result.plan.input_digest,
+                "materialized_action_ids": sorted(item.id for item in actions),
+                "proposal_digests": {item.logical_action_id: item.semantic_digest() for item in proposals},
+                "dispatch_authorized": False,
+            }
+            with RuntimeServiceLock(self.database.path).acquire():
+                if self.states.get(mission_id) != state:
+                    raise InstalledDynamicMissionError("Mission changed during no-dispatch derivation")
+                self._require_current_no_dispatch_peer(authority_scope)
+                self.states.transition(
+                    mission_id, MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH,
+                    occurred_at=self.clock(), reason="two_repository_actions_materialized_no_dispatch",
+                    intents=result.plan.intents, actions=actions,
+                    repository_truth=truth_vector,
+                    planning_history=(*state.planning_history, derivation),
+                    durable_materialization_derivation_id=derivation_id,
+                    no_dispatch_graph=graph, no_dispatch_bindings=bindings,
+                )
+            return self._result(self.states.get(mission_id))
+        except Exception as error:
+            planner.record_materialization_failure(derivation_id, error)
+            raise
+
+    def _require_current_no_dispatch_peer(self, scope: RepositoryAuthorityScope) -> None:
+        selected = EngineeringPlatformPeerConfigurationStore(
+            self.database._connection, self.database.runtime_identity.runtime_id, writable=False,
+        ).load()
+        if (selected is None or selected.endpoint != scope.base_url
+                or selected.expected_ep_instance_id != scope.instance_id
+                or selected.ep_project_id != scope.project_id
+                or selected.ep_consumer_id != scope.consumer_id
+                or selected.binding_id != scope.peer_binding_id
+                or selected.configuration_revision != scope.peer_configuration_revision
+                or selected.configuration_digest != scope.peer_configuration_digest):
+            raise InstalledDynamicMissionError("selected EP peer changed during no-dispatch derivation")
+
+    @staticmethod
+    def _no_dispatch_truth_vector(mission_id: str, targets: Mapping[str, Mapping[str, str]],
+                                  authorities: Mapping[str, Mapping[str, Any]],
+                                  baselines: Mapping[str, Mapping[str, str]]) -> dict[str, Any]:
+        per_target = {repository_id: {
+            "source_id": f"repository-truth:{repository_id}",
+            "revision": target["baseline_revision"],
+            "locator": f"repository://{repository_id}/{target['baseline_revision']}",
+            "content_digest": _digest({"baseline": baselines[repository_id]["observation_digest"],
+                                       "authority": authorities[repository_id]["authority_digest"],
+                                       "binding": authorities[repository_id]["binding_revision"]}),
+        } for repository_id, target in sorted(targets.items())}
+        vector_digest = _digest(per_target)
+        return {"source_id": f"repository-truth-vector:{mission_id}",
+                "revision": vector_digest, "locator": f"runtime://mission/{mission_id}/repository-truth-vector",
+                "content_digest": vector_digest, "target_truths": per_target}
 
     def start(self, mission_id: str, initial_repository_truth: RepositoryTruthSnapshot) -> DynamicMissionRunResult:
         """Start exactly one admitted zero-Action Mission after read-only preflight."""
@@ -729,8 +940,6 @@ class InstalledDynamicMissionRuntime:
             PlanningEvidence(PlanningInputKind.MISSION_STATE, f"mission-state:{state.mission_id}:{state.revision}",
                              str(state.revision), f"runtime://mission/{state.mission_id}/{state.revision}",
                              _digest(self.states._as_document(state))),
-            PlanningEvidence(PlanningInputKind.REPOSITORY_TRUTH, str(truth["source_id"]), str(truth["revision"]),
-                             str(truth["locator"]), str(truth["content_digest"])),
             PlanningEvidence(PlanningInputKind.ARCHITECTURE_REVIEW, str(contract["architecture_decision_id"]),
                              str(contract["subject_revision"]),
                              f"runtime://governance/{contract['architecture_decision_id']}",
@@ -740,6 +949,24 @@ class InstalledDynamicMissionRuntime:
                              str(contract["subject_revision"]), f"runtime://mission/{mission.id}/capability",
                              _digest({"capability": mission.required_capabilities[0], "mission": mission.id})),
         ]
+        target_truths = truth.get("target_truths") if isinstance(truth, Mapping) else None
+        if target_truths is None:
+            evidence.append(PlanningEvidence(
+                PlanningInputKind.REPOSITORY_TRUTH, str(truth["source_id"]), str(truth["revision"]),
+                str(truth["locator"]), str(truth["content_digest"]),
+            ))
+        else:
+            if (not isinstance(target_truths, Mapping)
+                    or set(target_truths) != set(mission.scope)):
+                raise InstalledDynamicMissionError("per-target Repository Truth vector is incomplete")
+            for repository_id in sorted(target_truths):
+                item = target_truths[repository_id]
+                if not isinstance(item, Mapping):
+                    raise InstalledDynamicMissionError("per-target Repository Truth is invalid")
+                evidence.append(PlanningEvidence(
+                    PlanningInputKind.REPOSITORY_TRUTH, str(item["source_id"]),
+                    str(item["revision"]), str(item["locator"]), str(item["content_digest"]),
+                ))
         terminal_history = (state.execution_history if mission.criterion_assessment_contracts
                             else state.execution_history[-1:])
         for latest in terminal_history:

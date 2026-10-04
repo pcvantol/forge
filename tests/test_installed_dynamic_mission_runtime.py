@@ -6,11 +6,14 @@ the runtime directly; installed normal-factory qualification is separate.
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import redirect_stdout
+from io import StringIO
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from hashlib import sha256
 import json
 import unittest
+from unittest.mock import patch
 
 from forge.architecture import ArchitectureWorkspace
 from forge.business import BusinessWorkspace
@@ -39,8 +42,10 @@ from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnaps
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.database import RuntimeDatabaseError, RuntimeIntegrityError
 from forge.runtime.dynamic_mission import (
-    InstalledDynamicMissionError, InstalledDynamicMissionRuntime, _InstalledMissionDispatcher,
+    DynamicMissionRunResult, InstalledDynamicMissionError, InstalledDynamicMissionRuntime,
+    _InstalledMissionDispatcher,
 )
+from forge.mission_no_dispatch import main as derive_actions_main
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state.mission_state import MissionExecutionStatus
 from forge._version import canonical_version
@@ -48,6 +53,7 @@ from forge.models.criterion_assessment import (
     ApprovedRepositoryEvidenceSource, CriterionAssessmentContract, CriterionEvidenceRequirement,
 )
 from tests.criterion_fixture import ExactRepositoryBytes
+from tests.test_action_authority import authority
 
 
 def _digest(value: object) -> str:
@@ -105,6 +111,33 @@ class _Provider:
             ), proposals=proposals,
         )
         durable_result_sink(response)
+        return proposals
+
+
+class _TwoRepositoryProvider(_Provider):
+    def derive_with_planning_input(self, snapshot, planning_input, policy, *, derivation_id,
+                                   attempt_authority_id=None, durable_attempt_specification=None,
+                                   durable_result_sink=None):
+        if durable_attempt_specification is None or durable_result_sink is None:
+            raise AssertionError("two-target derivation requires a durable provider result")
+        self.calls += 1
+        proposals = tuple(DerivedActionProposal(
+            f"action-{scope}", scope, f"Observe approved {scope} baseline.", (),
+            ("NONE",), ("current repository baseline",), ("independent source readback",),
+            index, False, ("protected-delivery",), ("scope-drift",),
+            ProposalProvenance(
+                derivation_id, snapshot.id, snapshot.digest, "fixture-v1", "fixture", None,
+                (f"repository-truth:{scope}",),
+            ),
+        ) for index, scope in enumerate(("repository-a", "repository-b"), 1))
+        durable_result_sink(ProviderDerivationResponse(
+            ProviderInvocationEvidence(
+                "fixture", None, "fixture-v1", _digest({"derivation": derivation_id,
+                    "snapshot": snapshot.digest, "authority": attempt_authority_id}),
+                snapshot.digest, _digest({"proposals": [item.semantic_digest() for item in proposals]}),
+                ProviderSideEffectState.HAPPENED_AND_CONFIRMED, status="completed",
+            ), proposals=proposals,
+        ))
         return proposals
 
 
@@ -258,19 +291,26 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         )
         return runtime
 
-    def _mission_and_envelope(self):
+    def _mission_and_envelope(self, *, two_repositories: bool = False):
         repository, context = self.runtime.repository, self.runtime.repository.operators.context()
         contracts = (CriterionAssessmentContract(
             "status contract declares durable-state provenance", (CriterionEvidenceRequirement(
                 "durable-status-source", kind="repository_json", artifact_path="contract.json",
                 json_pointer="/source", expected_json='"durable-state"',
             ),)),)
-        source = ApprovedRepositoryEvidenceSource("forge", "synthetic/forge")
+        scope = (("repository-a", "repository-b") if two_repositories
+                 else ("durable-status-projection",))
+        sources = tuple(ApprovedRepositoryEvidenceSource(item, f"example/{item}")
+                        for item in scope) if two_repositories else ()
+        source = (sources[0] if two_repositories else
+                  ApprovedRepositoryEvidenceSource("forge", "synthetic/forge"))
         planning = ArchitecturePlanningEvidence(
-            ("durable-status-projection",), ("forge/__main__.py",), ("no unrelated runtime work",),
+            scope, ("NONE",) if two_repositories else ("forge/__main__.py",),
+            ("no unrelated runtime work",),
             ("scope-drift",), ("protected-delivery",), ("ep-v1.2",), 16_000, 4_000, "1",
             criterion_assessment_contracts=contracts, maximum_actions=4,
             maximum_consecutive_no_progress_actions=2, repository_evidence_source=source,
+            repository_evidence_sources=sources,
         )
         business = BusinessWorkspace.for_runtime(self.runtime.database, repository, context)
         architecture = ArchitectureWorkspace.for_runtime(self.runtime.database, repository, context)
@@ -293,12 +333,13 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         mission = ArchitectureMission(
             mission_id, "candidate-status-projection", "Durable status projection", "Expose durable dispatcher posture.",
             "Expose a safe status projection.", "Operators can inspect durable state.", "architecture-status-projection",
-            "candidate-status-projection", ("durable-status-projection",), ("no unrelated runtime work",),
+            "candidate-status-projection", scope, ("no unrelated runtime work",),
             ("status contract declares durable-state provenance",), ("configured EP v1.2",), ("ep-v1.2",),
             ("status-projection",), (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("scope-drift",),
             ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
             criterion_assessment_contracts=contracts, maximum_actions=4,
             maximum_consecutive_no_progress_actions=2, repository_evidence_source=source,
+            repository_evidence_sources=sources,
         )
         return mission, envelope
 
@@ -353,6 +394,243 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         state = self.runtime.states.get(mission.id)
         self.assertTrue(state.completion["all_required_criteria_proven"])
         self.assertEqual(state.execution_history[-1]["receipt_id"], "ep-receipt-status-projection")
+
+    def test_two_repository_derivation_is_atomic_durable_and_never_dispatches(self) -> None:
+        self.provider = _TwoRepositoryProvider()
+        self.runtime.provider = self.provider
+        self.host.config = SimpleNamespace(
+            base_url="http://127.0.0.1:1", bearer_token="private-fixture", expected_instance_id="ep-fixture-1",
+            project_id="project-fixture-1", expected_consumer_id="forge-consumer", peer_binding_id="peer-fixture",
+            peer_configuration_revision=1, peer_configuration_digest="sha256:" + "e" * 64,
+            allow_loopback_http=True, timeout=1.0,
+        )
+        mission, envelope = self._mission_and_envelope(two_repositories=True)
+        self.runtime.admit(mission, envelope)
+        heads = {"example/repository-a": "a" * 40, "example/repository-b": "b" * 40}
+        selected_peer = SimpleNamespace(
+            endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
+            ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
+            binding_id=self.host.config.peer_binding_id,
+            configuration_revision=self.host.config.peer_configuration_revision,
+            configuration_digest=self.host.config.peer_configuration_digest,
+        )
+        with patch("forge.mission_cli._github_default_head", side_effect=lambda name: ("main", heads[name])), \
+             patch("forge.runtime.dynamic_mission.read_repository_authority",
+                   side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)), \
+             patch("forge.runtime.action_intents.read_repository_authority",
+                   side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)), \
+             patch("forge.execution_host_configuration.EngineeringPlatformExecutionHostFactory.from_database",
+                   return_value=self.host), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   return_value=selected_peer):
+            result = self.runtime.derive_two_repository_actions(mission.id)
+            self.assertEqual(result.status, "ACTIONS_MATERIALIZED_NO_DISPATCH")
+            self.assertEqual(len(result.action_ids), 2)
+            self.assertEqual(self.provider.calls, 1)
+            self.assertEqual(self.host.requests, [])
+            snapshot = self.runtime.database.read_action_intents(mission.id)
+            self.assertEqual(snapshot["source_freshness"], "CURRENT")
+            self.assertEqual({item["target"]["repository_id"] for item in snapshot["actions"]},
+                             {"repository-a", "repository-b"})
+            self.assertTrue(all(item["target_verification"] == "PINNED_CURRENT_UNCHECKED"
+                                for item in snapshot["actions"]))
+            self.runtime.close()
+            self.runtime = self._open_runtime()
+            self.assertEqual(self.runtime.derive_two_repository_actions(mission.id), result)
+            with patch("forge.runtime.action_intents.read_repository_authority",
+                       side_effect=lambda _scope, *, repository_id, **_: authority(
+                           repository_id, revision="2" if repository_id == "repository-b" else "1")):
+                with self.assertRaisesRegex(RuntimeDatabaseError, "pinned Action authority"):
+                    self.runtime.derive_two_repository_actions(mission.id)
+            heads["example/repository-b"] = "c" * 40
+            with self.assertRaisesRegex(RuntimeDatabaseError, "baseline differs"):
+                self.runtime.derive_two_repository_actions(mission.id)
+            heads["example/repository-b"] = "b" * 40
+            self.host.config.peer_configuration_digest = "sha256:" + "f" * 64
+            with self.assertRaisesRegex(RuntimeDatabaseError, "selected EP peer binding differs"):
+                self.runtime.derive_two_repository_actions(mission.id)
+            self.host.config.peer_configuration_digest = selected_peer.configuration_digest
+            self.assertEqual(self.runtime.derive_two_repository_actions(mission.id), result)
+        self.assertEqual(self.provider.calls, 1)
+        self.assertEqual(self.host.requests, [])
+        row = self.runtime.database._connection.execute(
+            "SELECT document FROM mission_state WHERE mission_id=?", (mission.id,),
+        ).fetchone()
+        changed = json.loads(row[0])
+        changed["actions"][0]["revision"] = "different-action-revision"
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "UPDATE mission_state SET document=? WHERE mission_id=?",
+                (json.dumps(changed, sort_keys=True, separators=(",", ":")), mission.id),
+            )
+        with self.assertRaisesRegex(RuntimeDatabaseError, "provenance has changed"):
+            self.runtime.database.read_action_intents(mission.id)
+
+    def test_two_repository_authority_drift_keeps_zero_actions(self) -> None:
+        self.provider = _TwoRepositoryProvider()
+        self.runtime.provider = self.provider
+        self.host.config = SimpleNamespace(
+            base_url="http://127.0.0.1:1", bearer_token="private-fixture", expected_instance_id="ep-fixture-1",
+            project_id="project-fixture-1", expected_consumer_id="forge-consumer", peer_binding_id="peer-fixture",
+            peer_configuration_revision=1, peer_configuration_digest="sha256:" + "e" * 64,
+            allow_loopback_http=True, timeout=1.0,
+        )
+        mission, envelope = self._mission_and_envelope(two_repositories=True)
+        self.runtime.admit(mission, envelope)
+        heads = {"example/repository-a": "a" * 40, "example/repository-b": "b" * 40}
+        selected_peer = SimpleNamespace(
+            endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
+            ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
+            binding_id=self.host.config.peer_binding_id,
+            configuration_revision=self.host.config.peer_configuration_revision,
+            configuration_digest=self.host.config.peer_configuration_digest,
+        )
+        calls = {"repository-a": 0, "repository-b": 0}
+        def read_authority(_scope, *, repository_id, **_):
+            calls[repository_id] += 1
+            return authority(repository_id, revision="2" if calls[repository_id] > 1 else "1")
+        with patch("forge.mission_cli._github_default_head", side_effect=lambda name: ("main", heads[name])), \
+             patch("forge.runtime.dynamic_mission.read_repository_authority", side_effect=read_authority), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   return_value=selected_peer):
+            with self.assertRaises(InstalledDynamicMissionError):
+                self.runtime.derive_two_repository_actions(mission.id)
+        self.assertEqual(self.runtime.states.get(mission.id).status, MissionExecutionStatus.APPROVED_PLANNABLE)
+        self.assertEqual(self.runtime.states.get(mission.id).actions, ())
+        self.assertEqual(self.runtime.database.read_action_intents(mission.id)["actions"], [])
+        self.assertEqual(self.host.requests, [])
+        wrong_peer = SimpleNamespace(**{**vars(selected_peer),
+                                        "configuration_digest": "sha256:" + "f" * 64})
+        with patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   return_value=wrong_peer):
+            with self.assertRaisesRegex(InstalledDynamicMissionError, "selected EP peer changed"):
+                self.runtime.derive_two_repository_actions(mission.id)
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_peer_replacement_at_atomic_commit_rolls_back_both_actions(self) -> None:
+        self.provider = _TwoRepositoryProvider()
+        self.runtime.provider = self.provider
+        self.host.config = SimpleNamespace(
+            base_url="http://127.0.0.1:1", bearer_token="private-fixture", expected_instance_id="ep-fixture-1",
+            project_id="project-fixture-1", expected_consumer_id="forge-consumer", peer_binding_id="peer-fixture",
+            peer_configuration_revision=1, peer_configuration_digest="sha256:" + "e" * 64,
+            allow_loopback_http=True, timeout=1.0,
+        )
+        mission, envelope = self._mission_and_envelope(two_repositories=True)
+        self.runtime.admit(mission, envelope)
+        selected_peer = SimpleNamespace(
+            endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
+            ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
+            binding_id=self.host.config.peer_binding_id,
+            configuration_revision=self.host.config.peer_configuration_revision,
+            configuration_digest=self.host.config.peer_configuration_digest,
+        )
+        replaced_peer = SimpleNamespace(**{**vars(selected_peer),
+                                           "configuration_digest": "sha256:" + "f" * 64})
+        heads = {"example/repository-a": "a" * 40, "example/repository-b": "b" * 40}
+        with patch("forge.mission_cli._github_default_head", side_effect=lambda name: ("main", heads[name])), \
+             patch("forge.runtime.dynamic_mission.read_repository_authority",
+                   side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   side_effect=[selected_peer, selected_peer, replaced_peer]):
+            with self.assertRaisesRegex(RuntimeDatabaseError, "selected EP peer changed before"):
+                self.runtime.derive_two_repository_actions(mission.id)
+        self.assertEqual(self.runtime.states.get(mission.id).status, MissionExecutionStatus.APPROVED_PLANNABLE)
+        self.assertEqual(self.runtime.states.get(mission.id).actions, ())
+        self.assertEqual(self.runtime.database.read_action_intents(mission.id)["actions"], [])
+        self.assertEqual(self.host.requests, [])
+
+    def test_invalid_second_action_rolls_back_both_siblings(self) -> None:
+        self.provider = _TwoRepositoryProvider()
+        self.runtime.provider = self.provider
+        self.host.config = SimpleNamespace(
+            base_url="http://127.0.0.1:1", bearer_token="private-fixture", expected_instance_id="ep-fixture-1",
+            project_id="project-fixture-1", expected_consumer_id="forge-consumer", peer_binding_id="peer-fixture",
+            peer_configuration_revision=1, peer_configuration_digest="sha256:" + "e" * 64,
+            allow_loopback_http=True, timeout=1.0,
+        )
+        mission, envelope = self._mission_and_envelope(two_repositories=True)
+        self.runtime.admit(mission, envelope)
+        heads = {"example/repository-a": "a" * 40, "example/repository-b": "b" * 40}
+        selected_peer = SimpleNamespace(
+            endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
+            ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
+            binding_id=self.host.config.peer_binding_id,
+            configuration_revision=self.host.config.peer_configuration_revision,
+            configuration_digest=self.host.config.peer_configuration_digest,
+        )
+        def invalid_second(_scope, *, repository_id, **_):
+            document = authority(repository_id)
+            if repository_id == "repository-b":
+                document["repository_grant"] = "REVOKED"
+            return document
+        with patch("forge.mission_cli._github_default_head", side_effect=lambda name: ("main", heads[name])), \
+             patch("forge.runtime.dynamic_mission.read_repository_authority", side_effect=invalid_second), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   return_value=selected_peer):
+            with self.assertRaises(ValueError):
+                self.runtime.derive_two_repository_actions(mission.id)
+        self.assertEqual(self.runtime.states.get(mission.id).status, MissionExecutionStatus.APPROVED_PLANNABLE)
+        self.assertEqual(self.runtime.states.get(mission.id).actions, ())
+        for table in ("mission_action_slot_snapshots", "mission_action_intent_revisions"):
+            count = self.runtime.database._connection.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE mission_id=?", (mission.id,),
+            ).fetchone()[0]
+            self.assertEqual(count, 0)
+        self.assertEqual(self.host.requests, [])
+
+    def test_stale_second_repository_head_fails_before_provider_use(self) -> None:
+        self.provider = _TwoRepositoryProvider()
+        self.runtime.provider = self.provider
+        self.host.config = SimpleNamespace(
+            base_url="http://127.0.0.1:1", bearer_token="private-fixture", expected_instance_id="ep-fixture-1",
+            project_id="project-fixture-1", expected_consumer_id="forge-consumer", peer_binding_id="peer-fixture",
+            peer_configuration_revision=1, peer_configuration_digest="sha256:" + "e" * 64,
+            allow_loopback_http=True, timeout=1.0,
+        )
+        mission, envelope = self._mission_and_envelope(two_repositories=True)
+        self.runtime.admit(mission, envelope)
+        selected_peer = SimpleNamespace(
+            endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
+            ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
+            binding_id=self.host.config.peer_binding_id,
+            configuration_revision=self.host.config.peer_configuration_revision,
+            configuration_digest=self.host.config.peer_configuration_digest,
+        )
+        reads = {"example/repository-a": 0, "example/repository-b": 0}
+        def current_head(name):
+            reads[name] += 1
+            return "main", ("c" * 40 if name == "example/repository-b" and reads[name] > 1
+                            else "a" * 40 if name == "example/repository-a" else "b" * 40)
+        with patch("forge.mission_cli._github_default_head", side_effect=current_head), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   return_value=selected_peer), \
+             patch("forge.runtime.dynamic_mission.read_repository_authority",
+                   side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)):
+            with self.assertRaisesRegex(ValueError, "baseline differs"):
+                self.runtime.derive_two_repository_actions(mission.id)
+        self.assertEqual(self.provider.calls, 0)
+        self.assertEqual(self.runtime.states.get(mission.id).status, MissionExecutionStatus.APPROVED_PLANNABLE)
+        self.assertEqual(self.host.requests, [])
+
+    def test_installed_no_dispatch_entrypoint_redacts_failures(self) -> None:
+        output = StringIO()
+        with patch("forge.mission_no_dispatch.InstalledDynamicMissionRuntime.open",
+                   side_effect=ValueError("private-fixture-bearer")), redirect_stdout(output):
+            self.assertEqual(derive_actions_main(["--data-root", str(self.root),
+                                                  "--mission-id", "MISSION-0001"]), 1)
+        self.assertEqual(json.loads(output.getvalue()),
+                         {"status": "ERROR", "error_type": "ValueError"})
+        self.assertNotIn("private-fixture-bearer", output.getvalue())
+        output = StringIO()
+        with patch("forge.mission_no_dispatch.InstalledDynamicMissionRuntime.open") as open_runtime, \
+             redirect_stdout(output):
+            open_runtime.return_value.__enter__.return_value.derive_two_repository_actions.return_value = \
+                DynamicMissionRunResult("MISSION-0001", "runtime-1", "ACTIONS_MATERIALIZED_NO_DISPATCH",
+                                        ("action-a", "action-b"), None, 1)
+            self.assertEqual(derive_actions_main(["--data-root", str(self.root),
+                                                  "--mission-id", "MISSION-0001"]), 0)
+        self.assertEqual(json.loads(output.getvalue())["action_ids"], ["action-a", "action-b"])
 
     def test_pre_t0_workspace_origin_must_match_approved_mission_source(self) -> None:
         mission, envelope = self._mission_and_envelope()

@@ -3740,7 +3740,11 @@ class RuntimeDatabase:
             connection.rollback()
             raise
 
-    def commit_durable_action_derivation_materialization(self, state: Any, derivation_id: str) -> dict[str, Any]:
+    def commit_durable_action_derivation_materialization(
+        self, state: Any, derivation_id: str, *,
+        no_dispatch_graph: Mapping[str, Any] | None = None,
+        no_dispatch_bindings: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Commit Mission Actions/history and the attempt marker as one SQLite unit."""
         document, mission_id, lifecycle, context = self._validated_mission_state_document(state)
         if (not derivation_id or not isinstance(document.get("revision"), int)
@@ -3749,6 +3753,12 @@ class RuntimeDatabase:
                            if isinstance(item, Mapping))
                 or not document.get("actions") or not document.get("intents")):
             raise RuntimeDatabaseError("durable Action materialization requires Actions, history, and attempt identity")
+        if (no_dispatch_graph is None) != (no_dispatch_bindings is None):
+            raise RuntimeDatabaseError("no-dispatch graph and bindings must be committed together")
+        if document.get("status") == "ACTIONS_MATERIALIZED_NO_DISPATCH" and no_dispatch_graph is None:
+            raise RuntimeDatabaseError("no-dispatch materialization requires its Action graph")
+        if no_dispatch_graph is not None and document.get("status") != "ACTIONS_MATERIALIZED_NO_DISPATCH":
+            raise RuntimeDatabaseError("no-dispatch graph requires the non-executing Mission state")
         connection = self._connection
         connection.execute("BEGIN IMMEDIATE")
         try:
@@ -3779,6 +3789,9 @@ class RuntimeDatabase:
                 "actions": document["actions"], "intents": document["intents"],
                 "planning_history": document["planning_history"],
             }
+            if no_dispatch_graph is not None:
+                materialization_source["no_dispatch_graph"] = no_dispatch_graph
+                materialization_source["no_dispatch_bindings"] = no_dispatch_bindings
             attempt_document.update({
                 "lifecycle": "MATERIALIZED", "processing_phase": "MATERIALIZED",
                 "materialization_digest": "sha256:" + sha256(
@@ -3792,6 +3805,10 @@ class RuntimeDatabase:
                     (self._dump(attempt_document), derivation_id),
                 )
                 self._write_mission_state_in_transaction(document, mission_id, lifecycle, context)
+                if no_dispatch_graph is not None:
+                    self._write_no_dispatch_action_bundle(
+                        document, no_dispatch_graph, no_dispatch_bindings or {},
+                    )
                 self._append_operational_event(
                     component="forge_planning_provider", level="INFO", event="action_derivation_materialized",
                     mission_id=mission_id, action_id=derivation_id,
@@ -3806,6 +3823,117 @@ class RuntimeDatabase:
         except Exception:
             connection.rollback()
             raise
+
+    def _write_no_dispatch_action_bundle(
+        self, state: Mapping[str, Any], graph: Mapping[str, Any],
+        bindings: Mapping[str, Mapping[str, Any]],
+    ) -> None:
+        """Commit the whole two-sibling graph and verified intents with Mission state.
+
+        Called only inside the durable attempt transaction. No transport or Host
+        invocation is possible in this database layer. A malformed sibling
+        rolls back both identities, the attempt marker, and all intent rows.
+        """
+        from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationStore
+        from forge.parallel_action_contract import validate_peer_graph
+        from .action_intents import ActionIntentLedger
+
+        normalized = validate_peer_graph(graph)
+        mission_id, revision = state["mission_id"], state["revision"]
+        scopes = state["mission"].get("scope")
+        actions = normalized["actions"]
+        if (normalized["mission_id"] != mission_id or normalized["mission_revision"] != revision
+                or not isinstance(scopes, list) or len(scopes) != 2
+                or len(actions) != 2 or len(state["actions"]) != 2
+                or {item["action_id"] for item in actions} != {item["id"] for item in state["actions"]}
+                or {item["target"]["repository_id"] for item in actions} != set(scopes)
+                or set(bindings) != {item["action_id"] for item in actions}
+                or any(not isinstance(binding, Mapping)
+                       or set(binding) != {"authority", "baseline", "peer", "correlation_id", "request_digest"}
+                       or not isinstance(binding["authority"], Mapping)
+                       or not isinstance(binding["peer"], Mapping)
+                       for binding in bindings.values())
+                or any(item["dependencies"] for item in actions)):
+            raise RuntimeDatabaseError("no-dispatch bundle requires two independent approved Actions")
+        # The peer may be replaced by a separate connection after the caller's
+        # preflight. This check shares the BEGIN IMMEDIATE transaction with the
+        # state, graph and intents, so a replacement cannot commit in between.
+        selected = EngineeringPlatformPeerConfigurationStore(
+            self._connection, self.runtime_identity.runtime_id, writable=False,
+        ).load()
+        if selected is None or any(
+            binding["peer"] != {
+                "ep_origin": selected.endpoint,
+                "binding_id": selected.binding_id,
+                "configuration_revision": selected.configuration_revision,
+                "configuration_digest": selected.configuration_digest,
+            }
+            or binding["authority"]["instance_id"] != selected.expected_ep_instance_id
+            or binding["authority"]["project_id"] != selected.ep_project_id
+            or binding["authority"]["consumer_id"] != selected.ep_consumer_id
+            for binding in bindings.values()
+        ):
+            raise RuntimeDatabaseError("selected EP peer changed before no-dispatch commit")
+        normalized["approved_scope"] = sorted(scopes)
+        normalized["mission_source_digest"] = "sha256:" + sha256(self._dump({
+            "mission": state["mission"], "admission_contract": state["admission_contract"],
+        }).encode("utf-8")).hexdigest()
+        normalized["action_set_digest"] = "sha256:" + sha256(self._dump({
+            "actions": state["actions"], "intents": state["intents"],
+        }).encode("utf-8")).hexdigest()
+        normalized["repository_truth_digest"] = "sha256:" + sha256(
+            self._dump(state["repository_truth"]).encode("utf-8")
+        ).hexdigest()
+        graph_bytes = self._dump(normalized)
+        graph_digest = "sha256:" + sha256(graph_bytes.encode("utf-8")).hexdigest()
+        if self._connection.execute(
+            "SELECT 1 FROM mission_action_slot_snapshots WHERE mission_id=? AND mission_revision=?",
+            (mission_id, revision),
+        ).fetchone():
+            raise RuntimeDatabaseError("no-dispatch graph already exists")
+        self._connection.execute(
+            "INSERT INTO mission_action_slot_snapshots VALUES (?,?,?,?)",
+            (mission_id, revision, graph_digest, graph_bytes),
+        )
+        for item in actions:
+            action_id, target = item["action_id"], item["target"]
+            binding = bindings[action_id]
+            if (set(binding) != {"authority", "baseline", "peer", "correlation_id", "request_digest"}
+                    or not isinstance(binding["correlation_id"], str)
+                    or not isinstance(binding["request_digest"], str)):
+                raise RuntimeDatabaseError("no-dispatch Action binding is incomplete")
+            core = {
+                "contract_version": "parallel-action-intent/v1", "mission_id": mission_id,
+                "action_id": action_id, "source_revision": revision,
+                "source_digest": graph_digest, "target": target,
+                "dispatch_authorized": False,
+            }
+            documents = (
+                {**core, "slot_revision": 1, "correlation_status": "UNBOUND",
+                 "correlation_id": None, "request_digest": None,
+                 "target_verification": "UNVERIFIED"},
+                {**core, "slot_revision": 2, "correlation_status": "BOUND",
+                 "correlation_id": binding["correlation_id"],
+                 "request_digest": binding["request_digest"],
+                 "target_verification": "UNVERIFIED"},
+                {**core, "slot_revision": 3, "correlation_status": "BOUND",
+                 "correlation_id": binding["correlation_id"],
+                 "request_digest": binding["request_digest"],
+                 "target_verification": "VERIFIED", "authority": binding["authority"],
+                 "baseline": binding["baseline"], "peer": binding["peer"]},
+            )
+            for entry in documents:
+                encoded = self._dump(entry)
+                self._connection.execute(
+                    "INSERT INTO mission_action_intent_revisions VALUES (?,?,?,?,?,?,?)",
+                    (mission_id, action_id, entry["slot_revision"], revision,
+                     graph_digest, "sha256:" + sha256(encoded.encode("utf-8")).hexdigest(), encoded),
+                )
+        # Existing ledger validators check every row, approved-source binding,
+        # graph digest, revision and complete sibling set before commit.
+        snapshot = ActionIntentLedger(self._connection).read(mission_id)
+        if snapshot["source_freshness"] != "CURRENT" or len(snapshot["actions"]) != 2:
+            raise RuntimeDatabaseError("no-dispatch Action bundle did not read back")
 
     def create_action_derivation_canary_closure(self, closure: Any) -> dict[str, Any]:
         """Persist one immutable, non-executing Action-Derivation canary closure."""
