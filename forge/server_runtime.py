@@ -539,14 +539,15 @@ class ForgeServerApplicationServices:
     def mission_progression_decide(
         self, mission_id: str, document: Mapping[str, Any], *,
         authenticated_principal_reference: str,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], bool]:
         from forge.runtime.mission_controller import require_no_controller
         with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
             with require_no_controller(runtime.database.path):
-                return _result_document(runtime.decide_progression(
+                result, recording_status = runtime.decide_progression_with_recording_status(
                     mission_id, document,
                     authenticated_principal_reference=authenticated_principal_reference,
-                ))
+                )
+                return _result_document(result), recording_status == "RECORDED"
 
     def mission_archive_no_dispatch(
         self, mission_id: str, document: Mapping[str, Any], *,
@@ -742,14 +743,14 @@ class ForgeServerAPI:
         if path.startswith("/v1/missions/"):
             parts = path.split("/")
             if len(parts) == 5 and parts[4] == "progression-policy":
-                return APIResponse(200, self.services.mission_progression_policy(
-                    unquote(parts[3]), body,
-                ), headers)
+                result = self.services.mission_progression_policy(unquote(parts[3]), body)
+                return APIResponse(201 if result.get("status") == "ASSIGNED" else 200, result, headers)
             if len(parts) == 5 and parts[4] == "progression-decisions":
-                return APIResponse(200, self.services.mission_progression_decide(
+                result, recorded = self.services.mission_progression_decide(
                     unquote(parts[3]), body,
                     authenticated_principal_reference=authenticated_principal_reference,
-                ), headers)
+                )
+                return APIResponse(201 if recorded else 200, result, headers)
             if len(parts) == 6 and parts[4] == "controller":
                 mission_id = unquote(parts[3])
                 if parts[5] == "start":

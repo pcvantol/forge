@@ -161,6 +161,12 @@ class ServerRouteQualificationTests(unittest.TestCase):
                         mocked_services[name] = stack.enter_context(patch.object(
                             server.services, name, return_value={"service": name},
                         ))
+                    mocked_services["mission_progression_policy"].return_value = {
+                        "service": "mission_progression_policy", "status": "ASSIGNED",
+                    }
+                    mocked_services["mission_progression_decide"].return_value = (
+                        {"service": "mission_progression_decide"}, True,
+                    )
                     for name in ("readiness", "standalone_readiness"):
                         mocked_services[name] = stack.enter_context(patch.object(
                             server.services, name, return_value={"ready": True, "service": name},
@@ -182,7 +188,10 @@ class ServerRouteQualificationTests(unittest.TestCase):
                             self._assert_recognized(status, body)
                             expected_service = SERVICE_ROUTES.get((method, path))
                             if expected_service is not None:
-                                self.assertEqual(status, 200)
+                                expected_status = 201 if expected_service in {
+                                    "mission_progression_policy", "mission_progression_decide",
+                                } else 200
+                                self.assertEqual(status, expected_status)
                                 self.assertEqual(body.get("service"), expected_service)
                                 mocked_services[expected_service].assert_called()
                                 if expected_service == "mission_document":
@@ -252,7 +261,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
             self._assert_recognized(404, {"error": {"code": "ROUTE_NOT_FOUND"}})
 
     def _assert_recognized(self, status: int, body: dict) -> None:
-        self.assertIn(status, {200, 400, 404, 409, 503}, body)
+        self.assertIn(status, {200, 201, 400, 404, 409, 503}, body)
         self.assertNotEqual(body.get("error", {}).get("code"), "ROUTE_NOT_FOUND", body)
 
     @staticmethod

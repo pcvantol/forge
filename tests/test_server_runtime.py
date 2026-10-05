@@ -552,9 +552,11 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                     services, "mission_progression_status",
                     return_value={"schema_version": "forge-progression-status/v1", "read_only": True},
                 ) as status, patch.object(
-                    services, "mission_progression_policy", return_value={"status": "ASSIGNED"},
+                    services, "mission_progression_policy",
+                    side_effect=({"status": "ASSIGNED"}, {"status": "REPLAYED"}),
                 ) as assign, patch.object(
-                    services, "mission_progression_decide", return_value={"status": "ACTIVE"},
+                    services, "mission_progression_decide",
+                    side_effect=(({"status": "ACTIVE"}, True), ({"status": "ACTIVE"}, False)),
                 ) as decide):
                 readback = api.handle(
                     "GET", "/v1/missions/MISSION-0001/progression", authorization,
@@ -565,11 +567,21 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                 resumed = api.handle(
                     "POST", "/v1/missions/MISSION-0001/progression-decisions", authorization, decision,
                 )
-            self.assertEqual((readback.status, assigned.status, resumed.status), (200, 200, 200))
+                policy_replay = api.handle(
+                    "POST", "/v1/missions/MISSION-0001/progression-policy", authorization, policy,
+                )
+                decision_replay = api.handle(
+                    "POST", "/v1/missions/MISSION-0001/progression-decisions", authorization, decision,
+                )
+            self.assertEqual(
+                (readback.status, assigned.status, resumed.status, policy_replay.status, decision_replay.status),
+                (200, 201, 201, 200, 200),
+            )
             self.assertTrue(readback.body["read_only"])
             status.assert_called_once_with("MISSION-0001")
-            assign.assert_called_once_with("MISSION-0001", policy)
-            decide.assert_called_once()
+            self.assertEqual(assign.call_count, 2)
+            assign.assert_called_with("MISSION-0001", policy)
+            self.assertEqual(decide.call_count, 2)
             self.assertEqual(decide.call_args.args, ("MISSION-0001", decision))
             principal = decide.call_args.kwargs["authenticated_principal_reference"]
             self.assertTrue(principal.startswith("forge-server-admin-principal:v1:"))

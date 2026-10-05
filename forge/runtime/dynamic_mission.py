@@ -702,6 +702,17 @@ class InstalledDynamicMissionRuntime:
         authenticated_principal_reference: str,
     ) -> DynamicMissionRunResult:
         """Record one exact decision and resume an approved fence at most once."""
+        result, _ = self.decide_progression_with_recording_status(
+            mission_id, document,
+            authenticated_principal_reference=authenticated_principal_reference,
+        )
+        return result
+
+    def decide_progression_with_recording_status(
+        self, mission_id: str, document: Mapping[str, Any], *,
+        authenticated_principal_reference: str,
+    ) -> tuple[DynamicMissionRunResult, str]:
+        """Return the run result plus RECORDED/REPLAYED under one mutation lease."""
         with RuntimeServiceLock(self.database.path).acquire():
             service = GovernedContinuationService(self.database, self.repository, self.states, self.clock)
             try:
@@ -713,7 +724,7 @@ class InstalledDynamicMissionRuntime:
                 raise InstalledDynamicMissionError(str(error)) from error
             state = self.states.get(mission_id)
             if not decision["resume_authorized"]:
-                return self._result(state)
+                return self._result(state), str(decision["status"])
             if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
                 requirement = state.pause_reason
                 if (not isinstance(requirement, Mapping)
@@ -750,8 +761,8 @@ class InstalledDynamicMissionRuntime:
             intent = state.resume.get("continuation_intent")
             if (state.status is MissionExecutionStatus.ACTIVE and isinstance(marker, Mapping)
                     and isinstance(intent, Mapping) and intent.get("decision_id") == document["decision_id"]):
-                return self._resume_governed_continuation_locked(mission_id)
-            return self._result(state)
+                return self._resume_governed_continuation_locked(mission_id), str(decision["status"])
+            return self._result(state), str(decision["status"])
 
     def _resume_governed_continuation_locked(self, mission_id: str) -> DynamicMissionRunResult:
         """Resume under the caller-owned canonical mutation lease."""
