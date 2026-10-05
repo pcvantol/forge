@@ -24,9 +24,10 @@ from forge.governance_authority import (
     CanonicalGovernanceRepository,
     MissionPlanningEvidenceEnvelope,
 )
+from forge.governed_continuation import GovernedContinuationService
 from forge.models.action_derivation import (
     DerivedActionProposal, ProposalProvenance, ProviderInvocationEvidence,
-    ProviderSideEffectState, PlanningSnapshot,
+    ProviderSideEffectState, PlanningSnapshot, MissionGapBinding, MissionGapClassification,
 )
 from forge.planner.provider_adapter import ProviderDerivationResponse
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
@@ -40,16 +41,19 @@ from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
+from forge.runtime.service import RuntimeServiceBusy, RuntimeServiceLock
 from forge.runtime.database import RuntimeDatabaseError, RuntimeIntegrityError
 from forge.runtime.dynamic_mission import (
     DynamicMissionRunResult, InstalledDynamicMissionError, InstalledDynamicMissionRuntime,
     _InstalledMissionDispatcher,
 )
 from forge.mission_no_dispatch import main as derive_actions_main
+from forge import mission_cli
 from forge.mission_lifecycle import MissionLifecycleError, MissionLifecycleService
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state.mission_state import MissionExecutionStatus
 from forge._version import canonical_version
+from forge.__main__ import main as forge_main
 from forge.models.criterion_assessment import (
     ApprovedRepositoryEvidenceSource, CriterionAssessmentContract, CriterionEvidenceRequirement,
 )
@@ -91,14 +95,22 @@ class _Provider:
         if durable_attempt_specification is None:
             raise AssertionError("durable invocation must use the prepared attempt specification")
         self.calls += 1
+        suffix = "" if self.calls == 1 else f"-{self.calls}"
+        objective = ("Deliver the approved status projection." if self.calls == 1
+                     else f"Close remaining approved status criterion {self.calls}.")
+        evidence_refs = tuple(item.source_id for item in snapshot.evidence)
+        unmet = tuple(item.criterion_id for item in snapshot.criteria if item.status.value == "UNSATISFIED")
+        gap = (None if self.calls == 1 else MissionGapBinding(
+            MissionGapClassification.UNPROVEN_MISSION_CRITERION, unmet, evidence_refs,
+            snapshot.digest, objective, (),
+        ))
         proposals = (DerivedActionProposal(
-            "status-projection-action", "durable-status-projection", "Deliver the approved status projection.", (),
-            ("forge/__main__.py",), ("focused status validation",), ("python -m unittest",), 1, False,
+            "status-projection-action" + suffix, "durable-status-projection", objective, (),
+            ("forge/__main__.py",), ("focused status validation",), ("python -m unittest",), self.calls, False,
             ("protected-delivery",), ("scope-drift",),
             ProposalProvenance(
-                derivation_id, snapshot.id, snapshot.digest, "fixture-v1", "fixture", None,
-                tuple(item.source_id for item in snapshot.evidence),
-            ),
+                derivation_id, snapshot.id, snapshot.digest, "fixture-v1", "fixture", None, evidence_refs,
+            ), gap,
         ),)
         if durable_result_sink is None:
             return proposals
@@ -152,6 +164,7 @@ class _Host:
         self.requests = []
         self.evidence_reads = 0
         self.return_evidence = False
+        self.terminal_evidence_remaining = None
         self.outcome = ExecutionEvidenceOutcome.COMPLETE
 
     def preflight(self):
@@ -171,6 +184,10 @@ class _Host:
         self.evidence_reads += 1
         if not self.return_evidence:
             return None
+        if self.terminal_evidence_remaining is not None:
+            if self.terminal_evidence_remaining < 1:
+                return None
+            self.terminal_evidence_remaining -= 1
         request = dispatch.request
         suffix = "" if dispatch.host_run_id == "ep-run-status-projection" else "-" + dispatch.host_run_id
         report_id = "ep-report-status-projection" + suffix
@@ -296,7 +313,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def _mission_and_envelope(self, *, two_repositories: bool = False,
                               repository_scopes: tuple[str, str] | None = None,
-                              identity_suffix: str = ""):
+                              identity_suffix: str = "", maximum_no_progress: int = 2):
         repository, context = self.runtime.repository, self.runtime.repository.operators.context()
         contracts = (CriterionAssessmentContract(
             "status contract declares durable-state provenance", (CriterionEvidenceRequirement(
@@ -315,7 +332,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             ("no unrelated runtime work",),
             ("scope-drift",), ("protected-delivery",), ("ep-v1.2",), 16_000, 4_000, "1",
             criterion_assessment_contracts=contracts, maximum_actions=4,
-            maximum_consecutive_no_progress_actions=2, repository_evidence_source=source,
+            maximum_consecutive_no_progress_actions=maximum_no_progress, repository_evidence_source=source,
             repository_evidence_sources=sources,
         )
         business = BusinessWorkspace.for_runtime(self.runtime.database, repository, context)
@@ -347,10 +364,22 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             ("status-projection",), (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("scope-drift",),
             ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
             criterion_assessment_contracts=contracts, maximum_actions=4,
-            maximum_consecutive_no_progress_actions=2, repository_evidence_source=source,
+            maximum_consecutive_no_progress_actions=maximum_no_progress, repository_evidence_source=source,
             repository_evidence_sources=sources,
         )
         return mission, envelope
+
+    def _admit(self, mission, envelope, *, mode="continuous"):
+        admitted = self.runtime.admit(mission, envelope)
+        self.runtime.assign_progression_policy(mission.id, {
+            "assignment_id": "progression-assignment-" + mission.id.lower(),
+            "profile_id": "solo" if mode == "continuous" else "professional",
+            "profile_revision": "1", "policy_revision": "1", "mode": mode,
+            "required_decision_role": "platform_architect",
+            "higher_scope_obligations": ["protected-delivery"],
+            "expected_state_revision": admitted.revision,
+        })
+        return admitted
 
     @staticmethod
     def _truth() -> RepositoryTruthSnapshot:
@@ -402,7 +431,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         successor, envelope = self._mission_and_envelope(
             two_repositories=True, identity_suffix="-successor",
         )
-        self.runtime.admit(successor, envelope)
+        self._admit(successor, envelope)
         with self.assertRaisesRegex(InstalledDynamicMissionError, "exactly one selected non-terminal Mission"):
             self.runtime._assert_single_resumable(successor.id)
         service = MissionLifecycleService(self.runtime.repository)
@@ -573,9 +602,457 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(MissionLifecycleError, "activity"):
             service.archive_quiescent_no_dispatch(mission.id, **request)
 
+
+    def test_after_action_policy_fences_provider_and_exact_approval_resumes_once(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-governed-continuation", maximum_no_progress=3)
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        waiting = self.runtime.start(mission.id, self._truth())
+        self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+
+        paused = self.runtime.resume(mission.id)
+
+        self.assertEqual(paused.status, "AWAITING_APPROVAL")
+        self.assertEqual(self.provider.calls, 1)
+        requirement = self.runtime.progression_status(mission.id)["decision_requirement"]
+        self.assertEqual(requirement["schema_version"], "forge-decision-requirement/v1")
+        self.assertEqual(requirement["completed_action_id"], waiting.action_ids[0])
+        self.assertEqual(requirement["status"], "PENDING")
+        decision = {
+            "schema_version": "forge-progression-decision/v1",
+            "decision_id": "decision-governed-continuation-001",
+            "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "evidence_digest": requirement["evidence_digest"],
+            "policy_revision": requirement["policy_revision"],
+            "decision": "approve", "reason": "Exact terminal evidence permits the bounded successor.",
+        }
+        continued = self.runtime.decide_progression(
+            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+        )
+        self.assertEqual(continued.status, "WAITING_FOR_EVIDENCE", self.runtime.states.get(mission.id).waiting_reason)
+        self.assertEqual(self.provider.calls, 2)
+        replayed = self.runtime.decide_progression(
+            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+        )
+        self.assertEqual(replayed.status, "WAITING_FOR_EVIDENCE")
+        self.assertEqual(self.provider.calls, 2)
+        state = self.runtime.states.get(mission.id)
+        self.assertEqual(state.resume["continuation_history"][0]["status"], "CONSUMED")
+        self.assertEqual(state.mission["status"], "approved_for_engineering")
+        self.assertNotIn("final_acceptance", state.mission)
+
+    def test_continuous_policy_advances_successor_without_human_prompt(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-continuous-successor", maximum_no_progress=3)
+        self._admit(mission, envelope, mode="continuous")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        waiting = self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+        continued = self.runtime.resume(mission.id)
+        self.assertEqual(continued.status, "WAITING_FOR_EVIDENCE", self.runtime.states.get(mission.id).waiting_reason)
+        self.assertEqual(self.provider.calls, 2)
+        self.assertEqual(len(self.host.requests), 2)
+        self.assertIsNone(self.runtime.progression_status(mission.id)["decision_requirement"])
+
+    def _assert_nonapproving_progression_decision(self, outcome: str) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-" + outcome)
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        paused = self.runtime.resume(mission.id)
+        requirement = self.runtime.progression_status(mission.id)["decision_requirement"]
+        decision = {
+            "schema_version": "forge-progression-decision/v1",
+            "decision_id": "decision-" + outcome + "-001",
+            "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "evidence_digest": requirement["evidence_digest"],
+            "policy_revision": requirement["policy_revision"],
+            "decision": outcome, "reason": "Exercise exact non-approval semantics.",
+        }
+        result = self.runtime.decide_progression(
+            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+        )
+        self.assertEqual(paused.status, "AWAITING_APPROVAL")
+        self.assertEqual(result.status, "AWAITING_APPROVAL")
+        self.assertEqual(self.provider.calls, 1)
+        replacement = {
+            **decision, "decision_id": decision["decision_id"] + "-replacement",
+            "decision": "approve", "reason": "A second decision cannot replace the immutable first one.",
+        }
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "already has a canonical decision"):
+            self.runtime.decide_progression(
+                mission.id, replacement, authenticated_principal_reference="test-admin-principal",
+            )
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_reject_keeps_successor_fenced(self) -> None:
+        self._assert_nonapproving_progression_decision("reject")
+
+    def test_defer_keeps_successor_fenced(self) -> None:
+        self._assert_nonapproving_progression_decision("defer")
+
+    def test_amend_requires_reconciliation_and_keeps_successor_fenced(self) -> None:
+        self._assert_nonapproving_progression_decision("amend")
+
+    def test_stale_progression_decision_fails_without_provider_use(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-stale-decision")
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.runtime.resume(mission.id)
+        requirement = self.runtime.progression_status(mission.id)["decision_requirement"]
+        request = {
+            "schema_version": "forge-progression-decision/v1",
+            "decision_id": "decision-stale-001", "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "evidence_digest": "sha256:" + "0" * 64,
+            "policy_revision": requirement["policy_revision"],
+            "decision": "approve", "reason": "This stale evidence must be rejected.",
+        }
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "stale or bound to another subject"):
+            self.runtime.decide_progression(
+                mission.id, request, authenticated_principal_reference="test-admin-principal",
+            )
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_simultaneous_progression_decision_fails_before_mutation(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-busy-decision")
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+        self.runtime.resume(mission.id)
+        requirement = self.runtime.progression_status(mission.id)["decision_requirement"]
+        request = {
+            "schema_version": "forge-progression-decision/v1",
+            "decision_id": "decision-busy-001", "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "evidence_digest": requirement["evidence_digest"],
+            "policy_revision": requirement["policy_revision"],
+            "decision": "approve", "reason": "Exercise the single-writer mutation lease.",
+        }
+        with RuntimeServiceLock(self.runtime.database.path).acquire(), self.assertRaises(RuntimeServiceBusy):
+            self.runtime.decide_progression(
+                mission.id, request, authenticated_principal_reference="test-admin-principal",
+            )
+        self.assertIsNone(self.runtime.progression_status(mission.id)["decision"])
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_cli_progression_decision_binds_the_current_local_operator(self) -> None:
+        captured: dict[str, object] = {}
+
+        class _Runtime:
+            database = SimpleNamespace(path=Path(self.root) / "forge.db")
+            repository = SimpleNamespace(
+                operators=SimpleNamespace(
+                    context=lambda: SimpleNamespace(installation_id="installation", generated_uid="operator", binding_version=1),
+                    authorize=lambda _context: True,
+                ),
+                _operator_id=lambda _context: "operator-fingerprint",
+            )
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def decide_progression(self, mission_id, document, *, authenticated_principal_reference):
+                captured.update({
+                    "mission_id": mission_id, "document": document,
+                    "principal": authenticated_principal_reference,
+                })
+                return {"status": "AWAITING_APPROVAL"}
+
+        decision_path = Path(self.temporary.name) / "decision.json"
+        decision_path.write_text(json.dumps({"schema_version": "forge-progression-decision/v1"}))
+        with patch.object(InstalledDynamicMissionRuntime, "open", return_value=_Runtime()), \
+             patch.object(mission_cli, "require_no_controller"), \
+             patch.object(mission_cli, "asdict", side_effect=lambda value: value):
+            result = mission_cli.progression_decide(str(self.root), "MISSION-0001", str(decision_path))
+        self.assertEqual(result["status"], "AWAITING_APPROVAL")
+        self.assertEqual(captured["principal"], "local-operator:v1:operator-fingerprint")
+        self.assertEqual(captured["mission_id"], "MISSION-0001")
+
+    def test_packaged_cli_exposes_policy_status_and_decision_routes(self) -> None:
+        cases = (
+            ("progression-policy", "progression_policy", ["--input", "policy.json"]),
+            ("progression-status", "progression_status", []),
+            ("progression-decide", "progression_decide", ["--input", "decision.json"]),
+        )
+        for command, function, trailing in cases:
+            with self.subTest(command=command), \
+                 patch.object(mission_cli, function, return_value={"route": command}) as invoked, \
+                 redirect_stdout(StringIO()) as output:
+                result = forge_main([
+                    "--data-root", str(self.root), "mission", command,
+                    "--mission-id", "MISSION-0001", *trailing,
+                ])
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output.getvalue()), {"route": command})
+            expected = [str(self.root), "MISSION-0001"]
+            if trailing:
+                expected.append(trailing[-1])
+            invoked.assert_called_once_with(*expected)
+
+    def test_packaged_cli_fails_closed_when_mutating_commands_lack_a_data_root(self) -> None:
+        commands = (
+            ["server", "run", "--credential-file", "credential", "--port", "8765"],
+            ["server", "provider-context", "show"],
+            ["server", "update-assess", "--runtime-id", "runtime", "--installation-id", "install",
+             "--installed-version", "1.0.0", "--installed-source", "source",
+             "--installed-artifact-digest", "sha256:" + "1" * 64,
+             "--candidate-version", "1.0.1", "--candidate-source", "candidate",
+             "--candidate-wheel", "candidate.whl", "--candidate-artifact-digest", "sha256:" + "2" * 64],
+            ["health", "snapshot"],
+            ["mission", "approve-business", "--input", "mission.json"],
+            ["mission", "admit", "--input", "mission.json"],
+            ["mission", "progression-policy", "--mission-id", "MISSION-0001", "--input", "policy.json"],
+            ["mission", "progression-status", "--mission-id", "MISSION-0001"],
+            ["mission", "progression-decide", "--mission-id", "MISSION-0001", "--input", "decision.json"],
+            ["operations-api", "--credential-file", "credential"],
+        )
+        for command in commands:
+            with self.subTest(command=command), redirect_stdout(StringIO()) as output:
+                result = forge_main(command)
+            self.assertEqual(result, 1)
+            self.assertEqual(json.loads(output.getvalue())["status"], "ERROR")
+
+    def test_packaged_cli_initializes_and_reads_the_exact_runtime(self) -> None:
+        with redirect_stdout(StringIO()) as initialized:
+            self.assertEqual(forge_main(["--data-root", str(self.root), "server", "init"]), 0)
+        self.assertTrue(json.loads(initialized.getvalue())["initialized"])
+        with redirect_stdout(StringIO()) as status:
+            self.assertEqual(forge_main(["--data-root", str(self.root), "status"]), 0)
+        self.assertEqual(json.loads(status.getvalue())["data_root"], str(self.root.resolve()))
+
+    def test_cli_policy_and_status_use_the_selected_runtime_without_side_effect_adapters(self) -> None:
+        captured: dict[str, object] = {}
+
+        class _Runtime:
+            database = SimpleNamespace(path=Path(self.root) / "forge.db")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def assign_progression_policy(self, mission_id, document):
+                captured.update({"mission_id": mission_id, "policy": document})
+                return {"status": "ASSIGNED"}
+
+            def progression_status(self, mission_id):
+                captured["status_mission_id"] = mission_id
+                return {"read_only": True}
+
+        policy_path = Path(self.temporary.name) / "policy.json"
+        policy_path.write_text(json.dumps({"schema_version": "forge-progression-policy-assignment/v1"}))
+        with patch.object(InstalledDynamicMissionRuntime, "open", return_value=_Runtime()), \
+             patch.object(mission_cli, "require_no_controller"), \
+             patch.object(mission_cli, "RuntimeServiceLock"):
+            assigned = mission_cli.progression_policy(str(self.root), "MISSION-0001", str(policy_path))
+            status = mission_cli.progression_status(str(self.root), "MISSION-0001")
+        self.assertEqual(assigned["status"], "ASSIGNED")
+        self.assertTrue(status["read_only"])
+        self.assertEqual(captured["mission_id"], "MISSION-0001")
+        self.assertEqual(captured["status_mission_id"], "MISSION-0001")
+
+    def test_progression_policy_assignment_replays_without_mutation(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-policy-replay")
+        admitted = self.runtime.admit(mission, envelope)
+        request = {
+            "assignment_id": "progression-assignment-policy-replay",
+            "profile_id": "solo", "profile_revision": "1", "policy_revision": "1",
+            "mode": "continuous", "required_decision_role": "platform_architect",
+            "higher_scope_obligations": ["protected-delivery"],
+            "expected_state_revision": admitted.revision,
+        }
+        assigned = self.runtime.assign_progression_policy(mission.id, request)
+        replayed = self.runtime.assign_progression_policy(mission.id, request)
+        self.assertEqual(assigned["mission_revision"], replayed["mission_revision"])
+        self.assertEqual(replayed["status"], "REPLAYED")
+        self.assertEqual(self.provider.calls, 0)
+
+    def test_pending_fence_survives_restart_and_status_is_effect_free(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-pending-restart")
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+        self.runtime.resume(mission.id)
+        before = self.runtime.progression_status(mission.id)
+        self.assertIsNone(before["decision"])
+        self.assertEqual(self.provider.calls, 1)
+        self.runtime.close()
+        self.runtime = self._open_runtime()
+        after = self.runtime.progression_status(mission.id)
+        self.assertEqual(after["decision_requirement"], before["decision_requirement"])
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_lost_decision_response_replays_after_restart_and_resumes_once(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-decision-restart")
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+        self.runtime.resume(mission.id)
+        requirement = self.runtime.progression_status(mission.id)["decision_requirement"]
+        decision = {
+            "schema_version": "forge-progression-decision/v1",
+            "decision_id": "decision-lost-response-001",
+            "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "evidence_digest": requirement["evidence_digest"],
+            "policy_revision": requirement["policy_revision"],
+            "decision": "approve", "reason": "Resume the exact reviewed successor.",
+        }
+        recorded = GovernedContinuationService(
+            self.runtime.database, self.runtime.repository, self.runtime.states, self.runtime.clock,
+        ).decide(mission.id, decision, authenticated_principal_reference="test-admin-principal")
+        self.assertTrue(recorded["resume_authorized"])
+        self.assertEqual(self.runtime.progression_status(mission.id)["decision"]["decision"], "approve")
+        self.runtime.close()
+        self.runtime = self._open_runtime()
+        resumed = self.runtime.decide_progression(
+            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+        )
+        self.assertEqual(resumed.status, "WAITING_FOR_EVIDENCE")
+        self.assertEqual(self.provider.calls, 2)
+        self.runtime.decide_progression(
+            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+        )
+        self.assertEqual(self.provider.calls, 2)
+
+    def test_revoked_decision_capability_and_wrong_replay_principal_fail_closed(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-revoked-decision")
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+        self.runtime.resume(mission.id)
+        requirement = self.runtime.progression_status(mission.id)["decision_requirement"]
+        decision = {
+            "schema_version": "forge-progression-decision/v1",
+            "decision_id": "decision-revoked-001",
+            "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "evidence_digest": requirement["evidence_digest"],
+            "policy_revision": requirement["policy_revision"],
+            "decision": "approve", "reason": "Exercise current authority enforcement.",
+        }
+        service = GovernedContinuationService(
+            self.runtime.database, self.runtime.repository, self.runtime.states, self.runtime.clock,
+        )
+        service.decide(mission.id, decision, authenticated_principal_reference="test-admin-principal")
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "identity conflicts"):
+            self.runtime.decide_progression(
+                mission.id, decision, authenticated_principal_reference="different-admin-principal",
+            )
+        self.assertEqual(self.provider.calls, 1)
+        with patch.object(self.runtime.repository.operators, "authorize", return_value=False), \
+             self.assertRaisesRegex(InstalledDynamicMissionError, "not authorized"):
+            self.runtime.decide_progression(
+                mission.id, decision, authenticated_principal_reference="test-admin-principal",
+            )
+        self.assertEqual(self.runtime.states.get(mission.id).status.value, "AWAITING_APPROVAL")
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_tampered_policy_assignment_fails_before_provider_or_host(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-tampered-policy")
+        self._admit(mission, envelope)
+        row = self.runtime.database._connection.execute(
+            "SELECT document FROM mission_state WHERE mission_id=?", (mission.id,),
+        ).fetchone()
+        document = json.loads(row["document"])
+        document["execution_policy"]["decision_digest"] = "sha256:" + "0" * 64
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "UPDATE mission_state SET document=? WHERE mission_id=?",
+                (json.dumps(document, sort_keys=True, separators=(",", ":")), mission.id),
+            )
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "canonical assignment decision"):
+            self.runtime.start(mission.id, self._truth())
+        self.assertEqual(self.provider.calls, 0)
+        self.assertEqual(self.host.requests, [])
+
+    def test_wrong_instance_or_mission_decision_fence_fails_closed(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-wrong-fence-subject")
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+        self.runtime.resume(mission.id)
+        row = self.runtime.database._connection.execute(
+            "SELECT document FROM mission_state WHERE mission_id=?", (mission.id,),
+        ).fetchone()
+        original = json.loads(row["document"])
+
+        for field, value in (("instance_id", "another-runtime"), ("mission_id", "MISSION-WRONG")):
+            tampered = json.loads(json.dumps(original))
+            tampered["pause_reason"][field] = value
+            with self.runtime.database._connection:
+                self.runtime.database._connection.execute(
+                    "UPDATE mission_state SET document=? WHERE mission_id=?",
+                    (json.dumps(tampered, sort_keys=True, separators=(",", ":")), mission.id),
+                )
+            with self.subTest(field=field), self.assertRaisesRegex(
+                InstalledDynamicMissionError, "another instance, Mission, or Action",
+            ):
+                self.runtime.progression_status(mission.id)
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "UPDATE mission_state SET document=? WHERE mission_id=?",
+                (json.dumps(original, sort_keys=True, separators=(",", ":")), mission.id),
+            )
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_missing_progression_policy_fails_before_provider_or_host(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-missing-progression-policy")
+        self.runtime.admit(mission, envelope)
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "policy assignment is missing"):
+            self.runtime.start(mission.id, self._truth())
+        self.assertEqual(self.provider.calls, 0)
+        self.assertEqual(self.host.requests, [])
+
     def test_admits_zero_actions_then_reopens_same_installed_instance_to_reconcile_terminal_evidence(self) -> None:
         mission, envelope = self._mission_and_envelope()
-        admitted = self.runtime.admit(mission, envelope)
+        admitted = self._admit(mission, envelope)
         self.assertEqual(admitted.status.value, "APPROVED_PLANNABLE")
         self.assertEqual(admitted.actions, ())
         self.assertEqual(admitted.intents, ())
@@ -701,7 +1178,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         mission, envelope = self._mission_and_envelope(
             two_repositories=True, repository_scopes=scopes,
         )
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         heads = {scopes[0]: "a" * 40, scopes[1]: "b" * 40}
         selected_peer = SimpleNamespace(
             endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
@@ -836,7 +1313,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             allow_loopback_http=True, timeout=1.0,
         )
         mission, envelope = self._mission_and_envelope(two_repositories=True)
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         selected_peer = SimpleNamespace(
             endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
             ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
@@ -908,7 +1385,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             allow_loopback_http=True, timeout=1.0,
         )
         mission, envelope = self._mission_and_envelope(two_repositories=True)
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         selected_peer = SimpleNamespace(
             endpoint=self.host.config.base_url, expected_ep_instance_id=self.host.config.expected_instance_id,
             ep_project_id=self.host.config.project_id, ep_consumer_id=self.host.config.expected_consumer_id,
@@ -979,7 +1456,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def test_pre_t0_workspace_origin_must_match_approved_mission_source(self) -> None:
         mission, envelope = self._mission_and_envelope()
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         self.host.managed_workspace_readiness = lambda: {
             "status": "READY", "repository_identity": "another/repository",
         }
@@ -993,7 +1470,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def test_public_readback_surfaces_linked_legacy_confirmed_result_without_generation(self) -> None:
         mission, envelope = self._mission_and_envelope()
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         state = self.runtime.states.get(mission.id)
         self.runtime._initial_truth[mission.id] = self.runtime._truth_from_snapshot(self._truth())
         snapshot = PlanningSnapshot.from_planner_input(self.runtime._planning_input(state))
@@ -1030,7 +1507,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         external-session boundary that predates durable result storage.
         """
         mission, envelope = self._mission_and_envelope()
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         truth = self.runtime._truth_from_snapshot(self._truth())
         self.runtime.states.transition(
             mission.id, MissionExecutionStatus.CREATED, occurred_at="2026-09-11T16:00:00Z",
@@ -1106,7 +1583,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def test_public_legacy_audit_successor_rejects_unbound_other_and_ambiguous_evidence(self) -> None:
         mission, envelope = self._mission_and_envelope()
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         self.runtime.states.transition(
             mission.id, MissionExecutionStatus.CREATED, occurred_at="2026-09-11T16:00:00Z",
             reason="fixture_legacy_audit_rejections", repository_truth=self.runtime._truth_from_snapshot(self._truth()),
@@ -1172,7 +1649,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def test_public_recovery_retries_only_the_terminal_action_with_durable_lineage(self) -> None:
         mission, envelope = self._mission_and_envelope()
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         self.host.return_evidence = True
         self.host.outcome = ExecutionEvidenceOutcome.BLOCKED
         blocked = self.runtime.start(mission.id, self._truth())
@@ -1211,7 +1688,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def test_public_successor_reservation_is_explicit_and_does_not_dispatch(self) -> None:
         mission, envelope = self._mission_and_envelope()
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         original_store = self.runtime.database.store_durable_action_derivation_result
         def fail_confirmed_store(_result):
             raise RuntimeDatabaseError("qualification result store interruption")
@@ -1244,7 +1721,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def test_terminal_evidence_reconciliation_never_creates_a_second_dispatch(self) -> None:
         mission, envelope = self._mission_and_envelope()
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         waiting = self.runtime.start(mission.id, self._truth())
         self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
         self.runtime.states.transition(
@@ -1263,7 +1740,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def test_completed_terminal_evidence_reconciliation_closes_only_legacy_timing_gap(self) -> None:
         mission, envelope = self._mission_and_envelope()
-        self.runtime.admit(mission, envelope)
+        self._admit(mission, envelope)
         waiting = self.runtime.start(mission.id, self._truth())
         self.assertEqual(waiting.status, "WAITING_FOR_EVIDENCE")
         before = self.runtime.states.get(mission.id)

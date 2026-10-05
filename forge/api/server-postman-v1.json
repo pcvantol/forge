@@ -567,6 +567,18 @@
           "path": ["v1", "projects", "{{projectId}}", "roadmap"]
         }
       }
+    },
+    {
+      "name": "Read Mission progression fence",
+      "request": {"method": "GET", "header": [], "url": {"raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression", "host": ["{{baseUrl}}"], "path": ["v1", "missions", "{{missionId}}", "progression"]}}
+    },
+    {
+      "name": "Assign Mission progression policy",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression-policy", "host": ["{{baseUrl}}"], "path": ["v1", "missions", "{{missionId}}", "progression-policy"]}, "body": {"mode": "raw", "raw": "{}", "options": {"raw": {"language": "json"}}}}
+    },
+    {
+      "name": "Record Mission progression decision",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression-decisions", "host": ["{{baseUrl}}"], "path": ["v1", "missions", "{{missionId}}", "progression-decisions"]}, "body": {"mode": "raw", "raw": "{}", "options": {"raw": {"language": "json"}}}}
     }
   ]
 }

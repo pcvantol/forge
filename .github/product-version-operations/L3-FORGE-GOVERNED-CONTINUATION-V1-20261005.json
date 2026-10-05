@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.64",
+  "classification_rationale": "L3-FORGE-GOVERNED-CONTINUATION-V1-20261005",
+  "component": "product",
+  "event_lineage": "L3-FORGE-GOVERNED-CONTINUATION-V1-20261005",
+  "expected_head": "066b1c0e3e6287dcd187f71aad77d0b87688626b",
+  "operation_id": "L3-FORGE-GOVERNED-CONTINUATION-V1-20261005",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.65"
+}

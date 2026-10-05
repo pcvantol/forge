@@ -41,6 +41,9 @@ EXPECTED_ROUTES = frozenset({
     ("POST", "/v1/missions/approve-architecture"),
     ("POST", "/v1/missions/admit"),
     ("GET", "/v1/missions/{mission_id}"),
+    ("GET", "/v1/missions/{mission_id}/progression"),
+    ("POST", "/v1/missions/{mission_id}/progression-policy"),
+    ("POST", "/v1/missions/{mission_id}/progression-decisions"),
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
     ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
@@ -62,6 +65,9 @@ SERVICE_ROUTES = {
     ("POST", "/v1/missions/admit"): "mission_document",
     ("POST", "/v1/missions/{mission_id}/controller/start"): "mission_start",
     ("POST", "/v1/missions/{mission_id}/controller/reopen"): "mission_reopen",
+    ("GET", "/v1/missions/{mission_id}/progression"): "mission_progression_status",
+    ("POST", "/v1/missions/{mission_id}/progression-policy"): "mission_progression_policy",
+    ("POST", "/v1/missions/{mission_id}/progression-decisions"): "mission_progression_decide",
     ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"): "mission_archive_no_dispatch",
 }
 READ_ROUTES = {
@@ -109,7 +115,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 23)
+        self.assertEqual(len(EXPECTED_ROUTES), 26)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -149,7 +155,8 @@ class ServerRouteQualificationTests(unittest.TestCase):
                         "configure_provider_context", "configure_execution_host",
                         "detach_execution_host", "detach_execution_host_status",
                         "mission_document", "mission_start", "mission_reopen",
-                        "mission_archive_no_dispatch",
+                        "mission_progression_status", "mission_progression_policy",
+                        "mission_progression_decide", "mission_archive_no_dispatch",
                     ):
                         mocked_services[name] = stack.enter_context(patch.object(
                             server.services, name, return_value={"service": name},
@@ -189,6 +196,19 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                     mocked_services[expected_service].assert_called_with("MISSION-QUAL", {})
                                 elif expected_service == "mission_reopen":
                                     mocked_services[expected_service].assert_called_with("MISSION-QUAL")
+                                elif expected_service == "mission_progression_status":
+                                    mocked_services[expected_service].assert_called_with("MISSION-QUAL")
+                                elif expected_service == "mission_progression_policy":
+                                    mocked_services[expected_service].assert_called_with(
+                                        "MISSION-QUAL", {"repository_truth": {}},
+                                    )
+                                elif expected_service == "mission_progression_decide":
+                                    call = mocked_services[expected_service].call_args
+                                    self.assertEqual(call.args, ("MISSION-QUAL", {"repository_truth": {}}))
+                                    self.assertEqual(
+                                        call.kwargs["authenticated_principal_reference"],
+                                        "forge-server-admin-principal:v1:" + server.instance.instance_id,
+                                    )
                                 elif expected_service == "mission_archive_no_dispatch":
                                     call = mocked_services[expected_service].call_args
                                     self.assertEqual(

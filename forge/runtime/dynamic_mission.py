@@ -21,7 +21,10 @@ from forge.models.criterion_observation import CriterionObservation
 from forge.execution import ExecutionLoop, RecoveryAuthorization
 from forge.execution_host_configuration import EngineeringPlatformExecutionHostFactory
 from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationStore
-from forge.governance import ExecutionPolicy, ExecutionPolicyKind
+from forge.governance import ExecutionPolicy
+from forge.governed_continuation import (
+    CONTINUATION_INTENT_CONTRACT, GovernedContinuationError, GovernedContinuationService,
+)
 from forge.governance_authority import (
     ArchitecturePlanningEvidence, CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope,
 )
@@ -599,6 +602,7 @@ class InstalledDynamicMissionRuntime:
         state = self.states.get(mission_id)
         if state.status is not MissionExecutionStatus.APPROVED_PLANNABLE:
             raise InstalledDynamicMissionError("public start requires a canonically admitted zero-Action Mission")
+        self._progression_policy(state)
         truth = self._truth_from_snapshot(initial_repository_truth)
         self._assert_repository_scope(initial_repository_truth)
         self.preflight(expected_origin=self._approved_origin(state))
@@ -615,6 +619,9 @@ class InstalledDynamicMissionRuntime:
         """Continue the same Mission and persisted host correlation after reopen."""
         self._assert_single_resumable(mission_id)
         state = self.states.get(mission_id)
+        self._progression_policy(state)
+        if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
+            raise InstalledDynamicMissionError("Mission requires an exact progression decision before resume")
         if state.status is MissionExecutionStatus.APPROVED_PLANNABLE:
             raise InstalledDynamicMissionError("admitted Mission must be started before it can resume")
         if state.repository_truth is None:
@@ -628,6 +635,124 @@ class InstalledDynamicMissionRuntime:
         if not self._keep_running():
             return self._result(state)
         return self._tick(mission_id)
+
+    def assign_progression_policy(self, mission_id: str, document: Mapping[str, Any]) -> dict[str, Any]:
+        """Bind one explicit versioned profile/policy to an admitted Mission."""
+        required = {
+            "assignment_id", "profile_id", "profile_revision", "policy_revision", "mode",
+            "required_decision_role", "higher_scope_obligations", "expected_state_revision",
+        }
+        if set(document) != required or not isinstance(document["higher_scope_obligations"], list):
+            raise InstalledDynamicMissionError("progression policy request shape is invalid")
+        try:
+            return GovernedContinuationService(
+                self.database, self.repository, self.states, self.clock,
+            ).assign_policy(
+                mission_id, assignment_id=document["assignment_id"], profile_id=document["profile_id"],
+                profile_revision=document["profile_revision"], policy_revision=document["policy_revision"],
+                mode=document["mode"], required_decision_role=document["required_decision_role"],
+                higher_scope_obligations=tuple(document["higher_scope_obligations"]),
+                expected_state_revision=document["expected_state_revision"],
+            )
+        except GovernedContinuationError as error:
+            raise InstalledDynamicMissionError(str(error)) from error
+
+    def progression_status(self, mission_id: str) -> dict[str, Any]:
+        """Return policy/fence state without invoking a provider or Execution Host."""
+        state = self.states.get(mission_id)
+        policy = self._progression_policy(state)
+        requirement = dict(state.pause_reason) if isinstance(state.pause_reason, Mapping) else None
+        decision = None
+        if isinstance(requirement, Mapping) and isinstance(requirement.get("requirement_id"), str):
+            try:
+                service = GovernedContinuationService(
+                    self.database, self.repository, self.states, self.clock,
+                )
+                requirement = service.validate_requirement(state, requirement)
+                decision = service.decision_for_requirement(requirement["requirement_id"])
+            except GovernedContinuationError as error:
+                raise InstalledDynamicMissionError(str(error)) from error
+        return {
+            "schema_version": "forge-progression-status/v1", "mission_id": mission_id,
+            "mission_state_revision": state.revision, "lifecycle_state": state.status.value,
+            "policy": policy, "decision_requirement": requirement,
+            "decision": decision,
+            "approval_record": (
+                dict(state.approval_record) if isinstance(state.approval_record, Mapping) else None
+            ),
+            "continuation_intent": (
+                dict(state.resume["continuation_intent"])
+                if isinstance(state.resume.get("continuation_intent"), Mapping) else None
+            ),
+            "continuation_history": list(state.resume.get("continuation_history", ())),
+            "read_only": True,
+        }
+
+    def decide_progression(
+        self, mission_id: str, document: Mapping[str, Any], *,
+        authenticated_principal_reference: str,
+    ) -> DynamicMissionRunResult:
+        """Record one exact decision and resume an approved fence at most once."""
+        with RuntimeServiceLock(self.database.path).acquire():
+            service = GovernedContinuationService(self.database, self.repository, self.states, self.clock)
+            try:
+                decision = service.decide(
+                    mission_id, document,
+                    authenticated_principal_reference=authenticated_principal_reference,
+                )
+            except GovernedContinuationError as error:
+                raise InstalledDynamicMissionError(str(error)) from error
+            state = self.states.get(mission_id)
+            if not decision["resume_authorized"]:
+                return self._result(state)
+            if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
+                requirement = state.pause_reason
+                if (not isinstance(requirement, Mapping)
+                        or requirement.get("requirement_id") != document["requirement_id"]):
+                    raise InstalledDynamicMissionError("approved progression decision is no longer current")
+                intent_source = {
+                    "requirement_id": document["requirement_id"], "decision_id": document["decision_id"],
+                    "subject_digest": document["subject_digest"], "mission_id": mission_id,
+                    "completed_action_id": requirement["completed_action_id"],
+                    "evidence_digest": requirement["evidence_digest"],
+                    "policy_revision": requirement["policy_revision"],
+                }
+                intent = {
+                    "schema_version": CONTINUATION_INTENT_CONTRACT,
+                    "intent_id": "continuation-intent-" + _digest(intent_source)[7:39],
+                    **intent_source, "status": "READY",
+                }
+                state = self.states.transition(
+                    mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self.clock(),
+                    reason="governed_progression_approved",
+                    approval_record={
+                        "approval_id": document["decision_id"],
+                        "approved_by": requirement["required_role"], "approved_at": self.clock(),
+                        "decision_reference": document["requirement_id"],
+                    },
+                    resume={**state.resume, "continuation_intent": intent},
+                    expected_revision=state.revision,
+                )
+            marker = state.resume.get("terminal_continuation")
+            intent = state.resume.get("continuation_intent")
+            if (state.status is MissionExecutionStatus.ACTIVE and isinstance(marker, Mapping)
+                    and isinstance(intent, Mapping) and intent.get("decision_id") == document["decision_id"]):
+                return self._resume_governed_continuation_locked(mission_id)
+            return self._result(state)
+
+    def _resume_governed_continuation_locked(self, mission_id: str) -> DynamicMissionRunResult:
+        """Resume under the caller-owned canonical mutation lease."""
+        self._assert_single_resumable(mission_id)
+        state = self.states.get(mission_id)
+        self._progression_policy(state)
+        if state.repository_truth is None:
+            raise InstalledDynamicMissionError("resumed Mission lacks canonical Repository Truth")
+        self._initial_truth[mission_id] = dict(state.repository_truth)
+        self.preflight(expected_origin=self._approved_origin(state), require_workspace_readiness=False)
+        if not self._keep_running():
+            return self._result(state)
+        self._loop(mission_id).resume(mission_id)
+        return self._result(self.states.get(mission_id))
 
     def recover(self, mission_id: str, authorization: RecoveryAuthorization) -> DynamicMissionRunResult:
         """Authorize one exact terminal Action retry through the installed composition."""
@@ -889,6 +1014,7 @@ class InstalledDynamicMissionRuntime:
     def _loop(self, mission_id: str) -> ExecutionLoop:
         config = self.host.config
         state = self.states.get(mission_id)
+        progression_policy = self._progression_policy(state)
         origin_identity = self._approved_origin(state)
         contract = self._admission_contract(state)
         planning = contract["planning"]
@@ -903,7 +1029,7 @@ class InstalledDynamicMissionRuntime:
             repository_identity=config.repository_identity, clock=self.clock,
             origin_identity=origin_identity,
             correlation_id_factory=lambda: "forge-runtime-" + str(uuid4()),
-            execution_policy=ExecutionPolicy(ExecutionPolicyKind.CONTINUOUS),
+            execution_policy=ExecutionPolicy.from_dict(progression_policy),
             ai_planner=(DurableAIMissionPlanner(self.database, _OneActionProvider(self.provider))
                         if callable(getattr(self.provider, "prepare_durable_attempt", None))
                         else AIMissionPlanner(_OneActionProvider(self.provider))), derivation_policy=policy,
@@ -913,6 +1039,14 @@ class InstalledDynamicMissionRuntime:
             repository_revision_binding_factory=self._repository_revision_binding,
             keep_running=self._keep_running,
         )
+
+    def _progression_policy(self, state: MissionExecutionState) -> dict[str, Any]:
+        try:
+            return GovernedContinuationService(
+                self.database, self.repository, self.states, self.clock,
+            ).validate_assignment(state)
+        except GovernedContinuationError as error:
+            raise InstalledDynamicMissionError(str(error)) from error
 
     @staticmethod
     def _repository_revision_binding(

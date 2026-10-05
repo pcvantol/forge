@@ -669,6 +669,36 @@ class BootstrapMissionRunner:
                                 and state.completion.get("all_required_criteria_proven") is True):
             raise MissionRunnerError("persisted continuation conflicts with its completion assessment")
         reconciled = state
+        # Governance is evaluated against the exact, durably reconciled
+        # terminal receipt before Forge is allowed to invoke a provider for a
+        # successor.  A read or a restart can therefore never cross the fence.
+        governed_policy = (
+            isinstance(state.execution_policy, Mapping)
+            and state.execution_policy.get("assignment_contract")
+            == "forge-progression-policy-assignment/v1"
+        )
+        if (governed_policy and marker["phase"] == "ASSESSED"
+                and self._evidence_progression_gate is not None):
+            paused = self._evidence_progression_gate(
+                reconciled, self._actions(reconciled), evidence, mission_complete,
+            )
+            if paused is not None:
+                return paused
+        continuation_intent = reconciled.resume.get("continuation_intent")
+        if isinstance(continuation_intent, Mapping) and continuation_intent.get("status") == "READY":
+            consumed = {**continuation_intent, "status": "CONSUMED"}
+            resume = {key: value for key, value in reconciled.resume.items()
+                      if key != "continuation_intent"}
+            history = list(resume.get("continuation_history", ()))
+            if not any(item.get("intent_id") == consumed.get("intent_id") for item in history
+                       if isinstance(item, Mapping)):
+                history.append(consumed)
+            resume["continuation_history"] = history
+            reconciled = self._store.transition(
+                reconciled.mission_id, MissionExecutionStatus.ACTIVE,
+                occurred_at=self._now(), reason="governed_continuation_intent_consumed",
+                resume=resume,
+            )
         if not mission_complete and marker["phase"] == "ASSESSED":
             if self._replan_after_evidence is None:
                 if self._scheduler.progress(self._actions(state)).is_complete:
@@ -697,12 +727,21 @@ class BootstrapMissionRunner:
                     **reconciled.resume["terminal_continuation"], "phase": "SUCCESSOR_READY",
                 }},
             )
-        current_actions = self._actions(reconciled)
-        if self._evidence_progression_gate is not None:
-            paused = self._evidence_progression_gate(reconciled, current_actions, evidence, mission_complete)
+        if not governed_policy and self._evidence_progression_gate is not None:
+            paused = self._evidence_progression_gate(
+                reconciled, self._actions(reconciled), evidence, mission_complete,
+            )
             if paused is not None:
                 return paused
         resume = {key: value for key, value in reconciled.resume.items() if key != "terminal_continuation"}
+        continuation_intent = resume.pop("continuation_intent", None)
+        if isinstance(continuation_intent, Mapping):
+            consumed = {**continuation_intent, "status": "CONSUMED"}
+            history = list(resume.get("continuation_history", ()))
+            if not any(item.get("intent_id") == consumed.get("intent_id") for item in history
+                       if isinstance(item, Mapping)):
+                history.append(consumed)
+            resume["continuation_history"] = history
         if mission_complete:
             return self._store.transition(
                 reconciled.mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self._now(),
