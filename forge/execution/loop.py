@@ -17,6 +17,9 @@ from forge.capabilities import (CapabilityRegistry, DelegationApprovalState,
 from forge.completion import MissionCompletionEvaluator
 from forge.dispatcher import MissionDispatcher
 from forge.governance import ApprovalRecord, ExecutionPolicy, ExecutionPolicyKind, PauseBoundary, execution_policy_for_profile
+from forge.governed_continuation import (
+    POLICY_ASSIGNMENT_CONTRACT, GovernedContinuationService, validate_policy_assignment,
+)
 from forge.models.action import EngineeringAction, EngineeringActionStatus
 from forge.models.architecture_mission import ArchitectureMission
 from forge.models.execution_host import ExecutionEvidenceOutcome, ExecutionHost, ExecutionHostEvidence
@@ -134,6 +137,7 @@ class ExecutionLoop:
         completion_evidence: MissionCompletionEvidenceFactory | None = None,
         completion_evaluator: MissionCompletionEvaluator | None = None,
         runtime_database: RuntimeDatabase | None = None,
+        governance_repository: object | None = None,
         repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
         keep_running: Callable[[], bool] | None = None,
     ) -> None:
@@ -152,6 +156,7 @@ class ExecutionLoop:
         self._completion_evidence = completion_evidence
         self._completion_evaluator = completion_evaluator or MissionCompletionEvaluator()
         self._runtime_database = runtime_database
+        self._governance_repository = governance_repository
         self._repository_revision_binding_factory = repository_revision_binding_factory
         self._keep_running = keep_running or (lambda: True)
 
@@ -608,13 +613,35 @@ class ExecutionLoop:
                                       clock=self._clock, correlation_id_factory=self._correlation_id_factory,
                                       completion_context=completion, replan_after_evidence=self._replan_after_evidence,
                                       evidence_progression_gate=self._pause_after_evidence,
+                                      runtime_instance_id=(
+                                          self._runtime_database.runtime_identity.runtime_id
+                                          if self._runtime_database is not None else None
+                                      ),
                                       repository_revision_binding_factory=self._repository_revision_binding_factory,
                                       keep_running=self._keep_running)
 
     def _pause_after_evidence(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...],
                               evidence: ExecutionHostEvidence, mission_complete: bool) -> MissionExecutionState | None:
         """Apply policy only after exact evidence, never by altering host execution."""
-        policy = ExecutionPolicy.from_dict(state.execution_policy if state.execution_policy and state.execution_policy.get("kind") else self._execution_policy.to_dict())
+        if (not isinstance(state.execution_policy, Mapping)
+                or state.execution_policy.get("assignment_contract") != POLICY_ASSIGNMENT_CONTRACT):
+            # The reusable source-level loop retains its established explicit
+            # ExecutionPolicy contract.  The installed public composition
+            # validates and requires the richer Mission-bound assignment
+            # before it can construct this loop.
+            assignment = None
+            policy = ExecutionPolicy.from_dict(
+                state.execution_policy if state.execution_policy and state.execution_policy.get("kind")
+                else self._execution_policy.to_dict()
+            )
+        else:
+            assignment = validate_policy_assignment(state)
+            if self._runtime_database is None:
+                raise ExecutionLoopError("governed continuation requires durable runtime storage")
+            assignment = GovernedContinuationService(
+                self._runtime_database, self._governance_repository, self._states, self._clock,
+            ).validate_assignment(state)
+            policy = ExecutionPolicy.from_dict(assignment)
         current = next(item for item in actions if item.id == evidence.repository_evidence.action_id)
         boundary: PauseBoundary | None = None
         identity = current.id
@@ -632,8 +659,59 @@ class ExecutionLoop:
         if boundary is None:
             return None
         next_action = next((item.id for item in actions if item.status is not EngineeringActionStatus.COMPLETE), None)
-        reason = {"policy_kind": policy.kind.value, "boundary": boundary.value, "boundary_identity": identity,
-                  "completed_action_id": current.id}
+        if assignment is None:
+            reason = {"policy_kind": policy.kind.value, "boundary": boundary.value,
+                      "boundary_identity": identity, "completed_action_id": current.id}
+            return self._states.transition(
+                state.mission_id, MissionExecutionStatus.AWAITING_APPROVAL,
+                occurred_at=self._clock(), reason="execution_policy_pause", actions=actions,
+                pause_reason=reason,
+                resume={**state.resume, "next_action_id": next_action,
+                        "pause_boundary": boundary.value},
+            )
+        marker = state.resume.get("terminal_continuation")
+        if not isinstance(marker, Mapping) or marker.get("action_id") != current.id:
+            raise ExecutionLoopError("terminal continuation does not bind the completed Action")
+        if self._runtime_database is None:
+            raise ExecutionLoopError("governed continuation requires durable runtime storage")
+        continuation_intent = state.resume.get("continuation_intent")
+        if (isinstance(continuation_intent, Mapping)
+                and continuation_intent.get("status") in {"READY", "IN_PROGRESS"}):
+            decision_id = continuation_intent.get("decision_id")
+            row = self._runtime_database._connection.execute(
+                "SELECT document,digest FROM governance_decisions WHERE decision_id=?", (decision_id,)
+            ).fetchone()
+            decision = None if row is None else json.loads(row["document"])
+            evidence_document = decision.get("evidence") if isinstance(decision, Mapping) else None
+            decision_digest = None if decision is None else "sha256:" + sha256(json.dumps(
+                decision, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            ).encode("utf-8")).hexdigest()
+            if (decision_digest == (None if row is None else row["digest"])
+                    and continuation_intent.get("mission_id") == state.mission_id
+                    and continuation_intent.get("completed_action_id") == current.id
+                    and continuation_intent.get("evidence_digest") == marker.get("execution_digest")
+                    and continuation_intent.get("policy_revision") == assignment["policy_revision"]
+                    and isinstance(evidence_document, Mapping)
+                    and decision.get("decision") == "approve"
+                    and decision.get("subject_id") == continuation_intent.get("requirement_id")
+                    and decision.get("subject_revision") == continuation_intent.get("subject_digest")
+                    and evidence_document.get("mission_id") == state.mission_id
+                    and evidence_document.get("requirement_id") == continuation_intent.get("requirement_id")
+                    and evidence_document.get("subject_digest") == continuation_intent.get("subject_digest")
+                    and evidence_document.get("evidence_digest") == continuation_intent.get("evidence_digest")
+                    and evidence_document.get("policy_revision") == continuation_intent.get("policy_revision")):
+                GovernedContinuationService(
+                    self._runtime_database, self._governance_repository, self._states, self._clock,
+                ).assert_intent_authority(state, continuation_intent)
+                return None
+            raise ExecutionLoopError("continuation intent is stale or lacks its canonical approval")
+        reason = GovernedContinuationService(
+            self._runtime_database, self._governance_repository, self._states, self._clock,
+        ).requirement(
+            state, completed_action_id=current.id,
+            evidence_digest=str(marker.get("execution_digest")), project_id=self._workspace_id,
+            reason="policy_requires_review_after_action",
+        )
         return self._states.transition(state.mission_id, MissionExecutionStatus.AWAITING_APPROVAL,
                                        occurred_at=self._clock(), reason="execution_policy_pause", actions=actions,
                                        pause_reason=reason,

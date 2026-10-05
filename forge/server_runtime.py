@@ -90,6 +90,9 @@ SERVER_ROUTE_INVENTORY = (
     ("POST", "/v1/missions/approve-architecture"),
     ("POST", "/v1/missions/admit"),
     ("GET", "/v1/missions/{mission_id}"),
+    ("GET", "/v1/missions/{mission_id}/progression"),
+    ("POST", "/v1/missions/{mission_id}/progression-policy"),
+    ("POST", "/v1/missions/{mission_id}/progression-decisions"),
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
     ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
@@ -523,6 +526,29 @@ class ForgeServerApplicationServices:
     def mission_status(self, mission_id: str) -> dict[str, Any]:
         return mission_status(str(self.root), mission_id)
 
+    def mission_progression_status(self, mission_id: str) -> dict[str, Any]:
+        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+            return runtime.progression_status(mission_id)
+
+    def mission_progression_policy(self, mission_id: str, document: Mapping[str, Any]) -> dict[str, Any]:
+        from forge.runtime.mission_controller import require_no_controller
+        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+            with require_no_controller(runtime.database.path), RuntimeServiceLock(runtime.database.path).acquire():
+                return runtime.assign_progression_policy(mission_id, document)
+
+    def mission_progression_decide(
+        self, mission_id: str, document: Mapping[str, Any], *,
+        authenticated_principal_reference: str,
+    ) -> tuple[dict[str, Any], bool]:
+        from forge.runtime.mission_controller import require_no_controller
+        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+            with require_no_controller(runtime.database.path):
+                result, recording_status = runtime.decide_progression_with_recording_status(
+                    mission_id, document,
+                    authenticated_principal_reference=authenticated_principal_reference,
+                )
+                return _result_document(result), recording_status == "RECORDED"
+
     def mission_archive_no_dispatch(
         self, mission_id: str, document: Mapping[str, Any], *,
         authenticated_principal_reference: str,
@@ -638,7 +664,7 @@ class ForgeServerAPI:
             return self._read_api.handle(method, target, authorization)
         if method == "GET" and (
             path in {"/v1/status", "/v1/health"} or path.startswith("/v1/missions/")
-            and not path.endswith(("/controller/start", "/controller/reopen"))
+            and not path.endswith(("/controller/start", "/controller/reopen", "/progression"))
         ):
             return self._read_api.handle(method, target, authorization)
         try:
@@ -693,6 +719,10 @@ class ForgeServerAPI:
         if path.startswith("/v1/execution-host/detach/"):
             operation_id = unquote(path.removeprefix("/v1/execution-host/detach/"))
             return APIResponse(200, self.services.detach_execution_host_status(operation_id), headers)
+        if path.startswith("/v1/missions/") and path.endswith("/progression"):
+            parts = path.split("/")
+            if len(parts) == 5:
+                return APIResponse(200, self.services.mission_progression_status(unquote(parts[3])), headers)
         return None
 
     def _admin_post(
@@ -712,6 +742,15 @@ class ForgeServerAPI:
             return APIResponse(200, self.services.mission_document(path.rsplit("/", 1)[1], body), headers)
         if path.startswith("/v1/missions/"):
             parts = path.split("/")
+            if len(parts) == 5 and parts[4] == "progression-policy":
+                result = self.services.mission_progression_policy(unquote(parts[3]), body)
+                return APIResponse(201 if result.get("status") == "ASSIGNED" else 200, result, headers)
+            if len(parts) == 5 and parts[4] == "progression-decisions":
+                result, recorded = self.services.mission_progression_decide(
+                    unquote(parts[3]), body,
+                    authenticated_principal_reference=authenticated_principal_reference,
+                )
+                return APIResponse(201 if recorded else 200, result, headers)
             if len(parts) == 6 and parts[4] == "controller":
                 mission_id = unquote(parts[3])
                 if parts[5] == "start":

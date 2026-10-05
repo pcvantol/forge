@@ -219,6 +219,17 @@ def main(argv: list[str] | None = None) -> int:
         if name in {"run", "reopen"}:
             command.add_argument("--poll-seconds", type=float, default=1.0)
             command.add_argument("--maximum-wait-seconds", type=float, default=3600.0)
+    progression_policy = mission_commands.add_parser(
+        "progression-policy", help="bind one versioned Mission progression policy")
+    progression_policy.add_argument("--mission-id", required=True)
+    progression_policy.add_argument("--input", required=True)
+    progression_decide = mission_commands.add_parser(
+        "progression-decide", help="record one exact post-Action progression decision")
+    progression_decide.add_argument("--mission-id", required=True)
+    progression_decide.add_argument("--input", required=True)
+    progression_status = mission_commands.add_parser(
+        "progression-status", help="read the current post-Action progression fence")
+    progression_status.add_argument("--mission-id", required=True)
     execution_host = subparsers.add_parser("execution-host", help="manage the selected Execution Host peer")
     execution_host_commands = execution_host.add_subparsers(dest="execution_host_command", required=True)
     configure = execution_host_commands.add_parser("configure", help="persist one explicit EP peer binding")
@@ -427,6 +438,18 @@ def main(argv: list[str] | None = None) -> int:
                 result = mission_cli.admit(args.data_root, args.input)
             elif command == "status":
                 result = mission_cli.status(args.data_root, args.mission_id)
+            elif command == "progression-policy":
+                if args.data_root is None:
+                    raise ValueError("--data-root is required for progression policy")
+                result = mission_cli.progression_policy(args.data_root, args.mission_id, args.input)
+            elif command == "progression-status":
+                if args.data_root is None:
+                    raise ValueError("--data-root is required for progression status")
+                result = mission_cli.progression_status(args.data_root, args.mission_id)
+            elif command == "progression-decide":
+                if args.data_root is None:
+                    raise ValueError("--data-root is required for progression decision")
+                result = mission_cli.progression_decide(args.data_root, args.mission_id, args.input)
             elif command == "stop":
                 result = mission_cli.stop(args.data_root, args.mission_id)
             else:

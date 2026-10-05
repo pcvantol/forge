@@ -28,9 +28,11 @@ from forge.runtime.database import RUNTIME_SCHEMA_VERSION
 from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
 from forge.server_runtime import (
     ForgeServerAPI,
+    ForgeServerApplicationServices,
     ForgeServerRuntime,
     ForgeServerRuntimeError,
     ServerInstanceLease,
+    ServerRuntimeState,
     existing_instance,
 )
 from forge.secure_store import SecretState
@@ -534,6 +536,56 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                 server.server.shutdown()
                 server.server.server_close()
                 thread.join(timeout=2)
+
+    def test_progression_routes_are_authenticated_versioned_and_readback_is_effect_free(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = self._root(temporary, "progression-routes")
+            services = ForgeServerApplicationServices(
+                root, ServerRuntimeState(existing_instance(root), "test-provider"),
+                provider_id="test-provider",
+            )
+            api = ForgeServerAPI(services, "server-test-credential")
+            authorization = "Bearer server-test-credential"
+            policy = {"assignment_id": "assignment-1"}
+            decision = {"decision_id": "decision-1"}
+            with (patch.object(
+                    services, "mission_progression_status",
+                    return_value={"schema_version": "forge-progression-status/v1", "read_only": True},
+                ) as status, patch.object(
+                    services, "mission_progression_policy",
+                    side_effect=({"status": "ASSIGNED"}, {"status": "REPLAYED"}),
+                ) as assign, patch.object(
+                    services, "mission_progression_decide",
+                    side_effect=(({"status": "ACTIVE"}, True), ({"status": "ACTIVE"}, False)),
+                ) as decide):
+                readback = api.handle(
+                    "GET", "/v1/missions/MISSION-0001/progression", authorization,
+                )
+                assigned = api.handle(
+                    "POST", "/v1/missions/MISSION-0001/progression-policy", authorization, policy,
+                )
+                resumed = api.handle(
+                    "POST", "/v1/missions/MISSION-0001/progression-decisions", authorization, decision,
+                )
+                policy_replay = api.handle(
+                    "POST", "/v1/missions/MISSION-0001/progression-policy", authorization, policy,
+                )
+                decision_replay = api.handle(
+                    "POST", "/v1/missions/MISSION-0001/progression-decisions", authorization, decision,
+                )
+            self.assertEqual(
+                (readback.status, assigned.status, resumed.status, policy_replay.status, decision_replay.status),
+                (200, 201, 201, 200, 200),
+            )
+            self.assertTrue(readback.body["read_only"])
+            status.assert_called_once_with("MISSION-0001")
+            self.assertEqual(assign.call_count, 2)
+            assign.assert_called_with("MISSION-0001", policy)
+            self.assertEqual(decide.call_count, 2)
+            self.assertEqual(decide.call_args.args, ("MISSION-0001", decision))
+            principal = decide.call_args.kwargs["authenticated_principal_reference"]
+            self.assertTrue(principal.startswith("forge-server-admin-principal:v1:"))
+            self.assertNotIn("server-test-credential", principal)
 
     def test_mission_document_transport_uses_private_one_request_file(self) -> None:
         with TemporaryDirectory() as temporary:

@@ -545,6 +545,43 @@
           "503": {"description": "Project binding or bounded projection is unavailable"}
         }
       }
+    },
+    "/v1/missions/{mission_id}/progression": {
+      "get": {
+        "summary": "Read the Mission progression policy and durable decision fence without effects",
+        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "responses": {
+          "200": {"description": "Current policy assignment and decision fence"},
+          "401": {"description": "Authentication required"},
+          "409": {"description": "Fail-closed application or runtime conflict"}
+        }
+      }
+    },
+    "/v1/missions/{mission_id}/progression-policy": {
+      "post": {
+        "summary": "Assign an approved Mission-bound progression policy",
+        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JsonObject"}}}},
+        "responses": {
+          "200": {"description": "Exact policy replay"},
+          "201": {"description": "Policy assigned"},
+          "401": {"description": "Authentication required"},
+          "409": {"description": "Conflicting, stale or unauthorized assignment"}
+        }
+      }
+    },
+    "/v1/missions/{mission_id}/progression-decisions": {
+      "post": {
+        "summary": "Record and apply one exact governed progression decision",
+        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JsonObject"}}}},
+        "responses": {
+          "200": {"description": "Exact decision replay"},
+          "201": {"description": "Decision recorded"},
+          "401": {"description": "Authentication required"},
+          "409": {"description": "Wrong, stale, unauthorized or concurrent decision"}
+        }
+      }
     }
   },
   "components": {

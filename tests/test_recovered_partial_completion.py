@@ -37,7 +37,7 @@ class RecoveredPartialCompletionTests(unittest.TestCase):
             f.runtime.provider=f.provider;f.runtime.host=f.host
             f.runtime._criterion_observer.reader=ExactRepositoryBytes('synthetic/forge','c'*40,{'contract.json':b'{"source":"incorrect-source"}'})
             mission,envelope=f._mission_and_envelope()
-            f.runtime.admit(mission,envelope)
+            f._admit(mission,envelope)
             assert f.runtime.start(mission.id,f._truth()).status=='WAITING_FOR_EVIDENCE'
             f.host.return_evidence=True;f.host.outcome=ExecutionEvidenceOutcome.FAILED
             assert f.runtime.resume(mission.id).status=='FAILED'

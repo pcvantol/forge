@@ -509,6 +509,30 @@ class MissionStateStore:
         self._runtime.save_mission_state(document)
         return self.get(mission_id)
 
+    def assign_progression_policy(
+        self, mission_id: str, policy: Mapping[str, Any], *, occurred_at: str,
+        expected_revision: int,
+    ) -> MissionExecutionState:
+        """Replace only Mission Intake's non-executable placeholder policy."""
+        state = self.get(mission_id)
+        placeholder = {"write_scope": "NONE", "runtime_action_executed": False,
+                       "engineering_side_effects_allowed": False}
+        if (state.status is not MissionExecutionStatus.APPROVED_PLANNABLE
+                or state.actions or state.intents or state.revision != expected_revision
+                or state.execution_policy != placeholder):
+            raise MissionStateStoreError("progression policy assignment requires the Intake placeholder")
+        document = self._as_document(state)
+        document["execution_policy"] = _document(policy, "execution policy")
+        document["revision"] = state.revision + 1
+        document["lifecycle"] = state.status.value
+        document.setdefault("state_history", []).append({
+            "sequence": document["revision"], "from_status": state.status.value,
+            "to_status": state.status.value, "occurred_at": occurred_at,
+            "reason": "progression_policy_assigned",
+        })
+        self._runtime.save_mission_state(document)
+        return self.get(mission_id)
+
     def history(self, mission_id: str) -> tuple[MissionStateHistoryEntry, ...]:
         self.get(mission_id)
         rows = self._runtime.get_document("mission_state", mission_id).get("state_history", [])

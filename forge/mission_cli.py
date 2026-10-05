@@ -1,7 +1,7 @@
 """Packaged operator adapter for canonical Mission governance and execution."""
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 import json
@@ -221,6 +221,35 @@ def status(data_root: str, mission_id: str) -> dict[str, object]:
         return projection
     finally:
         connection.close()
+
+
+def progression_policy(data_root: str, mission_id: str, path: str) -> dict[str, object]:
+    """Assign one explicit policy without starting Mission work."""
+    document = _input(path)
+    with InstalledDynamicMissionRuntime.open(data_root) as runtime:
+        with require_no_controller(runtime.database.path), RuntimeServiceLock(runtime.database.path).acquire():
+            return runtime.assign_progression_policy(mission_id, document)
+
+
+def progression_status(data_root: str, mission_id: str) -> dict[str, object]:
+    """Read the exact progression fence without provider or host effects."""
+    with InstalledDynamicMissionRuntime.open(data_root) as runtime:
+        return runtime.progression_status(mission_id)
+
+
+def progression_decide(data_root: str, mission_id: str, path: str) -> dict[str, object]:
+    """Record and apply one exact locally authenticated progression decision."""
+    document = _input(path)
+    with InstalledDynamicMissionRuntime.open(data_root) as runtime:
+        with require_no_controller(runtime.database.path):
+            context = runtime.repository.operators.context()
+            if not runtime.repository.operators.authorize(context):
+                raise PermissionError("trusted bound operator is required")
+            principal = "local-operator:v1:" + runtime.repository._operator_id(context)
+            result = runtime.decide_progression(
+                mission_id, document, authenticated_principal_reference=principal,
+            )
+        return asdict(result)
 
 
 def _github_default_head(repository: str) -> tuple[str, str]:
