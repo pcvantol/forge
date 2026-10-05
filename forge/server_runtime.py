@@ -10,7 +10,6 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -22,6 +21,7 @@ import tempfile
 import time
 from typing import Any, Iterator, Mapping
 from urllib.parse import unquote
+from uuid import uuid4
 
 try:
     import fcntl
@@ -551,6 +551,7 @@ class ForgeServerAPI:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
         self._credential = bearer_credential
+        self._admin_session_principal = "forge-server-admin-session:v1:" + str(uuid4())
         self.root_identity = root_identity or RootIdentity(services.root)
         self.read_grant = read_grant
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
@@ -581,10 +582,7 @@ class ForgeServerAPI:
     def _admin_principal_reference(self, authorization: str | None) -> str:
         if not self._authenticated(authorization):
             raise PermissionError("authenticated admin principal is required")
-        digest = sha256(
-            b"forge-server-admin-principal-v1\0" + authorization[7:].encode("utf-8")
-        ).hexdigest()
-        return "forge-server-admin:v1:sha256:" + digest
+        return self._admin_session_principal
 
     @staticmethod
     def _read_scope_denied() -> APIResponse:

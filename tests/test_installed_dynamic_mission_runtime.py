@@ -494,6 +494,33 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
                 occurred_at="2026-09-11T17:02:00Z",
             )
 
+    def test_public_lifecycle_replay_rejects_corrupt_archive_transition_receipt(self) -> None:
+        mission, _ = self._materialized_no_dispatch()
+        service = MissionLifecycleService(self.runtime.repository)
+        request = dict(
+            expected_instance_id=self.runtime.database.runtime_identity.runtime_id,
+            expected_revision=2, reason_code="historical_no_dispatch_reconciled",
+            correlation_id="lifecycle-test-transition", occurred_at="2026-09-11T17:00:00Z",
+        )
+        service.archive_quiescent_no_dispatch(mission.id, **request)
+        row = self.runtime.database._connection.execute(
+            "SELECT document FROM mission_state WHERE mission_id=?", (mission.id,),
+        ).fetchone()
+        corrupted = json.loads(row["document"])
+        corrupted["state_history"][-1].update({
+            "sequence": 999,
+            "to_status": "FAILED",
+            "reason": "corrupt-reason",
+            "occurred_at": "1900-01-01T00:00:00Z",
+        })
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "UPDATE mission_state SET document=? WHERE mission_id=?",
+                (json.dumps(corrupted, sort_keys=True, separators=(",", ":")), mission.id),
+            )
+        with self.assertRaisesRegex(MissionLifecycleError, "different operation"):
+            service.archive_quiescent_no_dispatch(mission.id, **request)
+
     def test_public_lifecycle_fails_closed_on_authority_activity_or_uncertain_lineage(self) -> None:
         mission, _ = self._materialized_no_dispatch()
         service = MissionLifecycleService(self.runtime.repository)

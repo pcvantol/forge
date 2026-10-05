@@ -169,6 +169,7 @@ class MissionStateStoreTests(unittest.TestCase):
             "correlation_id": "lifecycle-1",
             "authenticated_principal_reference": "local-operator:v1:operator-1",
             "preserved_lineage_digest": "sha256:" + "a" * 64,
+            "transition_receipt_digest": "sha256:" + "b" * 64,
         }
         with self.assertRaisesRegex(MissionStateStoreError, "expected revision"):
             self.store.transition(

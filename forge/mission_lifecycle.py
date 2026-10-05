@@ -13,6 +13,7 @@ from forge.state import MissionExecutionStatus, MissionStateStore
 
 
 _REFERENCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
+_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 
 
 class MissionLifecycleError(ValueError):
@@ -185,6 +186,8 @@ class MissionLifecycleService:
         expected_instance_id = _reference(expected_instance_id, "Runtime Instance identity")
         reason_code = _reference(reason_code, "archive reason code")
         correlation_id = _reference(correlation_id, "archive correlation identity")
+        if not isinstance(occurred_at, str) or _TIMESTAMP.fullmatch(occurred_at) is None:
+            raise MissionLifecycleError("archive occurrence time is invalid")
         if type(expected_revision) is not int or expected_revision < 1:
             raise MissionLifecycleError("expected Mission revision is invalid")
         if self.database.runtime_identity.runtime_id != expected_instance_id:
@@ -205,11 +208,38 @@ class MissionLifecycleService:
         if state.status is MissionExecutionStatus.ARCHIVED:
             latest = state.state_history[-1] if state.state_history else {}
             recorded_audit = latest.get("administrative_audit")
+            recorded_identity = (
+                {key: recorded_audit.get(key) for key in audit_identity}
+                if isinstance(recorded_audit, dict) else {}
+            )
+            recorded_lineage = (
+                recorded_audit.get("preserved_lineage_digest")
+                if isinstance(recorded_audit, dict) else None
+            )
+            receipt_payload = {
+                "sequence": latest.get("sequence"),
+                "from_status": latest.get("from_status"),
+                "to_status": latest.get("to_status"),
+                "occurred_at": latest.get("occurred_at"),
+                "reason": latest.get("reason"),
+                "administrative_audit": {
+                    **recorded_identity,
+                    "preserved_lineage_digest": recorded_lineage,
+                },
+            }
             if (state.revision == expected_revision + 1 and isinstance(recorded_audit, dict)
-                    and {key: recorded_audit.get(key) for key in audit_identity} == audit_identity
-                    and set(recorded_audit) == {*audit_identity, "preserved_lineage_digest"}
-                    and latest.get("from_status") == MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH.value):
-                recorded_digest = recorded_audit.get("preserved_lineage_digest")
+                    and recorded_identity == audit_identity
+                    and set(recorded_audit) == {
+                        *audit_identity, "preserved_lineage_digest", "transition_receipt_digest",
+                    }
+                    and latest.get("sequence") == state.revision
+                    and latest.get("from_status") == MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH.value
+                    and latest.get("to_status") == MissionExecutionStatus.ARCHIVED.value
+                    and latest.get("reason") == reason_code
+                    and isinstance(latest.get("occurred_at"), str)
+                    and _TIMESTAMP.fullmatch(latest["occurred_at"]) is not None
+                    and recorded_audit.get("transition_receipt_digest") == _digest(receipt_payload)):
+                recorded_digest = recorded_lineage
                 self._assert_quiescent(mission_id, state, replay=True)
                 if (not isinstance(recorded_digest, str)
                         or recorded_digest != _digest(self._lineage(state))):
@@ -221,7 +251,19 @@ class MissionLifecycleService:
         if state.revision != expected_revision:
             raise MissionLifecycleError("Mission revision differs from the expected revision")
         before = _digest(self._lineage(state))
-        audit = {**audit_identity, "preserved_lineage_digest": before}
+        audit_without_receipt = {**audit_identity, "preserved_lineage_digest": before}
+        transition_payload = {
+            "sequence": expected_revision + 1,
+            "from_status": MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH.value,
+            "to_status": MissionExecutionStatus.ARCHIVED.value,
+            "occurred_at": occurred_at,
+            "reason": reason_code,
+            "administrative_audit": audit_without_receipt,
+        }
+        audit = {
+            **audit_without_receipt,
+            "transition_receipt_digest": _digest(transition_payload),
+        }
         self._assert_quiescent(mission_id, state)
         archived = self.states.transition(
             mission_id, MissionExecutionStatus.ARCHIVED, occurred_at=occurred_at,

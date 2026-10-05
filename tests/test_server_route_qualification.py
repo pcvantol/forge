@@ -196,7 +196,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                     )
                                     self.assertRegex(
                                         call.kwargs["authenticated_principal_reference"],
-                                        r"\Aforge-server-admin:v1:sha256:[0-9a-f]{64}\Z",
+                                        r"\Aforge-server-admin-session:v1:[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z",
                                     )
                             expected_read = READ_ROUTES.get((method, path))
                             if expected_read is not None:

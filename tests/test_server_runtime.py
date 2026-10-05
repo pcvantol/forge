@@ -473,7 +473,10 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                     args, kwargs = archive.call_args
                     self.assertEqual(args, ("mission-1", archive_request))
                     principal = kwargs["authenticated_principal_reference"]
-                    self.assertRegex(principal, r"\Aforge-server-admin:v1:sha256:[0-9a-f]{64}\Z")
+                    self.assertRegex(
+                        principal,
+                        r"\Aforge-server-admin-session:v1:[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z",
+                    )
                     self.assertNotIn("server-secret", principal)
                 with patch.object(server.services, "configure_provider_context", return_value={"state": "BOUND"}):
                     self.assertEqual(server.api.handle(
