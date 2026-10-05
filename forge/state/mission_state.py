@@ -353,7 +353,10 @@ class MissionStateStore:
             raise MissionStateStoreError("mission state revision differs from the expected revision")
         if transition_audit is not None:
             audit = _document(transition_audit, "transition audit")
-            required_audit = {"operation", "operator_reference", "reason_code", "correlation_id"}
+            required_audit = {
+                "operation", "operator_reference", "reason_code", "correlation_id",
+                "preserved_lineage_digest",
+            }
             if (status is not MissionExecutionStatus.ARCHIVED or set(audit) != required_audit
                     or any(not isinstance(audit[item], str) or not audit[item]
                            or len(audit[item]) > 256 or "\n" in audit[item] or "\r" in audit[item]

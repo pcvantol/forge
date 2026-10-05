@@ -467,6 +467,23 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
                 occurred_at="2026-09-11T17:01:00Z",
             )
 
+        row = self.runtime.database._connection.execute(
+            "SELECT document FROM mission_state WHERE mission_id=?", (mission.id,),
+        ).fetchone()
+        corrupted = json.loads(row["document"])
+        corrupted["actions"][0]["revision"] = 99
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "UPDATE mission_state SET document=? WHERE mission_id=?",
+                (json.dumps(corrupted, sort_keys=True, separators=(",", ":")), mission.id),
+            )
+        with self.assertRaisesRegex(MissionLifecycleError, "lineage differs"):
+            service.archive_quiescent_no_dispatch(
+                mission.id, expected_instance_id=instance_id, expected_revision=2,
+                reason_code="historical_no_dispatch_reconciled", correlation_id="lifecycle-test-2",
+                occurred_at="2026-09-11T17:02:00Z",
+            )
+
     def test_public_lifecycle_fails_closed_on_authority_activity_or_uncertain_lineage(self) -> None:
         mission, _ = self._materialized_no_dispatch()
         service = MissionLifecycleService(self.runtime.repository)
@@ -483,6 +500,18 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             service.archive_quiescent_no_dispatch(mission.id, **request)
         with patch.object(self.runtime.database, "durable_action_derivation_readback", return_value=()), \
              self.assertRaisesRegex(MissionLifecycleError, "incomplete or uncertain"):
+            service.archive_quiescent_no_dispatch(mission.id, **request)
+        row = self.runtime.database._connection.execute(
+            "SELECT document FROM mission_state WHERE mission_id=?", (mission.id,),
+        ).fetchone()
+        completed = json.loads(row["document"])
+        completed["completion_history"] = [{"assessment": "historical"}]
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "UPDATE mission_state SET document=? WHERE mission_id=?",
+                (json.dumps(completed, sort_keys=True, separators=(",", ":")), mission.id),
+            )
+        with self.assertRaisesRegex(MissionLifecycleError, "completion"):
             service.archive_quiescent_no_dispatch(mission.id, **request)
 
     def test_admits_zero_actions_then_reopens_same_installed_instance_to_reconcile_terminal_evidence(self) -> None:

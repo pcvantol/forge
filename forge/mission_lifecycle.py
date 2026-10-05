@@ -82,6 +82,7 @@ class MissionLifecycleService:
             "planning_history": state.planning_history,
             "repository_truth": state.repository_truth,
             "execution_history": state.execution_history,
+            "completion_history": state.completion_history,
         }
 
     def _operator_reference(self) -> str:
@@ -108,7 +109,7 @@ class MissionLifecycleService:
         if (state.current_engineering_action is not None or state.current_engineering_intent is not None
                 or state.execution_correlation is not None or state.execution_evidence is not None
                 or state.execution_history or state.completion is not None or state.integration is not None
-                or state.delegations):
+                or state.completion_history or state.delegations):
             raise MissionLifecycleError("Mission has execution, completion, delegation, or integration activity")
         if self.database.has_active_mission_dispatch(mission_id):
             raise MissionLifecycleError("Mission has active dispatch lineage")
@@ -161,7 +162,7 @@ class MissionLifecycleService:
             raise MissionLifecycleError("Runtime Instance identity differs from the expected instance")
         operator = self._operator_reference()
         state = self.states.get(mission_id)
-        audit = {
+        audit_identity = {
             "operation": "archive_quiescent_no_dispatch",
             "operator_reference": operator,
             "reason_code": reason_code,
@@ -169,13 +170,21 @@ class MissionLifecycleService:
         }
         if state.status is MissionExecutionStatus.ARCHIVED:
             latest = state.state_history[-1] if state.state_history else {}
-            if (state.revision == expected_revision + 1 and latest.get("administrative_audit") == audit
+            recorded_audit = latest.get("administrative_audit")
+            if (state.revision == expected_revision + 1 and isinstance(recorded_audit, dict)
+                    and {key: recorded_audit.get(key) for key in audit_identity} == audit_identity
+                    and set(recorded_audit) == {*audit_identity, "preserved_lineage_digest"}
                     and latest.get("from_status") == MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH.value):
-                return self._result(state, expected_revision, correlation_id, operator)
+                recorded_digest = recorded_audit.get("preserved_lineage_digest")
+                if (not isinstance(recorded_digest, str)
+                        or recorded_digest != _digest(self._lineage(state))):
+                    raise MissionLifecycleError("archived Mission lineage differs from its preserved receipt")
+                return self._result(state, expected_revision, correlation_id, operator, recorded_digest)
             raise MissionLifecycleError("Mission is already archived by a different operation")
         if state.revision != expected_revision:
             raise MissionLifecycleError("Mission revision differs from the expected revision")
         before = _digest(self._lineage(state))
+        audit = {**audit_identity, "preserved_lineage_digest": before}
         self._assert_quiescent(mission_id, state)
         archived = self.states.transition(
             mission_id, MissionExecutionStatus.ARCHIVED, occurred_at=occurred_at,
@@ -183,10 +192,10 @@ class MissionLifecycleService:
         )
         if _digest(self._lineage(archived)) != before:
             raise MissionLifecycleError("administrative archive changed immutable Mission lineage")
-        return self._result(archived, expected_revision, correlation_id, operator)
+        return self._result(archived, expected_revision, correlation_id, operator, before)
 
     def _result(self, state: Any, previous_revision: int, correlation_id: str,
-                operator: str) -> MissionArchiveResult:
+                operator: str, preserved_lineage_digest: str) -> MissionArchiveResult:
         return MissionArchiveResult(
             mission_id=state.mission_id,
             instance_id=self.database.runtime_identity.runtime_id,
@@ -196,5 +205,5 @@ class MissionLifecycleService:
             revision=state.revision,
             correlation_id=correlation_id,
             operator_reference=operator,
-            preserved_lineage_digest=_digest(self._lineage(state)),
+            preserved_lineage_digest=preserved_lineage_digest,
         )
