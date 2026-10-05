@@ -12,7 +12,10 @@ from hashlib import sha256
 import json
 from typing import Any, Mapping
 
-from forge.governance import ExecutionPolicy, ExecutionPolicyKind
+from forge.governance import (
+    ApprovalStage, CanonicalGovernanceProfile, ExecutionPolicy, ExecutionPolicyKind,
+    GovernanceRole, execution_policy_for_profile, resolve_governance_profile,
+)
 from forge.governance_authority import GovernanceCapability, GovernanceDecision
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
 
@@ -21,7 +24,9 @@ POLICY_ASSIGNMENT_CONTRACT = "forge-progression-policy-assignment/v1"
 DECISION_REQUIREMENT_CONTRACT = "forge-decision-requirement/v1"
 CONTINUATION_INTENT_CONTRACT = "forge-continuation-intent/v1"
 DECISION_CONTRACT = "forge-progression-decision/v1"
+FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT = "forge-final-acceptance-requirement/v1"
 PROFILE_DEFINITION_REVISION = "1"
+PROGRESSION_POLICY_REVISION = "1"
 
 
 class GovernedContinuationError(ValueError):
@@ -49,6 +54,34 @@ _ROLE_CAPABILITIES = {
 }
 
 
+def _resolved_policy(profile_id: str, mode: str, required_role: str) -> tuple[ProgressionMode, str]:
+    """Resolve the supported GP-F subset from the canonical profile catalogue.
+
+    The installed serial subset is intentionally limited to the Solo profile,
+    whose primary operator is the exact Platform Architect actor.  After-Action
+    is a stricter Mission override; a weaker or ambiguous override is rejected.
+    """
+    try:
+        profile = resolve_governance_profile(profile_id)
+        selected = ProgressionMode(mode)
+    except (KeyError, ValueError) as error:
+        raise GovernedContinuationError("governance profile or progression mode is unsupported") from error
+    if profile.profile is not CanonicalGovernanceProfile.SOLO:
+        raise GovernedContinuationError(
+            "selected serial progression subset requires the canonical Solo profile"
+        )
+    default = execution_policy_for_profile(profile.profile)
+    if default.kind is not ExecutionPolicyKind.CONTINUOUS:
+        raise GovernedContinuationError("canonical project profile default is unsupported")
+    engineering_roles = profile.approval_matrix[ApprovalStage.ENGINEERING]
+    if engineering_roles != (GovernanceRole.PLATFORM_ARCHITECT,) or required_role != engineering_roles[0].value:
+        raise GovernedContinuationError("progression decision role conflicts with the canonical profile")
+    actors = profile.role_assignments.get(engineering_roles[0], ())
+    if actors != ("primary_operator",):
+        raise GovernedContinuationError("canonical profile lacks an exact primary-operator role assignment")
+    return selected, actors[0]
+
+
 def _digest(value: object) -> str:
     return "sha256:" + sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -74,7 +107,8 @@ def validate_policy_assignment(state: MissionExecutionState) -> dict[str, Any]:
         "schema_version", "kind", "custom_boundaries", "assignment_contract",
         "assignment_id", "mission_id", "mission_subject_revision", "profile_id",
         "profile_revision", "policy_revision", "mode", "required_decision_role",
-        "required_decision_capability", "higher_scope_obligations", "decision_digest",
+        "required_decision_capability", "required_role_actor",
+        "higher_scope_obligations", "decision_digest",
     }
     if not isinstance(value, Mapping) or set(value) != required:
         raise GovernedContinuationError("Mission progression policy assignment is missing or malformed")
@@ -83,6 +117,7 @@ def validate_policy_assignment(state: MissionExecutionState) -> dict[str, Any]:
             or document["mission_id"] != state.mission_id
             or document["mission_subject_revision"] != _mission_subject_revision(state)
             or document["profile_revision"] != PROFILE_DEFINITION_REVISION
+            or document["policy_revision"] != PROGRESSION_POLICY_REVISION
             or document["mode"] not in {item.value for item in ProgressionMode}
             or document["required_decision_role"] not in _ROLE_CAPABILITIES
             or document["required_decision_capability"]
@@ -90,6 +125,11 @@ def validate_policy_assignment(state: MissionExecutionState) -> dict[str, Any]:
             or not isinstance(document["higher_scope_obligations"], list)
             or any(not isinstance(item, str) or not item for item in document["higher_scope_obligations"])):
         raise GovernedContinuationError("Mission progression policy assignment conflicts with its Mission")
+    _, actor = _resolved_policy(
+        str(document["profile_id"]), str(document["mode"]), str(document["required_decision_role"]),
+    )
+    if document["required_role_actor"] != actor:
+        raise GovernedContinuationError("Mission progression policy role actor is not canonical")
     expected_kind = (ExecutionPolicyKind.CONTINUOUS if document["mode"] == ProgressionMode.CONTINUOUS.value
                      else ExecutionPolicyKind.ENGINEERING_ACTION_REVIEW)
     policy = ExecutionPolicy.from_dict(document)
@@ -135,13 +175,12 @@ class GovernedContinuationService:
                 or state.actions or state.intents or state.revision != expected_state_revision
                 or state.execution_policy != placeholder):
             raise GovernedContinuationError("progression policy requires the current zero-Action admitted Mission")
-        try:
-            selected = ProgressionMode(mode)
-            capability = _ROLE_CAPABILITIES[required_decision_role]
-        except (ValueError, KeyError) as error:
-            raise GovernedContinuationError("progression policy mode or decision role is unsupported") from error
+        selected, required_actor = _resolved_policy(profile_id, mode, required_decision_role)
+        capability = _ROLE_CAPABILITIES[required_decision_role]
         if profile_revision != PROFILE_DEFINITION_REVISION:
             raise GovernedContinuationError("governance profile revision is unsupported")
+        if policy_revision != PROGRESSION_POLICY_REVISION:
+            raise GovernedContinuationError("progression policy revision is unsupported")
         contract = state.admission_contract or {}
         planning = contract.get("planning") if isinstance(contract, Mapping) else None
         gates = planning.get("human_gates") if isinstance(planning, Mapping) else None
@@ -159,6 +198,7 @@ class GovernedContinuationService:
             "mode": selected.value,
             "required_decision_role": required_decision_role,
             "required_decision_capability": capability.value,
+            "required_role_actor": required_actor,
             "higher_scope_obligations": list(higher_scope_obligations),
         }
         decision = GovernanceDecision(
@@ -167,7 +207,23 @@ class GovernedContinuationService:
             tuple(str(item) for item in state.mission.get("scope", ())), tuple(higher_scope_obligations),
             evidence=evidence,
         )
-        decision_digest = self.repository.record(decision, context)
+        existing = self._existing_decision(assignment_id)
+        if existing is None:
+            decision_digest = self.repository.record(decision, context)
+        else:
+            existing_evidence = existing.get("evidence") if isinstance(existing, Mapping) else None
+            operator_id = sha256(context.generated_uid.encode()).hexdigest()[:16]
+            if (existing.get("subject_id") != mission_id
+                    or existing.get("subject_revision") != _mission_subject_revision(state)
+                    or existing.get("capability") != GovernanceCapability.ARCHITECTURE_APPROVAL.value
+                    or existing.get("decision") != "progression_policy_assigned"
+                    or existing.get("operator_id") != operator_id
+                    or not isinstance(existing_evidence, Mapping)
+                    or any(existing_evidence.get(key) != value for key, value in evidence.items())):
+                raise GovernedContinuationError(
+                    "assignment identity conflicts with an existing canonical decision"
+                )
+            decision_digest = _digest(existing)
         policy = ExecutionPolicy(
             ExecutionPolicyKind.CONTINUOUS if selected is ProgressionMode.CONTINUOUS
             else ExecutionPolicyKind.ENGINEERING_ACTION_REVIEW
@@ -194,7 +250,7 @@ class GovernedContinuationService:
         expected = {key: policy[key] for key in (
             "assignment_contract", "mission_id", "mission_subject_revision", "profile_id",
             "profile_revision", "policy_revision", "mode", "required_decision_role",
-            "required_decision_capability", "higher_scope_obligations",
+            "required_decision_capability", "required_role_actor", "higher_scope_obligations",
         )}
         if (_digest(decision) != row["digest"]
                 or decision.get("subject_id") != state.mission_id
@@ -224,6 +280,7 @@ class GovernedContinuationService:
             "policy_revision": policy["policy_revision"],
             "policy_digest": _digest(policy),
             "required_role": policy["required_decision_role"],
+            "required_role_actor": policy["required_role_actor"],
             "required_capability": policy["required_decision_capability"],
             "reason": _text(reason, "decision reason"),
             "continuation_scope": list(state.mission.get("scope", ())),
@@ -240,7 +297,7 @@ class GovernedContinuationService:
             "instance_id", "project_id", "mission_id", "mission_subject_revision",
             "mission_state_revision", "completed_action_id", "evidence_digest",
             "policy_revision", "policy_digest", "required_role", "required_capability",
-            "reason", "continuation_scope",
+            "required_role_actor", "reason", "continuation_scope",
         }
         required = {"schema_version", "requirement_id", "subject_digest", "status", *subject_keys}
         if (set(requirement) != required
@@ -263,6 +320,7 @@ class GovernedContinuationService:
                 or requirement.get("policy_revision") != policy["policy_revision"]
                 or requirement.get("policy_digest") != _digest(policy)
                 or requirement.get("required_role") != policy["required_decision_role"]
+                or requirement.get("required_role_actor") != policy["required_role_actor"]
                 or requirement.get("required_capability") != policy["required_decision_capability"]
                 or requirement.get("continuation_scope") != list(state.mission.get("scope", ()))
                 or not isinstance(marker, Mapping)
@@ -293,7 +351,13 @@ class GovernedContinuationService:
                 replay_capability = GovernanceCapability(str(existing.get("capability")))
             except ValueError as error:
                 raise GovernedContinuationError("stored progression decision capability is invalid") from error
-            self._assert_current_authority(replay_capability)
+            replay_evidence = existing.get("evidence") if isinstance(existing, Mapping) else None
+            replay_role = replay_evidence.get("required_role") if isinstance(replay_evidence, Mapping) else None
+            replay_actor = replay_evidence.get("required_role_actor") if isinstance(replay_evidence, Mapping) else None
+            self._assert_current_authority(
+                replay_capability, str(replay_role), str(replay_actor),
+                authenticated_principal_reference=authenticated_principal_reference,
+            )
             self._assert_replay(existing, mission_id, document, authenticated_principal_reference)
             return {"status": "REPLAYED", "mission_id": mission_id, "decision_id": decision_id,
                     "decision": document["decision"], "resume_authorized": document["decision"] == "approve"}
@@ -324,7 +388,10 @@ class GovernedContinuationService:
             capability = GovernanceCapability(str(requirement["required_capability"]))
         except ValueError as error:
             raise GovernedContinuationError("progression decision or required capability is unsupported") from error
-        self._assert_current_authority(capability)
+        self._assert_current_authority(
+            capability, str(requirement["required_role"]), str(requirement["required_role_actor"]),
+            authenticated_principal_reference=authenticated_principal_reference,
+        )
         context = self.repository.operators.context()
         evidence = {
             "schema_version": DECISION_CONTRACT, "requirement_id": requirement["requirement_id"],
@@ -335,6 +402,7 @@ class GovernedContinuationService:
             "reason": _text(document["reason"], "decision reason"),
             "authenticated_principal_reference": _text(authenticated_principal_reference, "authenticated principal"),
             "required_role": requirement["required_role"],
+            "required_role_actor": requirement["required_role_actor"],
         }
         canonical = GovernanceDecision(
             decision_id, requirement["requirement_id"], requirement["subject_digest"], capability,
@@ -377,17 +445,60 @@ class GovernedContinuationService:
         return {"decision_id": value["decision_id"], "decision": value["decision"],
                 "decision_digest": row["digest"], "occurred_at": value["occurred_at"]}
 
-    def _assert_current_authority(self, capability: GovernanceCapability) -> None:
+    def _assert_current_authority(
+        self, capability: GovernanceCapability, required_role: str, required_role_actor: str,
+        *, authenticated_principal_reference: str | None = None,
+    ) -> None:
+        if self.repository is None:
+            raise GovernedContinuationError("current progression authority repository is unavailable")
+        _, actor = _resolved_policy("solo", ProgressionMode.CONTINUOUS.value, required_role)
+        if required_role_actor != actor:
+            raise GovernedContinuationError("current progression actor does not hold the exact required role")
         context = self.repository.operators.context()
         if not self.repository.operators.authorize(context):
             raise GovernedContinuationError("current progression decision actor is not authorized")
         operator_id = sha256(context.generated_uid.encode()).hexdigest()[:16]
+        if authenticated_principal_reference is not None:
+            accepted_principals = {
+                "local-operator:v1:" + operator_id,
+                "forge-server-admin-principal:v1:" + self.database.runtime_identity.runtime_id,
+            }
+            if authenticated_principal_reference not in accepted_principals:
+                raise GovernedContinuationError(
+                    "authenticated principal does not bind the current required-role actor"
+                )
         row = self.database._connection.execute(
             "SELECT 1 FROM governance_authority WHERE installation_id=? AND operator_id=? AND capability=?",
             (context.installation_id, operator_id, capability.value),
         ).fetchone()
         if row is None:
             raise GovernedContinuationError("required progression decision capability is absent")
+
+    def assert_intent_authority(
+        self, state: MissionExecutionState, intent: Mapping[str, Any],
+    ) -> None:
+        """Recheck exact current role and capability at successor release."""
+        policy = self.validate_assignment(state)
+        if (intent.get("required_role") != policy["required_decision_role"]
+                or intent.get("required_role_actor") != policy["required_role_actor"]
+                or intent.get("required_capability") != policy["required_decision_capability"]):
+            raise GovernedContinuationError("continuation intent authority binding is stale")
+        try:
+            capability = GovernanceCapability(str(intent["required_capability"]))
+        except ValueError as error:
+            raise GovernedContinuationError("continuation intent capability is unsupported") from error
+        self._assert_current_authority(
+            capability, str(intent["required_role"]), str(intent["required_role_actor"]),
+        )
+        decision = self._existing_decision(str(intent.get("decision_id")))
+        evidence = decision.get("evidence") if isinstance(decision, Mapping) else None
+        context = self.repository.operators.context()
+        operator_id = sha256(context.generated_uid.encode()).hexdigest()[:16]
+        if (not isinstance(decision, Mapping) or not isinstance(evidence, Mapping)
+                or decision.get("operator_id") != operator_id
+                or evidence.get("authenticated_principal_reference")
+                != intent.get("authenticated_principal_reference")):
+            raise GovernedContinuationError("continuation intent actor binding is no longer current")
 
     @staticmethod
     def _assert_replay(
@@ -405,3 +516,35 @@ class GovernedContinuationService:
                     "evidence_digest", "policy_revision", "decision", "reason",
                 ))):
             raise GovernedContinuationError("decision identity conflicts with an existing canonical decision")
+
+
+def final_acceptance_requirement(
+    state: MissionExecutionState, *, instance_id: str, project_id: str,
+) -> dict[str, Any]:
+    """Create a durable Mission-end obligation separate from progression approval."""
+    policy = validate_policy_assignment(state)
+    marker = state.resume.get("terminal_continuation")
+    if (not isinstance(marker, Mapping) or marker.get("mission_complete") is not True
+            or not isinstance(state.completion, Mapping)
+            or state.completion.get("all_required_criteria_proven") is not True):
+        raise GovernedContinuationError("final acceptance requires proven Mission completion evidence")
+    subject = {
+        "instance_id": _text(instance_id, "instance id"),
+        "project_id": _text(project_id, "project id"),
+        "mission_id": state.mission_id,
+        "mission_subject_revision": _mission_subject_revision(state),
+        "mission_state_revision": state.revision,
+        "completion_digest": _digest(state.completion),
+        "terminal_evidence_digest": str(marker["execution_digest"]),
+        "policy_revision": policy["policy_revision"],
+        "policy_digest": _digest(policy),
+        "required_role": "business_owner",
+        "required_capability": GovernanceCapability.BUSINESS_APPROVAL.value,
+        "reason": "mission_end_acceptance_required",
+    }
+    digest = _digest(subject)
+    return {
+        "schema_version": FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT,
+        "requirement_id": "final-acceptance-requirement-" + digest[7:39],
+        **subject, "subject_digest": digest, "status": "PENDING",
+    }

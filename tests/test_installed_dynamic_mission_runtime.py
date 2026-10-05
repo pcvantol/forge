@@ -373,13 +373,17 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         admitted = self.runtime.admit(mission, envelope)
         self.runtime.assign_progression_policy(mission.id, {
             "assignment_id": "progression-assignment-" + mission.id.lower(),
-            "profile_id": "solo" if mode == "continuous" else "professional",
+            "profile_id": "solo",
             "profile_revision": "1", "policy_revision": "1", "mode": mode,
             "required_decision_role": "platform_architect",
             "higher_scope_obligations": ["protected-delivery"],
             "expected_state_revision": admitted.revision,
         })
         return admitted
+
+    def _progression_principal(self) -> str:
+        context = self.runtime.repository.operators.context()
+        return "local-operator:v1:" + self.runtime.repository._operator_id(context)
 
     @staticmethod
     def _truth() -> RepositoryTruthSnapshot:
@@ -633,12 +637,12 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             "decision": "approve", "reason": "Exact terminal evidence permits the bounded successor.",
         }
         continued = self.runtime.decide_progression(
-            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+            mission.id, decision, authenticated_principal_reference=self._progression_principal(),
         )
         self.assertEqual(continued.status, "WAITING_FOR_EVIDENCE", self.runtime.states.get(mission.id).waiting_reason)
         self.assertEqual(self.provider.calls, 2)
         replayed = self.runtime.decide_progression(
-            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+            mission.id, decision, authenticated_principal_reference=self._progression_principal(),
         )
         self.assertEqual(replayed.status, "WAITING_FOR_EVIDENCE")
         self.assertEqual(self.provider.calls, 2)
@@ -683,7 +687,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             "decision": outcome, "reason": "Exercise exact non-approval semantics.",
         }
         result = self.runtime.decide_progression(
-            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+            mission.id, decision, authenticated_principal_reference=self._progression_principal(),
         )
         self.assertEqual(paused.status, "AWAITING_APPROVAL")
         self.assertEqual(result.status, "AWAITING_APPROVAL")
@@ -694,7 +698,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(InstalledDynamicMissionError, "already has a canonical decision"):
             self.runtime.decide_progression(
-                mission.id, replacement, authenticated_principal_reference="test-admin-principal",
+                mission.id, replacement, authenticated_principal_reference=self._progression_principal(),
             )
         self.assertEqual(self.provider.calls, 1)
 
@@ -728,7 +732,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(InstalledDynamicMissionError, "stale or bound to another subject"):
             self.runtime.decide_progression(
-                mission.id, request, authenticated_principal_reference="test-admin-principal",
+                mission.id, request, authenticated_principal_reference=self._progression_principal(),
             )
         self.assertEqual(self.provider.calls, 1)
 
@@ -754,7 +758,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         }
         with RuntimeServiceLock(self.runtime.database.path).acquire(), self.assertRaises(RuntimeServiceBusy):
             self.runtime.decide_progression(
-                mission.id, request, authenticated_principal_reference="test-admin-principal",
+                mission.id, request, authenticated_principal_reference=self._progression_principal(),
             )
         self.assertIsNone(self.runtime.progression_status(mission.id)["decision"])
         self.assertEqual(self.provider.calls, 1)
@@ -895,6 +899,50 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(replayed["status"], "REPLAYED")
         self.assertEqual(self.provider.calls, 0)
 
+    def test_progression_policy_rejects_noncanonical_profile_mode_and_role(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-policy-resolution")
+        admitted = self.runtime.admit(mission, envelope)
+        base = {
+            "assignment_id": "progression-assignment-policy-resolution",
+            "profile_id": "solo", "profile_revision": "1", "policy_revision": "1",
+            "mode": "continuous", "required_decision_role": "platform_architect",
+            "higher_scope_obligations": ["protected-delivery"],
+            "expected_state_revision": admitted.revision,
+        }
+        for changed, message in (
+            ({"profile_id": "enterprise"}, "canonical Solo profile"),
+            ({"required_decision_role": "engineering_lead"}, "canonical profile"),
+        ):
+            with self.subTest(changed=changed), self.assertRaisesRegex(
+                InstalledDynamicMissionError, message,
+            ):
+                self.runtime.assign_progression_policy(mission.id, {**base, **changed})
+        self.assertEqual(self.provider.calls, 0)
+
+    def test_progression_policy_assignment_recovers_after_state_write_interruption(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-policy-write-recovery")
+        admitted = self.runtime.admit(mission, envelope)
+        request = {
+            "assignment_id": "progression-assignment-policy-write-recovery",
+            "profile_id": "solo", "profile_revision": "1", "policy_revision": "1",
+            "mode": "after_action", "required_decision_role": "platform_architect",
+            "higher_scope_obligations": ["protected-delivery"],
+            "expected_state_revision": admitted.revision,
+        }
+        with patch.object(
+            self.runtime.states, "assign_progression_policy",
+            side_effect=RuntimeError("injected state write interruption"),
+        ), self.assertRaisesRegex(RuntimeError, "injected"):
+            self.runtime.assign_progression_policy(mission.id, request)
+        recovered = self.runtime.assign_progression_policy(mission.id, request)
+        self.assertEqual(recovered["status"], "ASSIGNED")
+        self.assertEqual(self.runtime.states.get(mission.id).revision, admitted.revision + 1)
+        rows = self.runtime.database._connection.execute(
+            "SELECT decision_id FROM governance_decisions WHERE decision_id=?",
+            (request["assignment_id"],),
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+
     def test_pending_fence_survives_restart_and_status_is_effect_free(self) -> None:
         mission, envelope = self._mission_and_envelope(identity_suffix="-pending-restart")
         self._admit(mission, envelope, mode="after_action")
@@ -913,6 +961,77 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         after = self.runtime.progression_status(mission.id)
         self.assertEqual(after["decision_requirement"], before["decision_requirement"])
         self.assertEqual(self.provider.calls, 1)
+
+    def test_revoked_authority_blocks_ready_intent_before_successor_provider(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-revoked-successor")
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+        self.runtime.resume(mission.id)
+        requirement = self.runtime.progression_status(mission.id)["decision_requirement"]
+        decision = {
+            "schema_version": "forge-progression-decision/v1",
+            "decision_id": "decision-revoked-successor-001",
+            "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "evidence_digest": requirement["evidence_digest"],
+            "policy_revision": requirement["policy_revision"],
+            "decision": "approve", "reason": "Persist an exact intent before revocation.",
+        }
+        self.runtime._keep_running = lambda: False
+        persisted = self.runtime.decide_progression(
+            mission.id, decision, authenticated_principal_reference=self._progression_principal(),
+        )
+        self.assertEqual(persisted.status, "ACTIVE")
+        self.assertEqual(self.runtime.states.get(mission.id).resume["continuation_intent"]["status"], "READY")
+        self.runtime._keep_running = lambda: True
+        with patch.object(self.runtime.repository.operators, "authorize", return_value=False), \
+             self.assertRaisesRegex(Exception, "not authorized"):
+            self.runtime.resume(mission.id)
+        self.assertEqual(self.provider.calls, 1)
+
+    def test_restart_after_intent_start_reuses_same_approval_and_successor(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-intent-start-restart")
+        self._admit(mission, envelope, mode="after_action")
+        self.runtime._criterion_observer.reader = ExactRepositoryBytes(
+            "synthetic/forge", "c" * 40, {"contract.json": b'{"source":"not-yet"}'},
+        )
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        self.host.terminal_evidence_remaining = 1
+        self.runtime.resume(mission.id)
+        requirement = self.runtime.progression_status(mission.id)["decision_requirement"]
+        decision = {
+            "schema_version": "forge-progression-decision/v1",
+            "decision_id": "decision-intent-start-restart-001",
+            "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "evidence_digest": requirement["evidence_digest"],
+            "policy_revision": requirement["policy_revision"],
+            "decision": "approve", "reason": "Exercise the durable in-progress fence.",
+        }
+        from forge.execution.loop import ExecutionLoop
+        with patch.object(ExecutionLoop, "_replan_after_evidence", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.runtime.decide_progression(
+                    mission.id, decision, authenticated_principal_reference=self._progression_principal(),
+                )
+        interrupted = self.runtime.states.get(mission.id)
+        intent_id = interrupted.resume["continuation_intent"]["intent_id"]
+        self.assertEqual(interrupted.resume["continuation_intent"]["status"], "IN_PROGRESS")
+        self.runtime.close()
+        self.runtime = self._open_runtime()
+        resumed = self.runtime.resume(mission.id)
+        self.assertEqual(resumed.status, "WAITING_FOR_EVIDENCE")
+        self.assertEqual(self.provider.calls, 2)
+        history = self.runtime.states.get(mission.id).resume["continuation_history"]
+        self.assertEqual([item["intent_id"] for item in history], [intent_id])
 
     def test_lost_decision_response_replays_after_restart_and_resumes_once(self) -> None:
         mission, envelope = self._mission_and_envelope(identity_suffix="-decision-restart")
@@ -937,18 +1056,18 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         }
         recorded = GovernedContinuationService(
             self.runtime.database, self.runtime.repository, self.runtime.states, self.runtime.clock,
-        ).decide(mission.id, decision, authenticated_principal_reference="test-admin-principal")
+        ).decide(mission.id, decision, authenticated_principal_reference=self._progression_principal())
         self.assertTrue(recorded["resume_authorized"])
         self.assertEqual(self.runtime.progression_status(mission.id)["decision"]["decision"], "approve")
         self.runtime.close()
         self.runtime = self._open_runtime()
         resumed = self.runtime.decide_progression(
-            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+            mission.id, decision, authenticated_principal_reference=self._progression_principal(),
         )
         self.assertEqual(resumed.status, "WAITING_FOR_EVIDENCE")
         self.assertEqual(self.provider.calls, 2)
         self.runtime.decide_progression(
-            mission.id, decision, authenticated_principal_reference="test-admin-principal",
+            mission.id, decision, authenticated_principal_reference=self._progression_principal(),
         )
         self.assertEqual(self.provider.calls, 2)
 
@@ -976,8 +1095,8 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         service = GovernedContinuationService(
             self.runtime.database, self.runtime.repository, self.runtime.states, self.runtime.clock,
         )
-        service.decide(mission.id, decision, authenticated_principal_reference="test-admin-principal")
-        with self.assertRaisesRegex(InstalledDynamicMissionError, "identity conflicts"):
+        service.decide(mission.id, decision, authenticated_principal_reference=self._progression_principal())
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "principal does not bind"):
             self.runtime.decide_progression(
                 mission.id, decision, authenticated_principal_reference="different-admin-principal",
             )
@@ -985,7 +1104,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         with patch.object(self.runtime.repository.operators, "authorize", return_value=False), \
              self.assertRaisesRegex(InstalledDynamicMissionError, "not authorized"):
             self.runtime.decide_progression(
-                mission.id, decision, authenticated_principal_reference="test-admin-principal",
+                mission.id, decision, authenticated_principal_reference=self._progression_principal(),
             )
         self.assertEqual(self.runtime.states.get(mission.id).status.value, "AWAITING_APPROVAL")
         self.assertEqual(self.provider.calls, 1)
@@ -1086,11 +1205,14 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         }
         complete = self.runtime.resume(mission.id)
         self.assertEqual(complete.runtime_id, runtime_id)
-        self.assertEqual(complete.status, "COMPLETED")
+        self.assertEqual(complete.status, "AWAITING_APPROVAL")
         self.assertEqual(complete.planning_invocations, 1)
         state = self.runtime.states.get(mission.id)
         self.assertTrue(state.completion["all_required_criteria_proven"])
         self.assertEqual(state.execution_history[-1]["receipt_id"], "ep-receipt-status-projection")
+        acceptance = self.runtime.progression_status(mission.id)["final_acceptance_requirement"]
+        self.assertEqual(acceptance["schema_version"], "forge-final-acceptance-requirement/v1")
+        self.assertEqual(acceptance["reason"], "mission_end_acceptance_required")
 
     def test_two_repository_derivation_is_atomic_durable_and_never_dispatches(self) -> None:
         self.provider = _TwoRepositoryProvider()
@@ -1666,7 +1788,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
                 "b" * 40,
             ),
         )
-        self.assertEqual(completed.status, "COMPLETED")
+        self.assertEqual(completed.status, "AWAITING_APPROVAL")
         self.assertEqual(len(self.host.requests), 2)
         retry = self.host.requests[-1]
         self.assertEqual(retry.retry_of_correlation_id, first.correlation_id)
@@ -1733,7 +1855,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
         reconciled = self.runtime.reconcile_terminal_evidence(mission.id)
 
-        self.assertEqual(reconciled.status, "COMPLETED")
+        self.assertEqual(reconciled.status, "AWAITING_APPROVAL")
         self.assertEqual(len(self.host.requests), 1)
         state = self.runtime.states.get(mission.id)
         self.assertIn("terminal_evidence_reconciliation_requested", [item["reason"] for item in state.state_history])

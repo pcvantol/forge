@@ -375,6 +375,7 @@ class BootstrapMissionRunner:
         completion_context: CompletionContextFactory | None = None,
         replan_after_evidence: ReplanAfterEvidence | None = None,
         evidence_progression_gate: EvidenceProgressionGate | None = None,
+        runtime_instance_id: str | None = None,
         repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
         keep_running: Callable[[], bool] | None = None,
     ) -> None:
@@ -394,6 +395,7 @@ class BootstrapMissionRunner:
         self._completion_context = completion_context
         self._replan_after_evidence = replan_after_evidence
         self._evidence_progression_gate = evidence_progression_gate
+        self._runtime_instance_id = runtime_instance_id
         self._repository_revision_binding_factory = repository_revision_binding_factory
         self._keep_running = keep_running or (lambda: True)
 
@@ -686,18 +688,12 @@ class BootstrapMissionRunner:
                 return paused
         continuation_intent = reconciled.resume.get("continuation_intent")
         if isinstance(continuation_intent, Mapping) and continuation_intent.get("status") == "READY":
-            consumed = {**continuation_intent, "status": "CONSUMED"}
-            resume = {key: value for key, value in reconciled.resume.items()
-                      if key != "continuation_intent"}
-            history = list(resume.get("continuation_history", ()))
-            if not any(item.get("intent_id") == consumed.get("intent_id") for item in history
-                       if isinstance(item, Mapping)):
-                history.append(consumed)
-            resume["continuation_history"] = history
             reconciled = self._store.transition(
                 reconciled.mission_id, MissionExecutionStatus.ACTIVE,
-                occurred_at=self._now(), reason="governed_continuation_intent_consumed",
-                resume=resume,
+                occurred_at=self._now(), reason="governed_continuation_intent_started",
+                resume={**reconciled.resume, "continuation_intent": {
+                    **continuation_intent, "status": "IN_PROGRESS",
+                }},
             )
         if not mission_complete and marker["phase"] == "ASSESSED":
             if self._replan_after_evidence is None:
@@ -743,10 +739,26 @@ class BootstrapMissionRunner:
                 history.append(consumed)
             resume["continuation_history"] = history
         if mission_complete:
+            if governed_policy:
+                if self._runtime_instance_id is None:
+                    raise MissionRunnerError("governed final acceptance requires a Runtime Instance identity")
+                from forge.governed_continuation import (
+                    GovernedContinuationError, final_acceptance_requirement,
+                )
+                try:
+                    requirement = final_acceptance_requirement(
+                        reconciled, instance_id=self._runtime_instance_id, project_id=self._workspace_id,
+                    )
+                except GovernedContinuationError as error:
+                    raise MissionRunnerError(str(error)) from error
+                return self._store.transition(
+                    reconciled.mission_id, MissionExecutionStatus.AWAITING_APPROVAL,
+                    occurred_at=self._now(), reason="mission_final_acceptance_required",
+                    pause_reason=requirement, resume=resume,
+                )
             return self._store.transition(
                 reconciled.mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self._now(),
-                reason="mission_criteria_proven",
-                resume=resume,
+                reason="mission_criteria_proven", resume=resume,
             )
         return self._store.transition(
             reconciled.mission_id, MissionExecutionStatus.ACTIVE, occurred_at=self._now(),

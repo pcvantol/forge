@@ -23,7 +23,8 @@ from forge.execution_host_configuration import EngineeringPlatformExecutionHostF
 from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationStore
 from forge.governance import ExecutionPolicy
 from forge.governed_continuation import (
-    CONTINUATION_INTENT_CONTRACT, GovernedContinuationError, GovernedContinuationService,
+    CONTINUATION_INTENT_CONTRACT, DECISION_REQUIREMENT_CONTRACT,
+    FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT, GovernedContinuationError, GovernedContinuationService,
 )
 from forge.governance_authority import (
     ArchitecturePlanningEvidence, CanonicalGovernanceRepository, MissionPlanningEvidenceEnvelope,
@@ -663,7 +664,10 @@ class InstalledDynamicMissionRuntime:
         policy = self._progression_policy(state)
         requirement = dict(state.pause_reason) if isinstance(state.pause_reason, Mapping) else None
         decision = None
-        if isinstance(requirement, Mapping) and isinstance(requirement.get("requirement_id"), str):
+        final_acceptance = None
+        if (isinstance(requirement, Mapping)
+                and requirement.get("schema_version") == DECISION_REQUIREMENT_CONTRACT
+                and isinstance(requirement.get("requirement_id"), str)):
             try:
                 service = GovernedContinuationService(
                     self.database, self.repository, self.states, self.clock,
@@ -672,11 +676,16 @@ class InstalledDynamicMissionRuntime:
                 decision = service.decision_for_requirement(requirement["requirement_id"])
             except GovernedContinuationError as error:
                 raise InstalledDynamicMissionError(str(error)) from error
+        elif (isinstance(requirement, Mapping)
+                and requirement.get("schema_version") == FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT):
+            final_acceptance = requirement
+            requirement = None
         return {
             "schema_version": "forge-progression-status/v1", "mission_id": mission_id,
             "mission_state_revision": state.revision, "lifecycle_state": state.status.value,
             "policy": policy, "decision_requirement": requirement,
             "decision": decision,
+            "final_acceptance_requirement": final_acceptance,
             "approval_record": (
                 dict(state.approval_record) if isinstance(state.approval_record, Mapping) else None
             ),
@@ -716,6 +725,10 @@ class InstalledDynamicMissionRuntime:
                     "completed_action_id": requirement["completed_action_id"],
                     "evidence_digest": requirement["evidence_digest"],
                     "policy_revision": requirement["policy_revision"],
+                    "required_role": requirement["required_role"],
+                    "required_role_actor": requirement["required_role_actor"],
+                    "required_capability": requirement["required_capability"],
+                    "authenticated_principal_reference": authenticated_principal_reference,
                 }
                 intent = {
                     "schema_version": CONTINUATION_INTENT_CONTRACT,
@@ -1036,6 +1049,7 @@ class InstalledDynamicMissionRuntime:
             completion_evidence=self._completion_evidence,
             completion_evaluator=MissionCompletionEvaluator(),
             runtime_database=self.database,
+            governance_repository=self.repository,
             repository_revision_binding_factory=self._repository_revision_binding,
             keep_running=self._keep_running,
         )

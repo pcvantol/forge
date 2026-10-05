@@ -137,6 +137,7 @@ class ExecutionLoop:
         completion_evidence: MissionCompletionEvidenceFactory | None = None,
         completion_evaluator: MissionCompletionEvaluator | None = None,
         runtime_database: RuntimeDatabase | None = None,
+        governance_repository: object | None = None,
         repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
         keep_running: Callable[[], bool] | None = None,
     ) -> None:
@@ -155,6 +156,7 @@ class ExecutionLoop:
         self._completion_evidence = completion_evidence
         self._completion_evaluator = completion_evaluator or MissionCompletionEvaluator()
         self._runtime_database = runtime_database
+        self._governance_repository = governance_repository
         self._repository_revision_binding_factory = repository_revision_binding_factory
         self._keep_running = keep_running or (lambda: True)
 
@@ -611,6 +613,10 @@ class ExecutionLoop:
                                       clock=self._clock, correlation_id_factory=self._correlation_id_factory,
                                       completion_context=completion, replan_after_evidence=self._replan_after_evidence,
                                       evidence_progression_gate=self._pause_after_evidence,
+                                      runtime_instance_id=(
+                                          self._runtime_database.runtime_identity.runtime_id
+                                          if self._runtime_database is not None else None
+                                      ),
                                       repository_revision_binding_factory=self._repository_revision_binding_factory,
                                       keep_running=self._keep_running)
 
@@ -633,7 +639,7 @@ class ExecutionLoop:
             if self._runtime_database is None:
                 raise ExecutionLoopError("governed continuation requires durable runtime storage")
             assignment = GovernedContinuationService(
-                self._runtime_database, None, self._states, self._clock,
+                self._runtime_database, self._governance_repository, self._states, self._clock,
             ).validate_assignment(state)
             policy = ExecutionPolicy.from_dict(assignment)
         current = next(item for item in actions if item.id == evidence.repository_evidence.action_id)
@@ -669,7 +675,8 @@ class ExecutionLoop:
         if self._runtime_database is None:
             raise ExecutionLoopError("governed continuation requires durable runtime storage")
         continuation_intent = state.resume.get("continuation_intent")
-        if isinstance(continuation_intent, Mapping) and continuation_intent.get("status") == "READY":
+        if (isinstance(continuation_intent, Mapping)
+                and continuation_intent.get("status") in {"READY", "IN_PROGRESS"}):
             decision_id = continuation_intent.get("decision_id")
             row = self._runtime_database._connection.execute(
                 "SELECT document,digest FROM governance_decisions WHERE decision_id=?", (decision_id,)
@@ -693,10 +700,13 @@ class ExecutionLoop:
                     and evidence_document.get("subject_digest") == continuation_intent.get("subject_digest")
                     and evidence_document.get("evidence_digest") == continuation_intent.get("evidence_digest")
                     and evidence_document.get("policy_revision") == continuation_intent.get("policy_revision")):
+                GovernedContinuationService(
+                    self._runtime_database, self._governance_repository, self._states, self._clock,
+                ).assert_intent_authority(state, continuation_intent)
                 return None
             raise ExecutionLoopError("continuation intent is stale or lacks its canonical approval")
         reason = GovernedContinuationService(
-            self._runtime_database, None, self._states, self._clock,
+            self._runtime_database, self._governance_repository, self._states, self._clock,
         ).requirement(
             state, completed_action_id=current.id,
             evidence_digest=str(marker.get("execution_digest")), project_id=self._workspace_id,
