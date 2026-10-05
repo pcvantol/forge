@@ -343,10 +343,28 @@ class MissionStateStore:
         durable_materialization_derivation_id: str | None = None,
         no_dispatch_graph: Mapping[str, Any] | None = None,
         no_dispatch_bindings: Mapping[str, Mapping[str, Any]] | None = None,
+        expected_revision: int | None = None,
+        transition_audit: Mapping[str, Any] | None = None,
     ) -> MissionExecutionState:
         if not occurred_at or not reason:
             raise MissionStateStoreError("transition time and reason are required")
         current = self.get(mission_id)
+        if expected_revision is not None and current.revision != expected_revision:
+            raise MissionStateStoreError("mission state revision differs from the expected revision")
+        if transition_audit is not None:
+            audit = _document(transition_audit, "transition audit")
+            required_audit = {
+                "operation", "operator_reference", "reason_code", "correlation_id",
+                "authenticated_principal_reference", "preserved_lineage_digest",
+                "transition_receipt_digest",
+            }
+            if (status is not MissionExecutionStatus.ARCHIVED or set(audit) != required_audit
+                    or any(not isinstance(audit[item], str) or not audit[item]
+                           or len(audit[item]) > 256 or "\n" in audit[item] or "\r" in audit[item]
+                           for item in required_audit)):
+                raise MissionStateStoreError("administrative archive transition audit is invalid")
+        else:
+            audit = None
         if status not in _ALLOWED_TRANSITIONS[current.status]:
             raise MissionStateStoreError(f"mission state transition {current.status.value} -> {status.value} is not permitted")
         next_actions = _documents(actions, "action") if actions is not None else current.actions
@@ -453,7 +471,11 @@ class MissionStateStore:
                 except (ValueError, TypeError, KeyError) as error:
                     raise MissionStateStoreError("completed approved Mission requires every criterion to be proven") from error
         document["lifecycle"] = status.value
-        document.setdefault("state_history", []).append({"sequence": document["revision"], "from_status": current.status.value, "to_status": status.value, "occurred_at": occurred_at, "reason": reason})
+        history_entry = {"sequence": document["revision"], "from_status": current.status.value,
+                         "to_status": status.value, "occurred_at": occurred_at, "reason": reason}
+        if audit is not None:
+            history_entry["administrative_audit"] = audit
+        document.setdefault("state_history", []).append(history_entry)
         if status is MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH and no_dispatch_graph is None:
             raise MissionStateStoreError("no-dispatch state requires its atomic Action graph")
         if no_dispatch_graph is not None or no_dispatch_bindings is not None:

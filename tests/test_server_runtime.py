@@ -27,6 +27,7 @@ from forge.runtime import RuntimeBootstrap
 from forge.runtime.database import RUNTIME_SCHEMA_VERSION
 from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
 from forge.server_runtime import (
+    ForgeServerAPI,
     ForgeServerRuntime,
     ForgeServerRuntimeError,
     ServerInstanceLease,
@@ -457,6 +458,31 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                     self.assertEqual(server.api.handle(
                         "POST", "/v1/missions/mission-1/controller/reopen", authorization,
                     ).status, 200)
+                archive_request = {
+                    "expected_instance_id": "runtime-1", "expected_revision": 2,
+                    "reason_code": "historical_no_dispatch_reconciled",
+                    "correlation_id": "lifecycle-1",
+                }
+                with patch.object(server.services, "mission_archive_no_dispatch",
+                                  return_value={"status": "ARCHIVED"}) as archive:
+                    response = server.api.handle(
+                        "POST", "/v1/missions/mission-1/lifecycle/archive-no-dispatch",
+                        authorization, archive_request,
+                    )
+                    self.assertEqual(response.status, 200)
+                    archive.assert_called_once()
+                    args, kwargs = archive.call_args
+                    self.assertEqual(args, ("mission-1", archive_request))
+                    principal = kwargs["authenticated_principal_reference"]
+                    self.assertEqual(
+                        principal,
+                        "forge-server-admin-principal:v1:" + server.instance.instance_id,
+                    )
+                    self.assertNotIn("server-secret", principal)
+                    restarted_api = ForgeServerAPI(server.services, "server-test-credential")
+                    self.assertEqual(
+                        restarted_api._admin_principal_reference(authorization), principal,
+                    )
                 with patch.object(server.services, "configure_provider_context", return_value={"state": "BOUND"}):
                     self.assertEqual(server.api.handle(
                         "POST", "/v1/provider-context", authorization, {},

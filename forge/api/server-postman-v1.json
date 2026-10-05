@@ -442,6 +442,40 @@
       }
     },
     {
+      "name": "Archive one exact quiescent historical no-dispatch Mission",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"expected_instance_id\":\"{{instanceId}}\",\"expected_revision\":2,\"reason_code\":\"historical_no_dispatch_reconciled\",\"correlation_id\":\"lifecycle-operation-1\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/missions/{{missionId}}/lifecycle/archive-no-dispatch",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "missions",
+            "{{missionId}}",
+            "lifecycle",
+            "archive-no-dispatch"
+          ]
+        }
+      }
+    },
+    {
       "name": "Read opt-in standalone service readiness",
       "request": {
         "method": "GET",

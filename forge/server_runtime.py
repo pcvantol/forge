@@ -41,6 +41,7 @@ from .mission_cli import (
     inspect as mission_inspect,
     status as mission_status,
 )
+from .mission_lifecycle_cli import archive_no_dispatch as mission_archive_no_dispatch
 from .repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from .operations_read_api import (
     APIResponse, InstalledOperationsReadService, OperationsReadAPI, origin_form_path, raw_request_target,
@@ -91,6 +92,7 @@ SERVER_ROUTE_INVENTORY = (
     ("GET", "/v1/missions/{mission_id}"),
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
+    ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
 )
 DEFAULT_PROVIDER_ID = "codex-chatgpt-session"
 _MAX_BODY = 1_048_576
@@ -521,6 +523,22 @@ class ForgeServerApplicationServices:
     def mission_status(self, mission_id: str) -> dict[str, Any]:
         return mission_status(str(self.root), mission_id)
 
+    def mission_archive_no_dispatch(
+        self, mission_id: str, document: Mapping[str, Any], *,
+        authenticated_principal_reference: str,
+    ) -> dict[str, Any]:
+        required = {"expected_instance_id", "expected_revision", "reason_code", "correlation_id"}
+        if set(document) != required:
+            raise ValueError("Mission archive request shape is invalid")
+        return mission_archive_no_dispatch(
+            str(self.root), mission_id,
+            expected_instance_id=document["expected_instance_id"],
+            expected_revision=document["expected_revision"],
+            reason_code=document["reason_code"],
+            correlation_id=document["correlation_id"],
+            authenticated_principal_reference=authenticated_principal_reference,
+        )
+
 
 class ForgeServerAPI:
     """Authenticated versioned HTTP transport; application semantics stay elsewhere."""
@@ -532,6 +550,8 @@ class ForgeServerAPI:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
         self._credential = bearer_credential
+        instance = existing_instance(services.root)
+        self._admin_principal = "forge-server-admin-principal:v1:" + instance.instance_id
         self.root_identity = root_identity or RootIdentity(services.root)
         self.read_grant = read_grant
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
@@ -558,6 +578,11 @@ class ForgeServerAPI:
         if self.read_grant is not None and self.read_grant.authenticate(authorization):
             return "WORKSPACE_READ"
         return None
+
+    def _admin_principal_reference(self, authorization: str | None) -> str:
+        if not self._authenticated(authorization):
+            raise PermissionError("authenticated admin principal is required")
+        return self._admin_principal
 
     @staticmethod
     def _read_scope_denied() -> APIResponse:
@@ -620,7 +645,10 @@ class ForgeServerAPI:
             if method == "GET":
                 response = self._admin_get(path, headers)
             elif method == "POST":
-                response = self._admin_post(path, body or {}, headers)
+                response = self._admin_post(
+                    path, body or {}, headers,
+                    authenticated_principal_reference=self._admin_principal_reference(authorization),
+                )
             else:
                 response = None
             if response is not None:
@@ -667,7 +695,10 @@ class ForgeServerAPI:
             return APIResponse(200, self.services.detach_execution_host_status(operation_id), headers)
         return None
 
-    def _admin_post(self, path: str, body: Mapping[str, Any], headers: dict[str, str]) -> APIResponse | None:
+    def _admin_post(
+        self, path: str, body: Mapping[str, Any], headers: dict[str, str], *,
+        authenticated_principal_reference: str,
+    ) -> APIResponse | None:
         if path == "/v1/provider-context":
             return APIResponse(200, self.services.configure_provider_context(body), headers)
         if path == "/v1/execution-host/configure":
@@ -690,6 +721,11 @@ class ForgeServerAPI:
                     return APIResponse(200, self.services.mission_start(mission_id, truth), headers)
                 if parts[5] == "reopen":
                     return APIResponse(200, self.services.mission_reopen(mission_id), headers)
+            if len(parts) == 6 and parts[4] == "lifecycle" and parts[5] == "archive-no-dispatch":
+                return APIResponse(200, self.services.mission_archive_no_dispatch(
+                    unquote(parts[3]), body,
+                    authenticated_principal_reference=authenticated_principal_reference,
+                ), headers)
         return None
 
 

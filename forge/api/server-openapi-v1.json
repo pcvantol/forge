@@ -406,6 +406,43 @@
         }
       }
     },
+    "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch": {
+      "post": {
+        "summary": "Archive one exact quiescent historical no-dispatch Mission",
+        "description": "Requires the trusted bound operator, owner programme authorization, a versioned credential-independent authenticated admin principal bound to the Runtime Instance, exact Runtime Instance identity and expected Mission revision. Preserves Mission, Action, Intent and planning lineage without completion, provider invocation, Host dispatch or target write.",
+        "responses": {
+          "200": {"description": "Mission archived with immutable lifecycle audit"},
+          "401": {"description": "Authentication required"},
+          "409": {"description": "Authority, identity, revision, quiescence or integrity check failed"}
+        },
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string", "minLength": 1}
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["expected_instance_id", "expected_revision", "reason_code", "correlation_id"],
+                "properties": {
+                  "expected_instance_id": {"type": "string", "minLength": 1},
+                  "expected_revision": {"type": "integer", "minimum": 1},
+                  "reason_code": {"type": "string", "minLength": 1},
+                  "correlation_id": {"type": "string", "minLength": 1}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/readiness/standalone": {
       "get": {
         "summary": "Read opt-in standalone service readiness without EP dispatch authority",
