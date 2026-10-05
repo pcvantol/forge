@@ -58,6 +58,8 @@ INSTANCE = "isolated-ep-simulator"
 CONSUMER = "isolated-forge-consumer"
 PROJECT = "isolated-project"
 HOST = "synthetic-host"
+GOVERNANCE_PROFILE = "solo"
+GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = ("partial", "single", "tampered", "ambiguous")
 # These are adversarial EP-boundary fixtures, not Forge preflight stubs.  The
 # expected reasons are the product adapter/factory's stable, secret-free errors.
@@ -85,12 +87,14 @@ PREFLIGHT_CASES = {
 }
 EP_PREFLIGHT_SOURCE = {
     "repository": "pcvantol/engineering-platform",
-    "revision": "5838f496538805c6012cbd6399217bc8b907102e",
+    "revision": "8a5e0e19c0761fdf6c23bfb7f3fbee67e0b0b82b",
+    "product_version": "2.3.107",
     "path": "src/engineering_platform/server.py",
-    "sha256": "sha256:948ab98fe5162b257c08528f3a3ee6004d46644a196ef94ab037c5277539489c",
+    "sha256": "sha256:43f80126ed081c47bce5174968ab6393b1af64f107500e49470e5495f61ff7f4",
     "declaration_contract": "1.1",
     "producer_readback_contract": "1.2",
     "terminal_evidence_contract": "1.4",
+    "governed_continuation_contract": "ep-governed-continuation-evidence/v1",
 }
 GOVERNANCE_CASES = (
     "candidate-alone", "missing-business", "missing-architecture",
@@ -204,7 +208,9 @@ def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
         recommendation.engineering_summary, ("synthetic-contract",),
         (fixture.K1, fixture.K2), ("no behavior claim",), recommendation.dependencies,
     ))
-    bridge = GovernedCandidateIntake(lifecycle, runtime, resolve_governance_profile("duo"))
+    bridge = GovernedCandidateIntake(
+        lifecycle, runtime, resolve_governance_profile(GOVERNANCE_PROFILE),
+    )
     revision, _, architecture_id = bridge.decision_ids(candidate.id)
     mission_preview = ArchitectureMission(
         "MISSION-PREVIEW", candidate.id, candidate.title, candidate.objective,
@@ -258,12 +264,12 @@ def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
                 rejected.append(label)
 
             reject_unapproved("missing-business", mission_preview)
-            bridge.approve_business(candidate.id, actor="business_owner",
+            bridge.approve_business(candidate.id, actor=GOVERNANCE_ACTOR,
                                     occurred_at="2026-09-18T09:59:02Z", rationale="Business value approved.",
                                     human_gates=planning.human_gates)
             reject_unapproved("missing-architecture", mission_preview)
             bridge.approve_architecture(candidate.id, mission_preview, planning,
-                                        actor="platform_architect", occurred_at="2026-09-18T09:59:03Z",
+                                        actor=GOVERNANCE_ACTOR, occurred_at="2026-09-18T09:59:03Z",
                                         rationale="Exact technical contract approved.")
             reject_unapproved("changed-objective", replace(
                 mission_preview, summary="Unapproved objective."))
@@ -272,6 +278,14 @@ def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
                                     occurred_at="2026-09-18T10:00:00Z")
         mission_id = admitted.mission_id
         assert not admitted.actions
+        runtime.assign_progression_policy(mission_id, {
+            "assignment_id": "qualification-progression-" + mission_id.lower(),
+            "profile_id": GOVERNANCE_PROFILE,
+            "profile_revision": "1", "policy_revision": "1", "mode": "continuous",
+            "required_decision_role": "platform_architect",
+            "higher_scope_obligations": list(planning.human_gates),
+            "expected_state_revision": admitted.revision,
+        })
         if start:
             runtime.start(mission_id, _initial_truth())
         fixture._write(root / "population.private.json", {
@@ -286,7 +300,7 @@ def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
 
 def _approve_business(bridge: GovernedCandidateIntake, candidate: MissionCandidate,
                       planning: ArchitecturePlanningEvidence) -> None:
-    bridge.approve_business(candidate.id, actor="business_owner",
+    bridge.approve_business(candidate.id, actor=GOVERNANCE_ACTOR,
                             occurred_at="2026-09-18T09:59:02Z",
                             rationale="Synthetic Business approval.",
                             human_gates=planning.human_gates)
@@ -296,7 +310,7 @@ def _approve_architecture(bridge: GovernedCandidateIntake, candidate: MissionCan
                           preview: ArchitectureMission,
                           planning: ArchitecturePlanningEvidence) -> None:
     bridge.approve_architecture(candidate.id, preview, planning,
-                                actor="platform_architect", occurred_at="2026-09-18T09:59:03Z",
+                                actor=GOVERNANCE_ACTOR, occurred_at="2026-09-18T09:59:03Z",
                                 rationale="Synthetic Architecture approval.")
 
 
@@ -330,9 +344,9 @@ def _stage_governance_case(case: str, lifecycle: RecommendationLifecycleStore,
             lambda: _approve_architecture(bridge, candidate, preview, planning),
             GovernedCandidateIntakeError)
     elif case in {"rejected-business", "rejected-architecture"}:
-        role, target = (("business_owner", RecommendationStatus.BUSINESS_REJECTED)
+        role, target = ((GOVERNANCE_ACTOR, RecommendationStatus.BUSINESS_REJECTED)
                         if case == "rejected-business" else
-                        ("platform_architect", RecommendationStatus.ARCHITECTURE_REJECTED))
+                        (GOVERNANCE_ACTOR, RecommendationStatus.ARCHITECTURE_REJECTED))
         lifecycle.transition(candidate.recommendation_id, target, actor=role,
                              occurred_at="2026-09-18T09:59:04Z",
                              rationale="Synthetic governance rejection.",
@@ -414,7 +428,9 @@ def _governance_phase(root: Path, case: str, phase: str, endpoint: str) -> None:
                 })
             else:
                 saved = fixture._read(root / "governance-input.private.json")
-                bridge = GovernedCandidateIntake(lifecycle, runtime, resolve_governance_profile("duo"))
+                bridge = GovernedCandidateIntake(
+                    lifecycle, runtime, resolve_governance_profile(GOVERNANCE_PROFILE),
+                )
                 preview = ArchitectureMission.from_dict(saved["preview"])
                 planning = ArchitecturePlanningEvidence.from_dict(saved["planning"])
             fixture._write(root / f"{phase}.governance.private.json",
@@ -831,11 +847,13 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 repository_id=fixture.SOURCE.repository_id, submission_id=b,
             ))
             final = _run_phase(root, scenario, "after-b", server.base_url, wheel)
-            assert final["status"] == "COMPLETED" and len(final["actions"]) == 2
+            assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 2
+            assert final["pause_reason"]["schema_version"] == "forge-final-acceptance-requirement/v1"
             assert all(item["status"] == "PROVEN" for item in final["completion"]["criteria"])
         elif scenario == "single":
             final = after_a
-            assert final["status"] == "COMPLETED" and len(final["actions"]) == 1
+            assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 1
+            assert final["pause_reason"]["schema_version"] == "forge-final-acceptance-requirement/v1"
             assert len(simulator.submission_ids()) == 1
         else:
             final = after_a

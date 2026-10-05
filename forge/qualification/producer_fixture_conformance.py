@@ -16,15 +16,21 @@ from typing import Any, Mapping
 
 PRODUCER_SOURCE = {
     "repository": "pcvantol/engineering-platform",
-    "revision": "5838f496538805c6012cbd6399217bc8b907102e",
+    "revision": "8a5e0e19c0761fdf6c23bfb7f3fbee67e0b0b82b",
+    "product_version": "2.3.107",
     "serializer_path": "src/engineering_platform/submission_service.py",
-    "serializer_sha256": "sha256:2c5c9e413179f1102034d042d89a2ffeb7b254cea176690cd73c8e4ee6f98a67",
+    "serializer_sha256": "sha256:ff87489a8999b7a5f501ca0550effa389f7a694770e57738afd4e5d1af42fd7d",
     "host_evidence_path": "src/engineering_platform/execution_host_evidence.py",
     "host_evidence_sha256": "sha256:54cf158dc9a8337c85bf3cd398c2ed2b08dc76be90eadc52f2805deb30bee2e7",
     "schema_path": "src/engineering_platform/schemas/producer-readback-v1.2.schema.json",
     "schema_sha256": "sha256:2381647f1d35695c6d826b86ff52c294325f76aa984ae66984d722d696ff8c15",
     "contract_path": "docs/engineering/EP_PRODUCER_READBACK_CONTRACT.md",
     "contract_sha256": "sha256:6b72a08a7e2430c6c6f8331589fb3b42b8159e8d9cfa788f6d9faf22b503d242",
+    "governed_continuation_contract_path": "docs/engineering/EP_GOVERNED_CONTINUATION_EVIDENCE_V1.md",
+    "governed_continuation_contract_sha256": "sha256:21ff15c583df3e50ee0a9a5fd37508e3796a337506aa77c4c86d20d9a89bda03",
+    "parallel_action_collection_path": "src/engineering_platform/parallel_action_collection.py",
+    "parallel_action_collection_sha256": "sha256:84a208afcc49911dc1ec78c90ce33d257f2ac873e95dd1a333c1c830ade9848e",
+    "governed_continuation_contract": "ep-governed-continuation-evidence/v1",
     "readback_contract": "1.2",
     "terminal_contract": "1.4",
 }
