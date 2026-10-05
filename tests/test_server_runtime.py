@@ -27,6 +27,7 @@ from forge.runtime import RuntimeBootstrap
 from forge.runtime.database import RUNTIME_SCHEMA_VERSION
 from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
 from forge.server_runtime import (
+    ForgeServerAPI,
     ForgeServerRuntime,
     ForgeServerRuntimeError,
     ServerInstanceLease,
@@ -473,11 +474,15 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                     args, kwargs = archive.call_args
                     self.assertEqual(args, ("mission-1", archive_request))
                     principal = kwargs["authenticated_principal_reference"]
-                    self.assertRegex(
+                    self.assertEqual(
                         principal,
-                        r"\Aforge-server-admin-session:v1:[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z",
+                        "forge-server-admin-principal:v1:" + server.instance.instance_id,
                     )
                     self.assertNotIn("server-secret", principal)
+                    restarted_api = ForgeServerAPI(server.services, "server-test-credential")
+                    self.assertEqual(
+                        restarted_api._admin_principal_reference(authorization), principal,
+                    )
                 with patch.object(server.services, "configure_provider_context", return_value={"state": "BOUND"}):
                     self.assertEqual(server.api.handle(
                         "POST", "/v1/provider-context", authorization, {},

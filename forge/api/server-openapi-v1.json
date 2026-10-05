@@ -409,7 +409,7 @@
     "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch": {
       "post": {
         "summary": "Archive one exact quiescent historical no-dispatch Mission",
-        "description": "Requires the trusted bound operator, owner programme authorization, a versioned safe reference for the authenticated admin session, exact Runtime Instance identity and expected Mission revision. Preserves Mission, Action, Intent and planning lineage without completion, provider invocation, Host dispatch or target write.",
+        "description": "Requires the trusted bound operator, owner programme authorization, a versioned credential-independent authenticated admin principal bound to the Runtime Instance, exact Runtime Instance identity and expected Mission revision. Preserves Mission, Action, Intent and planning lineage without completion, provider invocation, Host dispatch or target write.",
         "responses": {
           "200": {"description": "Mission archived with immutable lifecycle audit"},
           "401": {"description": "Authentication required"},

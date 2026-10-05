@@ -194,9 +194,9 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                     self.assertEqual(
                                         call.args, ("MISSION-QUAL", {"repository_truth": {}}),
                                     )
-                                    self.assertRegex(
+                                    self.assertEqual(
                                         call.kwargs["authenticated_principal_reference"],
-                                        r"\Aforge-server-admin-session:v1:[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z",
+                                        "forge-server-admin-principal:v1:" + server.instance.instance_id,
                                     )
                             expected_read = READ_ROUTES.get((method, path))
                             if expected_read is not None:

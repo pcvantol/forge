@@ -21,7 +21,6 @@ import tempfile
 import time
 from typing import Any, Iterator, Mapping
 from urllib.parse import unquote
-from uuid import uuid4
 
 try:
     import fcntl
@@ -551,7 +550,8 @@ class ForgeServerAPI:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
         self._credential = bearer_credential
-        self._admin_session_principal = "forge-server-admin-session:v1:" + str(uuid4())
+        instance = existing_instance(services.root)
+        self._admin_principal = "forge-server-admin-principal:v1:" + instance.instance_id
         self.root_identity = root_identity or RootIdentity(services.root)
         self.read_grant = read_grant
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
@@ -582,7 +582,7 @@ class ForgeServerAPI:
     def _admin_principal_reference(self, authorization: str | None) -> str:
         if not self._authenticated(authorization):
             raise PermissionError("authenticated admin principal is required")
-        return self._admin_session_principal
+        return self._admin_principal
 
     @staticmethod
     def _read_scope_denied() -> APIResponse:
