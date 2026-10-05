@@ -41,6 +41,7 @@ from .mission_cli import (
     inspect as mission_inspect,
     status as mission_status,
 )
+from .mission_lifecycle_cli import archive_no_dispatch as mission_archive_no_dispatch
 from .repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from .operations_read_api import (
     APIResponse, InstalledOperationsReadService, OperationsReadAPI, origin_form_path, raw_request_target,
@@ -91,6 +92,7 @@ SERVER_ROUTE_INVENTORY = (
     ("GET", "/v1/missions/{mission_id}"),
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
+    ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
 )
 DEFAULT_PROVIDER_ID = "codex-chatgpt-session"
 _MAX_BODY = 1_048_576
@@ -521,6 +523,19 @@ class ForgeServerApplicationServices:
     def mission_status(self, mission_id: str) -> dict[str, Any]:
         return mission_status(str(self.root), mission_id)
 
+    def mission_archive_no_dispatch(self, mission_id: str,
+                                    document: Mapping[str, Any]) -> dict[str, Any]:
+        required = {"expected_instance_id", "expected_revision", "reason_code", "correlation_id"}
+        if set(document) != required:
+            raise ValueError("Mission archive request shape is invalid")
+        return mission_archive_no_dispatch(
+            str(self.root), mission_id,
+            expected_instance_id=document["expected_instance_id"],
+            expected_revision=document["expected_revision"],
+            reason_code=document["reason_code"],
+            correlation_id=document["correlation_id"],
+        )
+
 
 class ForgeServerAPI:
     """Authenticated versioned HTTP transport; application semantics stay elsewhere."""
@@ -690,6 +705,10 @@ class ForgeServerAPI:
                     return APIResponse(200, self.services.mission_start(mission_id, truth), headers)
                 if parts[5] == "reopen":
                     return APIResponse(200, self.services.mission_reopen(mission_id), headers)
+            if len(parts) == 6 and parts[4] == "lifecycle" and parts[5] == "archive-no-dispatch":
+                return APIResponse(200, self.services.mission_archive_no_dispatch(
+                    unquote(parts[3]), body,
+                ), headers)
         return None
 
 

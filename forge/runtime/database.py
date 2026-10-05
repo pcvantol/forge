@@ -2285,15 +2285,31 @@ class RuntimeDatabase:
             else None
         )
         reason_code = document.get("waiting_reason")
+        state_history = document.get("state_history")
+        transition_audit = None
+        if isinstance(state_history, list) and state_history:
+            latest_history = state_history[-1]
+            if isinstance(latest_history, dict):
+                candidate = latest_history.get("administrative_audit")
+                if isinstance(candidate, dict):
+                    transition_audit = candidate
         self._append_operational_event(
             component="forge_mission_runtime",
             level=("ERROR" if failure_code is not None else "WARNING" if str(document["status"]) in {"BLOCKED", "FAILED"} else "INFO"),
             event="mission_state_transitioned",
             mission_id=context["mission_id"], action_id=context["action_id"],
-            correlation_id=context["correlation_id"], run_id=context["run_id"],
+            correlation_id=(transition_audit.get("correlation_id")
+                            if transition_audit is not None else context["correlation_id"]),
+            run_id=context["run_id"],
+            operator_reference=(transition_audit.get("operator_reference")
+                                if transition_audit is not None else None),
             details={"previous_state": None if existing is None else existing["status"],
                      "new_state": str(document["status"]), "lifecycle": str(lifecycle),
-                     "reason_code": reason_code if isinstance(reason_code, str) else None,
+                     "reason_code": (transition_audit.get("reason_code")
+                                     if transition_audit is not None else
+                                     reason_code if isinstance(reason_code, str) else None),
+                     "operation": (transition_audit.get("operation")
+                                   if transition_audit is not None else None),
                      "failure_code": failure_code},
         )
 

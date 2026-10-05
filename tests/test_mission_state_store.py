@@ -160,6 +160,34 @@ class MissionStateStoreTests(unittest.TestCase):
         self.assertEqual([(item.sequence, item.reason) for item in history], [(1, "created"), (2, "planned")])
         self.assertFalse(hasattr(self.store, "_connection"))
 
+    def test_administrative_archive_requires_exact_revision_and_bounded_audit(self) -> None:
+        self.create()
+        audit = {
+            "operation": "archive_quiescent_no_dispatch",
+            "operator_reference": "operator-1",
+            "reason_code": "historical_no_dispatch_reconciled",
+            "correlation_id": "lifecycle-1",
+        }
+        with self.assertRaisesRegex(MissionStateStoreError, "expected revision"):
+            self.store.transition(
+                "mission-1", MissionExecutionStatus.ARCHIVED,
+                occurred_at="2026-08-01T20:01:00Z", reason=audit["reason_code"],
+                expected_revision=2, transition_audit=audit,
+            )
+        with self.assertRaisesRegex(MissionStateStoreError, "audit is invalid"):
+            self.store.transition(
+                "mission-1", MissionExecutionStatus.ARCHIVED,
+                occurred_at="2026-08-01T20:01:00Z", reason=audit["reason_code"],
+                expected_revision=1, transition_audit={**audit, "unexpected": "field"},
+            )
+        archived = self.store.transition(
+            "mission-1", MissionExecutionStatus.ARCHIVED,
+            occurred_at="2026-08-01T20:01:00Z", reason=audit["reason_code"],
+            expected_revision=1, transition_audit=audit,
+        )
+        self.assertEqual(archived.revision, 2)
+        self.assertEqual(archived.state_history[-1]["administrative_audit"], audit)
+
     def test_callback_replay_deduplicates_receipts_and_preserves_assessment_history(self) -> None:
         self.advance_to_waiting_evidence()
         evidence = {"receipt_id": "receipt-1", "outcome": "complete"}

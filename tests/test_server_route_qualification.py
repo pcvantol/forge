@@ -43,6 +43,7 @@ EXPECTED_ROUTES = frozenset({
     ("GET", "/v1/missions/{mission_id}"),
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
+    ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
 })
 
 SERVICE_ROUTES = {
@@ -61,6 +62,7 @@ SERVICE_ROUTES = {
     ("POST", "/v1/missions/admit"): "mission_document",
     ("POST", "/v1/missions/{mission_id}/controller/start"): "mission_start",
     ("POST", "/v1/missions/{mission_id}/controller/reopen"): "mission_reopen",
+    ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"): "mission_archive_no_dispatch",
 }
 READ_ROUTES = {
     ("GET", "/v1/status"): "installed_status",
@@ -107,7 +109,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 22)
+        self.assertEqual(len(EXPECTED_ROUTES), 23)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -147,6 +149,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
                         "configure_provider_context", "configure_execution_host",
                         "detach_execution_host", "detach_execution_host_status",
                         "mission_document", "mission_start", "mission_reopen",
+                        "mission_archive_no_dispatch",
                     ):
                         mocked_services[name] = stack.enter_context(patch.object(
                             server.services, name, return_value={"service": name},
@@ -186,6 +189,10 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                     mocked_services[expected_service].assert_called_with("MISSION-QUAL", {})
                                 elif expected_service == "mission_reopen":
                                     mocked_services[expected_service].assert_called_with("MISSION-QUAL")
+                                elif expected_service == "mission_archive_no_dispatch":
+                                    mocked_services[expected_service].assert_called_with(
+                                        "MISSION-QUAL", {"repository_truth": {}},
+                                    )
                             expected_read = READ_ROUTES.get((method, path))
                             if expected_read is not None:
                                 self.assertEqual(status, 200)

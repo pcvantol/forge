@@ -46,6 +46,7 @@ from forge.runtime.dynamic_mission import (
     _InstalledMissionDispatcher,
 )
 from forge.mission_no_dispatch import main as derive_actions_main
+from forge.mission_lifecycle import MissionLifecycleError, MissionLifecycleService
 from forge.scheduler import BootstrapMissionScheduler
 from forge.state.mission_state import MissionExecutionStatus
 from forge._version import canonical_version
@@ -294,7 +295,8 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         return runtime
 
     def _mission_and_envelope(self, *, two_repositories: bool = False,
-                              repository_scopes: tuple[str, str] | None = None):
+                              repository_scopes: tuple[str, str] | None = None,
+                              identity_suffix: str = ""):
         repository, context = self.runtime.repository, self.runtime.repository.operators.context()
         contracts = (CriterionAssessmentContract(
             "status contract declares durable-state provenance", (CriterionEvidenceRequirement(
@@ -318,26 +320,29 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         )
         business = BusinessWorkspace.for_runtime(self.runtime.database, repository, context)
         architecture = ArchitectureWorkspace.for_runtime(self.runtime.database, repository, context)
+        candidate_id = "candidate-status-projection" + identity_suffix
+        business_decision_id = "business-status-projection" + identity_suffix
+        architecture_decision_id = "architecture-status-projection" + identity_suffix
         business.approve(
-            decision_id="business-status-projection", candidate_id="candidate-status-projection", revision="1",
+            decision_id=business_decision_id, candidate_id=candidate_id, revision="1",
             scope=planning.scope, gates=planning.human_gates,
         )
         architecture.approve(
-            decision_id="architecture-status-projection", candidate_id="candidate-status-projection", revision="1",
+            decision_id=architecture_decision_id, candidate_id=candidate_id, revision="1",
             planning=planning,
         )
         envelope = MissionPlanningEvidenceEnvelope.compose(
-            repository, subject_id="candidate-status-projection", subject_revision="1",
-            business_decision_id="business-status-projection", architecture_decision_id="architecture-status-projection",
+            repository, subject_id=candidate_id, subject_revision="1",
+            business_decision_id=business_decision_id, architecture_decision_id=architecture_decision_id,
             planning=planning,
         )
         mission_id = self.runtime.database.allocate_next_mission_id(
             source="canonical-governance-envelope:" + envelope.digest, allocated_at="2026-09-11T16:00:00Z",
         )
         mission = ArchitectureMission(
-            mission_id, "candidate-status-projection", "Durable status projection", "Expose durable dispatcher posture.",
-            "Expose a safe status projection.", "Operators can inspect durable state.", "architecture-status-projection",
-            "candidate-status-projection", scope, ("no unrelated runtime work",),
+            mission_id, candidate_id, "Durable status projection", "Expose durable dispatcher posture.",
+            "Expose a safe status projection.", "Operators can inspect durable state.", architecture_decision_id,
+            candidate_id, scope, ("no unrelated runtime work",),
             ("status contract declares durable-state provenance",), ("configured EP v1.2",), ("ep-v1.2",),
             ("status-projection",), (RequiredDiscipline.PLATFORM_ARCHITECTURE,), ("scope-drift",),
             ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
@@ -356,6 +361,129 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
                 "sha256:" + "b" * 64,
             ),),
         )
+
+    def _materialized_no_dispatch(self):
+        self.provider = _TwoRepositoryProvider()
+        self.runtime.provider = self.provider
+        self.host.config = SimpleNamespace(
+            base_url="http://127.0.0.1:1", bearer_token="private-fixture",
+            expected_instance_id="ep-fixture-1", project_id="project-fixture-1",
+            expected_consumer_id="forge-consumer", peer_binding_id="peer-fixture",
+            peer_configuration_revision=1, peer_configuration_digest="sha256:" + "e" * 64,
+            allow_loopback_http=True, timeout=1.0,
+        )
+        mission, envelope = self._mission_and_envelope(two_repositories=True)
+        self.runtime.admit(mission, envelope)
+        heads = {"example/repository-a": "a" * 40, "example/repository-b": "b" * 40}
+        selected_peer = SimpleNamespace(
+            endpoint=self.host.config.base_url,
+            expected_ep_instance_id=self.host.config.expected_instance_id,
+            ep_project_id=self.host.config.project_id,
+            ep_consumer_id=self.host.config.expected_consumer_id,
+            binding_id=self.host.config.peer_binding_id,
+            configuration_revision=self.host.config.peer_configuration_revision,
+            configuration_digest=self.host.config.peer_configuration_digest,
+        )
+        with patch("forge.mission_cli._github_default_head", side_effect=lambda name: ("main", heads[name])), \
+             patch("forge.runtime.dynamic_mission.read_repository_authority",
+                   side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)), \
+             patch("forge.runtime.action_intents.read_repository_authority",
+                   side_effect=lambda _scope, *, repository_id, **_: authority(repository_id)), \
+             patch("forge.execution_host_configuration.EngineeringPlatformExecutionHostFactory.from_database",
+                   return_value=self.host), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformPeerConfigurationStore.load",
+                   return_value=selected_peer):
+            result = self.runtime.derive_two_repository_actions(mission.id)
+        self.assertEqual(result.status, "ACTIONS_MATERIALIZED_NO_DISPATCH")
+        return mission, result
+
+    def test_public_lifecycle_archives_quiescent_no_dispatch_mission_and_replays(self) -> None:
+        mission, result = self._materialized_no_dispatch()
+        successor, envelope = self._mission_and_envelope(
+            two_repositories=True, identity_suffix="-successor",
+        )
+        self.runtime.admit(successor, envelope)
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "exactly one selected non-terminal Mission"):
+            self.runtime._assert_single_resumable(successor.id)
+        service = MissionLifecycleService(self.runtime.repository)
+        expected_instance = self.runtime.database.runtime_identity.runtime_id
+        archived = service.archive_quiescent_no_dispatch(
+            mission.id, expected_instance_id=expected_instance, expected_revision=2,
+            reason_code="historical_no_dispatch_reconciled", correlation_id="lifecycle-test-1",
+            occurred_at="2026-09-11T17:00:00Z",
+        )
+        self.assertEqual(archived.status, "ARCHIVED")
+        self.assertEqual(archived.revision, 3)
+        self.assertEqual(archived.to_dict()["archived_is_completion"], False)
+        self.assertEqual(archived.to_dict()["host_dispatched"], False)
+        state = self.runtime.states.get(mission.id)
+        self.assertEqual(tuple(item["id"] for item in state.actions), result.action_ids)
+        self.assertEqual(len(state.intents), 2)
+        self.runtime.close()
+        self.runtime = self._open_runtime()
+        service = MissionLifecycleService(self.runtime.repository)
+        replay = service.archive_quiescent_no_dispatch(
+            mission.id, expected_instance_id=expected_instance, expected_revision=2,
+            reason_code="historical_no_dispatch_reconciled", correlation_id="lifecycle-test-1",
+            occurred_at="2026-09-11T17:01:00Z",
+        )
+        self.assertEqual(replay, archived)
+        log = self.runtime.database._connection.execute(
+            "SELECT correlation_id,operator_reference,details FROM forge_operational_logs "
+            "WHERE mission_id=? AND event='mission_state_transitioned' AND correlation_id=? LIMIT 1",
+            (mission.id, "lifecycle-test-1"),
+        ).fetchone()
+        self.assertEqual(log["correlation_id"], "lifecycle-test-1")
+        self.assertTrue(log["operator_reference"])
+        self.assertEqual(json.loads(log["details"])["operation"], "archive_quiescent_no_dispatch")
+
+        self.runtime._assert_single_resumable(successor.id)
+
+    def test_public_lifecycle_fails_closed_on_wrong_stale_or_conflicting_request(self) -> None:
+        mission, _ = self._materialized_no_dispatch()
+        service = MissionLifecycleService(self.runtime.repository)
+        instance_id = self.runtime.database.runtime_identity.runtime_id
+        requests = (
+            {"expected_instance_id": "wrong-instance", "expected_revision": 2,
+             "reason_code": "historical_no_dispatch_reconciled", "correlation_id": "lifecycle-test-2"},
+            {"expected_instance_id": instance_id, "expected_revision": 1,
+             "reason_code": "historical_no_dispatch_reconciled", "correlation_id": "lifecycle-test-2"},
+        )
+        for request in requests:
+            with self.subTest(request=request), self.assertRaises(MissionLifecycleError):
+                service.archive_quiescent_no_dispatch(
+                    mission.id, occurred_at="2026-09-11T17:00:00Z", **request,
+                )
+        archived = service.archive_quiescent_no_dispatch(
+            mission.id, expected_instance_id=instance_id, expected_revision=2,
+            reason_code="historical_no_dispatch_reconciled", correlation_id="lifecycle-test-2",
+            occurred_at="2026-09-11T17:00:00Z",
+        )
+        self.assertEqual(archived.status, "ARCHIVED")
+        with self.assertRaisesRegex(MissionLifecycleError, "different operation"):
+            service.archive_quiescent_no_dispatch(
+                mission.id, expected_instance_id=instance_id, expected_revision=2,
+                reason_code="historical_no_dispatch_reconciled", correlation_id="lifecycle-test-other",
+                occurred_at="2026-09-11T17:01:00Z",
+            )
+
+    def test_public_lifecycle_fails_closed_on_authority_activity_or_uncertain_lineage(self) -> None:
+        mission, _ = self._materialized_no_dispatch()
+        service = MissionLifecycleService(self.runtime.repository)
+        request = dict(
+            expected_instance_id=self.runtime.database.runtime_identity.runtime_id,
+            expected_revision=2, reason_code="historical_no_dispatch_reconciled",
+            correlation_id="lifecycle-test-3", occurred_at="2026-09-11T17:00:00Z",
+        )
+        with patch.object(self.runtime.repository.operators, "authorize", return_value=False), \
+             self.assertRaises(PermissionError):
+            service.archive_quiescent_no_dispatch(mission.id, **request)
+        with patch.object(self.runtime.database, "has_active_mission_dispatch", return_value=True), \
+             self.assertRaisesRegex(MissionLifecycleError, "active dispatch"):
+            service.archive_quiescent_no_dispatch(mission.id, **request)
+        with patch.object(self.runtime.database, "durable_action_derivation_readback", return_value=()), \
+             self.assertRaisesRegex(MissionLifecycleError, "incomplete or uncertain"):
+            service.archive_quiescent_no_dispatch(mission.id, **request)
 
     def test_admits_zero_actions_then_reopens_same_installed_instance_to_reconcile_terminal_evidence(self) -> None:
         mission, envelope = self._mission_and_envelope()

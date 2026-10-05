@@ -457,6 +457,19 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                     self.assertEqual(server.api.handle(
                         "POST", "/v1/missions/mission-1/controller/reopen", authorization,
                     ).status, 200)
+                archive_request = {
+                    "expected_instance_id": "runtime-1", "expected_revision": 2,
+                    "reason_code": "historical_no_dispatch_reconciled",
+                    "correlation_id": "lifecycle-1",
+                }
+                with patch.object(server.services, "mission_archive_no_dispatch",
+                                  return_value={"status": "ARCHIVED"}) as archive:
+                    response = server.api.handle(
+                        "POST", "/v1/missions/mission-1/lifecycle/archive-no-dispatch",
+                        authorization, archive_request,
+                    )
+                    self.assertEqual(response.status, 200)
+                    archive.assert_called_once_with("mission-1", archive_request)
                 with patch.object(server.services, "configure_provider_context", return_value={"state": "BOUND"}):
                     self.assertEqual(server.api.handle(
                         "POST", "/v1/provider-context", authorization, {},
