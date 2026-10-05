@@ -41,6 +41,7 @@ class MissionArchiveResult:
     revision: int
     correlation_id: str
     operator_reference: str
+    authenticated_principal_reference: str
     preserved_lineage_digest: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,6 +55,7 @@ class MissionArchiveResult:
             "revision": self.revision,
             "correlation_id": self.correlation_id,
             "operator_reference": self.operator_reference,
+            "authenticated_principal_reference": self.authenticated_principal_reference,
             "preserved_lineage_digest": self.preserved_lineage_digest,
             "archived_is_completion": False,
             "provider_invoked": False,
@@ -74,15 +76,37 @@ class MissionLifecycleService:
 
     @staticmethod
     def _lineage(state: Any) -> dict[str, Any]:
+        state_history = state.state_history
+        if (state.status is MissionExecutionStatus.ARCHIVED and state_history
+                and state_history[-1].get("from_status")
+                == MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH.value
+                and state_history[-1].get("administrative_audit", {}).get("operation")
+                == "archive_quiescent_no_dispatch"):
+            state_history = state_history[:-1]
         return {
+            "schema_version": state.schema_version,
             "mission": state.mission,
             "admission_contract": state.admission_contract,
             "actions": state.actions,
             "intents": state.intents,
+            "progress": state.progress,
+            "resume": state.resume,
+            "current_engineering_intent": state.current_engineering_intent,
+            "current_engineering_action": state.current_engineering_action,
             "planning_history": state.planning_history,
             "repository_truth": state.repository_truth,
+            "execution_correlation": state.execution_correlation,
+            "execution_evidence": state.execution_evidence,
             "execution_history": state.execution_history,
+            "execution_policy": state.execution_policy,
+            "pause_reason": state.pause_reason,
+            "approval_record": state.approval_record,
+            "delegations": state.delegations,
+            "integration": state.integration,
+            "completion": state.completion,
             "completion_history": state.completion_history,
+            "waiting_reason": state.waiting_reason,
+            "state_history": state_history,
         }
 
     def _operator_reference(self) -> str:
@@ -98,9 +122,11 @@ class MissionLifecycleService:
             raise PermissionError("owner programme authorization capability is required")
         return operator
 
-    def _assert_quiescent(self, mission_id: str, state: Any) -> None:
+    def _assert_quiescent(self, mission_id: str, state: Any, *, replay: bool = False) -> None:
         self.database.validate_integrity(record_status=False)
-        if state.status is not MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH:
+        expected_status = (MissionExecutionStatus.ARCHIVED if replay
+                           else MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH)
+        if state.status is not expected_status:
             raise MissionLifecycleError("only a materialized no-dispatch Mission may be administratively archived")
         if not state.actions or len(state.actions) != len(state.intents):
             raise MissionLifecycleError("no-dispatch Mission Action lineage is incomplete")
@@ -109,7 +135,8 @@ class MissionLifecycleService:
         if (state.current_engineering_action is not None or state.current_engineering_intent is not None
                 or state.execution_correlation is not None or state.execution_evidence is not None
                 or state.execution_history or state.completion is not None or state.integration is not None
-                or state.completion_history or state.delegations):
+                or state.completion_history or state.delegations or state.pause_reason is not None
+                or state.approval_record is not None or state.waiting_reason is not None):
             raise MissionLifecycleError("Mission has execution, completion, delegation, or integration activity")
         if self.database.has_active_mission_dispatch(mission_id):
             raise MissionLifecycleError("Mission has active dispatch lineage")
@@ -139,7 +166,8 @@ class MissionLifecycleService:
         intent_view = ActionIntentLedger(self.database._connection).read(mission_id)
         action_ids = {str(action.get("id")) for action in state.actions}
         intent_ids = {str(action.get("action_id")) for action in intent_view["actions"]}
-        if (intent_view.get("source_freshness") != "CURRENT"
+        expected_freshness = "STALE" if replay else "CURRENT"
+        if (intent_view.get("source_freshness") != expected_freshness
                 or intent_view.get("dispatch_authorized") is not False
                 or action_ids != intent_ids
                 or any(action.get("correlation_status") != "BOUND"
@@ -151,6 +179,7 @@ class MissionLifecycleService:
     def archive_quiescent_no_dispatch(
         self, mission_id: str, *, expected_instance_id: str, expected_revision: int,
         reason_code: str, correlation_id: str, occurred_at: str,
+        authenticated_principal_reference: str | None = None,
     ) -> MissionArchiveResult:
         mission_id = _reference(mission_id, "Mission identity")
         expected_instance_id = _reference(expected_instance_id, "Runtime Instance identity")
@@ -161,12 +190,17 @@ class MissionLifecycleService:
         if self.database.runtime_identity.runtime_id != expected_instance_id:
             raise MissionLifecycleError("Runtime Instance identity differs from the expected instance")
         operator = self._operator_reference()
+        principal = _reference(
+            authenticated_principal_reference or f"local-operator:v1:{operator}",
+            "authenticated principal reference",
+        )
         state = self.states.get(mission_id)
         audit_identity = {
             "operation": "archive_quiescent_no_dispatch",
             "operator_reference": operator,
             "reason_code": reason_code,
             "correlation_id": correlation_id,
+            "authenticated_principal_reference": principal,
         }
         if state.status is MissionExecutionStatus.ARCHIVED:
             latest = state.state_history[-1] if state.state_history else {}
@@ -176,10 +210,13 @@ class MissionLifecycleService:
                     and set(recorded_audit) == {*audit_identity, "preserved_lineage_digest"}
                     and latest.get("from_status") == MissionExecutionStatus.ACTIONS_MATERIALIZED_NO_DISPATCH.value):
                 recorded_digest = recorded_audit.get("preserved_lineage_digest")
+                self._assert_quiescent(mission_id, state, replay=True)
                 if (not isinstance(recorded_digest, str)
                         or recorded_digest != _digest(self._lineage(state))):
                     raise MissionLifecycleError("archived Mission lineage differs from its preserved receipt")
-                return self._result(state, expected_revision, correlation_id, operator, recorded_digest)
+                return self._result(
+                    state, expected_revision, correlation_id, operator, principal, recorded_digest,
+                )
             raise MissionLifecycleError("Mission is already archived by a different operation")
         if state.revision != expected_revision:
             raise MissionLifecycleError("Mission revision differs from the expected revision")
@@ -192,10 +229,11 @@ class MissionLifecycleService:
         )
         if _digest(self._lineage(archived)) != before:
             raise MissionLifecycleError("administrative archive changed immutable Mission lineage")
-        return self._result(archived, expected_revision, correlation_id, operator, before)
+        return self._result(archived, expected_revision, correlation_id, operator, principal, before)
 
     def _result(self, state: Any, previous_revision: int, correlation_id: str,
-                operator: str, preserved_lineage_digest: str) -> MissionArchiveResult:
+                operator: str, authenticated_principal_reference: str,
+                preserved_lineage_digest: str) -> MissionArchiveResult:
         return MissionArchiveResult(
             mission_id=state.mission_id,
             instance_id=self.database.runtime_identity.runtime_id,
@@ -205,5 +243,6 @@ class MissionLifecycleService:
             revision=state.revision,
             correlation_id=correlation_id,
             operator_reference=operator,
+            authenticated_principal_reference=authenticated_principal_reference,
             preserved_lineage_digest=preserved_lineage_digest,
         )

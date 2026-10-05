@@ -167,6 +167,7 @@ class MissionStateStoreTests(unittest.TestCase):
             "operator_reference": "operator-1",
             "reason_code": "historical_no_dispatch_reconciled",
             "correlation_id": "lifecycle-1",
+            "authenticated_principal_reference": "local-operator:v1:operator-1",
             "preserved_lineage_digest": "sha256:" + "a" * 64,
         }
         with self.assertRaisesRegex(MissionStateStoreError, "expected revision"):

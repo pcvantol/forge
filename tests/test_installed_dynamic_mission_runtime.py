@@ -419,6 +419,12 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         state = self.runtime.states.get(mission.id)
         self.assertEqual(tuple(item["id"] for item in state.actions), result.action_ids)
         self.assertEqual(len(state.intents), 2)
+        audit = state.state_history[-1]["administrative_audit"]
+        self.assertEqual(audit["operator_reference"], archived.operator_reference)
+        self.assertEqual(
+            audit["authenticated_principal_reference"],
+            "local-operator:v1:" + archived.operator_reference,
+        )
         self.runtime.close()
         self.runtime = self._open_runtime()
         service = MissionLifecycleService(self.runtime.repository)
@@ -436,6 +442,10 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(log["correlation_id"], "lifecycle-test-1")
         self.assertTrue(log["operator_reference"])
         self.assertEqual(json.loads(log["details"])["operation"], "archive_quiescent_no_dispatch")
+        self.assertEqual(
+            json.loads(log["details"])["authenticated_principal_reference"],
+            archived.authenticated_principal_reference,
+        )
 
         self.runtime._assert_single_resumable(successor.id)
 
@@ -512,6 +522,28 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
                 (json.dumps(completed, sort_keys=True, separators=(",", ":")), mission.id),
             )
         with self.assertRaisesRegex(MissionLifecycleError, "completion"):
+            service.archive_quiescent_no_dispatch(mission.id, **request)
+
+    def test_public_lifecycle_replay_rechecks_all_quiescence_evidence(self) -> None:
+        mission, _ = self._materialized_no_dispatch()
+        service = MissionLifecycleService(self.runtime.repository)
+        request = dict(
+            expected_instance_id=self.runtime.database.runtime_identity.runtime_id,
+            expected_revision=2, reason_code="historical_no_dispatch_reconciled",
+            correlation_id="lifecycle-test-4", occurred_at="2026-09-11T17:00:00Z",
+        )
+        service.archive_quiescent_no_dispatch(mission.id, **request)
+        row = self.runtime.database._connection.execute(
+            "SELECT document FROM mission_state WHERE mission_id=?", (mission.id,),
+        ).fetchone()
+        active = json.loads(row["document"])
+        active["delegations"] = [{"id": "delegation-after-archive", "status": "ACTIVE"}]
+        with self.runtime.database._connection:
+            self.runtime.database._connection.execute(
+                "UPDATE mission_state SET document=? WHERE mission_id=?",
+                (json.dumps(active, sort_keys=True, separators=(",", ":")), mission.id),
+            )
+        with self.assertRaisesRegex(MissionLifecycleError, "activity"):
             service.archive_quiescent_no_dispatch(mission.id, **request)
 
     def test_admits_zero_actions_then_reopens_same_installed_instance_to_reconcile_terminal_evidence(self) -> None:

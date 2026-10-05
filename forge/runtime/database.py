@@ -106,6 +106,7 @@ _OPERATIONAL_LOG_DETAIL_KEYS = frozenset((
     "retry_parent_run_id", "resolution_submission_id", "resolved_from_host_run_id",
     "previous_configuration_revision", "historical_readback_adoption",
     "historical_target_identity_digest",
+    "authenticated_principal_reference",
 ))
 _OPERATIONAL_LOG_CONTRACT_VERSION = "1.0"
 
@@ -2310,6 +2311,9 @@ class RuntimeDatabase:
                                      reason_code if isinstance(reason_code, str) else None),
                      "operation": (transition_audit.get("operation")
                                    if transition_audit is not None else None),
+                     "authenticated_principal_reference": (
+                         transition_audit.get("authenticated_principal_reference")
+                         if transition_audit is not None else None),
                      "failure_code": failure_code},
         )
 

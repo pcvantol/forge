@@ -12,7 +12,8 @@ from forge.runtime.service import RuntimeServiceLock
 
 def archive_no_dispatch(data_root: str, mission_id: str, *, expected_instance_id: str,
                         expected_revision: int, reason_code: str,
-                        correlation_id: str) -> dict[str, object]:
+                        correlation_id: str,
+                        authenticated_principal_reference: str | None = None) -> dict[str, object]:
     """Archive one exact quiescent historical no-dispatch Mission."""
     database, repository = _governance(data_root)
     try:
@@ -24,6 +25,7 @@ def archive_no_dispatch(data_root: str, mission_id: str, *, expected_instance_id
                 reason_code=reason_code,
                 correlation_id=correlation_id,
                 occurred_at=_now(),
+                authenticated_principal_reference=authenticated_principal_reference,
             ).to_dict()
     finally:
         database.close()

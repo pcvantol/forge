@@ -355,7 +355,7 @@ class MissionStateStore:
             audit = _document(transition_audit, "transition audit")
             required_audit = {
                 "operation", "operator_reference", "reason_code", "correlation_id",
-                "preserved_lineage_digest",
+                "authenticated_principal_reference", "preserved_lineage_digest",
             }
             if (status is not MissionExecutionStatus.ARCHIVED or set(audit) != required_audit
                     or any(not isinstance(audit[item], str) or not audit[item]

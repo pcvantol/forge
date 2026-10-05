@@ -43,6 +43,7 @@ class MissionLifecycleCliTests(unittest.TestCase):
             "MISSION-0001", expected_instance_id="runtime-1", expected_revision=2,
             reason_code="historical_no_dispatch_reconciled", correlation_id="lifecycle-1",
             occurred_at="2026-10-05T08:00:00Z",
+            authenticated_principal_reference=None,
         )
 
     def test_cli_emits_a_secret_free_result_or_bounded_error(self) -> None:

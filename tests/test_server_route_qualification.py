@@ -190,8 +190,13 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 elif expected_service == "mission_reopen":
                                     mocked_services[expected_service].assert_called_with("MISSION-QUAL")
                                 elif expected_service == "mission_archive_no_dispatch":
-                                    mocked_services[expected_service].assert_called_with(
-                                        "MISSION-QUAL", {"repository_truth": {}},
+                                    call = mocked_services[expected_service].call_args
+                                    self.assertEqual(
+                                        call.args, ("MISSION-QUAL", {"repository_truth": {}}),
+                                    )
+                                    self.assertRegex(
+                                        call.kwargs["authenticated_principal_reference"],
+                                        r"\Aforge-server-admin:v1:sha256:[0-9a-f]{64}\Z",
                                     )
                             expected_read = READ_ROUTES.get((method, path))
                             if expected_read is not None:
