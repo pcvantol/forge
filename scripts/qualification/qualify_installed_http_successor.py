@@ -72,7 +72,8 @@ HOST = "synthetic-host"
 GOVERNANCE_PROFILE = "solo"
 GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = (
-    "partial", "single", "delayed", "pre-send-reopen", "host-recovery", "failed-recovery",
+    "partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
+    "host-recovery", "failed-recovery",
     "concurrent-start", "tampered", "artifact-corrupt",
     "artifact-withheld", "artifact-unavailable",
     "assurance-blocked", "budget-exhausted", "ambiguous", "ambiguous-recovered",
@@ -713,7 +714,10 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
         return
     with ExitStack() as stack:
         runtime = _open(root, stack)
-        mission_id = fixture._read(root / "population.private.json")["mission_id"]
+        population = fixture._read(root / "population.private.json")
+        mission_id = population["mission_id"]
+        if runtime.database.runtime_identity.runtime_id != population["runtime_id"]:
+            raise RuntimeError("fresh Forge process opened a different Runtime Instance")
         if phase == "completed-resume":
             try:
                 runtime.resume(mission_id)
@@ -778,6 +782,14 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
                 })
             else:
                 fixture._write(root / f"{phase}.race.private.json", {"result": "STARTED"})
+        elif phase == "after-a-cut":
+            def before_successor() -> bool:
+                observed = runtime.states.get(mission_id)
+                marker = observed.resume.get("terminal_continuation", {})
+                return marker.get("phase") != "ASSESSED"
+
+            runtime._keep_running = before_successor
+            runtime.resume(mission_id)
         elif phase != "readback":
             runtime.resume(mission_id)
         state = _capture(root, runtime, phase)
@@ -1174,7 +1186,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             ))
         if scenario == "artifact-corrupt":
             simulator.corrupt_terminal_artifact(a)
-        if scenario == "partial":
+        if scenario in {"partial", "post-assessment-reopen"}:
             fixture_negatives = rejection_matrix(
                 request_a, source_readback, source_artifact, project_id=PROJECT,
                 repository_id=fixture.SOURCE.repository_id, submission_id=a,
@@ -1183,6 +1195,15 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             readback, artifact = simulator.terminal_documents(a)
             readback["correlation"]["mission_id"] = "wrong-mission"
             simulator.seed_terminal(a, readback, artifact)
+        if scenario == "post-assessment-reopen":
+            cut = _run_phase(root, scenario, "after-a-cut", server.base_url, wheel)
+            marker = cut["resume"].get("terminal_continuation", {})
+            criteria = {item["criterion"]: item for item in cut["completion"]["criteria"]}
+            assert marker.get("phase") == "ASSESSED"
+            assert criteria[fixture.K1]["status"] == "PROVEN"
+            assert criteria[fixture.K2]["status"] == "UNSATISFIED"
+            assert len(cut["actions"]) == len(simulator.submission_ids()) == 1
+            assert len(fixture._read(root / "provider-inputs.private.json")) == 1
         after_a = _run_phase(root, scenario, "after-a", server.base_url, wheel)
         if scenario == "ambiguous-recovered":
             observed = [event["response"] for event in simulator.audit
@@ -1208,7 +1229,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 assert after_a["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
             assert after_a["status"] == "AWAITING_APPROVAL"
             assert poll_phases, "delayed terminal evidence did not require a fresh-process poll"
-        if scenario == "partial":
+        if scenario in {"partial", "post-assessment-reopen"}:
             criteria = {item["criterion"]: item for item in after_a["completion"]["criteria"]}
             assert criteria[fixture.K1]["status"] == "PROVEN"
             assert criteria[fixture.K2]["status"] == "UNSATISFIED"
@@ -1296,7 +1317,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             }
             assert final["completion"] is None or final["completion"].get("all_required_criteria_proven") is not True
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
-        if scenario in {"partial", "single", "delayed", "pre-send-reopen",
+        if scenario in {"partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
                         "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             fixture._write(root / "final-before-accept.state.private.json", final)
             accepted = _run_phase(root, scenario, "accept", server.base_url, wheel)
@@ -1308,7 +1329,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             final = accepted
         readback = _run_phase(root, scenario, "readback", server.base_url, wheel)
         assert readback == final
-        if scenario in {"partial", "single", "delayed", "pre-send-reopen",
+        if scenario in {"partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
                         "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             stopped = _run_phase(root, scenario, "completed-resume", server.base_url, wheel)
             assert stopped == final
@@ -1319,14 +1340,16 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
         accepted = [event["submission_id"] for event in simulator.audit if event["event"] == "submission_accepted"]
         assert accepted == list(simulator.submission_ids())
     phases = ["prepare", "after-a", "readback"]
+    if scenario == "post-assessment-reopen":
+        phases.append("after-a-cut")
     if scenario == "pre-send-reopen":
         phases.append("send-after-reopen")
-    if scenario == "partial":
+    if scenario in {"partial", "post-assessment-reopen"}:
         phases += ["replay-b", "after-b"]
     if scenario in {"host-recovery", "failed-recovery"}:
         phases += ["recover-denied", "recover", "after-recovery"]
     phases += poll_phases
-    if scenario in {"partial", "single", "delayed", "pre-send-reopen",
+    if scenario in {"partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
                     "host-recovery", "failed-recovery", "ambiguous-recovered"}:
         phases += ["accept", "accept-replay", "completed-resume"]
     processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
@@ -1572,7 +1595,8 @@ def main() -> int:
     parser.add_argument("--governance-case", choices=GOVERNANCE_CASES)
     parser.add_argument("--preflight-case", choices=tuple(PREFLIGHT_CASES))
     parser.add_argument("--provider-case", choices=PROVIDER_CASES)
-    parser.add_argument("--phase", choices=("prepare", "send-after-reopen", "after-a", "replay-b", "after-b",
+    parser.add_argument("--phase", choices=("prepare", "send-after-reopen", "after-a-cut", "after-a",
+                                            "replay-b", "after-b",
                                             "recover-denied", "recover", "after-recovery",
                                             "race-start-a", "race-start-b",
                                             *(f"poll-{index}" for index in range(1, 7)), "accept",
