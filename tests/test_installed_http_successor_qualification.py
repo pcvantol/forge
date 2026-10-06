@@ -24,12 +24,13 @@ from scripts.qualification.qualify_installed_http_successor import (
 
 
 class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
-    def test_installed_runtime_marker_and_missing_storage_fail_without_new_identity(self) -> None:
+    def test_installed_runtime_marker_storage_and_schema_fail_without_new_identity(self) -> None:
         with TemporaryDirectory() as directory:
             cases = _installed_runtime_storage_negatives(Path(directory) / "runtime")
         self.assertEqual(cases, [
             {"case": "wrong-runtime-marker", "result": "REJECTED"},
             {"case": "missing-runtime-storage", "result": "REJECTED"},
+            {"case": "unsupported-runtime-schema", "result": "REJECTED"},
         ])
 
     def test_scenario_process_receives_no_host_credentials_or_external_network(self) -> None:
