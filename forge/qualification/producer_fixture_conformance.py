@@ -16,8 +16,8 @@ from typing import Any, Mapping
 
 PRODUCER_SOURCE = {
     "repository": "pcvantol/engineering-platform",
-    "revision": "8a5e0e19c0761fdf6c23bfb7f3fbee67e0b0b82b",
-    "product_version": "2.3.107",
+    "revision": "315ef4c1dd3498bf5cb3e98d853bbf4c6692353e",
+    "product_version": "2.3.108",
     "serializer_path": "src/engineering_platform/submission_service.py",
     "serializer_sha256": "sha256:ff87489a8999b7a5f501ca0550effa389f7a694770e57738afd4e5d1af42fd7d",
     "host_evidence_path": "src/engineering_platform/execution_host_evidence.py",

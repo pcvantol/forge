@@ -708,6 +708,54 @@ class InstalledDynamicMissionRuntime:
         )
         return result
 
+    def accept_final_completion(
+        self, mission_id: str, document: Mapping[str, Any], *,
+        authenticated_principal_reference: str,
+    ) -> DynamicMissionRunResult:
+        """Apply one exact Business acceptance after evidence-derived completion.
+
+        The canonical decision is recorded before the terminal state change. A
+        process stop between either write or dispatcher release is recoverable
+        by replaying the same decision; no Host or provider call is made here.
+        """
+        with RuntimeServiceLock(self.database.path).acquire():
+            state = self.states.get(mission_id)
+            service = GovernedContinuationService(
+                self.database, self.repository, self.states, self.clock,
+            )
+            try:
+                recorded = service.record_final_acceptance(
+                    mission_id, document, project_id=self.host.config.project_id,
+                    authenticated_principal_reference=authenticated_principal_reference,
+                )
+            except GovernedContinuationError as error:
+                raise InstalledDynamicMissionError(str(error)) from error
+            if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
+                requirement = service.validate_final_acceptance(
+                    state, state.pause_reason or {}, project_id=self.host.config.project_id,
+                )
+                state = self.states.transition(
+                    mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self.clock(),
+                    reason="mission_final_business_acceptance_recorded",
+                    approval_record={
+                        "approval_id": recorded["decision_id"], "approved_by": "business_owner",
+                        "approved_at": self.clock(),
+                        "decision_reference": requirement["requirement_id"],
+                        "decision_digest": recorded["decision_digest"],
+                    },
+                    expected_revision=state.revision,
+                )
+            row = self.database._connection.execute(
+                "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton = 1"
+            ).fetchone()
+            if row is not None and row["status"] == "ACTIVE":
+                if row["active_mission_id"] != mission_id:
+                    raise InstalledDynamicMissionError("dispatcher points to another Mission")
+                _InstalledMissionDispatcher(
+                    self.database, self.states, mission_id, self.clock,
+                ).complete(mission_id)
+            return self._result(state)
+
     def decide_progression_with_recording_status(
         self, mission_id: str, document: Mapping[str, Any], *,
         authenticated_principal_reference: str,

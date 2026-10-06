@@ -252,6 +252,21 @@ def progression_decide(data_root: str, mission_id: str, path: str) -> dict[str, 
         return asdict(result)
 
 
+def accept_final_completion(data_root: str, mission_id: str, path: str) -> dict[str, object]:
+    """Apply an exact Business acceptance to a proven installed Mission."""
+    document = _input(path)
+    with InstalledDynamicMissionRuntime.open(data_root) as runtime:
+        with require_no_controller(runtime.database.path):
+            context = runtime.repository.operators.context()
+            if not runtime.repository.operators.authorize(context):
+                raise PermissionError("trusted bound operator is required")
+            principal = "local-operator:v1:" + runtime.repository._operator_id(context)
+            result = runtime.accept_final_completion(
+                mission_id, document, authenticated_principal_reference=principal,
+            )
+        return asdict(result)
+
+
 def _github_default_head(repository: str) -> tuple[str, str]:
     """Read the current default-branch commit through the configured gh identity."""
     def read(path: str) -> dict[str, Any]:

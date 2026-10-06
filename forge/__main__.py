@@ -230,6 +230,10 @@ def main(argv: list[str] | None = None) -> int:
     progression_status = mission_commands.add_parser(
         "progression-status", help="read the current post-Action progression fence")
     progression_status.add_argument("--mission-id", required=True)
+    final_acceptance = mission_commands.add_parser(
+        "accept-final-completion", help="record Business acceptance of proven Mission completion")
+    final_acceptance.add_argument("--mission-id", required=True)
+    final_acceptance.add_argument("--input", required=True)
     execution_host = subparsers.add_parser("execution-host", help="manage the selected Execution Host peer")
     execution_host_commands = execution_host.add_subparsers(dest="execution_host_command", required=True)
     configure = execution_host_commands.add_parser("configure", help="persist one explicit EP peer binding")
@@ -450,6 +454,10 @@ def main(argv: list[str] | None = None) -> int:
                 if args.data_root is None:
                     raise ValueError("--data-root is required for progression decision")
                 result = mission_cli.progression_decide(args.data_root, args.mission_id, args.input)
+            elif command == "accept-final-completion":
+                if args.data_root is None:
+                    raise ValueError("--data-root is required for final Business acceptance")
+                result = mission_cli.accept_final_completion(args.data_root, args.mission_id, args.input)
             elif command == "stop":
                 result = mission_cli.stop(args.data_root, args.mission_id)
             else:

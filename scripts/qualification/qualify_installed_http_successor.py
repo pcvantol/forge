@@ -19,7 +19,9 @@ from pathlib import Path
 import subprocess
 import sys
 from threading import Lock
+from typing import Any
 from unittest.mock import patch
+from zipfile import ZipFile
 
 import forge
 import forge.runtime.dynamic_mission as composition
@@ -60,7 +62,21 @@ PROJECT = "isolated-project"
 HOST = "synthetic-host"
 GOVERNANCE_PROFILE = "solo"
 GOVERNANCE_ACTOR = "primary_operator"
-SCENARIOS = ("partial", "single", "tampered", "ambiguous")
+SCENARIOS = (
+    "partial", "single", "delayed", "tampered", "artifact-corrupt",
+    "artifact-withheld", "artifact-unavailable",
+    "assurance-blocked", "budget-exhausted", "ambiguous",
+)
+PRODUCER_CANDIDATE_SCENARIOS = ("ambiguous-recovered",)
+EP_IDENTITY_READBACK_CANDIDATE = {
+    "repository": "pcvantol/engineering-platform",
+    "revision": "b7fc2c5b39d3d073d026a93f50a8f96a49beb8b3",
+    "contract_version": "1.0", "producer_readback_version": "1.3",
+    "contract_sha256": "sha256:40d749293ce27c86f5b051d74867bbca01def74b8394ac059dac414a6e4083ca",
+    "serializer_sha256": "sha256:c2335e9e4edd3cbe4b56d992527d1e5a64ed9296d482c40bd5fe3e915ceadbd3",
+    "http_test_sha256": "sha256:23ddddc26918bb3038983121154c011e71c4b42b17a1c6fe7803a69cda24c35b",
+    "producer_state": "SOURCE_QUALIFIED_PENDING_PROTECTED_MERGE_AND_INSTALLED_MAIN",
+}
 # These are adversarial EP-boundary fixtures, not Forge preflight stubs.  The
 # expected reasons are the product adapter/factory's stable, secret-free errors.
 PREFLIGHT_CASES = {
@@ -87,8 +103,8 @@ PREFLIGHT_CASES = {
 }
 EP_PREFLIGHT_SOURCE = {
     "repository": "pcvantol/engineering-platform",
-    "revision": "8a5e0e19c0761fdf6c23bfb7f3fbee67e0b0b82b",
-    "product_version": "2.3.107",
+    "revision": "315ef4c1dd3498bf5cb3e98d853bbf4c6692353e",
+    "product_version": "2.3.108",
     "path": "src/engineering_platform/server.py",
     "sha256": "sha256:43f80126ed081c47bce5174968ab6393b1af64f107500e49470e5495f61ff7f4",
     "declaration_contract": "1.1",
@@ -123,7 +139,7 @@ class _PreflightCredentialResolver(_SyntheticCredentialResolver):
         return super().resolve(reference)
 
 
-def _installed_wheel(wheel: Path) -> dict[str, str]:
+def _installed_wheel(wheel: Path) -> dict[str, Any]:
     if sys.version_info[:2] != (3, 14) or not sys.flags.isolated or sys.flags.optimize:
         raise RuntimeError("qualification requires assertion-enabled isolated Python 3.14.x")
     if not wheel.is_file():
@@ -134,10 +150,27 @@ def _installed_wheel(wheel: Path) -> dict[str, str]:
     if (direct.get("archive_info", {}).get("hashes", {}).get("sha256") != digest
             or direct.get("dir_info", {}).get("editable")):
         raise RuntimeError("installed distribution is not the exact candidate wheel")
+    package_root = Path(installed.locate_file("forge")).resolve()
     package = Path(forge.__file__).resolve()
-    if not package.is_relative_to(Path(installed.locate_file("forge")).resolve()):
+    if (not package.is_relative_to(package_root)
+            or "site-packages" not in package.parts
+            or not Path(sys.executable).absolute().is_relative_to(Path(sys.prefix).absolute())):
         raise RuntimeError("Forge import did not come from installed site-packages")
-    return {"version": installed.version, "wheel_sha256": "sha256:" + digest}
+    modules = (
+        "forge/__init__.py", "forge/runtime/dynamic_mission.py",
+        "forge/scheduler/ep_http_adapter.py", "forge/ep_simulator.py",
+    )
+    module_digests = {}
+    with ZipFile(wheel) as archive:
+        for module in modules:
+            expected = archive.read(module)
+            installed_file = Path(installed.locate_file(module)).resolve()
+            if (not installed_file.is_relative_to(package_root)
+                    or installed_file.read_bytes() != expected):
+                raise RuntimeError("installed Forge module bytes differ from the selected wheel")
+            module_digests[module] = "sha256:" + sha256(expected).hexdigest()
+    return {"version": installed.version, "wheel_sha256": "sha256:" + digest,
+            "module_sha256": module_digests}
 
 
 def _open(root: Path, stack: ExitStack, *,
@@ -184,10 +217,10 @@ def _configure(root: Path, endpoint: str) -> None:
 
 
 def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
-                       runtime: InstalledDynamicMissionRuntime) -> tuple[
+                       runtime: InstalledDynamicMissionRuntime, *, maximum_actions: int = 3) -> tuple[
                            MissionCandidate, GovernedCandidateIntake,
                            ArchitectureMission, ArchitecturePlanningEvidence]:
-    options = {"criterion_assessment_contracts": fixture._contracts(), "maximum_actions": 3,
+    options = {"criterion_assessment_contracts": fixture._contracts(), "maximum_actions": maximum_actions,
                "maximum_consecutive_no_progress_actions": 1,
                "repository_evidence_source": fixture.SOURCE}
     recommendation = MissionRecommendation(
@@ -244,7 +277,9 @@ def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
     with ExitStack() as stack:
         runtime = _open(root, stack)
         with RecommendationLifecycleStore(root / "governance" / "lifecycle.sqlite") as lifecycle:
-            candidate, bridge, mission_preview, planning = _candidate_fixture(lifecycle, runtime)
+            candidate, bridge, mission_preview, planning = _candidate_fixture(
+                lifecycle, runtime, maximum_actions=1 if scenario == "budget-exhausted" else 3,
+            )
             revision = bridge.decision_ids(candidate.id)[0]
             rejected = []
 
@@ -452,7 +487,33 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
     with ExitStack() as stack:
         runtime = _open(root, stack)
         mission_id = fixture._read(root / "population.private.json")["mission_id"]
-        if phase != "readback":
+        if phase == "completed-resume":
+            try:
+                runtime.resume(mission_id)
+            except Exception as error:
+                if type(error).__name__ != "InstalledDynamicMissionError":
+                    raise
+            else:
+                raise RuntimeError("completed Mission unexpectedly resumed")
+        elif phase in {"accept", "accept-replay"}:
+            pending = fixture._read(root / "final-before-accept.state.private.json")["pause_reason"]
+            decision = {
+                "schema_version": "forge-final-acceptance-decision/v1",
+                "decision_id": "installed-business-acceptance-" + scenario,
+                "requirement_id": pending["requirement_id"],
+                "subject_digest": pending["subject_digest"],
+                "mission_state_revision": pending["mission_state_revision"],
+                "completion_digest": pending["completion_digest"],
+                "terminal_evidence_digest": pending["terminal_evidence_digest"],
+                "policy_revision": pending["policy_revision"],
+                "decision": "accept", "reason": "The approved Mission evidence is sufficient.",
+            }
+            context = runtime.repository.operators.context()
+            principal = "local-operator:v1:" + runtime.repository._operator_id(context)
+            runtime.accept_final_completion(
+                mission_id, decision, authenticated_principal_reference=principal,
+            )
+        elif phase != "readback":
             runtime.resume(mission_id)
         state = _capture(root, runtime, phase)
         admitted = fixture._read(root / "prepare.state.private.json")
@@ -776,11 +837,21 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
         repository_identity=fixture.SOURCE.github_repository, consumer_id=CONSUMER,
         instance_id=INSTANCE, bearer_token=TOKEN,
         scenario=(EpSimulatorScenario(connection_loss_at=frozenset({"submission-after-accept-once"}))
-                  if scenario == "ambiguous" else None),
+                  if scenario == "ambiguous" else
+                  EpSimulatorScenario(
+                      name="identity-recovery-candidate", identity_readback_supported=True,
+                      connection_loss_at=frozenset({"submission-after-accept-once"}),
+                  ) if scenario == "ambiguous-recovered" else
+                  EpSimulatorScenario(name="delayed-terminal", terminal_after_reads=6)
+                  if scenario == "delayed" else
+                  EpSimulatorScenario(name="artifact-unavailable", artifact_http_status=404)
+                  if scenario == "artifact-unavailable" else None),
     )
     fixture._write(root / "artifact-a.json", {
         "report": {"fields": ["report_data"]},
-        "policy": {"authorization_required": scenario == "single"},
+        "policy": {"authorization_required": scenario in {
+            "single", "delayed", "ambiguous-recovered",
+        }},
     })
     fixture._write(root / "artifact-b.json", {
         "report": {"fields": ["report_data"]}, "policy": {"authorization_required": True},
@@ -802,12 +873,23 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             return {**_ambiguous_result(root, simulator, server.base_url, wheel, initial),
                     "governance_rejections": governance_negative,
                     "producer_fixtures": fixture_receipts, "producer_fixture_negatives": fixture_negatives}
-        simulator.complete(a, delivery_revision="a" * 40)
-        source_readback, source_artifact = simulator.terminal_documents(a)
-        fixture_receipts.append(validate_fixture(
-            request_a, source_readback, source_artifact, project_id=PROJECT,
-            repository_id=fixture.SOURCE.repository_id, submission_id=a,
-        ))
+        if scenario == "assurance-blocked":
+            simulator.complete(
+                a, outcome="BLOCKED", assurance="FAIL", quality_review="FAIL",
+                security_review="UNRESOLVED",
+            )
+        else:
+            simulator.complete(a, delivery_revision="a" * 40)
+        if scenario == "artifact-withheld":
+            simulator.withhold_terminal_artifact(a)
+        else:
+            source_readback, source_artifact = simulator.terminal_documents(a)
+            fixture_receipts.append(validate_fixture(
+                request_a, source_readback, source_artifact, project_id=PROJECT,
+                repository_id=fixture.SOURCE.repository_id, submission_id=a,
+            ))
+        if scenario == "artifact-corrupt":
+            simulator.corrupt_terminal_artifact(a)
         if scenario == "partial":
             fixture_negatives = rejection_matrix(
                 request_a, source_readback, source_artifact, project_id=PROJECT,
@@ -818,6 +900,21 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             readback["correlation"]["mission_id"] = "wrong-mission"
             simulator.seed_terminal(a, readback, artifact)
         after_a = _run_phase(root, scenario, "after-a", server.base_url, wheel)
+        poll_phases: list[str] = []
+        if scenario == "delayed":
+            assert after_a["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
+            assert len(simulator.submission_ids()) == 1
+            for index in range(1, 7):
+                phase = f"poll-{index}"
+                poll_phases.append(phase)
+                after_a = _run_phase(root, scenario, phase, server.base_url, wheel)
+                assert len(simulator.submission_ids()) == 1
+                assert len(fixture._read(root / "provider-inputs.private.json")) == 1
+                if after_a["status"] == "AWAITING_APPROVAL":
+                    break
+                assert after_a["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
+            assert after_a["status"] == "AWAITING_APPROVAL"
+            assert poll_phases, "delayed terminal evidence did not require a fresh-process poll"
         if scenario == "partial":
             criteria = {item["criterion"]: item for item in after_a["completion"]["criteria"]}
             assert criteria[fixture.K1]["status"] == "PROVEN"
@@ -850,7 +947,13 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 2
             assert final["pause_reason"]["schema_version"] == "forge-final-acceptance-requirement/v1"
             assert all(item["status"] == "PROVEN" for item in final["completion"]["criteria"])
-        elif scenario == "single":
+        elif scenario == "budget-exhausted":
+            final = after_a
+            assert final["status"] == "BLOCKED"
+            assert len(final["actions"]) == len(simulator.submission_ids()) == 1
+            assert len(fixture._read(root / "provider-inputs.private.json")) == 1
+            assert final["completion"]["all_required_criteria_proven"] is False
+        elif scenario in {"single", "delayed", "ambiguous-recovered"}:
             final = after_a
             assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 1
             assert final["pause_reason"]["schema_version"] == "forge-final-acceptance-requirement/v1"
@@ -858,18 +961,38 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
         else:
             final = after_a
             assert len(final["actions"]) == len(simulator.submission_ids()) == 1
-            assert final["status"] == "FAILED" and final["waiting_reason"] in {
-                "host_dispatch_failed", "host_evidence_failed",
+            assert final["status"] in {"BLOCKED", "FAILED"}
+            assert final["waiting_reason"] in {
+                "host_dispatch_failed", "host_evidence_failed", "execution_blocked",
             }
+            assert final["completion"] is None or final["completion"].get("all_required_criteria_proven") is not True
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
+        if scenario in {"partial", "single", "delayed", "ambiguous-recovered"}:
+            fixture._write(root / "final-before-accept.state.private.json", final)
+            accepted = _run_phase(root, scenario, "accept", server.base_url, wheel)
+            replayed = _run_phase(root, scenario, "accept-replay", server.base_url, wheel)
+            assert accepted == replayed
+            assert accepted["status"] == "COMPLETED"
+            assert accepted["revision"] == final["revision"] + 1
+            assert accepted["approval_record"]["decision_reference"] == final["pause_reason"]["requirement_id"]
+            final = accepted
         readback = _run_phase(root, scenario, "readback", server.base_url, wheel)
         assert readback == final
+        if scenario in {"partial", "single", "delayed", "ambiguous-recovered"}:
+            stopped = _run_phase(root, scenario, "completed-resume", server.base_url, wheel)
+            assert stopped == final
         assert not any(event["event"] == "submission_duplicate" for event in simulator.audit)
+        if scenario == "ambiguous-recovered":
+            assert sum(event["event"] == "submission_identity_read" for event in simulator.audit) == 1
+            assert sum(event["event"] == "submission_accepted" for event in simulator.audit) == 1
         accepted = [event["submission_id"] for event in simulator.audit if event["event"] == "submission_accepted"]
         assert accepted == list(simulator.submission_ids())
     phases = ["prepare", "after-a", "readback"]
     if scenario == "partial":
         phases += ["replay-b", "after-b"]
+    phases += poll_phases
+    if scenario in {"partial", "single", "delayed", "ambiguous-recovered"}:
+        phases += ["accept", "accept-replay", "completed-resume"]
     processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
     assert len(processes) == len(phases), "Forge phases must use distinct OS processes"
     return {"scenario": scenario, "status": final["status"],
@@ -880,7 +1003,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             "producer_fixture_negatives": fixture_negatives,
             "phase_statuses": {phase: fixture._read(root / f"{phase}.state.private.json")["status"]
                                for phase in phases},
-            "planner_invocations": len(fixture._read(root / "provider-inputs.private.json"))}
+            "planner_invocations": len(fixture._read(root / "provider-inputs.private.json")),
+            "waiting_polls": len(poll_phases)}
 
 
 def _run_preflight_child(args: argparse.Namespace, parser: argparse.ArgumentParser,
@@ -898,10 +1022,12 @@ def main() -> int:
     parser.add_argument("--wheel", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--source-revision")
-    parser.add_argument("--scenario", choices=SCENARIOS)
+    parser.add_argument("--scenario", choices=SCENARIOS + PRODUCER_CANDIDATE_SCENARIOS)
     parser.add_argument("--governance-case", choices=GOVERNANCE_CASES)
     parser.add_argument("--preflight-case", choices=tuple(PREFLIGHT_CASES))
-    parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b", "readback",
+    parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b",
+                                            *(f"poll-{index}" for index in range(1, 7)), "accept",
+                                            "accept-replay", "completed-resume", "readback",
                                             "ambiguous-replay", "governance-first", "governance-repeat",
                                             "preflight-stage", "preflight-first", "preflight-repeat"))
     parser.add_argument("--endpoint")
@@ -910,8 +1036,21 @@ def main() -> int:
         len(args.source_revision) != 40 or any(character not in "0123456789abcdef" for character in args.source_revision)
     ):
         parser.error("source revision must be one exact Git commit SHA")
-    artifact = _installed_wheel(args.wheel.resolve())
     root = args.output_dir.resolve()
+    try:
+        artifact = _installed_wheel(args.wheel.resolve())
+    except (OSError, ValueError, RuntimeError, KeyError) as error:
+        if root.exists() and any(root.iterdir()):
+            raise RuntimeError("qualification output directory must be fresh") from error
+        root.mkdir(parents=True, exist_ok=True)
+        report = {
+            "qualification": "INSTALLED_FORGE_HTTP_SUCCESSOR_V1",
+            "source_revision": args.source_revision, "result": "FAIL",
+            "failure": {"stage": "installed_wheel_identity", "type": type(error).__name__},
+        }
+        fixture._write(root / "installed-http-successor.public.json", report)
+        print(json.dumps(report, sort_keys=True))
+        return 1
     if _run_preflight_child(args, parser, root):
         return 0
     if args.phase:
@@ -964,6 +1103,8 @@ def main() -> int:
                               "No EP correlation readback; ambiguous POST fails closed without recovery.",
                               "EP producer v1.2 schema omits two retry-resolution fields emitted by its source; this subset validates source shape, not full schema conformance.",
                               "Bounded serial write-mode subset; not full FCI-CI or FCO."]}
+    if args.scenario in PRODUCER_CANDIDATE_SCENARIOS:
+        report["ep_identity_readback_candidate"] = EP_IDENTITY_READBACK_CANDIDATE
     preflight_cases = ()
     if args.preflight_case:
         preflight_cases = (args.preflight_case,)
@@ -1024,7 +1165,9 @@ def main() -> int:
             fixture._write(root / "installed-http-successor.public.json", report)
             print(json.dumps(report, sort_keys=True))
             return 1
-    report.update(result="FOCUSED_PASS" if args.scenario else "PASS", scenarios=summaries)
+    report.update(result=("PRODUCER_CANDIDATE_PASS"
+                          if args.scenario in PRODUCER_CANDIDATE_SCENARIOS else
+                          "FOCUSED_PASS" if args.scenario else "PASS"), scenarios=summaries)
     fixture._write(root / "installed-http-successor.public.json", report)
     print(json.dumps(report, sort_keys=True))
     return 0

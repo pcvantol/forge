@@ -15,6 +15,7 @@ from threading import Lock, Thread
 import time
 from typing import Any, Mapping
 from urllib.parse import unquote, urlsplit
+import re
 
 
 SIMULATOR_CONTRACT_VERSION = "1.0"
@@ -57,6 +58,7 @@ class EpSimulatorScenario:
     workspace_clean: bool = True
     workspace_busy: bool = False
     active_lease: bool = False
+    identity_readback_supported: bool = False
     workspace_status: str = "READY"
     workspace_blocker: str | None = None
 
@@ -131,17 +133,20 @@ class EpSimulatorState:
             self.audit.append({"event": "scenario_changed", "scenario": scenario.name})
 
     def compatibility(self) -> dict[str, Any]:
+        contracts = {
+            "producer_readback": ["1.2", "1.3"],
+            "terminal_evidence": ["1.4"],
+            "validation_controls": ["1.0", "1.1"],
+            "delivery_revision_validation": ["1.0"],
+            "bounded_merge_delegation": ["1.0"],
+        }
+        if self.scenario.identity_readback_supported:
+            contracts["submission_identity_readback"] = ["1.0"]
         return {
             "contract_version": "1.1",
             "producer": {"id": "engineering-platform", "version": self.application_version},
             "instance": {"id": self.instance_id},
-            "contracts": {
-                "producer_readback": ["1.2", "1.3"],
-                "terminal_evidence": ["1.4"],
-                "validation_controls": ["1.0", "1.1"],
-                "delivery_revision_validation": ["1.0"],
-                "bounded_merge_delegation": ["1.0"],
-            },
+            "contracts": contracts,
             "authentication": {
                 "consumer_id": self.consumer_id,
                 "consumer_status": "ACTIVE",
@@ -516,10 +521,80 @@ class EpSimulatorState:
             item.terminal_artifact_id = terminal["id"]
             self.audit.append({"event": "terminal_seeded", "submission_id": submission_id})
 
+    def withhold_terminal_artifact(self, submission_id: str) -> None:
+        """Inject a terminal producer result whose required artifact never appears."""
+        with self._lock:
+            item = self._by_id.get(submission_id)
+            if item is None or item.terminal_readback is None:
+                raise ValueError("EP simulator has no terminal result to withhold")
+            item.terminal_readback["evidence"]["status"] = "MISSING"
+            item.terminal_readback["evidence"]["terminal_artifact"] = None
+            item.terminal_artifact = None
+            item.terminal_artifact_id = None
+            self.audit.append({"event": "terminal_artifact_withheld", "submission_id": submission_id})
+
+    def corrupt_terminal_artifact(self, submission_id: str) -> None:
+        """Change retained bytes without changing the producer's advertised digest."""
+        with self._lock:
+            item = self._by_id.get(submission_id)
+            if item is None or item.terminal_artifact is None:
+                raise ValueError("EP simulator has no terminal artifact to corrupt")
+            item.terminal_artifact = item.terminal_artifact + b"corrupted"
+            self.audit.append({"event": "terminal_artifact_corrupted", "submission_id": submission_id})
+
     def readback(self, submission_id: str) -> dict[str, Any]:
         if submission_id not in self._by_id:
             raise KeyError(submission_id)
         return self.pending_readback(submission_id)
+
+    def identity_readback(self, *, repository_id: str | None, correlation_id: str | None,
+                          idempotency_key: str | None, accepted_request_digest: str | None,
+                          identity_contract: str | None, readback_contract: str | None) -> dict[str, Any]:
+        """Mirror the pinned EP no-create lookup around this independent ledger."""
+        if any(value is None for value in (
+            repository_id, correlation_id, idempotency_key, accepted_request_digest,
+            identity_contract, readback_contract,
+        )):
+            raise ValueError("SUBMISSION_IDENTITY_REQUEST_INCOMPLETE")
+        if identity_contract != "1.0" or readback_contract not in {"1.2", "1.3"}:
+            raise ValueError("SUBMISSION_IDENTITY_CONTRACT_UNSUPPORTED")
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", str(accepted_request_digest)) is None:
+            raise ValueError("SUBMISSION_IDENTITY_DIGEST_INVALID")
+        with self._lock:
+            item = self._by_key.get(str(idempotency_key))
+            if item is None:
+                raise ValueError("SUBMISSION_IDENTITY_NOT_FOUND")
+            if (item.payload["repository_id"] != repository_id
+                    or item.payload["correlation_id"] != correlation_id
+                    or item.accepted_digest != accepted_request_digest
+                    or item.receipt.get("accepted_request_digest") != accepted_request_digest):
+                raise ValueError("SUBMISSION_IDENTITY_CONFLICT")
+            submission_id = item.submission_id
+            receipt = dict(item.receipt)
+        readback = self.pending_readback(submission_id)
+        if readback["submission"]["accepted_request_digest"] != accepted_request_digest:
+            raise ValueError("SUBMISSION_IDENTITY_CONFLICT")
+        if readback_contract == "1.3":
+            readback["contract_version"] = "1.3"
+            run = readback.get("run")
+            if isinstance(run, Mapping):
+                state = str(run["state"])
+                readback["disposition"].update({
+                    "state": state, "terminal": state == "COMPLETE",
+                    "execution_eligible": False,
+                })
+        with self._lock:
+            self.audit.append({"event": "submission_identity_read", "submission_id": submission_id})
+        return {
+            "contract_version": "1.0",
+            "identity": {
+                "project_id": self.project_id, "repository_id": repository_id,
+                "consumer_id": self.consumer_id, "correlation_id": correlation_id,
+                "accepted_request_digest": accepted_request_digest,
+            },
+            "receipt": receipt,
+            "readback": readback,
+        }
 
     def artifact(self, artifact_id: str) -> bytes:
         with self._lock:
@@ -599,10 +674,14 @@ class EpSimulatorServer:
                 return value
 
             def do_GET(self) -> None:  # noqa: N802
-                if not self._authorized():
-                    self._error(401, "AUTHENTICATION_REQUIRED")
-                    return
                 path = urlsplit(self.path).path
+                identity_path = f"/v1/projects/{state_ref.project_id}/submissions/by-identity"
+                if not self._authorized():
+                    if path == identity_path:
+                        self._send_json(401, {"error": "UNAUTHENTICATED"})
+                    else:
+                        self._error(401, "AUTHENTICATION_REQUIRED")
+                    return
                 scenario = state_ref.scenario
                 if path == "/v1/producer-compatibility":
                     if self._delay_or_drop("preflight"):
@@ -622,6 +701,28 @@ class EpSimulatorServer:
                         self._send_json(200, state_ref.workspace_readiness())
                     return
                 prefix = f"/v1/projects/{state_ref.project_id}/submissions/"
+                if path == prefix + "by-identity":
+                    if not scenario.identity_readback_supported:
+                        self._send_json(409, {"error": "SUBMISSION_IDENTITY_CONTRACT_UNSUPPORTED"})
+                        return
+                    try:
+                        result = state_ref.identity_readback(
+                            repository_id=self.headers.get("EP-Repository-ID"),
+                            correlation_id=self.headers.get("EP-Correlation-ID"),
+                            idempotency_key=self.headers.get("Idempotency-Key"),
+                            accepted_request_digest=self.headers.get("EP-Accepted-Request-Digest"),
+                            identity_contract=self.headers.get("EP-Submission-Identity-Contract"),
+                            readback_contract=self.headers.get("EP-Producer-Readback-Contract"),
+                        )
+                    except ValueError as error:
+                        code = str(error)
+                        status = (404 if code == "SUBMISSION_IDENTITY_NOT_FOUND" else
+                                  400 if code in {"SUBMISSION_IDENTITY_REQUEST_INCOMPLETE",
+                                                   "SUBMISSION_IDENTITY_DIGEST_INVALID"} else 409)
+                        self._send_json(status, {"error": code})
+                    else:
+                        self._send_json(200, result)
+                    return
                 if path.startswith(prefix):
                     if self._delay_or_drop("readback"):
                         return

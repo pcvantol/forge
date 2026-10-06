@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from forge.ep_simulator import EpSimulatorScenario, EpSimulatorServer, EpSimulatorState
 from forge.models import ExecutionEvidenceOutcome
@@ -80,6 +81,68 @@ class EpSimulatorTests(unittest.TestCase):
                 [item["event"] for item in state.audit],
                 ["submission_accepted", "submission_response_lost"],
             )
+
+    def test_accepted_post_lost_response_recovers_by_producer_identity_without_reposting(self) -> None:
+        state = self._state(EpSimulatorScenario(
+            name="accepted-response-recovered", identity_readback_supported=True,
+            connection_loss_at=frozenset({"submission-after-accept-once"}),
+        ))
+        with EpSimulatorServer(state) as server:
+            request = _request()
+            with self.assertRaises(ExecutionHostTemporaryUnavailable):
+                self._host(server).dispatch(request)
+            self.assertEqual(len(state.submission_ids()), 1)
+            self.assertIsNone(self._host(server).recover_dispatch(request))
+            binding = self.database.execution_host_binding(request.correlation_id)
+            self.assertEqual(binding["submission_id"], state.submission_ids()[0])
+            self.assertEqual(binding["submission_receipt"]["submission_id"], binding["submission_id"])
+            state.complete(binding["submission_id"])
+            recovered = self._host(server).recover_dispatch(request)
+            self.assertIsNotNone(recovered)
+            evidence = self._host(server).retrieve_evidence(recovered)
+            self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+            self.assertEqual(len(state.submission_ids()), 1)
+            self.assertEqual(
+                [event["event"] for event in state.audit].count("submission_accepted"), 1,
+            )
+            self.assertNotIn("submission_duplicate", [event["event"] for event in state.audit])
+            self.assertEqual(
+                [event["event"] for event in state.audit].count("submission_identity_read"), 1,
+            )
+
+    def test_identity_lookup_absent_or_foreign_remains_fail_closed(self) -> None:
+        for label in ("absent", "foreign"):
+            with self.subTest(label=label):
+                state = self._state(EpSimulatorScenario(
+                    name=label, identity_readback_supported=True,
+                    connection_loss_at=frozenset({"submission-after-accept-once"}),
+                ))
+                database = RuntimeDatabase(
+                    Path(self.temporary.name),
+                    path=Path(self.temporary.name) / f"identity-{label}.db",
+                    forge_version="test",
+                )
+                self.addCleanup(database.close)
+                with EpSimulatorServer(state) as server:
+                    request = _request()
+                    with self.assertRaises(ExecutionHostTemporaryUnavailable):
+                        self._host(server, database).dispatch(request)
+                    original = state.identity_readback
+
+                    def altered(**values):
+                        if label == "absent":
+                            raise ValueError("SUBMISSION_IDENTITY_NOT_FOUND")
+                        recovered = original(**values)
+                        recovered["identity"]["repository_id"] = "foreign-repository"
+                        return recovered
+
+                    with patch.object(state, "identity_readback", side_effect=altered):
+                        with self.assertRaises(ValueError):
+                            self._host(server, database).recover_dispatch(request)
+                    binding = database.execution_host_binding(request.correlation_id)
+                    self.assertNotIn("submission_id", binding)
+                    self.assertEqual(len(state.submission_ids()), 1)
+                    self.assertNotIn("submission_duplicate", [event["event"] for event in state.audit])
 
     def test_success_terminal_evidence_round_trips_through_production_client(self) -> None:
         state = self._state()

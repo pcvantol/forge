@@ -25,6 +25,7 @@ DECISION_REQUIREMENT_CONTRACT = "forge-decision-requirement/v1"
 CONTINUATION_INTENT_CONTRACT = "forge-continuation-intent/v1"
 DECISION_CONTRACT = "forge-progression-decision/v1"
 FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT = "forge-final-acceptance-requirement/v1"
+FINAL_ACCEPTANCE_DECISION_CONTRACT = "forge-final-acceptance-decision/v1"
 PROFILE_DEFINITION_REVISION = "1"
 PROGRESSION_POLICY_REVISION = "1"
 
@@ -444,6 +445,144 @@ class GovernedContinuationService:
             raise GovernedContinuationError("stored progression decision is not bound to its requirement")
         return {"decision_id": value["decision_id"], "decision": value["decision"],
                 "decision_digest": row["digest"], "occurred_at": value["occurred_at"]}
+
+    def validate_final_acceptance(
+        self, state: MissionExecutionState, requirement: Mapping[str, Any], *, project_id: str,
+    ) -> dict[str, Any]:
+        """Bind the pending Business decision to the exact completed Mission evidence."""
+        subject_keys = {
+            "instance_id", "project_id", "mission_id", "mission_subject_revision",
+            "mission_state_revision", "completion_digest", "terminal_evidence_digest",
+            "policy_revision", "policy_digest", "required_role", "required_capability", "reason",
+        }
+        if (state.status is not MissionExecutionStatus.AWAITING_APPROVAL
+                or set(requirement) != subject_keys | {
+                    "schema_version", "requirement_id", "subject_digest", "status",
+                }
+                or requirement.get("schema_version") != FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT
+                or requirement.get("status") != "PENDING"):
+            raise GovernedContinuationError("Mission has no current final acceptance requirement")
+        subject = {key: requirement[key] for key in subject_keys}
+        digest = _digest(subject)
+        policy = self.validate_assignment(state)
+        if (requirement.get("instance_id") != self.database.runtime_identity.runtime_id
+                or requirement.get("project_id") != project_id
+                or requirement.get("mission_id") != state.mission_id
+                or requirement.get("mission_subject_revision") != _mission_subject_revision(state)
+                or requirement.get("mission_state_revision") != state.revision - 1
+                or requirement.get("completion_digest") != _digest(state.completion)
+                or requirement.get("terminal_evidence_digest") != _digest(state.execution_evidence)
+                or requirement.get("policy_revision") != policy["policy_revision"]
+                or requirement.get("policy_digest") != _digest(policy)
+                or requirement.get("required_role") != "business_owner"
+                or requirement.get("required_capability") != GovernanceCapability.BUSINESS_APPROVAL.value
+                or requirement.get("reason") != "mission_end_acceptance_required"
+                or requirement.get("subject_digest") != digest
+                or requirement.get("requirement_id") != "final-acceptance-requirement-" + digest[7:39]
+                or not isinstance(state.completion, Mapping)
+                or state.completion.get("all_required_criteria_proven") is not True):
+            raise GovernedContinuationError("final acceptance requirement is stale or unproven")
+        return dict(requirement)
+
+    def record_final_acceptance(
+        self, mission_id: str, document: Mapping[str, Any], *, project_id: str,
+        authenticated_principal_reference: str,
+    ) -> dict[str, Any]:
+        """Record one canonical Business acceptance without replaying an Action."""
+        fields = {
+            "schema_version", "decision_id", "requirement_id", "subject_digest",
+            "mission_state_revision", "completion_digest", "terminal_evidence_digest",
+            "policy_revision", "decision", "reason",
+        }
+        if (set(document) != fields
+                or document.get("schema_version") != FINAL_ACCEPTANCE_DECISION_CONTRACT
+                or document.get("decision") != "accept"):
+            raise GovernedContinuationError("final acceptance decision request is invalid")
+        decision_id = _text(document["decision_id"], "decision id")
+        principal = _text(authenticated_principal_reference, "authenticated principal")
+        state = self.states.get(mission_id)
+        policy = self.validate_assignment(state)
+        profile = resolve_governance_profile(str(policy["profile_id"]))
+        actors = profile.role_assignments.get(GovernanceRole.BUSINESS_OWNER, ())
+        if (profile.approval_matrix[ApprovalStage.BUSINESS] != (GovernanceRole.BUSINESS_OWNER,)
+                or actors != ("primary_operator",)):
+            raise GovernedContinuationError("current Business actor is not supported")
+        context = self.repository.operators.context()
+        operator_id = sha256(context.generated_uid.encode()).hexdigest()[:16]
+        if (not self.repository.operators.authorize(context)
+                or principal not in {
+                    "local-operator:v1:" + operator_id,
+                    "forge-server-admin-principal:v1:" + self.database.runtime_identity.runtime_id,
+                }):
+            raise GovernedContinuationError("authenticated Business actor is not current")
+        capability = GovernanceCapability.BUSINESS_APPROVAL
+        authority = self.database._connection.execute(
+            "SELECT 1 FROM governance_authority WHERE installation_id=? AND operator_id=? AND capability=?",
+            (context.installation_id, operator_id, capability.value),
+        ).fetchone()
+        if authority is None:
+            raise GovernedContinuationError("Business approval capability is absent")
+        existing = self._existing_decision(decision_id)
+        if existing is not None:
+            evidence = existing.get("evidence")
+            if (existing.get("subject_id") != document["requirement_id"]
+                    or existing.get("subject_revision") != document["subject_digest"]
+                    or existing.get("capability") != capability.value
+                    or existing.get("decision") != "accept"
+                    or existing.get("operator_id") != operator_id
+                    or not isinstance(evidence, Mapping)
+                    or evidence.get("mission_id") != mission_id
+                    or evidence.get("authenticated_principal_reference") != principal
+                    or any(evidence.get(key) != document[key] for key in fields)
+                    or state.status not in {
+                        MissionExecutionStatus.AWAITING_APPROVAL, MissionExecutionStatus.COMPLETED,
+                    }
+                    or (state.status is MissionExecutionStatus.COMPLETED
+                        and (not isinstance(state.approval_record, Mapping)
+                             or state.approval_record.get("approval_id") != decision_id))):
+                raise GovernedContinuationError("final acceptance decision identity conflicts")
+            if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
+                current = self.validate_final_acceptance(
+                    state, state.pause_reason or {}, project_id=project_id,
+                )
+                if any(current.get(key) != document[key] for key in (
+                    "requirement_id", "subject_digest", "mission_state_revision", "completion_digest",
+                    "terminal_evidence_digest", "policy_revision",
+                )):
+                    raise GovernedContinuationError("replayed final acceptance is no longer current")
+            elif (state.approval_record.get("decision_reference") != document["requirement_id"]
+                  or state.approval_record.get("decision_digest") != _digest(existing)
+                  or state.completion is None
+                  or _digest(state.completion) != document["completion_digest"]
+                  or state.execution_evidence is None
+                  or _digest(state.execution_evidence) != document["terminal_evidence_digest"]):
+                raise GovernedContinuationError("completed final acceptance evidence changed")
+            return {"status": "REPLAYED", "decision_id": decision_id,
+                    "decision_digest": _digest(existing)}
+        requirement = self.validate_final_acceptance(
+            state, state.pause_reason or {}, project_id=project_id,
+        )
+        if any(requirement.get(key) != document[key] for key in (
+            "requirement_id", "subject_digest", "mission_state_revision", "completion_digest",
+            "terminal_evidence_digest", "policy_revision",
+        )):
+            raise GovernedContinuationError("final acceptance decision is stale or bound to another Mission")
+        prior = self.database._connection.execute(
+            "SELECT 1 FROM governance_decisions WHERE subject_id=? LIMIT 1",
+            (requirement["requirement_id"],),
+        ).fetchone()
+        if prior is not None:
+            raise GovernedContinuationError("final acceptance requirement already has a decision")
+        evidence = {**document, "mission_id": mission_id,
+                    "authenticated_principal_reference": principal,
+                    "required_role": "business_owner", "required_role_actor": actors[0]}
+        canonical = GovernanceDecision(
+            decision_id, requirement["requirement_id"], requirement["subject_digest"],
+            capability, "accept", tuple(state.mission.get("scope", ())),
+            (requirement["reason"],), evidence=evidence,
+        )
+        return {"status": "RECORDED", "decision_id": decision_id,
+                "decision_digest": self.repository.record(canonical, context)}
 
     def _assert_current_authority(
         self, capability: GovernanceCapability, required_role: str, required_role_actor: str,
