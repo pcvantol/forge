@@ -102,8 +102,12 @@ def _child_env(root: Path) -> dict[str, str]:
 
 
 def _with_case_cleanup(root: Path, operation, *args):
+    started = time.monotonic()
     try:
-        return operation(root, *args)
+        result = operation(root, *args)
+        if not isinstance(result, dict):
+            raise RuntimeError("installed qualification case returned no result")
+        return {**result, "duration_ms": round((time.monotonic() - started) * 1000)}
     finally:
         for directory in ("home", "scratch", "config"):
             path = root / directory
@@ -1142,7 +1146,9 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     fixture._write(root / "artifact-b.json", {
         "report": {"fields": ["report_data"]}, "policy": {"authorization_required": True},
     })
-    with EpSimulatorServer(simulator) as server:
+    server = EpSimulatorServer(simulator)
+    requests = _count_ep_http_requests(server)
+    with server:
         initial = _run_phase(root, scenario, "prepare", server.base_url, wheel)
         if scenario == "pre-send-reopen":
             assert initial["status"] == "WAITING_FOR_EXECUTION"
@@ -1166,9 +1172,12 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             repository_id=fixture.SOURCE.repository_id, submission_id=a,
         ))
         if scenario == "ambiguous":
+            posts = sum(request.startswith("POST ") for request in requests)
+            assert posts == len(simulator.submission_ids()) == 1
             return {**_ambiguous_result(root, simulator, server.base_url, wheel, initial),
                     "governance_rejections": governance_negative,
-                    "producer_fixtures": fixture_receipts, "producer_fixture_negatives": fixture_negatives}
+                    "producer_fixtures": fixture_receipts, "producer_fixture_negatives": fixture_negatives,
+                    "submission_posts": posts, "ep_http_requests": len(requests)}
         if scenario == "assurance-blocked":
             simulator.complete(
                 a, outcome="BLOCKED", assurance="FAIL", quality_review="FAIL",
@@ -1358,6 +1367,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert sum(event["event"] == "submission_accepted" for event in simulator.audit) == 1
         accepted = [event["submission_id"] for event in simulator.audit if event["event"] == "submission_accepted"]
         assert accepted == list(simulator.submission_ids())
+        posts = sum(request.startswith("POST ") for request in requests)
+        assert posts == len(simulator.submission_ids()), "Forge repeated an EP submission POST"
     phases = ["prepare", "after-a", "readback"]
     if scenario == "post-assessment-reopen":
         phases.append("after-a-cut")
@@ -1383,6 +1394,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                                for phase in phases},
             "planner_invocations": len(fixture._read(root / "provider-inputs.private.json")),
             "waiting_polls": len(poll_phases),
+            "submission_posts": posts, "ep_http_requests": len(requests),
             **({"recovery": recovery_summary} if recovery_summary is not None else {})}
 
 
@@ -1707,6 +1719,10 @@ def main() -> int:
               "required_installed_identity_negative": "installed-wheel-byte-drift",
               "required_runtime_storage_negatives": ["wrong-runtime-marker", "missing-runtime-storage"],
               "required_http_scenarios": list(SCENARIOS),
+              "test_doubles": ["stateful-loopback-EP-HTTP-simulator",
+                               "deterministic-external-Codex-process-transport",
+                               "synthetic-operator-identity", "synthetic-secure-store-resolver",
+                               "immutable-synthetic-repository-artifact-reader"],
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
                               "EP v1.3 identity readback recovers accepted lost-ack submissions; v1.2-only hosts fail closed.",
