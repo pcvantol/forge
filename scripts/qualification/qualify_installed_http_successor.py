@@ -673,7 +673,8 @@ def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
     )
     planning = ArchitecturePlanningEvidence(
         candidate.scope, ("contracts",) if policy is None else policy.write_paths,
-        ("scope-drift",), ("protected-delivery",), candidate.dependencies,
+        candidate.architecture_constraints, ("scope-drift",),
+        ("protected-delivery",), candidate.dependencies,
         40000, 8000, revision, mission_spec_digest=canonical_digest(mission_preview.to_dict()),
         **options,
     )
