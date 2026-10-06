@@ -195,6 +195,7 @@ class ForgeServerRuntimeTests(unittest.TestCase):
                     with self.assertRaises(ValidationError):
                         validator.validate(body)
                 self.assertEqual(request("/v1/version", token)[0], 403)
+                self.assertEqual(request("/v1/reviews", token)[0], 403)
                 self.assertEqual(request("/v1/provider-context", token, "POST")[0], 403)
                 self.assertEqual(request("/v1/instance", "wrong-token")[0], 401)
                 self.assertEqual(request("/v1/instance", "server-test-credential")[0], 200)

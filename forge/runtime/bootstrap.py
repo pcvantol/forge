@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 from typing import Any
 
@@ -267,6 +268,49 @@ class RuntimeBootstrap:
                 return database
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    def open_read_snapshot(self):
+        """Open an existing installed Runtime as one validated, nonmutating snapshot."""
+        from .database import RuntimeDatabase, RuntimeMaintenanceActive
+
+        if not self.resolver.installation_scoped:
+            raise RuntimeResolutionError("read snapshot requires an installed Forge data root")
+        location = self.resolver.resolve()
+        marker = self.resolver.instance_marker_path
+        if (location.bootstrap or self.resolver.default_location.is_symlink()
+                or not marker.is_file() or marker.is_symlink()):
+            raise RuntimeResolutionError("read snapshot requires an initialized Runtime Instance")
+        connection = None
+        try:
+            connection = sqlite3.connect(location.path.resolve().as_uri() + "?mode=ro", uri=True)
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only = ON")
+            connection.execute("BEGIN")
+            database = RuntimeDatabase.__new__(RuntimeDatabase)
+            database.repository_root = self.resolver.repository_root
+            database.path = location.path.resolve()
+            database._installation_scoped = True
+            database._connection = connection
+            database._runtime_placement = None
+            database.validate_integrity(record_status=False)
+            maintenance = connection.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()
+            if maintenance is not None and maintenance[0] is not None:
+                raise RuntimeMaintenanceActive(
+                    "Forge runtime is fenced by operational reset maintenance: " + str(maintenance[0])
+                )
+            runtime_id = database.runtime_identity.runtime_id
+            if marker.read_text(encoding="utf-8").strip() != runtime_id:
+                raise RuntimeResolutionError("read snapshot marker does not match Runtime storage")
+            database._set_runtime_placement(RuntimePlacement(
+                self.resolver.data_root.resolve(), database.path, marker.resolve(), runtime_id,
+            ))
+            return database
+        except Exception:
+            if connection is not None:
+                connection.close()
+            raise
 
     def _create_root_layout(self) -> None:
         root = self.resolver.data_root

@@ -32,6 +32,7 @@ forge = "forge.__main__:main"
 forge-mission-derive-actions = "forge.mission_no_dispatch:main"
 forge-mission-lifecycle = "forge.mission_lifecycle_cli:main"
 forge-workspace-read-grant = "forge.workspace_read_grant:main"
+forge-workspace-review-grant = "forge.workspace_review_grant:main"
 
 [tool.setuptools]
 include-package-data = true

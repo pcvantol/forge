@@ -24,6 +24,7 @@ POLICY_ASSIGNMENT_CONTRACT = "forge-progression-policy-assignment/v1"
 DECISION_REQUIREMENT_CONTRACT = "forge-decision-requirement/v1"
 CONTINUATION_INTENT_CONTRACT = "forge-continuation-intent/v1"
 DECISION_CONTRACT = "forge-progression-decision/v1"
+WORKSPACE_REVIEW_REQUEST_CONTRACT = "forge-workspace-review-decision/v1"
 FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT = "forge-final-acceptance-requirement/v1"
 PROFILE_DEFINITION_REVISION = "1"
 PROGRESSION_POLICY_REVISION = "1"
@@ -86,6 +87,22 @@ def _digest(value: object) -> str:
     return "sha256:" + sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()
+
+
+def workspace_review_request_digest(mission_id: str, request: Mapping[str, Any]) -> str:
+    """Bind recovery readback to every Workspace-supplied decision field."""
+    return _digest({
+        "contract_version": WORKSPACE_REVIEW_REQUEST_CONTRACT,
+        "mission_id": mission_id,
+        "operation_id": request["operation_id"],
+        "requirement_id": request["requirement_id"],
+        "subject_digest": request["subject_digest"],
+        "mission_state_revision": request["mission_state_revision"],
+        "evidence_digest": request["evidence_digest"],
+        "policy_revision": request["policy_revision"],
+        "decision": request["decision"],
+        "reason": request["reason"],
+    })
 
 
 def _text(value: object, field: str) -> str:
@@ -357,6 +374,7 @@ class GovernedContinuationService:
             self._assert_current_authority(
                 replay_capability, str(replay_role), str(replay_actor),
                 authenticated_principal_reference=authenticated_principal_reference,
+                mission_id=mission_id,
             )
             self._assert_replay(existing, mission_id, document, authenticated_principal_reference)
             return {"status": "REPLAYED", "mission_id": mission_id, "decision_id": decision_id,
@@ -391,6 +409,7 @@ class GovernedContinuationService:
         self._assert_current_authority(
             capability, str(requirement["required_role"]), str(requirement["required_role_actor"]),
             authenticated_principal_reference=authenticated_principal_reference,
+            mission_id=mission_id,
         )
         context = self.repository.operators.context()
         evidence = {
@@ -424,6 +443,42 @@ class GovernedContinuationService:
             raise GovernedContinuationError("stored progression decision digest is invalid")
         return value
 
+    def decision_operation_status(
+        self, mission_id: str, decision_id: str, *,
+        authenticated_principal_reference: str,
+    ) -> dict[str, Any] | None:
+        """Read one own decision operation without changing the canonical fence."""
+        value = self._existing_decision(decision_id)
+        if value is None:
+            return None
+        if not isinstance(value, Mapping):
+            raise GovernedContinuationError("stored progression decision is malformed")
+        evidence = value.get("evidence") if isinstance(value, Mapping) else None
+        if (value.get("decision_id") != decision_id or not isinstance(evidence, Mapping)
+                or value.get("subject_id") != evidence.get("requirement_id")
+                or evidence.get("mission_id") != mission_id
+                or evidence.get("authenticated_principal_reference")
+                != authenticated_principal_reference):
+            return None
+        request_digest = workspace_review_request_digest(mission_id, {
+            "operation_id": decision_id,
+            "requirement_id": evidence["requirement_id"],
+            "subject_digest": evidence["subject_digest"],
+            "mission_state_revision": evidence["mission_state_revision"],
+            "evidence_digest": evidence["evidence_digest"],
+            "policy_revision": evidence["policy_revision"],
+            "decision": evidence["decision"],
+            "reason": evidence["reason"],
+        })
+        return {
+            "operation_id": decision_id, "mission_id": mission_id,
+            "requirement_id": evidence["requirement_id"],
+            "subject_digest": evidence["subject_digest"],
+            "decision": value["decision"], "decision_digest": _digest(value),
+            "request_digest": request_digest,
+            "recorded_at": value["occurred_at"],
+        }
+
     def decision_for_requirement(self, requirement_id: str) -> dict[str, Any] | None:
         """Read one immutable decision for a fence without causing progression."""
         rows = self.database._connection.execute(
@@ -448,6 +503,7 @@ class GovernedContinuationService:
     def _assert_current_authority(
         self, capability: GovernanceCapability, required_role: str, required_role_actor: str,
         *, authenticated_principal_reference: str | None = None,
+        mission_id: str | None = None,
     ) -> None:
         if self.repository is None:
             raise GovernedContinuationError("current progression authority repository is unavailable")
@@ -464,9 +520,20 @@ class GovernedContinuationService:
                 "forge-server-admin-principal:v1:" + self.database.runtime_identity.runtime_id,
             }
             if authenticated_principal_reference not in accepted_principals:
-                raise GovernedContinuationError(
-                    "authenticated principal does not bind the current required-role actor"
-                )
+                from .workspace_review_grant import WorkspaceReviewGrant
+                placement = self.database.runtime_placement
+                grant = (WorkspaceReviewGrant(
+                    placement.data_root, self.database.runtime_identity.runtime_id,
+                ) if placement is not None else None)
+                if (mission_id is None or grant is None
+                        or not grant.authorizes_reference(
+                            authenticated_principal_reference, mission_id,
+                            role=required_role, role_actor=required_role_actor,
+                            capability=capability.value,
+                        )):
+                    raise GovernedContinuationError(
+                        "authenticated principal does not bind the current required-role actor"
+                    )
         row = self.database._connection.execute(
             "SELECT 1 FROM governance_authority WHERE installation_id=? AND operator_id=? AND capability=?",
             (context.installation_id, operator_id, capability.value),
