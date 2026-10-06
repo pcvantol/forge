@@ -148,6 +148,8 @@ _EFFECT_REJECTIONS = {
        for name in ("effect-read-only", "effect-documentation", "effect-design-report",
                     "effect-design-git", "effect-repository-change")},
     "effect-read-only-host-mutated": ("effect-read-only", "host-mutated"),
+    **{"effect-read-only-" + fault: ("effect-read-only", fault)
+       for fault in ("review-schema-invalid", "control-time-invalid", "subject-schema-invalid")},
     "effect-read-only-target-effect-probes": ("effect-read-only", "target-effect-probes"),
     "effect-repository-change-write-no-output": ("effect-repository-change", "write-no-output"),
     **{name + "-document-executable": (name, "document-executable")
@@ -244,7 +246,9 @@ def _required_fie_cases(family: str, variant: str) -> tuple[str, ...]:
                 (positive, "scenario:effect-repository-change-write-no-output"))
     if family == "FIE-24":
         return (positive, *("scenario:" + base + "-" + fault for fault in (
-            "controls-failed", "review-open", "profile-stale")))
+            "controls-failed", "review-open", "profile-stale")),
+                *("scenario:effect-read-only-" + fault for fault in (
+                    "review-schema-invalid", "control-time-invalid", "subject-schema-invalid")))
     if family == "FIE-25":
         return (positive, "scenario:" + base + "-lost-ack")
     if family == "FIE-26":
@@ -1665,6 +1669,12 @@ def _faulted_effect_documents(fault: str, readback: dict, result: dict,
         result["artifact"]["content"]["result"]["summary"] = ""
     elif fault == "criterion-irrelevant":
         result["artifact"]["content"]["result"]["criteria"][0]["id"] = "unapproved-criterion"
+    elif fault == "review-schema-invalid":
+        result["assurance_reviews"][0].pop("started_at")
+    elif fault == "control-time-invalid":
+        result["validation_controls"][0]["started_at"] = None
+    elif fault == "subject-schema-invalid":
+        result["subject"]["unexpected"] = True
     else:
         raise ValueError("unknown negative effect fixture")
     if fault in {"document-executable", "stale-binding", "write-no-output",
@@ -1965,6 +1975,9 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 "controls-failed": "EP_EFFECT_TERMINAL_CONTROL_FAILED",
                 "target-effect-probes": "EP_EFFECT_TERMINAL_CONTROL_FAILED",
                 "review-open": "EP_EFFECT_REVIEWS_UNQUALIFIED",
+                "review-schema-invalid": "EP_EFFECT_REVIEWS_UNQUALIFIED",
+                "control-time-invalid": "EP_EFFECT_CONTROLS_UNQUALIFIED",
+                "subject-schema-invalid": "EP_EFFECT_SUBJECT_SCHEMA_INVALID",
                 "host-mutated": "EP_EFFECT_FORBIDDEN_TARGET_MUTATION",
                 "document-executable": "EP_EFFECT_GIT_REPORT_SCOPE_INVALID",
                 "profile-stale": "EP_EFFECT_PROFILE_DIGEST_MISMATCH",

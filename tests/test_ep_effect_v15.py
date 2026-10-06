@@ -177,6 +177,12 @@ class EffectV15HttpTests(unittest.TestCase):
                 "revision", "b" * 40), "EP_EFFECT_READBACK_DELIVERY_MISMATCH"),
             ("controls", lambda r, t, b: r["validation_controls"].clear(),
              "EP_EFFECT_CONTROLS_UNQUALIFIED"),
+            ("control-null-time", lambda r, t, b: r["validation_controls"][0].__setitem__(
+                "started_at", None), "EP_EFFECT_CONTROLS_UNQUALIFIED"),
+            ("control-bool-time", lambda r, t, b: r["validation_controls"][0].__setitem__(
+                "completed_at", False), "EP_EFFECT_CONTROLS_UNQUALIFIED"),
+            ("control-bool-exit", lambda r, t, b: r["validation_controls"][0].__setitem__(
+                "exit_code", False), "EP_EFFECT_CONTROLS_UNQUALIFIED"),
             ("stale-profile", stale_profile, "EP_EFFECT_PROFILE_DIGEST_MISMATCH"),
             ("profile-subject", lambda r, t, b: r["validation_profile"].__setitem__(
                 "subject", {**r["subject"], "source_revision": "b" * 40}),
@@ -193,6 +199,16 @@ class EffectV15HttpTests(unittest.TestCase):
                 "modified", 1), "EP_EFFECT_FORBIDDEN_TARGET_MUTATION"),
             ("reviews", lambda r, t, b: r["assurance_reviews"].clear(),
              "EP_EFFECT_REVIEWS_UNQUALIFIED"),
+            ("review-missing-time", lambda r, t, b: r["assurance_reviews"][0].pop("started_at"),
+             "EP_EFFECT_REVIEWS_UNQUALIFIED"),
+            ("review-extra", lambda r, t, b: r["assurance_reviews"][0].__setitem__("unexpected", True),
+             "EP_EFFECT_REVIEWS_UNQUALIFIED"),
+            ("subject-extra", lambda r, t, b: r["subject"].__setitem__("unexpected", True),
+             "EP_EFFECT_SUBJECT_SCHEMA_INVALID"),
+            ("subject-bool-ordinal", lambda r, t, b: r["subject"].__setitem__("repair_ordinal", False),
+             "EP_EFFECT_SUBJECT_MISMATCH"),
+            ("delivery-bool-pr", lambda r, t, b: r["delivery"].__setitem__("pull_request", True),
+             "EP_EFFECT_DELIVERY_SCHEMA_INVALID"),
             ("malformed-finding", lambda r, t, b: r["assurance_reviews"][0]["findings"].append("bad"),
              "EP_EFFECT_REVIEWS_UNQUALIFIED"),
             ("open-disposition", lambda r, t, b: r["assurance_reviews"][0][

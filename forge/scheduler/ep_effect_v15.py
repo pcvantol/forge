@@ -30,6 +30,14 @@ _RESULT_KEYS = frozenset({
     "contract_version", "outcome", "terminal", "effect_qualified", "subject", "artifact",
     "validation_controls", "validation_profile", "assurance_reviews", "repair_rounds", "delivery",
 })
+_SUBJECT_KEYS = frozenset({
+    "subject_kind", "subject_id", "subject_digest", "source_revision", "source_snapshot_digest",
+    "effect_contract_digest", "criteria_digest", "binding_digest", "repair_ordinal", "candidate_revision",
+})
+_REVIEW_KEYS = frozenset({
+    "reviewer", "status", "subject", "profile_digest", "invocation_id", "contract_version",
+    "started_at", "completed_at", "findings", "coverage", "finding_dispositions",
+})
 _BINDING_KEYS = frozenset({
     "run_id", "submission_id", "project_id", "repository_id", "producer_id", "producer_type",
     "repository", "producer_version", "correlation_id", "mission_id", "engineering_action_id",
@@ -190,6 +198,9 @@ def terminal_evidence(
             or delivery["kind"] != effect.policy.delivery):
         raise ValueError("EP_EFFECT_SOURCE_MISMATCH")
     final_revision = _revision(delivery["revision"], "DELIVERY", nullable=True)
+    if (delivery["pull_request"] is not None
+            and (type(delivery["pull_request"]) is not int or delivery["pull_request"] < 1)):
+        raise ValueError("EP_EFFECT_DELIVERY_SCHEMA_INVALID")
     read_repository = evidence.get("repository") if isinstance(evidence, Mapping) else None
     if (not isinstance(read_repository, Mapping)
             or (read_repository.get("id"), read_repository.get("revision")) !=
@@ -222,6 +233,7 @@ def terminal_evidence(
             | {"readback_path": expected_path}
             or artifact_ref["digest_algorithm"] != "sha256"
             or artifact_ref["content_type"] != "application/json"
+            or not isinstance(artifact_ref["id"], str) or not artifact_ref["id"]
             or report_digest != _digest(artifact_ref["content"])):
         raise ValueError("EP_EFFECT_REPORT_BYTES_MISMATCH")
     envelope = _object(artifact_ref["content"], _REPORT_KEYS, "REPORT_ENVELOPE")
@@ -249,8 +261,8 @@ def terminal_evidence(
                    for path, digest in manifest.items())
             or envelope["source_manifest_digest"] != _digest(manifest)[7:]):
         raise ValueError("EP_EFFECT_SOURCE_MANIFEST_INVALID")
-    subject = result["subject"]
-    if (not isinstance(subject, Mapping)
+    subject = _object(result["subject"], _SUBJECT_KEYS, "SUBJECT")
+    if (type(subject["repair_ordinal"]) is not int or not 0 <= subject["repair_ordinal"] <= 3
             or subject.get("subject_kind") != "REPORT_ARTIFACT"
             or subject.get("subject_id") != artifact_ref["id"]
             or subject.get("subject_digest") != report_digest
@@ -327,7 +339,11 @@ def terminal_evidence(
                        "validation_id", "authority", "command_id", "started_at", "completed_at",
                        "exit_code", "profile_digest", "status"}
                    or item.get("status") != "PASS"
-                   or item.get("exit_code") != 0 or _SHA.fullmatch(str(item.get("profile_digest"))) is None
+                   or type(item.get("exit_code")) is not int or item["exit_code"] != 0
+                   or any(not isinstance(item[key], str) or not item[key] for key in (
+                       "validation_id", "authority", "command_id", "started_at", "completed_at",
+                       "profile_digest", "status"))
+                   or _SHA.fullmatch(item["profile_digest"]) is None
                    for item in controls)):
         raise ValueError("EP_EFFECT_CONTROLS_UNQUALIFIED")
     profile_digests = {item["profile_digest"] for item in controls}
@@ -401,6 +417,10 @@ def terminal_evidence(
     if (not isinstance(reviews, list) or len(reviews) != 2
             or [item.get("reviewer") for item in reviews if isinstance(item, Mapping)] != ["quality", "security"]
             or any(not isinstance(item, Mapping) or item.get("status") != "PASS"
+                   or set(item) != _REVIEW_KEYS
+                   or any(not isinstance(item[key], str) or not item[key] for key in (
+                       "reviewer", "status", "profile_digest", "invocation_id", "contract_version",
+                       "started_at", "completed_at"))
                    or item.get("contract_version") != "3.0" or item.get("subject") != subject
                    or item.get("profile_digest") not in profile_digests
                    or item.get("invocation_id") != f"{run['id']}:{item.get('reviewer')}:effect:{envelope['repair_ordinal']}"
@@ -412,6 +432,7 @@ def terminal_evidence(
                           for finding in item.get("findings", ()))
                    or not isinstance(item.get("finding_dispositions"), list)
                    or any(not isinstance(disposition, Mapping)
+                          or set(disposition) != {"finding_id", "disposition", "evidence_ref"}
                           or not isinstance(disposition.get("finding_id"), str)
                           or not disposition["finding_id"]
                           or disposition.get("disposition") != "RESOLVED"

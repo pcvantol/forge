@@ -37,12 +37,17 @@ def main() -> int:
                 "--output-dir", str(args.output_dir), "--scenario", "effect-read-only"]
     exit_code = qualifier.main()
     report = json.loads((args.output_dir / "installed-http-successor.public.json").read_text())
+    state = json.loads((args.output_dir / "effect-read-only" / "after-a.state.private.json").read_text())
     if (exit_code != 1 or report.get("result") != "FAIL"
-            or report.get("failure", {}).get("scenario") != "effect-read-only"):
+            or report.get("failure", {}).get("scenario") != "effect-read-only"
+            or state["status"] != "FAILED"
+            or state["execution_evidence"]["failure_code"] != "EP_EFFECT_REPORT_BYTES_MISMATCH"
+            or state.get("completion") and state["completion"].get("all_required_criteria_proven")):
         raise RuntimeError("failed required positive scenario did not fail the canonical suite")
     receipt = {"result": "PASS", "control": "FAILED_REQUIRED_POSITIVE_SCENARIO_BLOCKS",
                "scenario": "effect-read-only", "external_fault": "report-byte-digest-mismatch",
                "observed_suite_exit": exit_code, "observed_suite_result": report["result"],
+               "observed_verifier_failure": state["execution_evidence"]["failure_code"],
                "source_revision": args.source_revision, "artifact": report["artifact"]}
     (args.output_dir / "installed-fci-failure-gate.public.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n")
