@@ -60,6 +60,7 @@ class EpSimulatorScenario:
     workspace_busy: bool = False
     active_lease: bool = False
     identity_readback_supported: bool = False
+    effect_declaration_supported: bool = False
     workspace_status: str = "READY"
     workspace_blocker: str | None = None
 
@@ -144,6 +145,10 @@ class EpSimulatorState:
         if self.scenario.identity_readback_supported:
             contracts["producer_readback"].append("1.3")
             contracts["submission_identity_readback"] = ["1.0"]
+        if self.scenario.effect_declaration_supported:
+            contracts["effect_request"] = ["1.0"]
+            contracts["effect_result"] = ["1.0"]
+            contracts["terminal_evidence"].append("1.5")
         return {
             "contract_version": "1.1",
             "producer": {"id": "engineering-platform", "version": self.application_version},

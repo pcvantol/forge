@@ -37,6 +37,24 @@ class EpSimulatorTests(unittest.TestCase):
         self.assertEqual(supported["producer_readback"], ["1.2", "1.3"])
         self.assertEqual(supported["submission_identity_readback"], ["1.0"])
 
+    def test_legacy_submission_stays_on_terminal_v14_when_ep_advertises_effect_v15(self) -> None:
+        state = self._state(EpSimulatorScenario(effect_declaration_supported=True))
+        with EpSimulatorServer(state) as server:
+            host = self._host(server)
+            contracts = host.preflight()["contracts"]
+            self.assertEqual(contracts["terminal_evidence"], ["1.4", "1.5"])
+            self.assertEqual(contracts["effect_request"], ["1.0"])
+            self.assertEqual(contracts["effect_result"], ["1.0"])
+            request = _request()
+            self.assertIsNone(host.dispatch(request))
+            submission_id, = state.submission_ids()
+            state.complete(submission_id, delivery_revision="a" * 40)
+            dispatch = host.recover_dispatch(request)
+            self.assertIsNotNone(dispatch)
+            evidence = host.retrieve_evidence(dispatch)
+            self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+            self.assertEqual(len(state.submission_ids()), 1)
+
     def _host(
         self,
         server: EpSimulatorServer,

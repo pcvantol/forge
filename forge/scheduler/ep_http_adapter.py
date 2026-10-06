@@ -655,7 +655,7 @@ class EngineeringPlatformHttpExecutionHost:
                 or not set(contracts).issubset({
                     "producer_readback", "terminal_evidence", "validation_controls",
                     "delivery_revision_validation", "bounded_merge_delegation",
-                    "submission_identity_readback",
+                    "submission_identity_readback", "effect_request", "effect_result",
                 })
                 or not isinstance(authentication, Mapping)
                 or set(authentication) != {
@@ -685,8 +685,15 @@ class EngineeringPlatformHttpExecutionHost:
                 or any(version not in self.SUPPORTED_PRODUCER_READBACK_CONTRACTS for version in versions)):
             raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
         terminal_versions = contracts.get("terminal_evidence")
-        if not isinstance(terminal_versions, list) or terminal_versions != [self.config.terminal_evidence_contract]:
+        if terminal_versions not in ([self.config.terminal_evidence_contract],
+                                     [self.config.terminal_evidence_contract, "1.5"]):
             raise ValueError("EP_TERMINAL_CONTRACT_INCOMPATIBLE")
+        effect_declared = "effect_request" in contracts or "effect_result" in contracts
+        if effect_declared or "1.5" in terminal_versions:
+            if (contracts.get("effect_request") != ["1.0"]
+                    or contracts.get("effect_result") != ["1.0"]
+                    or terminal_versions != [self.config.terminal_evidence_contract, "1.5"]):
+                raise ValueError("EP_EFFECT_CONTRACT_DECLARATION_MALFORMED")
         if ("validation_controls" in contracts
                 and contracts["validation_controls"] not in (["1.0"], ["1.0", "1.1"])):
             raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")

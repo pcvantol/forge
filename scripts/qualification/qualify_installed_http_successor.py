@@ -72,7 +72,8 @@ HOST = "synthetic-host"
 GOVERNANCE_PROFILE = "solo"
 GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = (
-    "partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
+    "partial", "post-assessment-reopen", "single", "effect-declaration-legacy",
+    "delayed", "pre-send-reopen",
     "host-recovery", "failed-recovery",
     "concurrent-start", "tampered", "tampered-action", "tampered-run",
     "tampered-repository", "tampered-producer", "tampered-request-digest",
@@ -183,6 +184,9 @@ PREFLIGHT_CASES = {
     "declaration-public-version": "EP_CAPABILITY_DECLARATION_MALFORMED",
     "declaration-missing-producer": "EP_CAPABILITY_DECLARATION_MALFORMED",
     "declaration-missing-auth-field": "EP_CAPABILITY_DECLARATION_MALFORMED",
+    "effect-request-missing": "EP_EFFECT_CONTRACT_DECLARATION_MALFORMED",
+    "effect-result-unsupported": "EP_EFFECT_CONTRACT_DECLARATION_MALFORMED",
+    "terminal-effect-only": "EP_TERMINAL_CONTRACT_INCOMPATIBLE",
 }
 EP_PREFLIGHT_SOURCE = {
     "repository": "pcvantol/engineering-platform",
@@ -862,6 +866,9 @@ _DECLARATION_CHANGES = {
     "declaration-public-version": (("contract_version",), "1.0"),
     "declaration-missing-producer": (("producer",), _REMOVE),
     "declaration-missing-auth-field": (("authentication", "consumer_status"), _REMOVE),
+    "effect-request-missing": (("contracts", "effect_request"), _REMOVE),
+    "effect-result-unsupported": (("contracts", "effect_result"), ["1.1"]),
+    "terminal-effect-only": (("contracts", "terminal_evidence"), ["1.5"]),
 }
 
 
@@ -875,7 +882,10 @@ def _preflight_fixture(case: str) -> tuple[EpSimulatorState, dict | None]:
     }
     http_status = {"http-401": 401, "http-403": 403}.get(case)
     scenario = (EpSimulatorScenario(preflight_http_status=http_status)
-                if http_status is not None else None)
+                if http_status is not None else
+                EpSimulatorScenario(effect_declaration_supported=True)
+                if case in {"effect-request-missing", "effect-result-unsupported",
+                            "terminal-effect-only"} else None)
     settings = {
         "project_id": PROJECT, "repository_id": fixture.SOURCE.repository_id,
         "repository_identity": fixture.SOURCE.github_repository, "consumer_id": CONSUMER,
@@ -1134,12 +1144,16 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                   if scenario == "artifact-unavailable" else
                   EpSimulatorScenario(name="request-digest-readback-fault",
                                       accepted_digest_mismatch_on_readback=True)
-                  if scenario == "tampered-request-digest" else None),
+                  if scenario == "tampered-request-digest" else
+                  EpSimulatorScenario(name="effect-declaration-legacy",
+                                      effect_declaration_supported=True)
+                  if scenario == "effect-declaration-legacy" else None),
     )
     fixture._write(root / "artifact-a.json", {
         "report": {"fields": ["report_data"]},
         "policy": {"authorization_required": scenario in {
-            "single", "delayed", "pre-send-reopen", "host-recovery", "failed-recovery",
+            "single", "effect-declaration-legacy", "delayed", "pre-send-reopen",
+            "host-recovery", "failed-recovery",
             "ambiguous-recovered",
         }},
     })
@@ -1331,7 +1345,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert len(final["actions"]) == len(simulator.submission_ids()) == 1
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
             assert final["completion"]["all_required_criteria_proven"] is False
-        elif scenario in {"single", "delayed", "pre-send-reopen", "ambiguous-recovered"}:
+        elif scenario in {"single", "effect-declaration-legacy", "delayed",
+                         "pre-send-reopen", "ambiguous-recovered"}:
             final = after_a
             assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 1
             assert final["pause_reason"]["schema_version"] == "forge-final-acceptance-requirement/v1"
@@ -1345,7 +1360,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             }
             assert final["completion"] is None or final["completion"].get("all_required_criteria_proven") is not True
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
-        if scenario in {"partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
+        if scenario in {"partial", "post-assessment-reopen", "single", "effect-declaration-legacy",
+                        "delayed", "pre-send-reopen",
                         "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             fixture._write(root / "final-before-accept.state.private.json", final)
             accepted = _run_phase(root, scenario, "accept", server.base_url, wheel)
@@ -1357,7 +1373,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             final = accepted
         readback = _run_phase(root, scenario, "readback", server.base_url, wheel)
         assert readback == final
-        if scenario in {"partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
+        if scenario in {"partial", "post-assessment-reopen", "single", "effect-declaration-legacy",
+                        "delayed", "pre-send-reopen",
                         "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             stopped = _run_phase(root, scenario, "completed-resume", server.base_url, wheel)
             assert stopped == final
@@ -1379,7 +1396,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     if scenario in {"host-recovery", "failed-recovery"}:
         phases += ["recover-denied", "recover", "after-recovery"]
     phases += poll_phases
-    if scenario in {"partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
+    if scenario in {"partial", "post-assessment-reopen", "single", "effect-declaration-legacy",
+                    "delayed", "pre-send-reopen",
                     "host-recovery", "failed-recovery", "ambiguous-recovered"}:
         phases += ["accept", "accept-replay", "completed-resume"]
     processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
