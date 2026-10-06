@@ -33,6 +33,7 @@ from forge.intake import MissionIntake
 from forge.models.action import EngineeringAction
 from forge.models.action_derivation import DerivationPolicy, GovernanceRefinementRequired
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.mission_effect import EffectRequest, MissionEffectPolicy
 from forge.models.execution_host import ExecutionDispatch, ExecutionEvidenceOutcome, ExecutionHostEvidence
 from forge.models.producer import RepositoryRevisionBinding
 from forge.models.mission_completion import (
@@ -1125,6 +1126,7 @@ class InstalledDynamicMissionRuntime:
             runtime_database=self.database,
             governance_repository=self.repository,
             repository_revision_binding_factory=self._repository_revision_binding,
+            effect_request_factory=self._effect_request,
             keep_running=self._keep_running,
         )
 
@@ -1176,6 +1178,36 @@ class InstalledDynamicMissionRuntime:
             )
         except ValueError as error:
             raise InstalledDynamicMissionError(str(error)) from error
+
+    @staticmethod
+    def _effect_request(
+        state: MissionExecutionState, action: EngineeringAction,
+        binding: RepositoryRevisionBinding | None,
+    ) -> EffectRequest | None:
+        mission = ArchitectureMission.from_dict(dict(state.mission))
+        admission = state.admission_contract
+        planning = admission.get("planning") if isinstance(admission, Mapping) else None
+        if not isinstance(planning, Mapping):
+            raise InstalledDynamicMissionError("Action lacks approved planning authority")
+        document = planning.get("effect_policy")
+        if document is None:
+            if mission.effect_policy is not None or "effect_policy" in planning:
+                raise InstalledDynamicMissionError("Mission effect approval is incomplete")
+            return None
+        try:
+            policy = MissionEffectPolicy.from_dict(document)
+            if (mission.effect_policy != policy or binding is None
+                    or tuple(planning["write_scopes"]) != policy.write_paths):
+                raise ValueError("effect approval, write scope, or source binding differs")
+            selected = tuple(criterion for criterion in mission.acceptance_criteria
+                             if criterion in action.expected_evidence)
+            if not selected or len(selected) != len(action.expected_evidence):
+                raise ValueError("Action evidence is not an exact subset of approved effect criteria")
+            return EffectRequest(policy, binding.requested_revision,
+                                 tuple((mission_criterion_id(mission.id, criterion), criterion)
+                                       for criterion in selected))
+        except (KeyError, TypeError, ValueError) as error:
+            raise InstalledDynamicMissionError("Action effect request is outside exact Mission approval") from error
 
     def _planning_input(self, state: MissionExecutionState) -> MissionPlannerInput:
         mission = ArchitectureMission.from_dict(dict(state.mission))

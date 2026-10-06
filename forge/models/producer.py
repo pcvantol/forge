@@ -17,6 +17,7 @@ from enum import Enum
 from typing import Any
 
 from forge._version import canonical_version
+from forge.models.mission_effect import EffectRequest
 
 
 PRODUCER_CONTRACT_VERSION = "1.0"
@@ -465,6 +466,7 @@ class ProducerContract:
     execution_evidence_references: tuple[str, ...] = ()
     contract_version: str = PRODUCER_CONTRACT_VERSION
     repository_revision_binding: RepositoryRevisionBinding | None = None
+    effect_request: EffectRequest | None = None
 
     def __post_init__(self) -> None:
         if self.contract_version != PRODUCER_CONTRACT_VERSION:
@@ -502,6 +504,11 @@ class ProducerContract:
         if self.repository_revision_binding is not None and not isinstance(
                 self.repository_revision_binding, RepositoryRevisionBinding):
             raise ValueError("producer contract repository revision binding is invalid")
+        if self.effect_request is not None:
+            if (not isinstance(self.effect_request, EffectRequest)
+                    or self.repository_revision_binding is None
+                    or self.effect_request.source_revision != self.repository_revision_binding.requested_revision):
+                raise ValueError("producer effect request must bind the exact repository source")
         object.__setattr__(self, "receipt_references", tuple(sorted(self.receipt_references)))
         object.__setattr__(self, "execution_evidence_references", tuple(sorted(self.execution_evidence_references)))
 
@@ -524,6 +531,8 @@ class ProducerContract:
         # absence means a request predates this prospective EP constraint.
         if self.repository_revision_binding is not None:
             document["repository_revision_binding"] = self.repository_revision_binding.to_dict()
+        if self.effect_request is not None:
+            document["effect_request"] = self.effect_request.to_dict()
         return document
 
     def digest(self) -> str:

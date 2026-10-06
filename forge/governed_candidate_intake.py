@@ -193,18 +193,21 @@ class GovernedCandidateIntake:
             "acceptance_criteria": candidate.acceptance_criteria,
             "engineering_constraints": candidate.architecture_constraints,
             "dependencies": candidate.dependencies,
+            "effect_policy": candidate.effect_policy,
         }
         planning_fields = {
             "provenance_revision": revision,
             "scope": tuple(sorted(candidate.scope)),
             "dependencies": tuple(sorted(candidate.dependencies)),
             "mission_spec_digest": canonical_digest(mission.to_dict()),
+            "effect_policy": candidate.effect_policy,
         }
         actual_planning = {
             "provenance_revision": planning.provenance_revision,
             "scope": tuple(sorted(planning.scope)),
             "dependencies": tuple(sorted(planning.dependencies)),
             "mission_spec_digest": planning.mission_spec_digest,
+            "effect_policy": planning.effect_policy,
         }
         if (any(getattr(mission, field) != expected for field, expected in mission_fields.items())
                 or actual_planning != planning_fields):

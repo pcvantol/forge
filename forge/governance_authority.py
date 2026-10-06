@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from forge.models.criterion_assessment import (ApprovedRepositoryEvidenceSource, CriterionAssessmentContract,
                                               validate_criterion_contracts)
+from forge.models.mission_effect import MissionEffectPolicy
 from forge.operator_identity import InstallationOperatorService, OperatorContext
 from forge.runtime.bootstrap import RuntimeBootstrap, RuntimeResolutionError, RuntimeResolver
 from forge.runtime.database import RuntimeDatabase, _timestamp
@@ -203,12 +204,18 @@ class ArchitecturePlanningEvidence:
     repository_evidence_source: ApprovedRepositoryEvidenceSource | None = None
     repository_evidence_sources: tuple[ApprovedRepositoryEvidenceSource, ...] = ()
     mission_spec_digest: str | None = None
+    effect_policy: MissionEffectPolicy | None = None
 
     def __post_init__(self) -> None:
         if not all((self.scope, self.non_goals, self.risk_inputs, self.human_gates,
                     self.dependencies, self.provenance_revision, self.context_input_bound > 0,
                     self.context_output_bound > 0)):
             raise ValueError("planning evidence requires complete typed bounds and provenance")
+        if self.effect_policy is not None:
+            if not isinstance(self.effect_policy, MissionEffectPolicy):
+                raise ValueError("planning effect policy is invalid")
+            if self.write_scopes != self.effect_policy.write_paths:
+                raise ValueError("planning write scopes differ from the approved effect")
         if (not isinstance(self.write_scopes, tuple)
                 or any(not isinstance(scope, str) or not scope for scope in self.write_scopes)
                 or len(self.write_scopes) != len(set(self.write_scopes))
@@ -253,6 +260,10 @@ class ArchitecturePlanningEvidence:
             value["repository_evidence_sources"] = [item.to_dict() for item in self.repository_evidence_sources]
         if self.mission_spec_digest is None:
             value.pop("mission_spec_digest")
+        if self.effect_policy is None:
+            value.pop("effect_policy")
+        else:
+            value["effect_policy"] = self.effect_policy.to_dict()
         return value
 
     @property
@@ -270,6 +281,8 @@ class ArchitecturePlanningEvidence:
         fields["repository_evidence_source"] = None if source is None else ApprovedRepositoryEvidenceSource.from_dict(source)
         fields["repository_evidence_sources"] = tuple(ApprovedRepositoryEvidenceSource.from_dict(item)
                                                        for item in fields.get("repository_evidence_sources", ()))
+        if fields.get("effect_policy") is not None:
+            fields["effect_policy"] = MissionEffectPolicy.from_dict(fields["effect_policy"])
         return cls(**fields)
 
 

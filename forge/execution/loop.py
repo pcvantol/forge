@@ -24,6 +24,7 @@ from forge.models.action import EngineeringAction, EngineeringActionStatus
 from forge.models.architecture_mission import ArchitectureMission
 from forge.models.execution_host import ExecutionEvidenceOutcome, ExecutionHost, ExecutionHostEvidence
 from forge.models.producer import RepositoryRevisionBinding
+from forge.models.mission_effect import EffectRequest
 from forge.models.mission_completion import (MissionCompletionEvidence,
                                               MissionCriterionEvaluationStatus)
 from forge.models.action_derivation import DerivationPolicy
@@ -58,6 +59,11 @@ class RepositoryRevisionBindingFactory(Protocol):
     """Return the already-authorized immutable revision binding for one Action."""
 
     def __call__(self, state: MissionExecutionState, action: EngineeringAction) -> RepositoryRevisionBinding: ...
+
+
+class EffectRequestFactory(Protocol):
+    def __call__(self, state: MissionExecutionState, action: EngineeringAction,
+                 binding: RepositoryRevisionBinding | None) -> EffectRequest | None: ...
 
 
 class MissionCompletionEvidenceFactory(Protocol):
@@ -139,6 +145,7 @@ class ExecutionLoop:
         runtime_database: RuntimeDatabase | None = None,
         governance_repository: object | None = None,
         repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
+        effect_request_factory: EffectRequestFactory | None = None,
         keep_running: Callable[[], bool] | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
@@ -158,6 +165,7 @@ class ExecutionLoop:
         self._runtime_database = runtime_database
         self._governance_repository = governance_repository
         self._repository_revision_binding_factory = repository_revision_binding_factory
+        self._effect_request_factory = effect_request_factory
         self._keep_running = keep_running or (lambda: True)
 
     def run(self) -> MissionExecutionState | None:
@@ -618,6 +626,7 @@ class ExecutionLoop:
                                           if self._runtime_database is not None else None
                                       ),
                                       repository_revision_binding_factory=self._repository_revision_binding_factory,
+                                      effect_request_factory=self._effect_request_factory,
                                       keep_running=self._keep_running)
 
     def _pause_after_evidence(self, state: MissionExecutionState, actions: tuple[EngineeringAction, ...],

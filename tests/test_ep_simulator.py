@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -9,6 +10,7 @@ from unittest.mock import patch
 from forge.ep_simulator import EpSimulatorScenario, EpSimulatorServer, EpSimulatorState
 from forge.models import ExecutionEvidenceOutcome
 from forge.models.execution_host import ExecutionHostTemporaryUnavailable
+from forge.models.mission_effect import EffectRequest, MissionEffectPolicy
 from forge.runtime.database import RuntimeDatabase
 from forge.scheduler.ep_http_adapter import EngineeringPlatformHttpConfiguration, EngineeringPlatformHttpExecutionHost
 from tests.test_ep_http_adapter import _request
@@ -54,6 +56,29 @@ class EpSimulatorTests(unittest.TestCase):
             evidence = host.retrieve_evidence(dispatch)
             self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
             self.assertEqual(len(state.submission_ids()), 1)
+
+    def test_effect_request_requires_capability_and_transmits_exact_approved_contract(self) -> None:
+        base = _request()
+        effect = EffectRequest(
+            MissionEffectPolicy("READ_ONLY_ASSESSMENT", "EVIDENCE_ONLY", ("docs/",), ()),
+            "a" * 40, (("criterion-1", "Assess the documented architecture boundary."),),
+        )
+        request = replace(base, producer_contract=replace(base.producer_contract,
+                                                           effect_request=effect),
+                          effect_request=effect)
+        baseline = self._state()
+        with EpSimulatorServer(baseline) as server:
+            with self.assertRaisesRegex(ValueError, "EP_EFFECT_CAPABILITY_REQUIRED"):
+                self._host(server).dispatch(request)
+            self.assertEqual(baseline.submission_ids(), ())
+        supported = self._state(EpSimulatorScenario(effect_declaration_supported=True))
+        with EpSimulatorServer(supported) as server:
+            self.assertIsNone(self._host(server).dispatch(request))
+            submission_id, = supported.submission_ids()
+            payload = supported.submitted_payload(submission_id)
+            self.assertEqual(payload["constraints"]["effect_contract"], effect.to_dict())
+            self.assertEqual(payload["constraints"]["repository_revision_binding"]["requested_revision"],
+                             effect.source_revision)
 
     def _host(
         self,

@@ -20,6 +20,7 @@ from .producer import (
     RepositoryRevisionBinding,
     RuntimePromptEnvelope,
 )
+from .mission_effect import EffectRequest
 
 
 EXECUTION_HOST_CONTRACT_SCHEMA_VERSION = "3.0"
@@ -127,6 +128,7 @@ class ExecutionRequest:
     origin_identity: str | None = None
     planning_context: ForgePlanningContextEnvelope | None = None
     repository_revision_binding: RepositoryRevisionBinding | None = None
+    effect_request: EffectRequest | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.mission_id, self.intent_id, self.intent_revision,
@@ -172,9 +174,12 @@ class ExecutionRequest:
             raise ValueError("execution request repository revision binding must match its Producer Contract")
         if binding is not None and not isinstance(binding, RepositoryRevisionBinding):
             raise ValueError("execution request repository revision binding is invalid")
+        if self.effect_request is not None and contract.effect_request != self.effect_request:
+            raise ValueError("execution request effect differs from its Producer Contract")
         object.__setattr__(self, "producer_contract", contract)
         object.__setattr__(self, "planning_context", contract.planning_context)
         object.__setattr__(self, "repository_revision_binding", binding)
+        object.__setattr__(self, "effect_request", contract.effect_request)
 
     def _default_producer_contract(self) -> ProducerContract:
         """Bridge legacy in-process prompt objects into the canonical envelope."""
@@ -220,6 +225,7 @@ class ExecutionRequest:
             action_context=ForgeActionContextEnvelope.from_runtime_prompt(self.runtime_prompt),
             planning_context=self.planning_context,
             repository_revision_binding=self.repository_revision_binding,
+            effect_request=self.effect_request,
         )
 
 

@@ -16,6 +16,7 @@ from .criterion_assessment import (ApprovedRepositoryEvidenceSource, CriterionAs
                                    validate_criterion_contracts)
 from .mission_candidate import MissionCandidate
 from .mission_recommendation import RequiredDiscipline
+from .mission_effect import MissionEffectPolicy
 
 
 ARCHITECTURE_MISSION_SCHEMA_VERSION = "1.0"
@@ -56,10 +57,13 @@ class ArchitectureMission:
     maximum_consecutive_no_progress_actions: int | None = None
     repository_evidence_source: ApprovedRepositoryEvidenceSource | None = None
     repository_evidence_sources: tuple[ApprovedRepositoryEvidenceSource, ...] = ()
+    effect_policy: MissionEffectPolicy | None = None
 
     def __post_init__(self) -> None:
         if self.schema_version != ARCHITECTURE_MISSION_SCHEMA_VERSION:
             raise ValueError("architecture mission schema version is unsupported")
+        if self.effect_policy is not None and not isinstance(self.effect_policy, MissionEffectPolicy):
+            raise ValueError("architecture mission effect policy is invalid")
         if not all((self.id, self.candidate_id, self.title, self.summary, self.business_objective, self.business_value,
                     self.architecture_review_reference, self.mission_recommendation_reference)):
             raise ValueError("architecture mission requires complete source Mission Candidate context")
@@ -130,6 +134,8 @@ class ArchitectureMission:
             document["repository_evidence_source"] = self.repository_evidence_source.to_dict()
         if self.repository_evidence_sources:
             document["repository_evidence_sources"] = [item.to_dict() for item in self.repository_evidence_sources]
+        if self.effect_policy is not None:
+            document["effect_policy"] = self.effect_policy.to_dict()
         return document
 
     @classmethod
@@ -152,4 +158,6 @@ class ArchitectureMission:
                                         ApprovedRepositoryEvidenceSource.from_dict(document["repository_evidence_source"])),
             repository_evidence_sources=tuple(ApprovedRepositoryEvidenceSource.from_dict(item)
                                               for item in document.get("repository_evidence_sources", ())),
+            effect_policy=(None if document.get("effect_policy") is None else
+                           MissionEffectPolicy.from_dict(document["effect_policy"])),
         )

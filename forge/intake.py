@@ -129,8 +129,11 @@ class MissionIntake:
                     or mission.maximum_actions != planning.maximum_actions
                     or mission.maximum_consecutive_no_progress_actions != planning.maximum_consecutive_no_progress_actions
                     or mission.repository_evidence_source != planning.repository_evidence_source
-                    or mission.repository_evidence_sources != planning.repository_evidence_sources):
+                    or mission.repository_evidence_sources != planning.repository_evidence_sources
+                    or mission.effect_policy != planning.effect_policy):
                 raise MissionIntakeError("Mission Intake criterion contract differs from canonical Architecture approval")
+        if mission.effect_policy is not None and mission.effect_policy != planning.effect_policy:
+            raise MissionIntakeError("Mission effect differs from canonical Architecture approval")
 
     def admit(
         self,

@@ -424,12 +424,16 @@ class EngineeringPlatformHttpExecutionHost:
         if any(value.startswith("ep-merge-delegation:") or value == "ep-delivery-control-validation:1"
                for value in contract.execution_constraints):
             forge_execution["execution_constraints"] = list(contract.execution_constraints)
+        constraints = {"forge_execution": forge_execution,
+                       "repository_revision_binding": revision_binding.ep_constraint(request.origin_identity)}
+        if contract.effect_request is not None:
+            if contract.effect_request.source_revision != revision_binding.requested_revision:
+                raise ValueError("EP_EFFECT_SOURCE_BINDING_MISMATCH")
+            constraints["effect_contract"] = contract.effect_request.to_dict()
         return {"repository_id": request.repository_id, "producer": contract.producer.identity.to_dict(),
                 "prompt": contract.runtime_prompt.content, "idempotency_key": request.correlation_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-                "engineering_action_id": request.action_id, "constraints": {"forge_execution": forge_execution,
-                    "repository_revision_binding": revision_binding.ep_constraint(
-                        request.origin_identity)}}
+                "engineering_action_id": request.action_id, "constraints": constraints}
 
     def _audit_document(self, request: ExecutionRequest, binding: Mapping[str, Any], *, receipt: Mapping[str, Any] | None = None) -> dict[str, object]:
         contract = request.producer_contract
@@ -703,6 +707,18 @@ class EngineeringPlatformHttpExecutionHost:
                 raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         return declaration
 
+    @staticmethod
+    def _require_effect_capability(request: ExecutionRequest,
+                                   declaration: Mapping[str, Any]) -> None:
+        if request.producer_contract.effect_request is None:
+            return
+        contracts = declaration.get("contracts")
+        if (not isinstance(contracts, Mapping)
+                or contracts.get("effect_request") != ["1.0"]
+                or contracts.get("effect_result") != ["1.0"]
+                or "1.5" not in contracts.get("terminal_evidence", ())):
+            raise ValueError("EP_EFFECT_CAPABILITY_REQUIRED")
+
     def managed_workspace_readiness(self) -> dict[str, Any]:
         """Read EP's current Managed workspace capability without submission."""
         document = self._json(
@@ -937,6 +953,7 @@ class EngineeringPlatformHttpExecutionHost:
         self._validate_request_scope(request)
         binding = self._binding(request)
         declaration = self.preflight()
+        self._require_effect_capability(request, declaration)
         readback = self._readback(request, binding)
         if readback is None:
             sent = any(
@@ -978,6 +995,7 @@ class EngineeringPlatformHttpExecutionHost:
         # as a new submission; absent binding storage still fails closed.
         binding = self._binding(request, allow_historical_readback=True)
         declaration = self.preflight()
+        self._require_effect_capability(request, declaration)
         readback = self._readback(request, binding)
         if readback is None and binding.get("submission_id") is None:
             sent = any(
@@ -1018,7 +1036,7 @@ class EngineeringPlatformHttpExecutionHost:
         request, binding = dispatch.request, self._binding(
             dispatch.request, allow_historical_readback=True,
         )
-        self.preflight()
+        self._require_effect_capability(request, self.preflight())
         if binding.get("host_run_id") not in (None, dispatch.host_run_id):
             raise ValueError("persisted dispatch run differs from requested evidence run")
         readback = self._readback(request, binding)
