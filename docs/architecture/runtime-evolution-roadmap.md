@@ -36,7 +36,10 @@ producer effects/report evidence and consumer-completion qualification gaps.
 Existing enums/fields, permissive mocks or dummy write permissions do not prove
 support. Reuse the seven FCI nodes; qualify only missing owning seams. No new
 runtime, peer transport, Workspace/Console dependency or live-canary authority
-is created. Actual implementation/installed qualification remains PLANNED.
+is created. The existing seven-node inner-loop suite is now installed/mock-EP qualified by
+[protected-main evidence](../reports/forge-inner-loop-ci-completion-2026-10-06.json).
+This closes its FCI-CI prerequisite within that scope; no outer-loop assignment
+or live activation is started.
 
 ## Minimal foreground Mission entry before live E2E
 
