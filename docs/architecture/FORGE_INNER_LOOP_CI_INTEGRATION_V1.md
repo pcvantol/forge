@@ -1,7 +1,7 @@
 # Forge inner-loop CI integration V1
 
 **Capability:** `FORGE::INNER_LOOP_CI_INTEGRATION_V1`
-**Status:** PLANNED implementation; this increment records the test contract.
+**Status:** INSTALLED_MOCK_EP_QUALIFIED; the test contract remains authoritative.
 **Lane:** RUNTIME_QUALIFICATION, independent of Console/POST_AUTONOMY work.
 
 The requested boundary is the complete Forge flow from a **Mission Candidate**
@@ -88,7 +88,11 @@ the runtime must not invent B merely to satisfy a test's preferred story.
 The simulator implements the **supported versioned producer contract**. The
 original full-suite design pin was readback v1.2 and terminal-evidence v1.3;
 the bounded installed serial-write qualification now binds readback v1.2 and
-terminal evidence v1.4. Full-suite fixture reconciliation remains open. The
+terminal evidence v1.4. The complete installed delivery now pins identity-readback1.3,
+effect-result1.1/terminal1.6/profile1.0 against protected EP2.3.111 captures and
+independent schemas; see the [owning completion record](../reports/forge-inner-loop-ci-completion-2026-10-06.json).
+The legacy readback1.2 retry-field schema/source discrepancy is explicitly
+source-shape qualified, not full schema conformance. The
 supported boundary includes explicit selection, compatibility,
 consumer authentication, scoped submission, pending/claimed/terminal readback
 and artifact download. Derive responses from captured request identities and
@@ -224,7 +228,7 @@ collection of separately green unit tests.
 | FIE-05 | Missing/expired/out-of-scope execution or provider authority and exhausted applicable budget: no unauthorized new call; restart does not reset counters or expiry. |
 | FIE-06 | Provider unavailable, pre-start rejection, invalid structured output and MAY_HAVE_HAPPENED: classified durable attempt, no materialization/submission and no blind regeneration. |
 | FIE-07 | Invalid write scope/dependency, stale snapshot, optional improvement, already proven criterion or wider Mission objective rejected before submission. |
-| FIE-08 | EP incompatible with required readback v1.2 or terminal evidence v1.4, wrong instance, wrong consumer/project/repository or auth rejected; installed preflight creates zero submissions, no fallback. The historical full-suite v1.3 pin still needs separate reconciliation. |
+| FIE-08 | EP incompatible with required readback v1.2 or terminal evidence v1.4, wrong instance, wrong consumer/project/repository or auth rejected; installed preflight creates zero submissions, no fallback. The historical terminal1.3 design pin is superseded by the qualified1.4/1.6 fixtures. |
 | FIE-09 | Delayed EP acceptance/claim/evidence: bounded waiting, no busy-loop or duplicate POST. Waiting is not success. |
 | FIE-10 | EP accepts POST then connection is lost; fresh Forge process reconciles by supported durable identity. Otherwise remain explicitly ambiguous, never blind resubmit. |
 | FIE-11 | Wrong artifact byte hash, schema, request digest, Mission/Action/correlation/run/repo/producer/profile provenance, or required assurance missing: reject before canonical evidence/completion. |

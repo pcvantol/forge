@@ -1,7 +1,7 @@
 # Forge inner-loop CI — implementation roadmap
 
 **Capability:** `FORGE::INNER_LOOP_CI_INTEGRATION_V1`
-**Status:** PLANNED implementation. **Lane:** RUNTIME_QUALIFICATION.
+**Status:** INSTALLED_MOCK_EP_QUALIFIED. **Lane:** RUNTIME_QUALIFICATION.
 
 Implement the [test contract](../architecture/FORGE_INNER_LOOP_CI_INTEGRATION_V1.md)
 and [documentary DAG](forge-inner-loop-ci-v1.json) as a core CI regression line.
@@ -9,7 +9,48 @@ The [runtime evolution roadmap](../architecture/runtime-evolution-roadmap.md)
 links this work. It is independent of Console/relay/installer/Workspace work and
 of the first live canary's success; its PASS does not replace that live proof.
 
-## Existing foundation
+## Complete installed/mock-EP delivery — 2026-10-06
+
+The same assignment `L3-FORGE-INNER-LOOP-CI-COMPLETION-V1-20261006` delivered
+[PR #246](https://github.com/pcvantol/forge/pull/246), protected main
+`e33b33e581e5b6a7df1b040a9e645b6e650f1577`, Forge2.7.66. The
+[exact evidence record](../reports/forge-inner-loop-ci-completion-2026-10-06.json)
+qualifies all seven existing nodes, all FIE-01..28 families and applicable four
+Mission modes/five output variants:102 scenarios,25 preflight,13 governance,
+11 provider cases, no missing required case. The same full installed CLI and
+negative failure-control run in protected PR/main CI and release qualification.
+Independent Quality/Security PASS binds the final candidate; malformed nested
+proof/type counterexamples were fixed and requalified. Exact main was built and
+noneditably installed into a fresh isolated release-qualification environment.
+
+FME-ADMISSION and FME-COMPLETION are installed/mock-EP qualified. FME-PRODUCER
+uses protected EP2.3.111 main `bc2e8d6800cc64ef44990ce9412d6b9c1c8824ff`,
+result1.1, terminal1.6 and validation-profile1.0 captured bytes and independent
+schemas. Ordinary non-effect terminal1.4 and identity-readback1.3 are separate
+contracts; the original terminal1.3 design pin is historical. The legacy
+readback1.2 source emits two retry-resolution fields absent from its pinned
+schema: that slice is explicitly source-shape qualified, not full schema
+conformance. The modern effect schemas are independently validated.
+
+Real Forge public Candidate/dual approval/zero-Action Intake, planning/runtime,
+evidence-dependent successor, restart/recovery and current Business acceptance
+run against a stateful loopback EP simulator. Useful report criteria can complete
+without a new commit/PR. Local Git source/output commits are real; remote
+publication and EP execution are fixtures. Simulated transient forbidden writes
+prove Forge rejection, not real EP sandbox enforcement. FIE-27 creates a
+separately approved new Candidate scope; it preserves original Mission history
+and allowances. Synthetic roles do not prove separate live human approvals.
+
+TDE observe workflow SUCCESS is distinct from its valid assessment FAIL and
+repository qualification FAILED; no general TDE remediation is selected.
+No live EP/provider, package publication, operational installation, Mission or
+outer-loop activation is authorized by this record. FCI-CI's existing FCO-FLOW
+prerequisite is satisfied within the mock qualification scope; later outer-loop
+work still needs its own selected assignment. GP remains closed. The bounded
+records below describe historical evidence and are superseded only for the
+currently qualified inner-loop scope; their original receipts remain intact.
+
+## Historical bounded foundation
 
 The source snapshot in the contract already has governance/intake, dynamic
 Mission, recovery and HTTP-adapter tests. Reuse their useful assertions, but do
@@ -108,8 +149,8 @@ FCI-CONTRACT -> FCI-HARNESS --+
                                         -> FCI-NEGATIVE -+
 ```
 
-All seven implementation nodes remain PLANNED. FCI-CONTRACT completion requires
-implemented fixture/contract validation, not this design alone. The JSON is not
+All seven implementation nodes are COMPLETE within the installed/mock-EP scope,
+with exact protected-main qualification in the completion record. The JSON is not
 a Mission/Action plan or permission to mutate a live runtime. No console graph
 is extended and no peer repository work is allocated.
 
@@ -121,9 +162,9 @@ is an explicit part of FCI-FLOW/RESTART/NEGATIVE/CI acceptance.
 
 | Requirement | Owner | Current evidence / required closure |
 | --- | --- | --- |
-| FME-ADMISSION | Forge | SOURCE_GAP_OBSERVED at 2ff27234ca95b1f94c7235cc7ce12244b9cd8f69: public _admission_contract rejects empty write_scopes. Qualify effect-aware public approval/intake/planning with explicit empty writes, valid read scope and no authority weakening. |
-| FME-PRODUCER | EP producer; Forge consumes | REQUIRED_EVIDENCE_UNVERIFIED: prove the actual supported effect/result schema and read-only execution/report contract. No unqualified mock fields or simulated producer claims; any necessary EP change stays EP-owned. |
-| FME-COMPLETION | Forge | REQUIRED_EVIDENCE_UNVERIFIED: qualify durable useful non-Git reports, unchanged-source provenance, per-criterion evidence and mode-appropriate review/delivery without a forced PR/commit. |
+| FME-ADMISSION | Forge | Historical SOURCE_GAP_OBSERVED at 2ff27234ca95b1f94c7235cc7ce12244b9cd8f69: public _admission_contract rejects empty write_scopes. Qualify effect-aware public approval/intake/planning with explicit empty writes, valid read scope and no authority weakening. |
+| FME-PRODUCER | EP producer; Forge consumes | Historical REQUIRED_EVIDENCE_UNVERIFIED: prove the actual supported effect/result schema and read-only execution/report contract. No unqualified mock fields or simulated producer claims; any necessary EP change stays EP-owned. |
+| FME-COMPLETION | Forge | Historical REQUIRED_EVIDENCE_UNVERIFIED: qualify durable useful non-Git reports, unchanged-source provenance, per-criterion evidence and mode-appropriate review/delivery without a forced PR/commit. |
 
 These are scoped evidence requirements, not newly allocated peer work or executed
 repairs. Reuse current implementation where exact qualification exists. The

@@ -3,7 +3,7 @@
   "capability": "FORGE::INNER_LOOP_CI_INTEGRATION_V1",
   "owner": "forge",
   "authority": "DOCUMENTARY",
-  "status": "PLANNED",
+  "status": "INSTALLED_MOCK_EP_QUALIFIED",
   "priority_lane": "RUNTIME_QUALIFICATION",
   "executable": false,
   "authorizes_live_execution": false,
@@ -34,7 +34,14 @@
   "bounded_subsets": [
     {
       "assignment_id": "L3-FORGE-INSTALLED-HTTP-SUCCESSOR-V1-20261003",
-      "source_nodes": ["FCI-HARNESS", "FCI-EP", "FCI-FLOW", "FCI-RESTART", "FCI-NEGATIVE", "FCI-CI"],
+      "source_nodes": [
+        "FCI-HARNESS",
+        "FCI-EP",
+        "FCI-FLOW",
+        "FCI-RESTART",
+        "FCI-NEGATIVE",
+        "FCI-CI"
+      ],
       "consumer": "installed Forge release and PR qualification operator",
       "entry": "isolated canonical approved zero-Action Mission",
       "exit": "evidence-proven serial Mission completion after HTTP A-to-B successor",
@@ -53,7 +60,12 @@
     },
     {
       "assignment_id": "L3-FORGE-GOVERNED-CANDIDATE-INTAKE-V1-20261003",
-      "source_nodes": ["FCI-FLOW", "FCI-RESTART", "FCI-NEGATIVE", "FCI-CI"],
+      "source_nodes": [
+        "FCI-FLOW",
+        "FCI-RESTART",
+        "FCI-NEGATIVE",
+        "FCI-CI"
+      ],
       "consumer": "installed Forge release and PR qualification operator",
       "entry": "isolated canonical Recommendation and mutable Candidate before approval",
       "exit": "Candidate-bound Mission allocation and serial HTTP evidence-derived completion",
@@ -73,7 +85,11 @@
     },
     {
       "assignment_id": "L3-FORGE-INSTALLED-GOVERNANCE-NEGATIVES-V1-20261003",
-      "source_nodes": ["FCI-FLOW", "FCI-NEGATIVE", "FCI-CI"],
+      "source_nodes": [
+        "FCI-FLOW",
+        "FCI-NEGATIVE",
+        "FCI-CI"
+      ],
       "consumer": "installed Forge PR and protected-main CI qualification operator",
       "entry": "isolated canonical Candidate at its public governance and intake boundary",
       "exit": "typed installed rejection with zero unintended Mission, planning or EP effects, followed by the retained valid HTTP control",
@@ -82,11 +98,19 @@
       "terminal_evidence_contract": "1.4",
       "selected_scenario": "FIE-04",
       "selected_cases": [
-        "candidate-alone", "missing-business", "missing-architecture",
-        "rejected-business", "rejected-architecture",
-        "wrong-business-actor", "wrong-business-role",
-        "wrong-architecture-actor", "wrong-architecture-role",
-        "stale-candidate", "changed-scope", "changed-criteria", "changed-spec"
+        "candidate-alone",
+        "missing-business",
+        "missing-architecture",
+        "rejected-business",
+        "rejected-architecture",
+        "wrong-business-actor",
+        "wrong-business-role",
+        "wrong-architecture-actor",
+        "wrong-architecture-role",
+        "stale-candidate",
+        "changed-scope",
+        "changed-criteria",
+        "changed-spec"
       ],
       "full_node_completion": false,
       "remaining_gates": [
@@ -100,7 +124,11 @@
     },
     {
       "assignment_id": "L3-FORGE-PRODUCER-FIXTURE-CONFORMANCE-V1-20261003",
-      "source_nodes": ["FCI-CONTRACT", "FCI-EP", "FCI-CI"],
+      "source_nodes": [
+        "FCI-CONTRACT",
+        "FCI-EP",
+        "FCI-CI"
+      ],
       "consumer": "installed Forge ordinary PR and protected-main CI qualification operator",
       "entry": "captured serial-write EP HTTP submission and immutable producer readback",
       "exit": "source-pinned independent pending/terminal fixture validation and rejection matrix before scenario PASS",
@@ -124,7 +152,11 @@
     },
     {
       "assignment_id": "L3-FORGE-INSTALLED-EP-PREFLIGHT-NEGATIVES-V1-20261003",
-      "source_nodes": ["FCI-EP", "FCI-NEGATIVE", "FCI-CI"],
+      "source_nodes": [
+        "FCI-EP",
+        "FCI-NEGATIVE",
+        "FCI-CI"
+      ],
       "consumer": "installed Forge ordinary PR and protected-main CI qualification operator",
       "entry": "public Candidate/governance/intake and persisted EP peer before Mission start",
       "exit": "typed preflight denial across fresh processes with zero submission POST or EP acceptance",
@@ -138,13 +170,25 @@
       "producer_readback_contract": "1.2",
       "terminal_evidence_contract": "1.4",
       "selected_cases": [
-        "readback-absent", "readback-incompatible",
-        "terminal-absent", "terminal-incompatible",
-        "wrong-instance", "wrong-consumer", "wrong-project", "wrong-repository",
-        "inactive-consumer", "inactive-project", "repository-not-authority",
-        "repository-unbound", "scope-unauthorized",
-        "credential-missing", "credential-invalid", "http-401", "http-403",
-        "declaration-public-version", "declaration-missing-producer",
+        "readback-absent",
+        "readback-incompatible",
+        "terminal-absent",
+        "terminal-incompatible",
+        "wrong-instance",
+        "wrong-consumer",
+        "wrong-project",
+        "wrong-repository",
+        "inactive-consumer",
+        "inactive-project",
+        "repository-not-authority",
+        "repository-unbound",
+        "scope-unauthorized",
+        "credential-missing",
+        "credential-invalid",
+        "http-401",
+        "http-403",
+        "declaration-public-version",
+        "declaration-missing-producer",
         "declaration-missing-auth-field"
       ],
       "full_node_completion": false,
@@ -159,8 +203,15 @@
   ],
   "wire_contracts": {
     "producer_readback": "1.2",
-    "terminal_evidence": "1.3",
-    "producer_fixture_provenance_required": true
+    "terminal_evidence": "1.4",
+    "identity_readback": "1.3",
+    "effect_request": "1.0",
+    "effect_result": "1.1",
+    "effect_terminal_evidence": "1.6",
+    "effect_validation_profile": "1.0",
+    "producer_fixture_provenance_required": true,
+    "historical_terminal_design_pin": "1.3",
+    "legacy_readback_schema_source_discrepancy": "Two retry-resolution fields are source-qualified; not full v1.2 JSON Schema conformance."
   },
   "invariants": {
     "actions_at_admission": 0,
@@ -209,169 +260,197 @@
       "id": "FIE-01",
       "name": "candidate_to_completion",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-02",
       "name": "evidence_dependent_successor_after_restart",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-03",
       "name": "one_action_no_artificial_successor",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-04",
       "name": "candidate_governance_gates",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-05",
       "name": "authority_and_budget_gates",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-06",
       "name": "provider_failure_and_ambiguity",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-07",
       "name": "scope_containment",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-08",
       "name": "ep_compatibility_auth_and_scope",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-09",
       "name": "pending_ep_bounded_wait",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-10",
       "name": "accepted_post_lost_ack",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-11",
       "name": "artifact_and_assurance_rejection",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-12",
       "name": "terminal_without_artifact",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-13",
       "name": "authorized_correlated_recovery",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-14",
       "name": "duplicate_out_of_order_and_concurrent_start",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-15",
       "name": "new_process_recovery_boundaries",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-16",
       "name": "storage_and_installed_identity_fail_closed",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-17",
       "name": "read_only_report_completion",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-18",
       "name": "documentation_only_completion",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-19",
       "name": "architecture_design_only_completion",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-20",
       "name": "explicit_effect_scope_admission",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-21",
       "name": "forbidden_effects_and_artifact_escape",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-22",
       "name": "report_evidence_missing_stale_or_tampered",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-23",
       "name": "no_change_result_is_not_missing_work",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-24",
       "name": "effect_specific_validation_and_assurance",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-25",
       "name": "effect_mode_restart_and_ambiguous_recovery",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-26",
       "name": "contained_successor_after_read_only_or_design",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-27",
       "name": "governed_effect_expansion",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     },
     {
       "id": "FIE-28",
       "name": "producer_capability_and_public_route_parity",
       "required": true,
-      "status": "PLANNED"
+      "status": "PASS",
+      "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
     }
   ],
   "nodes": [
@@ -379,19 +458,23 @@
       "id": "FCI-CONTRACT",
       "title": "Mock contract, provenance and scenario registry",
       "owner": "forge",
-      "status": "PLANNED",
+      "status": "COMPLETE",
       "depends_on": [],
       "completion_evidence": [
         "Producer-pinned wire fixtures and independent validation",
         "All required scenarios bound to concrete assertions",
         "Effect/output modes and FIE-17..28 requirements derived from qualified producer schemas, not invented fields"
+      ],
+      "qualification_scope": "INSTALLED_FORGE_WITH_ISOLATED_EP_HTTP_SIMULATOR",
+      "delivered_evidence": [
+        "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
       ]
     },
     {
       "id": "FCI-HARNESS",
       "title": "Isolated installed-wheel process harness",
       "owner": "forge",
-      "status": "PLANNED",
+      "status": "COMPLETE",
       "depends_on": [
         "FCI-CONTRACT"
       ],
@@ -399,13 +482,17 @@
         "Site-packages identity and explicit temporary data root",
         "Boundary-only LLM/OS fixtures and bounded cleanup",
         "Independent target effect observations, protected fixture and isolated owned evidence/scratch storage"
+      ],
+      "qualification_scope": "INSTALLED_FORGE_WITH_ISOLATED_EP_HTTP_SIMULATOR",
+      "delivered_evidence": [
+        "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
       ]
     },
     {
       "id": "FCI-EP",
       "title": "Stateful EP HTTP simulator",
       "owner": "forge",
-      "status": "PLANNED",
+      "status": "COMPLETE",
       "depends_on": [
         "FCI-CONTRACT"
       ],
@@ -413,13 +500,17 @@
         "Actual adapter HTTP serialization and authenticated scopes",
         "Independent accepted-request/receipt/artifact ledger with failure injection",
         "Producer-qualified read-only/report and docs/design delivery fixtures with counted mutation attempts"
+      ],
+      "qualification_scope": "INSTALLED_FORGE_WITH_ISOLATED_EP_HTTP_SIMULATOR",
+      "delivered_evidence": [
+        "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
       ]
     },
     {
       "id": "FCI-FLOW",
       "title": "Candidate through completion success chain",
       "owner": "forge",
-      "status": "PLANNED",
+      "status": "COMPLETE",
       "depends_on": [
         "FCI-HARNESS",
         "FCI-EP"
@@ -428,13 +519,17 @@
         "Real Candidate revision through dual approval, allocator and zero-Action intake",
         "Public runtime and verifier complete from serialized fixture evidence",
         "All four Mission effect/output modes complete through public services with required FME evidence"
+      ],
+      "qualification_scope": "INSTALLED_FORGE_WITH_ISOLATED_EP_HTTP_SIMULATOR",
+      "delivered_evidence": [
+        "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
       ]
     },
     {
       "id": "FCI-RESTART",
       "title": "Successor and new-process recovery",
       "owner": "forge",
-      "status": "PLANNED",
+      "status": "COMPLETE",
       "depends_on": [
         "FCI-FLOW"
       ],
@@ -442,13 +537,17 @@
         "B only from current reconciled evidence after actual process restart",
         "Same instance and immutable history with no duplicate dispatch",
         "Per-mode constraints, source/artifact references and counters survive fresh-process recovery"
+      ],
+      "qualification_scope": "INSTALLED_FORGE_WITH_ISOLATED_EP_HTTP_SIMULATOR",
+      "delivered_evidence": [
+        "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
       ]
     },
     {
       "id": "FCI-NEGATIVE",
       "title": "Fault, authority and containment scenarios",
       "owner": "forge",
-      "status": "PLANNED",
+      "status": "COMPLETE",
       "depends_on": [
         "FCI-FLOW"
       ],
@@ -456,13 +555,17 @@
         "Ambiguous transport and terminal-without-evidence fail closed",
         "Permission, scope, stale identity and budgets are not mocked away",
         "Unauthorized effect expansion, missing reports and wrong mode-specific controls block completion"
+      ],
+      "qualification_scope": "INSTALLED_FORGE_WITH_ISOLATED_EP_HTTP_SIMULATOR",
+      "delivered_evidence": [
+        "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
       ]
     },
     {
       "id": "FCI-CI",
       "title": "CI merge gate and release qualification",
       "owner": "forge",
-      "status": "PLANNED",
+      "status": "COMPLETE",
       "depends_on": [
         "FCI-RESTART",
         "FCI-NEGATIVE"
@@ -471,12 +574,16 @@
         "PR/main required qualification fails on absent/skipped/failed mandatory tests",
         "Same installed suite reused for local/release with exact artifact and scenario reports",
         "FIE-01..28 and all required mode variants are merge-blocking; unsupported/skipped positives never claim full support"
+      ],
+      "qualification_scope": "INSTALLED_FORGE_WITH_ISOLATED_EP_HTTP_SIMULATOR",
+      "delivered_evidence": [
+        "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
       ]
     }
   ],
   "mission_effects_extension": {
     "source_pin": "2ff27234ca95b1f94c7235cc7ce12244b9cd8f69",
-    "status": "PLANNED_NOT_RUNTIME_QUALIFIED",
+    "status": "INSTALLED_MOCK_EP_QUALIFIED",
     "modes": [
       "READ_ONLY_ASSESSMENT",
       "DOCUMENTATION_ONLY",
@@ -515,8 +622,10 @@
       {
         "id": "FME-ADMISSION",
         "owner": "forge",
-        "status": "SOURCE_GAP_OBSERVED",
-        "evidence": [],
+        "status": "INSTALLED_MOCK_EP_QUALIFIED",
+        "evidence": [
+          "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
+        ],
         "required_for": [
           "FIE-17",
           "FIE-19",
@@ -528,8 +637,10 @@
       {
         "id": "FME-PRODUCER",
         "owner": "engineering-platform",
-        "status": "REQUIRED_EVIDENCE_UNVERIFIED",
-        "evidence": [],
+        "status": "QUALIFIED_PINNED_PRODUCER_CONTRACT",
+        "evidence": [
+          "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
+        ],
         "required_for": [
           "FIE-17",
           "FIE-18",
@@ -549,8 +660,10 @@
       {
         "id": "FME-COMPLETION",
         "owner": "forge",
-        "status": "REQUIRED_EVIDENCE_UNVERIFIED",
-        "evidence": [],
+        "status": "INSTALLED_MOCK_EP_QUALIFIED",
+        "evidence": [
+          "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
+        ],
         "required_for": [
           "FIE-17",
           "FIE-18",
@@ -564,5 +677,6 @@
         "requirement": "Verify source-bound report/artifact criteria and applicable controls; no forced repository change or declaration-only success."
       }
     ]
-  }
+  },
+  "qualification_evidence": "docs/reports/forge-inner-loop-ci-completion-2026-10-06.json"
 }

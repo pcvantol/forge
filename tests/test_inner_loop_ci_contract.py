@@ -22,7 +22,7 @@ class InnerLoopCIContractTests(unittest.TestCase):
         self.assertEqual(g["entry"], "MISSION_CANDIDATE")
         self.assertEqual(g["exit"], "EVIDENCE_DERIVED_MISSION_COMPLETION")
         self.assertEqual(g["priority_lane"], "RUNTIME_QUALIFICATION")
-        self.assertEqual((g["authority"], g["status"]), ("DOCUMENTARY", "PLANNED"))
+        self.assertEqual((g["authority"], g["status"]), ("DOCUMENTARY", "INSTALLED_MOCK_EP_QUALIFIED"))
         for flag in ("executable", "authorizes_live_execution", "requires_console",
                      "requires_live_canary_completion", "changes_current_live_canary_authority"):
             self.assertIs(g[flag], False)
@@ -35,7 +35,7 @@ class InnerLoopCIContractTests(unittest.TestCase):
         self.assertEqual(len(nodes), len(expected))
         self.assertEqual(set(by_id), expected)
         for n in nodes:
-            self.assertEqual((n["owner"], n["status"]), ("forge", "PLANNED"))
+            self.assertEqual((n["owner"], n["status"]), ("forge", "COMPLETE"))
             self.assertTrue(n["completion_evidence"])
             self.assertTrue(set(n["depends_on"]) <= expected)
             self.assertNotIn(n["id"], n["depends_on"])
@@ -53,7 +53,7 @@ class InnerLoopCIContractTests(unittest.TestCase):
                 rows[cells[0]] = set(re.findall(r"FCI-[A-Z-]+", cells[2]))
         self.assertEqual(rows, {n["id"]: set(n["depends_on"]) for n in self.graph["nodes"]})
 
-    def test_scenario_inventory_is_complete_without_claiming_execution(self):
+    def test_scenario_inventory_is_complete_with_qualified_evidence(self):
         scenarios = self.graph["scenarios"]
         expected = {f"FIE-{i:02d}" for i in range(1, 29)}
         self.assertEqual(len(scenarios), len(expected))
@@ -62,7 +62,7 @@ class InnerLoopCIContractTests(unittest.TestCase):
         self.assertEqual(table_ids, expected)
         for scenario in scenarios:
             self.assertIs(scenario["required"], True)
-            self.assertEqual(scenario["status"], "PLANNED")
+            self.assertEqual(scenario["status"], "PASS")
             self.assertTrue(scenario["name"])
 
     def test_only_external_boundaries_are_simulated(self):
@@ -98,9 +98,9 @@ class InnerLoopCIContractTests(unittest.TestCase):
         self.assertIn("Required scenario absence, skip, timeout", self.contract)
         self.assertIn("This documentation update does not add a new", self.contract)
 
-    def test_effect_modes_and_scope_are_explicit_without_claiming_support(self):
+    def test_effect_modes_and_scope_bind_installed_qualification(self):
         ext = self.graph["mission_effects_extension"]
-        self.assertEqual(ext["status"], "PLANNED_NOT_RUNTIME_QUALIFIED")
+        self.assertEqual(ext["status"], "INSTALLED_MOCK_EP_QUALIFIED")
         self.assertEqual(ext["modes"], ["READ_ONLY_ASSESSMENT", "DOCUMENTATION_ONLY",
                                       "ARCHITECTURE_DESIGN_ONLY", "BOUNDED_REPOSITORY_CHANGE"])
         for mode in ext["modes"]:
@@ -131,7 +131,7 @@ class InnerLoopCIContractTests(unittest.TestCase):
                        "without a Mission", "no authority weakening"):
             self.assertIn(phrase, self.contract + self.roadmap)
 
-    def test_effect_requirements_link_to_scenarios_and_remain_unqualified(self):
+    def test_effect_requirements_link_to_qualified_owning_evidence(self):
         ext = self.graph["mission_effects_extension"]
         self.assertRegex(ext["source_pin"], r"^[0-9a-f]{40}$")
         self.assertIn(ext["source_pin"], self.contract)
@@ -141,8 +141,8 @@ class InnerLoopCIContractTests(unittest.TestCase):
         for req in requirements:
             self.assertIn("| " + req["id"] + " |", self.roadmap)
             self.assertIn(req["owner"], ("forge", "engineering-platform"))
-            self.assertIn(req["status"], ("SOURCE_GAP_OBSERVED", "REQUIRED_EVIDENCE_UNVERIFIED"))
-            self.assertEqual(req["evidence"], [])
+            self.assertIn(req["status"], ("INSTALLED_MOCK_EP_QUALIFIED", "QUALIFIED_PINNED_PRODUCER_CONTRACT"))
+            self.assertEqual(req["evidence"], [self.graph["qualification_evidence"]])
             self.assertTrue(req["required_for"])
             self.assertTrue(set(req["required_for"]) <= set(ext["scenario_ids"]))
         artifacts = self.graph["planned_ci"]["required_artifacts"]
@@ -150,6 +150,36 @@ class InnerLoopCIContractTests(unittest.TestCase):
                          "criterion_artifact_and_control_bindings"} <= set(artifacts))
         self.assertIn("all FIE-01..FIE-28", self.roadmap)
         self.assertIn("NOT_QUALIFIED", self.contract)
+
+    def test_completion_record_cannot_replace_missing_or_live_evidence(self):
+        evidence = json.loads((ROOT / self.graph["qualification_evidence"]).read_text())
+        self.assertEqual(evidence["result"], "FORGE_INNER_LOOP_CI_PASS")
+        self.assertEqual(evidence["protected_main_source_revision"],
+                         "e33b33e581e5b6a7df1b040a9e645b6e650f1577")
+        self.assertEqual({f["id"] for f in evidence["family_matrix"]},
+                         {s["id"] for s in self.graph["scenarios"]})
+        for family in evidence["family_matrix"]:
+            self.assertEqual(family["result"], "PASS")
+            for variant in family["mode_variant_evidence"]:
+                self.assertEqual(variant["missing_cases"], [])
+                self.assertTrue(set(variant["required_cases"]) <= set(variant["observed_cases"]))
+        self.assertEqual(len(evidence["scenarios"]), evidence["scenario_count"])
+        for scenario in evidence["scenarios"]:
+            self.assertEqual(scenario["qualification_result"], "PASS")
+            self.assertTrue(all(scenario["cleanup"].values()))
+        self.assertEqual(evidence["failure_gate"]["observed_suite_exit"], 1)
+        self.assertEqual(evidence["failure_gate"]["observed_verifier_failure"],
+                         "EP_EFFECT_REPORT_BYTES_MISMATCH")
+        self.assertEqual(evidence["pr_required_ci"]["result"], "PASS")
+        self.assertEqual(evidence["main_required_ci"]["result"], "PASS")
+        self.assertEqual({r["role"] for r in evidence["independent_reviews"]}, {"Quality", "Security"})
+        self.assertTrue(all(r["reviewed_revision"] == evidence["candidate_source_revision"]
+                            and r["result"] == "PASS" for r in evidence["independent_reviews"]))
+        for flag in ("authorizes_live_execution", "starts_outer_loop", "gp_assignment_reopened"):
+            self.assertIs(evidence[flag], False)
+        self.assertIs(evidence["release_reuse"]["publication_executed"], False)
+        self.assertEqual((evidence["tde_observe"]["workflow"], evidence["tde_observe"]["assessment"]),
+                         ("SUCCESS", "FAIL"))
 
     def test_plan_is_linked_from_existing_runtime_roadmap(self):
         for key in ("architecture", "scoped_roadmap", "runtime_roadmap"):
