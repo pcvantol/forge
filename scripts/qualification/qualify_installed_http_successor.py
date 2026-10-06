@@ -1127,7 +1127,10 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                   EpSimulatorScenario(name="delayed-terminal", terminal_after_reads=6)
                   if scenario == "delayed" else
                   EpSimulatorScenario(name="artifact-unavailable", artifact_http_status=404)
-                  if scenario == "artifact-unavailable" else None),
+                  if scenario == "artifact-unavailable" else
+                  EpSimulatorScenario(name="request-digest-readback-fault",
+                                      accepted_digest_mismatch_on_readback=True)
+                  if scenario == "tampered-request-digest" else None),
     )
     fixture._write(root / "artifact-a.json", {
         "report": {"fields": ["report_data"]},
@@ -1193,7 +1196,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 request_a, source_readback, source_artifact, project_id=PROJECT,
                 repository_id=fixture.SOURCE.repository_id, submission_id=a,
             )
-        if scenario.startswith("tampered") or scenario == "artifact-schema":
+        if scenario in {"tampered", "tampered-action", "tampered-run",
+                        "tampered-repository", "tampered-producer", "artifact-schema"}:
             readback, artifact = simulator.terminal_documents(a)
             if scenario == "tampered":
                 readback["correlation"]["mission_id"] = "wrong-mission"
@@ -1205,8 +1209,6 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 readback["submission"]["repository_id"] = "wrong-repository"
             elif scenario == "tampered-producer":
                 readback["producer"]["id"] = "wrong-producer"
-            elif scenario == "tampered-request-digest":
-                readback["submission"]["accepted_request_digest"] = "sha256:" + "0" * 64
             elif scenario == "artifact-schema":
                 document = json.loads(artifact)
                 del document["report"]

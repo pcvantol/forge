@@ -53,6 +53,7 @@ class EpSimulatorScenario:
     submission_http_status: int | None = None
     readback_http_status: int | None = None
     artifact_http_status: int | None = None
+    accepted_digest_mismatch_on_readback: bool = False
     connection_loss_at: frozenset[str] = frozenset()
     response_delay_seconds: float = 0.0
     workspace_clean: bool = True
@@ -736,7 +737,10 @@ class EpSimulatorServer:
                         return
                     submission_id = unquote(path[len(prefix):])
                     try:
-                        self._send_json(200, state_ref.readback(submission_id))
+                        readback = state_ref.readback(submission_id)
+                        if scenario.accepted_digest_mismatch_on_readback:
+                            readback["submission"]["accepted_request_digest"] = "sha256:" + "0" * 64
+                        self._send_json(200, readback)
                     except KeyError:
                         self._error(404, "SUBMISSION_MISSING")
                     return
