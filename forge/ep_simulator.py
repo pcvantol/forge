@@ -134,13 +134,14 @@ class EpSimulatorState:
 
     def compatibility(self) -> dict[str, Any]:
         contracts = {
-            "producer_readback": ["1.2", "1.3"],
+            "producer_readback": ["1.2"],
             "terminal_evidence": ["1.4"],
             "validation_controls": ["1.0", "1.1"],
             "delivery_revision_validation": ["1.0"],
             "bounded_merge_delegation": ["1.0"],
         }
         if self.scenario.identity_readback_supported:
+            contracts["producer_readback"].append("1.3")
             contracts["submission_identity_readback"] = ["1.0"]
         return {
             "contract_version": "1.1",

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import unittest
 from copy import deepcopy
+import os
 from pathlib import Path
+import socket
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -13,10 +16,29 @@ from forge.ep_simulator import EpSimulatorServer, EpSimulatorState
 from forge.qualification.producer_fixture_conformance import (
     ProducerFixtureError, rejection_matrix, source_receipt, validate_fixture,
 )
-from scripts.qualification.qualify_installed_http_successor import _count_ep_http_requests
+from scripts.qualification.qualify_installed_http_successor import (
+    _child_env, _count_ep_http_requests, _loopback_only,
+)
 
 
 class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
+    def test_scenario_process_receives_no_host_credentials_or_external_network(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {
+            "GH_TOKEN": "private", "OPENAI_API_KEY": "private", "AWS_SECRET_ACCESS_KEY": "private",
+        }):
+            root = Path(directory)
+            env = _child_env(root)
+            self.assertEqual(env["HOME"], str(root / "home"))
+            self.assertEqual(env["CODEX_HOME"], str(root / "config" / "codex"))
+            self.assertEqual(env["PATH"], "/usr/bin:/bin")
+            for name in ("GH_TOKEN", "OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY"):
+                self.assertNotIn(name, env)
+            with _loopback_only(), self.assertRaisesRegex(PermissionError, "non-loopback"):
+                socket.getaddrinfo("github.com", 443)
+            with _loopback_only(), socket.socket() as connection, \
+                 self.assertRaisesRegex(PermissionError, "non-loopback"):
+                connection.connect(("8.8.8.8", 443))
+
     def _producer_fixture(self):
         state = EpSimulatorState(project_id="test-project", repository_id="test-repository")
         payload = {

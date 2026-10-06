@@ -205,10 +205,15 @@ class ArchitecturePlanningEvidence:
     mission_spec_digest: str | None = None
 
     def __post_init__(self) -> None:
-        if not all((self.scope, self.write_scopes, self.non_goals, self.risk_inputs, self.human_gates,
+        if not all((self.scope, self.non_goals, self.risk_inputs, self.human_gates,
                     self.dependencies, self.provenance_revision, self.context_input_bound > 0,
                     self.context_output_bound > 0)):
             raise ValueError("planning evidence requires complete typed bounds and provenance")
+        if (not isinstance(self.write_scopes, tuple)
+                or any(not isinstance(scope, str) or not scope for scope in self.write_scopes)
+                or len(self.write_scopes) != len(set(self.write_scopes))
+                or ("NONE" in self.write_scopes and self.write_scopes != ("NONE",))):
+            raise ValueError("planning write scopes must be an explicit bounded tuple")
         object.__setattr__(self, "criterion_assessment_contracts", validate_criterion_contracts(
             self.criterion_assessment_contracts, self.maximum_actions,
             self.maximum_consecutive_no_progress_actions, self.repository_evidence_source,

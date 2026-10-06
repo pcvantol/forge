@@ -1354,9 +1354,9 @@ class InstalledDynamicMissionRuntime:
         if not isinstance(contract, Mapping) or any(not contract.get(item) for item in required):
             raise InstalledDynamicMissionError("Mission lacks its canonical admission contract")
         planning = contract["planning"]
-        if not isinstance(planning, Mapping) or any(not planning.get(item) for item in (
-            "write_scopes", "human_gates", "risk_inputs",
-        )):
+        if (not isinstance(planning, Mapping)
+                or not isinstance(planning.get("write_scopes"), list)
+                or any(not planning.get(item) for item in ("human_gates", "risk_inputs"))):
             raise InstalledDynamicMissionError("Mission admission planning authority is incomplete")
         return contract
 

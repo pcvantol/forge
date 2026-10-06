@@ -268,6 +268,27 @@ class CodexCliSessionTests(unittest.TestCase):
         self.assertNotIn("private model output", json.dumps(evidence[-1]["diagnostic"]))
         self.assertEqual(evidence[-1]["observed_token_usage"], {"input_tokens": 100, "output_tokens": 50})
 
+    def test_explicit_empty_write_authority_restricts_provider_schema_and_proposal(self):
+        self.configure()
+        runner = Runner(document())
+        policy = DerivationPolicy((), self.policy.required_human_gates, self.policy.required_risk_inputs)
+        response = self.provider(runner).invoke(
+            self.request(), approved_scopes=("planner-contract",), derivation_policy=policy,
+        )
+        self.assertEqual(response.proposals[0].write_scopes, ())
+        properties = runner.schemas[0]["properties"]["result"]["anyOf"][0]["properties"]["proposals"]["items"]["properties"]
+        self.assertEqual(properties["write_scopes"]["maxItems"], 0)
+        ActionDerivationValidator().validate(response.proposals, self.snapshot, self.input, policy)
+
+        broader = document()
+        broader["result"]["proposals"][0]["write_scopes"] = ["forge/planner"]
+        with self.assertRaises(ProposalValidationError):
+            ActionDerivationValidator().validate(
+                self.provider(Runner(broader)).invoke(
+                    self.request(), approved_scopes=("planner-contract",), derivation_policy=policy,
+                ).proposals, self.snapshot, self.input, policy,
+            )
+
     def test_missing_invalid_or_exceeded_usage_never_materializes_proposals(self):
         self.configure()
         cases = [({}, "CODEX_TOKEN_USAGE_UNAVAILABLE"),

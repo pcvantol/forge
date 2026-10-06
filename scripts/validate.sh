@@ -9,7 +9,7 @@ PY
 
 python3 -m compileall -q forge tests
 if [[ "${FORGE_WITH_COVERAGE:-0}" == "1" ]]; then
-  python3 -m coverage run --source=forge -m unittest discover -s tests -v
+  python3 -m coverage run --concurrency=thread --source=forge -m unittest discover -s tests -v
   python3 -m coverage json -o forge-coverage.json
 else
   python3 -m unittest discover -s tests -v

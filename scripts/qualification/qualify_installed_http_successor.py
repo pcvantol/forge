@@ -8,7 +8,7 @@ The EP simulator speaks the real versioned HTTP boundary in the parent process.
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
@@ -16,6 +16,8 @@ from importlib.metadata import distribution
 import json
 import os
 from pathlib import Path
+import shutil
+import socket
 import subprocess
 import sys
 from threading import Lock
@@ -68,6 +70,66 @@ SCENARIOS = (
     "assurance-blocked", "budget-exhausted", "ambiguous",
 )
 PRODUCER_CANDIDATE_SCENARIOS = ("ambiguous-recovered",)
+PROVIDER_CASES = ("unavailable", "not-started", "local-rejected", "invalid-output",
+                  "scope-expansion", "ambiguous")
+
+
+def _child_env(root: Path) -> dict[str, str]:
+    """Give every scenario an isolated identity, configuration and scratch root."""
+    home, scratch, config = (root / name for name in ("home", "scratch", "config"))
+    for directory in (home, scratch, config, config / "gh", config / "codex"):
+        directory.mkdir(parents=True, exist_ok=True)
+    return {
+        "HOME": str(home), "TMPDIR": str(scratch), "TMP": str(scratch), "TEMP": str(scratch),
+        "XDG_CONFIG_HOME": str(config), "GH_CONFIG_DIR": str(config / "gh"),
+        "CODEX_HOME": str(config / "codex"), "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "PATH": "/usr/bin:/bin",
+        "LANG": os.environ.get("LANG", "C.UTF-8"),
+        "NO_PROXY": "127.0.0.1,localhost,::1", "no_proxy": "127.0.0.1,localhost,::1",
+    }
+
+
+def _with_case_cleanup(root: Path, operation, *args):
+    try:
+        return operation(root, *args)
+    finally:
+        for directory in ("home", "scratch", "config"):
+            path = root / directory
+            if path.exists():
+                shutil.rmtree(path)
+
+
+@contextmanager
+def _loopback_only():
+    """Deny nonfixture network from an installed Forge scenario process."""
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+    original_getaddrinfo = socket.getaddrinfo
+
+    def allowed(address):
+        return (isinstance(address, tuple) and address
+                and address[0] in {"127.0.0.1", "::1", "localhost"})
+
+    def checked_connect(sock, address):
+        if not allowed(address):
+            raise PermissionError("qualification denies non-loopback network")
+        return original_connect(sock, address)
+
+    def checked_connect_ex(sock, address):
+        if not allowed(address):
+            raise PermissionError("qualification denies non-loopback network")
+        return original_connect_ex(sock, address)
+
+    def checked_getaddrinfo(host, *args, **kwargs):
+        if host not in {"127.0.0.1", "::1", "localhost"}:
+            raise PermissionError("qualification denies non-loopback name resolution")
+        return original_getaddrinfo(host, *args, **kwargs)
+
+    with patch.object(socket.socket, "connect", checked_connect), \
+         patch.object(socket.socket, "connect_ex", checked_connect_ex), \
+         patch.object(socket, "getaddrinfo", checked_getaddrinfo):
+        yield
 EP_IDENTITY_READBACK_CANDIDATE = {
     "repository": "pcvantol/engineering-platform",
     "revision": "b7fc2c5b39d3d073d026a93f50a8f96a49beb8b3",
@@ -174,8 +236,39 @@ def _installed_wheel(wheel: Path) -> dict[str, Any]:
 
 
 def _open(root: Path, stack: ExitStack, *,
-          credential_case: str = "") -> InstalledDynamicMissionRuntime:
+          credential_case: str = "", provider_case: str = "") -> InstalledDynamicMissionRuntime:
     transport = fixture._CodexTransport(root)
+    if provider_case:
+        original = transport
+
+        def fault_transport(command, **kwargs):
+            if provider_case == "unavailable" and "--version" in command:
+                return subprocess.CompletedProcess(command, 1, "", "")
+            if "exec" not in command:
+                return original(command, **kwargs)
+            fixture._append(root / "provider-attempts.private.json", {"case": provider_case})
+            if provider_case == "not-started":
+                raise OSError("synthetic process start denial")
+            if provider_case == "local-rejected":
+                return subprocess.CompletedProcess(command, 2, "", "error: unexpected argument --output-schema")
+            if provider_case == "ambiguous":
+                raise subprocess.TimeoutExpired(command, 10)
+            if provider_case == "invalid-output":
+                output = Path(command[command.index("--output-last-message") + 1])
+                output.write_text('{"result":{"kind":"proposals","proposals":[{"unbound":true}]}}')
+                return subprocess.CompletedProcess(
+                    command, 0, '{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}\n', "",
+                )
+            if provider_case == "scope-expansion":
+                result = original(command, **kwargs)
+                output = Path(command[command.index("--output-last-message") + 1])
+                document = json.loads(output.read_text())
+                document["result"]["proposals"][0]["write_scopes"] = ["unapproved/source"]
+                output.write_text(json.dumps(document))
+                return result
+            raise RuntimeError("unsupported provider fault case")
+
+        transport = fault_transport
     checker = CodexCliSessionReadinessChecker(runner=transport, path_usable=lambda _: True)
     stack.enter_context(patch.object(composition.MacOSGeneratedUIDIdentityAdapter, "resolve",
                                      return_value=fixture.IDENTITY))
@@ -525,7 +618,8 @@ def _run_phase(root: Path, scenario: str, phase: str, endpoint: str, wheel: Path
     command = [sys.executable, "-I", str(Path(__file__).resolve()),
                "--wheel", str(wheel), "--output-dir", str(root), "--scenario", scenario,
                "--phase", phase, "--endpoint", endpoint]
-    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90)
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
+                            env=_child_env(root))
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed {scenario}/{phase} failed; see private phase log")
@@ -537,7 +631,8 @@ def _run_governance_phase(root: Path, case: str, phase: str,
     command = [sys.executable, "-I", str(Path(__file__).resolve()),
                "--wheel", str(wheel), "--output-dir", str(root),
                "--governance-case", case, "--phase", phase, "--endpoint", endpoint]
-    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90)
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
+                            env=_child_env(root))
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed governance {case}/{phase} failed; see private phase log")
@@ -683,7 +778,8 @@ def _run_preflight_phase(root: Path, case: str, phase: str,
     command = [sys.executable, "-I", str(Path(__file__).resolve()),
                "--wheel", str(wheel), "--output-dir", str(root),
                "--preflight-case", case, "--phase", phase, "--endpoint", endpoint]
-    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90)
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
+                            env=_child_env(root))
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed preflight {case}/{phase} failed; see private phase log")
@@ -1011,10 +1107,109 @@ def _run_preflight_child(args: argparse.Namespace, parser: argparse.ArgumentPars
                          root: Path) -> bool:
     if not args.phase or not args.phase.startswith("preflight-"):
         return False
-    if not args.preflight_case or not args.endpoint or args.scenario or args.governance_case:
+    if not args.preflight_case or not args.endpoint or args.scenario or args.governance_case or args.provider_case:
         parser.error("preflight child phase requires case and loopback endpoint")
-    _preflight_phase(root, args.preflight_case, args.phase, args.endpoint)
+    with _loopback_only():
+        _preflight_phase(root, args.preflight_case, args.phase, args.endpoint)
     return True
+
+
+def _provider_phase(root: Path, case: str, phase: str, endpoint: str) -> None:
+    if phase == "provider-stage":
+        _prepare(root, case, endpoint, start=False, capture_phase=phase)
+        return
+    with ExitStack() as stack:
+        runtime = _open(root, stack, provider_case=case)
+        mission_id = fixture._read(root / "population.private.json")["mission_id"]
+        before = runtime.states.get(mission_id)
+        failure = None
+        try:
+            if before.status.value == "APPROVED_PLANNABLE":
+                runtime.start(mission_id, _initial_truth())
+            else:
+                runtime.resume(mission_id)
+        except Exception as error:
+            failure = {"type": type(error).__name__}
+        state = _capture(root, runtime, phase)
+        attempts = [json.loads(row["document"]) for row in runtime.database._connection.execute(
+            "SELECT document FROM action_derivations ORDER BY derivation_id"
+        ).fetchall()]
+        fixture._write(root / f"{phase}.provider.private.json", {
+            "failure": failure, "status": state["status"], "pid": os.getpid(),
+            "attempts": len(fixture._read(root / "provider-attempts.private.json", [])),
+            "durable_attempts": [{
+                "derivation_id": item["derivation_id"], "processing_phase": item["processing_phase"],
+                "lifecycle": item["lifecycle"], "error_code": item.get("error_code"),
+            } for item in attempts],
+            "durable_results": runtime.database._connection.execute(
+                "SELECT COUNT(*) FROM action_derivation_results"
+            ).fetchone()[0],
+        })
+
+
+def _run_provider_phase(root: Path, case: str, phase: str,
+                        endpoint: str, wheel: Path) -> dict:
+    command = [sys.executable, "-I", str(Path(__file__).resolve()),
+               "--wheel", str(wheel), "--output-dir", str(root),
+               "--provider-case", case, "--phase", phase, "--endpoint", endpoint]
+    result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
+                            env=_child_env(root))
+    (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
+    if result.returncode:
+        raise RuntimeError(f"installed provider {case}/{phase} failed; see private phase log")
+    return fixture._read(root / f"{phase}.state.private.json" if phase == "provider-stage"
+                         else root / f"{phase}.provider.private.json")
+
+
+def _provider_case(root: Path, case: str, wheel: Path) -> dict:
+    root.mkdir(parents=True)
+    simulator = EpSimulatorState(
+        project_id=PROJECT, repository_id=fixture.SOURCE.repository_id,
+        repository_identity=fixture.SOURCE.github_repository, consumer_id=CONSUMER,
+        instance_id=INSTANCE, bearer_token=TOKEN,
+    )
+    with EpSimulatorServer(simulator) as server:
+        staged = _run_provider_phase(root, case, "provider-stage", server.base_url, wheel)
+        first = _run_provider_phase(root, case, "provider-first", server.base_url, wheel)
+        repeat = _run_provider_phase(root, case, "provider-repeat", server.base_url, wheel)
+    states = [fixture._read(root / f"{phase}.state.private.json") for phase in (
+        "provider-stage", "provider-first", "provider-repeat",
+    )]
+    processes = [fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in (
+        "provider-stage", "provider-first", "provider-repeat",
+    )]
+    if (len(set(processes)) != 3 or staged["status"] != "APPROVED_PLANNABLE"
+            or first["status"] not in {"BLOCKED", "FAILED", "APPROVED_PLANNABLE"}
+            or states[1]["actions"] or states[2]["actions"]
+            or states[1]["intents"] or states[2]["intents"]
+            or simulator.submission_ids()
+            or any(event["event"] == "submission_accepted" for event in simulator.audit)):
+        raise RuntimeError(f"{case} escaped the provider denial boundary")
+    if first["attempts"] != (0 if case == "unavailable" else 1) or repeat["attempts"] != first["attempts"]:
+        raise RuntimeError(f"{case} generated again after a failed or uncertain attempt")
+    if states[1] != states[2]:
+        raise RuntimeError(f"{case} changed durable Mission state on fresh-process repeat")
+    expected_phase = {
+        "unavailable": None,
+        "not-started": "GENERATION_NOT_STARTED",
+        "local-rejected": "GENERATION_NOT_STARTED",
+        "invalid-output": "DETERMINISTIC_REJECTION",
+        "scope-expansion": "DETERMINISTIC_REJECTION",
+        "ambiguous": "GENERATION_MAY_HAVE_HAPPENED",
+    }[case]
+    durable = first["durable_attempts"]
+    if (len(durable) != (0 if expected_phase is None else 1)
+            or (expected_phase is not None and (durable[0]["processing_phase"] != expected_phase
+                                                 or durable[0]["lifecycle"] != "FAILED"))
+            or repeat["durable_attempts"] != durable
+            or repeat["durable_results"] != first["durable_results"]):
+        raise RuntimeError(f"{case} did not retain one classified durable attempt")
+    return {
+        "case": case, "status": first["status"], "attempts": first["attempts"],
+        "failure": first["failure"], "repeat_failure": repeat["failure"],
+        "durable_attempts": durable, "durable_results": first["durable_results"],
+        "submissions": 0, "forge_processes": len(processes),
+    }
 
 
 def main() -> int:
@@ -1025,10 +1220,12 @@ def main() -> int:
     parser.add_argument("--scenario", choices=SCENARIOS + PRODUCER_CANDIDATE_SCENARIOS)
     parser.add_argument("--governance-case", choices=GOVERNANCE_CASES)
     parser.add_argument("--preflight-case", choices=tuple(PREFLIGHT_CASES))
+    parser.add_argument("--provider-case", choices=PROVIDER_CASES)
     parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b",
                                             *(f"poll-{index}" for index in range(1, 7)), "accept",
                                             "accept-replay", "completed-resume", "readback",
                                             "ambiguous-replay", "governance-first", "governance-repeat",
+                                            "provider-stage", "provider-first", "provider-repeat",
                                             "preflight-stage", "preflight-first", "preflight-repeat"))
     parser.add_argument("--endpoint")
     args = parser.parse_args()
@@ -1054,18 +1251,27 @@ def main() -> int:
     if _run_preflight_child(args, parser, root):
         return 0
     if args.phase:
+        if args.phase.startswith("provider-"):
+            if not args.provider_case or not args.endpoint or args.scenario or args.governance_case or args.preflight_case:
+                parser.error("provider child phase requires one case and loopback endpoint")
+            with _loopback_only():
+                _provider_phase(root, args.provider_case, args.phase, args.endpoint)
+            return 0
         if args.phase.startswith("governance-"):
             if not args.governance_case or not args.endpoint or args.scenario or args.preflight_case:
                 parser.error("governance child phase requires case and loopback endpoint")
-            _governance_phase(root, args.governance_case, args.phase, args.endpoint)
+            with _loopback_only():
+                _governance_phase(root, args.governance_case, args.phase, args.endpoint)
             return 0
-        if not args.scenario or not args.endpoint or args.governance_case or args.preflight_case:
+        if not args.scenario or not args.endpoint or args.governance_case or args.preflight_case or args.provider_case:
             parser.error("child phase requires scenario and loopback endpoint")
-        _phase(root, args.scenario, args.phase, args.endpoint)
+        with _loopback_only():
+            _phase(root, args.scenario, args.phase, args.endpoint)
         return 0
     if root.exists() and any(root.iterdir()):
         raise RuntimeError("qualification output directory must be fresh")
-    if sum(bool(value) for value in (args.governance_case, args.scenario, args.preflight_case)) > 1:
+    if sum(bool(value) for value in (args.governance_case, args.scenario,
+                                     args.preflight_case, args.provider_case)) > 1:
         parser.error("focused qualification filters cannot be combined")
     root.mkdir(parents=True, exist_ok=True)
     try:
@@ -1097,6 +1303,7 @@ def main() -> int:
               "ep_simulator_contract": SIMULATOR_CONTRACT_VERSION,
               "required_preflight_cases": list(PREFLIGHT_CASES),
               "required_governance_cases": list(GOVERNANCE_CASES),
+              "required_provider_cases": list(PROVIDER_CASES),
               "required_http_scenarios": list(SCENARIOS),
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
@@ -1108,12 +1315,14 @@ def main() -> int:
     preflight_cases = ()
     if args.preflight_case:
         preflight_cases = (args.preflight_case,)
-    elif not args.governance_case and not args.scenario:
+    elif not args.governance_case and not args.scenario and not args.provider_case:
         preflight_cases = PREFLIGHT_CASES
     preflight = []
     for case in preflight_cases:
         try:
-            preflight.append(_preflight_case(root / "preflight-matrix" / case, case, args.wheel.resolve()))
+            preflight.append(_with_case_cleanup(
+                root / "preflight-matrix" / case, _preflight_case, case, args.wheel.resolve(),
+            ))
         except Exception as error:
             report.update(result="FAIL", preflight_matrix=preflight,
                           failure={"preflight_case": case, "type": type(error).__name__})
@@ -1129,12 +1338,14 @@ def main() -> int:
     governance_cases = ()
     if args.governance_case:
         governance_cases = (args.governance_case,)
-    elif not args.scenario:
+    elif not args.scenario and not args.provider_case:
         governance_cases = GOVERNANCE_CASES
     governance = []
     for case in governance_cases:
         try:
-            governance.append(_governance_case(root / "governance-matrix" / case, case, args.wheel.resolve()))
+            governance.append(_with_case_cleanup(
+                root / "governance-matrix" / case, _governance_case, case, args.wheel.resolve(),
+            ))
         except Exception as error:
             report.update(result="FAIL", governance_matrix=governance,
                           failure={"governance_case": case, "type": type(error).__name__})
@@ -1147,10 +1358,31 @@ def main() -> int:
         fixture._write(root / "installed-http-successor.public.json", report)
         print(json.dumps(report, sort_keys=True))
         return 0
+    provider_cases = (args.provider_case,) if args.provider_case else (
+        PROVIDER_CASES if not args.scenario else ()
+    )
+    provider_results = []
+    for case in provider_cases:
+        try:
+            provider_results.append(_with_case_cleanup(
+                root / "provider-matrix" / case, _provider_case, case, args.wheel.resolve(),
+            ))
+        except Exception as error:
+            report.update(result="FAIL", provider_matrix=provider_results,
+                          failure={"provider_case": case, "type": type(error).__name__})
+            fixture._write(root / "installed-http-successor.public.json", report)
+            print(json.dumps(report, sort_keys=True))
+            return 1
+    report["provider_matrix"] = provider_results
+    if args.provider_case:
+        report["result"] = "FOCUSED_PASS"
+        fixture._write(root / "installed-http-successor.public.json", report)
+        print(json.dumps(report, sort_keys=True))
+        return 0
     summaries = []
     for scenario in scenarios:
         try:
-            summaries.append(_scenario(root / scenario, scenario, args.wheel.resolve()))
+            summaries.append(_with_case_cleanup(root / scenario, _scenario, scenario, args.wheel.resolve()))
         except Exception as error:
             report.update(result="FAIL", scenarios=summaries,
                           failure={"scenario": scenario, "type": type(error).__name__})

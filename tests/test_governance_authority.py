@@ -64,6 +64,27 @@ class GovernanceAuthorityTests(unittest.TestCase):
         self.assertEqual(intake.validate_approved_evidence(envelope, self.repository), envelope)
         self.assertEqual(self.db._connection.execute("SELECT COUNT(*) FROM mission_state").fetchone()[0], 0)
 
+    def test_explicit_empty_write_scope_binds_canonical_approval_without_a_dummy_grant(self):
+        planning = replace(self.planning(), write_scopes=())
+        self.assertEqual(planning.to_dict()["write_scopes"], [])
+        self.assertEqual(ArchitecturePlanningEvidence.from_dict(planning.to_dict()), planning)
+        CanonicalBusinessWorkspace(self.repository, self.context).approve(
+            decision_id="business-read-only", candidate_id="candidate-read-only", revision="1",
+            scope=planning.scope, gates=("business",),
+        )
+        CanonicalArchitectureWorkspace(self.repository, self.context).approve(
+            decision_id="architecture-read-only", candidate_id="candidate-read-only",
+            revision="1", planning=planning,
+        )
+        envelope = MissionPlanningEvidenceEnvelope.compose(
+            self.repository, subject_id="candidate-read-only", subject_revision="1",
+            business_decision_id="business-read-only", architecture_decision_id="architecture-read-only",
+            planning=planning,
+        )
+        self.assertEqual(envelope.validate(self.repository), envelope)
+        with self.assertRaises(ValueError):
+            replace(planning, write_scopes=("NONE", "source/**"))
+
     def test_workspace_cannot_bind_an_arbitrary_database_as_canonical_authority(self):
         with tempfile.TemporaryDirectory() as other:
             other_db = RuntimeDatabase(Path(other), path=Path(other) / "runtime.db")
