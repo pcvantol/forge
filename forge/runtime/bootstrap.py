@@ -271,7 +271,7 @@ class RuntimeBootstrap:
 
     def open_read_snapshot(self):
         """Open an existing installed Runtime as one validated, nonmutating snapshot."""
-        from .database import RuntimeDatabase
+        from .database import RuntimeDatabase, RuntimeMaintenanceActive
 
         if not self.resolver.installation_scoped:
             raise RuntimeResolutionError("read snapshot requires an installed Forge data root")
@@ -293,6 +293,13 @@ class RuntimeBootstrap:
             database._connection = connection
             database._runtime_placement = None
             database.validate_integrity(record_status=False)
+            maintenance = connection.execute(
+                "SELECT active_operation_id FROM operational_reset_state WHERE singleton=1"
+            ).fetchone()
+            if maintenance is not None and maintenance[0] is not None:
+                raise RuntimeMaintenanceActive(
+                    "Forge runtime is fenced by operational reset maintenance: " + str(maintenance[0])
+                )
             runtime_id = database.runtime_identity.runtime_id
             if marker.read_text(encoding="utf-8").strip() != runtime_id:
                 raise RuntimeResolutionError("read snapshot marker does not match Runtime storage")

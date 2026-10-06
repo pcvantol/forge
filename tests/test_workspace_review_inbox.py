@@ -8,6 +8,7 @@ from hashlib import sha256
 from http.client import HTTPConnection
 import json
 from pathlib import Path
+import sqlite3
 from threading import Barrier, Thread
 from types import SimpleNamespace
 import unittest
@@ -22,6 +23,7 @@ from forge.provider_security import (
     PlanningProviderSecurityService, ProviderAuthenticationMode,
 )
 from forge.runtime import RuntimeBootstrap
+from forge.runtime.database import RuntimeMaintenanceActive
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
 from forge.server_runtime import ForgeServerRuntime, existing_instance
 from forge.state.mission_state import MissionExecutionStatus
@@ -366,6 +368,27 @@ class WorkspaceReviewInboxTests(unittest.TestCase):
                 item = scoped_item(reader, principal, mission.id)
         self.assertEqual(item["lifecycle_state"], "APPROVED_PLANNABLE")
         self.assertEqual(item["mission_state_revision"], before.revision)
+
+    def test_read_snapshot_fails_closed_during_operational_reset(self) -> None:
+        mission, envelope = self.fixture._mission_and_envelope(identity_suffix="-review-reset")
+        self.fixture.runtime.admit(mission, envelope)
+        token, _ = self._issue("reviewer-reset", (mission.id,))
+        server, _ = self._server()
+        privileged = sqlite3.connect(self.root / "forge.db")
+        try:
+            privileged.create_function("forge_maintenance_write_permitted", 0, lambda: 1)
+            privileged.execute(
+                "UPDATE operational_reset_state SET active_operation_id=? WHERE singleton=1",
+                ("forge-reset-review-test",),
+            )
+            privileged.commit()
+        finally:
+            privileged.close()
+        with self.assertRaises(RuntimeMaintenanceActive):
+            RuntimeBootstrap(data_root=self.root).open_read_snapshot()
+        status, body = _request(server.server.server_port, "GET", "/v1/reviews", token)
+        self.assertEqual(status, 503, body)
+        self.assertEqual(body["error"]["code"], "REVIEW_UNAVAILABLE")
 
     def test_real_runtime_composition_records_one_scoped_decision(self) -> None:
         mission_id = self._mission("-review-real-composition", paused=True)

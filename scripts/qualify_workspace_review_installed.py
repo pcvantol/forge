@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+from zipfile import ZipFile
 
 import forge
 import forge.governed_continuation
@@ -38,12 +39,38 @@ def main() -> int:
     ).strip()
     if revision != arguments.expected_source_revision:
         raise AssertionError("source revision does not match the qualified commit")
+    if subprocess.check_output(
+        ["git", "-C", str(SOURCE), "status", "--porcelain"], text=True,
+    ).strip():
+        raise AssertionError("source checkout is not clean at the qualified commit")
     if not arguments.wheel.is_file():
         raise AssertionError("qualification wheel is absent")
     if not str(Path(forge.__file__).resolve()).startswith(str(Path(sys.prefix).resolve())):
         raise AssertionError("Forge is not imported from the selected Python environment")
     if Path(forge.__file__).resolve().is_relative_to(SOURCE):
         raise AssertionError("Forge is imported from the source checkout")
+    installed_root = Path(forge.__file__).resolve().parent
+    wheel_members: set[str] = set()
+    with ZipFile(arguments.wheel) as wheel:
+        for name in wheel.namelist():
+            if not name.startswith("forge/") or name.endswith("/"):
+                continue
+            wheel_members.add(name)
+            installed = installed_root / name.removeprefix("forge/")
+            if not installed.is_file() or installed.read_bytes() != wheel.read(name):
+                raise AssertionError("installed Forge bytes differ from selected wheel: " + name)
+    if not wheel_members:
+        raise AssertionError("selected wheel has no Forge product payload")
+    with ZipFile(arguments.wheel) as wheel:
+        wheel_metadata = [name for name in wheel.namelist()
+                          if name.endswith((".dist-info/METADATA", ".dist-info/WHEEL",
+                                            ".dist-info/entry_points.txt"))]
+        if not any(name.endswith(".dist-info/METADATA") for name in wheel_metadata):
+            raise AssertionError("selected wheel has no distribution metadata")
+        for name in wheel_metadata:
+            installed = installed_root.parent / name
+            if not installed.is_file() or installed.read_bytes() != wheel.read(name):
+                raise AssertionError("installed Forge metadata differ from selected wheel: " + name)
     for contract in CONTRACTS:
         packaged = files("forge").joinpath("api", contract).read_bytes()
         if packaged != (SOURCE / "forge" / "api" / contract).read_bytes():
@@ -63,6 +90,8 @@ def main() -> int:
         and getattr(module, "__file__", None) is not None
     ]
     if any(path.is_relative_to(SOURCE) or "site-packages" not in path.parts
+           or not path.is_relative_to(installed_root)
+           or "forge/" + str(path.relative_to(installed_root)) not in wheel_members
            for path in product_modules):
         raise AssertionError("a Forge product module came from the source checkout")
     receipt = {
@@ -71,6 +100,7 @@ def main() -> int:
         "installed_forge": str(Path(forge.__file__).resolve()),
         "installed_noneditable": True,
         "product_modules_checked": len(product_modules),
+        "wheel_product_files_verified": len(wheel_members),
         "contracts_checked": list(CONTRACTS),
         "suite": "WorkspaceReviewInboxTests",
         "tests_run": result.testsRun,
