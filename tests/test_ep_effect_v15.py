@@ -207,6 +207,10 @@ class EffectV15HttpTests(unittest.TestCase):
              "EP_EFFECT_SUBJECT_SCHEMA_INVALID"),
             ("subject-bool-ordinal", lambda r, t, b: r["subject"].__setitem__("repair_ordinal", False),
              "EP_EFFECT_SUBJECT_MISMATCH"),
+            ("review-bool-ordinal", lambda r, t, b: r["assurance_reviews"][0].__setitem__("subject", {**r["subject"], "repair_ordinal": False}),
+             "EP_EFFECT_REVIEWS_UNQUALIFIED"),
+            ("profile-bool-ordinal", lambda r, t, b: r["validation_profile"].__setitem__("subject", {**r["subject"], "repair_ordinal": False}),
+             "EP_EFFECT_PROFILE_INPUTS_MISMATCH"),
             ("delivery-bool-pr", lambda r, t, b: r["delivery"].__setitem__("pull_request", True),
              "EP_EFFECT_DELIVERY_SCHEMA_INVALID"),
             ("malformed-finding", lambda r, t, b: r["assurance_reviews"][0]["findings"].append("bad"),
@@ -231,6 +235,23 @@ class EffectV15HttpTests(unittest.TestCase):
                     terminal_evidence(request, current_readback, raw, current_result,
                                       host_id="sim-ep", expected_accepted_digest=(
                                           readback["submission"]["accepted_request_digest"]))
+
+        for field in ("subject-ordinal", "qualification", "control-exit"):
+            with self.subTest(terminal_projection=field):
+                terminal = deepcopy(original_terminal)
+                projection = terminal["effect_result"]
+                if field == "subject-ordinal":
+                    projection["subject"]["repair_ordinal"] = False
+                elif field == "qualification":
+                    projection["effect_qualified"] = 1
+                else:
+                    projection["validation_controls"][0]["exit_code"] = False
+                raw = json.dumps(terminal, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+                current_readback = deepcopy(readback)
+                current_readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + sha256(raw).hexdigest()
+                with self.assertRaisesRegex(ValueError, "EP_EFFECT_TERMINAL_RESULT_MISMATCH"):
+                    terminal_evidence(request, current_readback, raw, result, host_id="sim-ep",
+                        expected_accepted_digest=readback["submission"]["accepted_request_digest"])
 
     def test_document_scope_cannot_publish_executable_file(self):
         request = _effect_request("DOCUMENTATION_ONLY", "GIT")

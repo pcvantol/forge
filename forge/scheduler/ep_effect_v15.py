@@ -130,7 +130,7 @@ def terminal_evidence(
         raise ValueError("EP_EFFECT_TERMINAL_V16_REQUIRED")
     _host_execution(terminal)
     result = _object(result, _RESULT_KEYS, "RESULT")
-    if terminal["effect_result"] != {key: value for key, value in result.items() if key != "artifact"}:
+    if _digest(terminal["effect_result"]) != _digest({key: value for key, value in result.items() if key != "artifact"}):
         raise ValueError("EP_EFFECT_TERMINAL_RESULT_MISMATCH")
     if (result["contract_version"] != "1.1" or result["outcome"] != "COMPLETE"
             or result["terminal"] is not True or result["effect_qualified"] is not True):
@@ -237,7 +237,8 @@ def terminal_evidence(
             or report_digest != _digest(artifact_ref["content"])):
         raise ValueError("EP_EFFECT_REPORT_BYTES_MISMATCH")
     envelope = _object(artifact_ref["content"], _REPORT_KEYS, "REPORT_ENVELOPE")
-    if (envelope["contract_version"] != "1.0" or envelope["artifact_type"] != "EP_EFFECT_RESULT"
+    if (type(envelope["repair_ordinal"]) is not int or not 0 <= envelope["repair_ordinal"] <= 3
+            or envelope["contract_version"] != "1.0" or envelope["artifact_type"] != "EP_EFFECT_RESULT"
             or envelope["contract"] != effect.to_dict()
             or envelope["contract_digest"] != _digest(effect.to_dict())[7:]):
         raise ValueError("EP_EFFECT_APPROVED_CONTRACT_MISMATCH")
@@ -357,7 +358,7 @@ def terminal_evidence(
         "version", "subject", "controls", "validation_bindings"}), "PROFILE")
     bindings = profile["validation_bindings"]
     expected_bindings = ["repository_json"] if effect.policy.mode == "BOUNDED_REPOSITORY_CHANGE" else []
-    if (profile["version"] != "effect-validation@1.0" or profile["subject"] != subject
+    if (profile["version"] != "effect-validation@1.0" or _digest(profile["subject"]) != _digest(subject)
             or profile["controls"] != [[item["validation_id"], item["authority"]] for item in controls]
             or not isinstance(bindings, list)
             or [item.get("validation_id") for item in bindings if isinstance(item, Mapping)] != expected_bindings
@@ -421,7 +422,7 @@ def terminal_evidence(
                    or any(not isinstance(item[key], str) or not item[key] for key in (
                        "reviewer", "status", "profile_digest", "invocation_id", "contract_version",
                        "started_at", "completed_at"))
-                   or item.get("contract_version") != "3.0" or item.get("subject") != subject
+                   or item.get("contract_version") != "3.0" or _digest(item.get("subject")) != _digest(subject)
                    or item.get("profile_digest") not in profile_digests
                    or item.get("invocation_id") != f"{run['id']}:{item.get('reviewer')}:effect:{envelope['repair_ordinal']}"
                    or not isinstance(item.get("findings"), list)

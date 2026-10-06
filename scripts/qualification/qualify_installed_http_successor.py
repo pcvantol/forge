@@ -149,7 +149,8 @@ _EFFECT_REJECTIONS = {
                     "effect-design-git", "effect-repository-change")},
     "effect-read-only-host-mutated": ("effect-read-only", "host-mutated"),
     **{"effect-read-only-" + fault: ("effect-read-only", fault)
-       for fault in ("review-schema-invalid", "control-time-invalid", "subject-schema-invalid")},
+       for fault in ("review-schema-invalid", "control-time-invalid", "subject-schema-invalid",
+                    "review-bool-ordinal", "profile-bool-ordinal", "envelope-bool-ordinal")},
     "effect-read-only-target-effect-probes": ("effect-read-only", "target-effect-probes"),
     "effect-repository-change-write-no-output": ("effect-repository-change", "write-no-output"),
     **{name + "-document-executable": (name, "document-executable")
@@ -248,7 +249,8 @@ def _required_fie_cases(family: str, variant: str) -> tuple[str, ...]:
         return (positive, *("scenario:" + base + "-" + fault for fault in (
             "controls-failed", "review-open", "profile-stale")),
                 *("scenario:effect-read-only-" + fault for fault in (
-                    "review-schema-invalid", "control-time-invalid", "subject-schema-invalid")))
+                    "review-schema-invalid", "control-time-invalid", "subject-schema-invalid",
+                    "review-bool-ordinal", "profile-bool-ordinal", "envelope-bool-ordinal")))
     if family == "FIE-25":
         return (positive, "scenario:" + base + "-lost-ack")
     if family == "FIE-26":
@@ -1675,10 +1677,25 @@ def _faulted_effect_documents(fault: str, readback: dict, result: dict,
         result["validation_controls"][0]["started_at"] = None
     elif fault == "subject-schema-invalid":
         result["subject"]["unexpected"] = True
+    elif fault == "review-bool-ordinal":
+        result["assurance_reviews"][0]["subject"] = {**result["subject"], "repair_ordinal": False}
+    elif fault == "profile-bool-ordinal":
+        result["validation_profile"]["subject"] = {**result["subject"], "repair_ordinal": False}
+        profile_digest = "sha256:" + sha256(json.dumps(result["validation_profile"], sort_keys=True,
+            separators=(",", ":"), ensure_ascii=True).encode("ascii")).hexdigest()
+        for item in (*result["validation_controls"], *result["assurance_reviews"]):
+            item["profile_digest"] = profile_digest
+    elif fault == "envelope-bool-ordinal":
+        result["artifact"]["content"]["repair_ordinal"] = False
+        result["artifact"]["content"]["invocation_id"] = f"{terminal['run']['id']}:effect:False"
+        for index, item in enumerate(result["validation_controls"]):
+            item["command_id"] = f"{terminal['run']['id']}:effect:False:{index}"
+        for item in result["assurance_reviews"]:
+            item["invocation_id"] = f"{terminal['run']['id']}:{item['reviewer']}:effect:False"
     else:
         raise ValueError("unknown negative effect fixture")
     if fault in {"document-executable", "stale-binding", "write-no-output",
-                 "report-useless", "criterion-irrelevant"}:
+                 "report-useless", "criterion-irrelevant", "envelope-bool-ordinal"}:
         envelope = result["artifact"]["content"]
         report_digest = "sha256:" + sha256(json.dumps(
             envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
@@ -1978,6 +1995,9 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 "review-schema-invalid": "EP_EFFECT_REVIEWS_UNQUALIFIED",
                 "control-time-invalid": "EP_EFFECT_CONTROLS_UNQUALIFIED",
                 "subject-schema-invalid": "EP_EFFECT_SUBJECT_SCHEMA_INVALID",
+                "review-bool-ordinal": "EP_EFFECT_REVIEWS_UNQUALIFIED",
+                "profile-bool-ordinal": "EP_EFFECT_PROFILE_INPUTS_MISMATCH",
+                "envelope-bool-ordinal": "EP_EFFECT_APPROVED_CONTRACT_MISMATCH",
                 "host-mutated": "EP_EFFECT_FORBIDDEN_TARGET_MUTATION",
                 "document-executable": "EP_EFFECT_GIT_REPORT_SCOPE_INVALID",
                 "profile-stale": "EP_EFFECT_PROFILE_DIGEST_MISMATCH",
