@@ -29,7 +29,8 @@ jobs:
         env:
           FORGE_COVERAGE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python scripts/check_changed_product_coverage.py forge-coverage.json
-      - name: Qualify installed HTTP evidence-driven successor
+      - name: Forge inner-loop integration (mock EP)
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           mkdir "$RUNNER_TEMP/forge-wheel"
@@ -38,6 +39,7 @@ jobs:
           test "${#wheel[@]}" -eq 1
           python -m venv "$RUNNER_TEMP/forge-installed"
           "$RUNNER_TEMP/forge-installed/bin/pip" install --no-deps "${wheel[0]}"
+          "$RUNNER_TEMP/forge-installed/bin/pip" install 'jsonschema==4.26.0'
           cd "$RUNNER_TEMP"
           set +e
           "$RUNNER_TEMP/forge-installed/bin/python" -I \

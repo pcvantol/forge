@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+from pathlib import PurePosixPath
 import re
 from typing import Any, Mapping
 
@@ -15,6 +16,7 @@ from forge.models.execution_host import (
     ExecutionEvidenceOutcome, ExecutionHostEvidence, ExecutionRepositoryEvidence,
     ExecutionRequest,
 )
+from forge.scheduler.ep_v12 import _host_execution
 
 
 _SHA = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -41,6 +43,11 @@ _BASE_CONTROLS = frozenset({
     "effect_source_binding", "effect_output_integrity", "effect_scope_containment",
     "report_criteria_contract",
 })
+_DOCUMENT_SUFFIXES = frozenset({".md", ".txt", ".rst", ".adoc", ".mmd", ".puml"})
+_ORDERED_BASE_CONTROLS = (
+    "effect_source_binding", "effect_output_integrity", "effect_scope_containment",
+    "report_criteria_contract",
+)
 _REVIEW_SURFACES = {
     "quality": frozenset({"approved_criteria", "source_evidence", "meaningful_result",
                           "output_scope", "document_design_content", "validation_controls",
@@ -113,6 +120,7 @@ def terminal_evidence(
     terminal = _object(terminal, _TERMINAL_KEYS, "TERMINAL")
     if terminal["artifact_type"] != "EP_TERMINAL_EVIDENCE" or terminal["contract_version"] != "1.5":
         raise ValueError("EP_EFFECT_TERMINAL_V15_REQUIRED")
+    _host_execution(terminal)
     result = _object(result, _RESULT_KEYS, "RESULT")
     if terminal["effect_result"] != {key: value for key, value in result.items() if key != "artifact"}:
         raise ValueError("EP_EFFECT_TERMINAL_RESULT_MISMATCH")
@@ -154,10 +162,17 @@ def terminal_evidence(
             or run.get("id") != read_run.get("id")
             or run.get("outcome") != read_result.get("outcome")
             or run.get("outcome") != "COMPLETE"
+            or read_run.get("state") != "COMPLETE"
+            or read_run.get("terminal") is not True
+            or read_result.get("terminal") is not True
             or run.get("effect_qualified") is not True
             or not isinstance(run.get("execution_duration_ms"), int)
             or isinstance(run["execution_duration_ms"], bool)
-            or run["execution_duration_ms"] < 0):
+            or run["execution_duration_ms"] <= 0
+            or any(not isinstance(run.get(key), str) or not run[key]
+                   or run[key] != read_run.get(key)
+                   for key in ("execution_started_at", "execution_completed_at"))
+            or run["execution_duration_ms"] != read_run.get("execution_duration_ms")):
         raise ValueError("EP_EFFECT_RUN_MISMATCH")
     if terminal_ref.get("id") != f"terminal-evidence:{run['id']}":
         raise ValueError("EP_EFFECT_TERMINAL_ID_MISMATCH")
@@ -175,6 +190,12 @@ def terminal_evidence(
             or delivery["kind"] != effect.policy.delivery):
         raise ValueError("EP_EFFECT_SOURCE_MISMATCH")
     final_revision = _revision(delivery["revision"], "DELIVERY", nullable=True)
+    read_repository = evidence.get("repository") if isinstance(evidence, Mapping) else None
+    if (not isinstance(read_repository, Mapping)
+            or (read_repository.get("id"), read_repository.get("revision")) !=
+               (repository["id"], final_revision)
+            or read_result.get("delivery_qualified") is not (final_revision is not None)):
+        raise ValueError("EP_EFFECT_READBACK_DELIVERY_MISMATCH")
     if effect.policy.delivery == "EVIDENCE_ONLY":
         if (final_revision is not None or delivery["pull_request"] is not None
                 or run.get("delivery_qualified") is not False
@@ -275,6 +296,8 @@ def terminal_evidence(
             if (not isinstance(item, Mapping) or set(item) != {"path", "content"}
                     or not _source_path(item["path"])
                     or not _in_scope(effect.policy.write_paths, item["path"])
+                    or (effect.policy.mode in {"DOCUMENTATION_ONLY", "ARCHITECTURE_DESIGN_ONLY"}
+                        and PurePosixPath(item["path"]).suffix.casefold() not in _DOCUMENT_SUFFIXES)
                     or item["path"].lower() in output_paths
                     or not isinstance(item["content"], str)
                     or not item["content"].strip()):
@@ -285,14 +308,20 @@ def terminal_evidence(
         raise ValueError("EP_EFFECT_ATTEMPT_BINDING_MISMATCH")
     controls = result["validation_controls"]
     required = set(_BASE_CONTROLS)
+    ordered_required = _ORDERED_BASE_CONTROLS
     if effect.policy.mode in {"DOCUMENTATION_ONLY", "ARCHITECTURE_DESIGN_ONLY"}:
         required.add("document_content_links_schema")
+        ordered_required += ("document_content_links_schema",)
     if effect.policy.mode == "ARCHITECTURE_DESIGN_ONLY":
         required.add("design_criteria_contract")
+        ordered_required += ("design_criteria_contract",)
     if effect.policy.mode == "BOUNDED_REPOSITORY_CHANGE":
         required.add("repository_json")
+        ordered_required += ("repository_json",)
     if (not isinstance(controls, list) or not required <= {item.get("validation_id") for item in controls
                                                           if isinstance(item, Mapping)}
+            or [item.get("validation_id") for item in controls if isinstance(item, Mapping)] !=
+               list(ordered_required)
             or len({item.get("validation_id") for item in controls if isinstance(item, Mapping)}) != len(controls)
             or any(not isinstance(item, Mapping) or set(item) != {
                        "validation_id", "authority", "command_id", "started_at", "completed_at",
@@ -308,6 +337,57 @@ def terminal_evidence(
             or any(item["authority"] != "host_control" for item in controls
                    if item["validation_id"] in required - {"repository_json"})):
         raise ValueError("EP_EFFECT_CONTROL_BINDING_MISMATCH")
+    if effect.policy.mode != "BOUNDED_REPOSITORY_CHANGE":
+        expected_profile = _digest({
+            "version": "effect-validation@1.0", "subject": subject,
+            "controls": [[item["validation_id"], item["authority"]] for item in controls],
+            "validation_bindings": [],
+        })
+        if profile_digests != {expected_profile}:
+            raise ValueError("EP_EFFECT_PROFILE_DIGEST_MISMATCH")
+    terminal_controls = terminal["validation_controls"]
+    if (not isinstance(terminal_controls, Mapping)
+            or terminal_controls.get("contract_version") != "1.0"
+            or terminal_controls.get("status") != "AVAILABLE"
+            or terminal_controls.get("profile_currentness_conflict") is not False
+            or terminal_controls.get("profile_reference") != "effect-validation@1.0"
+            or terminal_controls.get("profile_selection_source") != "accepted_effect_contract"
+            or terminal_controls.get("validation_profile_version") != "effect-validation@1.0"
+            or terminal_controls.get("selected_validation_tier") != effect.policy.mode
+            or terminal_controls.get("required_validation_controls") != list(ordered_required)
+            or terminal_controls.get("candidate_sha") is not None
+            or terminal_controls.get("profile_digest") is not None
+            or terminal_controls.get("currentness") is not None
+            or not isinstance(terminal_controls.get("controls"), Mapping)
+            or set(terminal_controls["controls"]) != required):
+        raise ValueError("EP_EFFECT_TERMINAL_CONTROLS_MISMATCH")
+    for item in controls:
+        observed = terminal_controls["controls"][item["validation_id"]]
+        if (not isinstance(observed, Mapping)
+                or observed.get("validation_id") != item["validation_id"]
+                or observed.get("control_identity") != item["validation_id"]
+                or observed.get("category") != item["authority"]
+                or observed.get("command_id") != item["command_id"]
+                or observed.get("currentness") != envelope["repair_ordinal"]
+                or observed.get("required_for_profile") is not True
+                or observed.get("execution_status") != "EXECUTED"
+                or observed.get("result") != "PASS"
+                or observed.get("exit_code") != 0):
+            raise ValueError("EP_EFFECT_TERMINAL_CONTROL_FAILED")
+    host_execution = terminal["host_execution"]
+    host_start, host_terminal = host_execution["start"], host_execution["terminal"]
+    if (host_start.get("status") != "AVAILABLE"
+            or host_start.get("target_commit") != effect.source_revision
+            or host_terminal.get("status") != "AVAILABLE"
+            or host_terminal.get("worktree_state") != "CLEAN"
+            or host_terminal.get("activity", {}).get("provider_invocations", 0) < 1
+            or host_terminal.get("activity", {}).get("host_validation_actions", 0) < len(controls)):
+        raise ValueError("EP_EFFECT_HOST_EXECUTION_MISMATCH")
+    if (effect.policy.delivery == "EVIDENCE_ONLY"
+            and (any(host_terminal["diff"].values())
+                 or host_terminal["inventory_digest"] != host_start["inventory_digest"]
+                 or host_terminal["tracked_file_count"] != host_start["tracked_file_count"])):
+        raise ValueError("EP_EFFECT_FORBIDDEN_TARGET_MUTATION")
     reviews = result["assurance_reviews"]
     if (not isinstance(reviews, list) or len(reviews) != 2
             or [item.get("reviewer") for item in reviews if isinstance(item, Mapping)] != ["quality", "security"]
@@ -315,8 +395,20 @@ def terminal_evidence(
                    or item.get("contract_version") != "3.0" or item.get("subject") != subject
                    or item.get("profile_digest") not in profile_digests
                    or item.get("invocation_id") != f"{run['id']}:{item.get('reviewer')}:effect:{envelope['repair_ordinal']}"
-                   or any(finding.get("blocking") is not False or finding.get("disposition") != "NON_BLOCKING"
-                          for finding in item.get("findings", ()) if isinstance(finding, Mapping))
+                   or not isinstance(item.get("findings"), list)
+                   or any(not isinstance(finding, Mapping)
+                          or finding.get("blocking") is not False
+                          or finding.get("severity") not in {"LOW", "MEDIUM"}
+                          or finding.get("disposition") != "NON_BLOCKING"
+                          for finding in item.get("findings", ()))
+                   or not isinstance(item.get("finding_dispositions"), list)
+                   or any(not isinstance(disposition, Mapping)
+                          or not isinstance(disposition.get("finding_id"), str)
+                          or not disposition["finding_id"]
+                          or disposition.get("disposition") != "RESOLVED"
+                          or not isinstance(disposition.get("evidence_ref"), str)
+                          or not disposition["evidence_ref"]
+                          for disposition in item.get("finding_dispositions", ()))
                    for item in reviews)):
         raise ValueError("EP_EFFECT_REVIEWS_UNQUALIFIED")
     for review in reviews:

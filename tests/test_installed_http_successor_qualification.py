@@ -44,12 +44,16 @@ class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
             self.assertEqual(env["PATH"], "/usr/bin:/bin")
             for name in ("GH_TOKEN", "OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY"):
                 self.assertNotIn(name, env)
-            with _loopback_only(), self.assertRaisesRegex(PermissionError, "non-loopback"):
+            endpoint = "http://127.0.0.1:34567"
+            with _loopback_only(endpoint), self.assertRaisesRegex(PermissionError, "non-simulator"):
                 socket.getaddrinfo("github.com", 443)
-            with _loopback_only(), socket.socket() as connection, \
-                 self.assertRaisesRegex(PermissionError, "non-loopback"):
+            with _loopback_only(endpoint), socket.socket() as connection, \
+                 self.assertRaisesRegex(PermissionError, "non-simulator"):
                 connection.connect(("8.8.8.8", 443))
-            with _loopback_only(), self.assertRaisesRegex(PermissionError, "real provider"):
+            with _loopback_only(endpoint), socket.socket() as connection, \
+                 self.assertRaisesRegex(PermissionError, "non-simulator"):
+                connection.connect(("127.0.0.1", 34568))
+            with _loopback_only(endpoint), self.assertRaisesRegex(PermissionError, "real provider"):
                 subprocess.run(["/usr/bin/true"], check=True)
 
     def _producer_fixture(self):

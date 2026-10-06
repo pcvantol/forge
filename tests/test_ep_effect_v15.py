@@ -14,6 +14,7 @@ from forge.models.mission_effect import EffectRequest, MissionEffectPolicy
 from forge.qualification.effect_fixture_conformance import CAPTURES, capture, validate_capture
 from forge.qualification.effect_simulator_fixture import qualified_effect_result
 from forge.runtime.database import RuntimeDatabase
+from forge.scheduler.ep_effect_v15 import terminal_evidence
 from forge.scheduler.ep_http_adapter import EngineeringPlatformHttpConfiguration, EngineeringPlatformHttpExecutionHost
 from tests.test_ep_http_adapter import _request
 
@@ -35,103 +36,11 @@ def _effect_request(mode: str = "READ_ONLY_ASSESSMENT", delivery: str = "EVIDENC
 
 def _qualified_fixture(state: EpSimulatorState, submission_id: str, request, *,
                        delivery_revision: str | None = None) -> tuple[dict, dict, bytes]:
-    """Build the EP producer projection from its published v1.0/1.5 fields."""
+    """Bind a source-pinned EP producer capture to the accepted HTTP request."""
+    assert request.effect_request is not None
     state.complete(submission_id, delivery_revision=delivery_revision)
     readback, raw = state.terminal_documents(submission_id)
-    terminal = json.loads(raw)
-    effect = request.effect_request
-    assert effect is not None
-    fixture_name = f"{effect.policy.mode.lower()}-{effect.policy.delivery.lower()}.json"
-    validate_capture(fixture_name)
-    producer = capture(fixture_name)
-    producer_envelope = producer["effect_result"]["artifact"]["content"]
-    run_id = terminal["run"]["id"]
-    source_manifest = deepcopy(producer_envelope["source_manifest"])
-    rows = deepcopy(producer_envelope["result"])
-    rows["criteria"][0]["id"] = effect.criteria[0][0]
-    binding = {
-        "run_id": run_id, "submission_id": submission_id, "project_id": "forge",
-        "repository_id": "forge", "producer_id": "forge", "producer_type": "FORGE",
-        "producer_version": "2.7.2", "repository": "pcvantol/forge",
-        "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-        "engineering_action_id": request.action_id, "source_revision": effect.source_revision,
-        "accepted_request_digest": readback["submission"]["accepted_request_digest"],
-    }
-    report_id = f"effect-result:{run_id}:0"
-    envelope = {
-        "contract_version": "1.0", "artifact_type": "EP_EFFECT_RESULT", "binding": binding,
-        "contract": effect.to_dict(), "contract_digest": _digest(effect.to_dict())[7:],
-        "source_manifest": source_manifest, "source_manifest_digest": _digest(source_manifest)[7:],
-        "invocation_id": f"{run_id}:effect:0", "repair_ordinal": 0,
-        "result": rows,
-    }
-    report_digest = _digest(envelope)
-    subject = {
-        "subject_kind": "REPORT_ARTIFACT", "subject_id": report_id, "subject_digest": report_digest,
-        "source_revision": effect.source_revision, "source_snapshot_digest": _digest(source_manifest),
-        "effect_contract_digest": _digest(effect.to_dict()),
-        "criteria_digest": _digest(effect.to_dict()["criteria"]), "binding_digest": _digest(binding),
-        "repair_ordinal": 0, "candidate_revision": None if delivery_revision is None else terminal["repository"]["candidate"],
-    }
-    selected_controls = ["effect_source_binding", "effect_output_integrity",
-                         "effect_scope_containment", "report_criteria_contract"]
-    if effect.policy.mode in {"DOCUMENTATION_ONLY", "ARCHITECTURE_DESIGN_ONLY"}:
-        selected_controls.append("document_content_links_schema")
-    if effect.policy.mode == "ARCHITECTURE_DESIGN_ONLY":
-        selected_controls.append("design_criteria_contract")
-    if effect.policy.mode == "BOUNDED_REPOSITORY_CHANGE":
-        selected_controls.append("repository_json")
-    started, ended = "2026-09-22T00:00:00+00:00", "2026-09-22T00:00:01+00:00"
-    profile_digest = _digest({"subject": subject})
-    controls = deepcopy(producer["effect_result"]["validation_controls"])
-    assert [item["validation_id"] for item in controls] == selected_controls
-    for index, item in enumerate(controls):
-        item["command_id"] = f"{run_id}:effect:0:{index}"
-        item["profile_digest"] = profile_digest
-    reviews = deepcopy(producer["effect_result"]["assurance_reviews"])
-    for item in reviews:
-        item["subject"] = subject
-        item["profile_digest"] = profile_digest
-        item["invocation_id"] = f"{run_id}:{item['reviewer']}:effect:0"
-        for coverage in item["coverage"]:
-            coverage["evidence_ref"] = report_digest
-    projection = {
-        "contract_version": "1.0", "outcome": "COMPLETE", "terminal": True,
-        "effect_qualified": True, "subject": subject,
-        "artifact": {"id": report_id, "digest_algorithm": "sha256", "digest": report_digest,
-                     "content_type": "application/json", "content": envelope},
-        "validation_controls": controls, "assurance_reviews": reviews,
-        "repair_rounds": {"used": 0, "maximum": 3},
-        "delivery": {"kind": effect.policy.delivery, "revision": delivery_revision,
-                     "pull_request": None if delivery_revision is None else 246},
-    }
-    terminal["contract_version"] = "1.5"
-    terminal["assurance"] = deepcopy(producer["terminal_evidence"]["assurance"])
-    terminal["effect_result"] = {key: deepcopy(value) for key, value in projection.items() if key != "artifact"}
-    terminal["report"] = {key: projection["artifact"][key] for key in (
-        "id", "digest_algorithm", "digest", "content_type")}
-    terminal["report"]["readback_path"] = f"/v1/projects/forge/submissions/{submission_id}/effect-result"
-    terminal["run"]["effect_qualified"] = True
-    terminal["run"]["delivery_qualified"] = delivery_revision is not None
-    terminal["repository"]["candidate"] = subject["candidate_revision"]
-    terminal["repository"]["revision"] = delivery_revision
-    terminal["repository"]["revision_required"] = delivery_revision is not None
-    terminal["delivery"] = {"status": "DELIVERED" if delivery_revision else "NOT_DELIVERED",
-                            "revision": delivery_revision}
-    readback["result"]["delivery_qualified"] = delivery_revision is not None
-    readback["evidence"]["repository"]["revision"] = delivery_revision
-    artifact = json.dumps(terminal, sort_keys=True, separators=(",", ":"),
-                          ensure_ascii=False).encode("utf-8") + b"\n"
-    readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + sha256(artifact).hexdigest()
-    from jsonschema import Draft202012Validator
-    from importlib.resources import files
-    root = files("forge.qualification").joinpath("fixtures", "fme-producer-v1")
-    for name, value in (("effect-request-v1.schema.json", effect.to_dict()),
-                        ("effect-report-envelope-v1.schema.json", envelope),
-                        ("effect-result-v1.schema.json", projection),
-                        ("terminal-evidence-v1.5.schema.json", terminal)):
-        Draft202012Validator(json.loads(root.joinpath(name).read_text())).validate(value)
-    return readback, projection, artifact
+    return qualified_effect_result(state.submitted_payload(submission_id), readback, raw)
 
 
 class EffectV15HttpTests(unittest.TestCase):
@@ -229,6 +138,105 @@ class EffectV15HttpTests(unittest.TestCase):
             dispatch = host.recover_dispatch(request)
             with self.assertRaisesRegex(ValueError, "EP_EFFECT_TERMINAL_RESULT_MISMATCH|EP_EFFECT_REPORT_BYTES_MISMATCH"):
                 host.retrieve_evidence(dispatch)
+
+    def test_effect_result_identity_controls_and_reviews_fail_closed(self):
+        request = _effect_request()
+        state = EpSimulatorState(project_id="forge", repository_id="forge",
+                                 repository_identity="pcvantol/forge", consumer_id="forge-consumer",
+                                 instance_id="sim-ep", bearer_token="sim-token",
+                                 scenario=EpSimulatorScenario(effect_declaration_supported=True))
+        with EpSimulatorServer(state) as server:
+            self._host(server).dispatch(request)
+            submission_id, = state.submission_ids()
+            readback, result, artifact = _qualified_fixture(state, submission_id, request)
+        original_terminal = json.loads(artifact)
+        def stale_profile(result, _terminal, _readback):
+            for item in (*result["validation_controls"], *result["assurance_reviews"]):
+                item["profile_digest"] = "sha256:" + "f" * 64
+
+        cases = (
+            ("terminal-version", lambda r, t, b: t.__setitem__("contract_version", "1.4"),
+             "EP_EFFECT_TERMINAL_V15_REQUIRED"),
+            ("result-outcome", lambda r, t, b: r.__setitem__("effect_qualified", False),
+             "EP_EFFECT_RESULT_NOT_QUALIFIED"),
+            ("accepted-digest", lambda r, t, b: b["submission"].__setitem__(
+                "accepted_request_digest", "sha256:" + "0" * 64), "EP_EFFECT_ACCEPTED_REQUEST_MISMATCH"),
+            ("producer", lambda r, t, b: t["producer"].__setitem__("id", "foreign-producer"),
+             "EP_EFFECT_PRODUCER_MISMATCH"),
+            ("correlation", lambda r, t, b: t["correlation"].__setitem__("mission_id", "foreign-mission"),
+             "EP_EFFECT_CORRELATION_MISMATCH"),
+            ("run", lambda r, t, b: t["run"].__setitem__("id", "foreign-run"),
+             "EP_EFFECT_RUN_MISMATCH"),
+            ("readback-terminal", lambda r, t, b: b["result"].__setitem__("terminal", False),
+             "EP_EFFECT_RUN_MISMATCH"),
+            ("source", lambda r, t, b: t["repository"].__setitem__("requested_revision", "0" * 40),
+             "EP_EFFECT_SOURCE_MISMATCH"),
+            ("delivery", lambda r, t, b: r["delivery"].__setitem__("revision", "b" * 40),
+             "EP_EFFECT_READBACK_DELIVERY_MISMATCH"),
+            ("readback-repository", lambda r, t, b: b["evidence"]["repository"].__setitem__(
+                "revision", "b" * 40), "EP_EFFECT_READBACK_DELIVERY_MISMATCH"),
+            ("controls", lambda r, t, b: r["validation_controls"].clear(),
+             "EP_EFFECT_CONTROLS_UNQUALIFIED"),
+            ("stale-profile", stale_profile, "EP_EFFECT_PROFILE_DIGEST_MISMATCH"),
+            ("terminal-control", lambda r, t, b: t["validation_controls"]["controls"][
+                "effect_scope_containment"].__setitem__("result", "FAIL"),
+             "EP_EFFECT_TERMINAL_CONTROL_FAILED"),
+            ("read-only-host-diff", lambda r, t, b: t["host_execution"]["terminal"]["diff"].__setitem__(
+                "modified", 1), "EP_EFFECT_FORBIDDEN_TARGET_MUTATION"),
+            ("reviews", lambda r, t, b: r["assurance_reviews"].clear(),
+             "EP_EFFECT_REVIEWS_UNQUALIFIED"),
+            ("malformed-finding", lambda r, t, b: r["assurance_reviews"][0]["findings"].append("bad"),
+             "EP_EFFECT_REVIEWS_UNQUALIFIED"),
+            ("open-disposition", lambda r, t, b: r["assurance_reviews"][0][
+                "finding_dispositions"].append({"finding_id": "f-1", "disposition": "OPEN",
+                                                 "evidence_ref": "report"}), "EP_EFFECT_REVIEWS_UNQUALIFIED"),
+            ("repair-budget", lambda r, t, b: r["repair_rounds"].__setitem__("maximum", 4),
+             "EP_EFFECT_REPAIR_BUDGET_INVALID"),
+        )
+        for label, mutate, expected in cases:
+            with self.subTest(label=label):
+                current_readback, current_result, terminal = (
+                    deepcopy(readback), deepcopy(result), deepcopy(original_terminal))
+                mutate(current_result, terminal, current_readback)
+                terminal["effect_result"] = {key: deepcopy(value) for key, value in current_result.items()
+                                             if key != "artifact"}
+                raw = json.dumps(terminal, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+                current_readback["evidence"]["terminal_artifact"]["digest"] = (
+                    "sha256:" + sha256(raw).hexdigest())
+                with self.assertRaisesRegex(ValueError, expected):
+                    terminal_evidence(request, current_readback, raw, current_result,
+                                      host_id="sim-ep", expected_accepted_digest=(
+                                          readback["submission"]["accepted_request_digest"]))
+
+    def test_document_scope_cannot_publish_executable_file(self):
+        request = _effect_request("DOCUMENTATION_ONLY", "GIT")
+        state = EpSimulatorState(project_id="forge", repository_id="forge",
+                                 repository_identity="pcvantol/forge", consumer_id="forge-consumer",
+                                 instance_id="sim-ep", bearer_token="sim-token",
+                                 scenario=EpSimulatorScenario(effect_declaration_supported=True))
+        with EpSimulatorServer(state) as server:
+            self._host(server).dispatch(request)
+            submission_id, = state.submission_ids()
+            readback, result, artifact = _qualified_fixture(
+                state, submission_id, request, delivery_revision="b" * 40)
+        envelope = result["artifact"]["content"]
+        envelope["result"]["files"][0]["path"] = "docs/execute.py"
+        report_digest = _digest(envelope)
+        result["artifact"]["digest"] = report_digest
+        result["subject"]["subject_digest"] = report_digest
+        for review in result["assurance_reviews"]:
+            review["subject"] = deepcopy(result["subject"])
+            for item in review["coverage"]:
+                item["evidence_ref"] = report_digest
+        terminal = json.loads(artifact)
+        terminal["effect_result"] = {key: deepcopy(value) for key, value in result.items()
+                                     if key != "artifact"}
+        terminal["report"]["digest"] = report_digest
+        raw = json.dumps(terminal, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        readback["evidence"]["terminal_artifact"]["digest"] = "sha256:" + sha256(raw).hexdigest()
+        with self.assertRaisesRegex(ValueError, "EP_EFFECT_GIT_REPORT_SCOPE_INVALID"):
+            terminal_evidence(request, readback, raw, result, host_id="sim-ep",
+                              expected_accepted_digest=readback["submission"]["accepted_request_digest"])
 
 
 if __name__ == "__main__":

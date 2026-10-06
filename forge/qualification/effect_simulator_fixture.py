@@ -22,6 +22,7 @@ def _digest(value: object) -> str:
 
 def qualified_effect_result(
     payload: Mapping[str, Any], readback: Mapping[str, Any], legacy_terminal: bytes,
+    *, no_change_conclusion: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any], bytes]:
     """Return v1.2 readback, v1.0 result and v1.5 terminal for a bound Action."""
     effect = payload["constraints"]["effect_contract"]
@@ -46,6 +47,16 @@ def qualified_effect_result(
         "accepted_request_digest": submission["accepted_request_digest"],
     }
     rows = deepcopy(template["result"])
+    if no_change_conclusion:
+        if effect["mode"] != "READ_ONLY_ASSESSMENT":
+            raise ValueError("no-change report fixture requires read-only assessment")
+        rows["summary"] = (
+            "The committed architecture already satisfies the approved boundary; "
+            "the assessment recommends no repository change.")
+        for item in rows["criteria"]:
+            item["analysis"] = (
+                "The cited committed design establishes the boundary, so this "
+                "criterion is met without changing repository content.")
     by_id = {item["id"]: item for item in rows["criteria"]}
     example_id, = by_id
     rows["criteria"] = [{**deepcopy(by_id[example_id]), "id": item["id"]}
@@ -102,6 +113,11 @@ def qualified_effect_result(
                      "pull_request": None if revision is None else template_result["delivery"]["pull_request"]},
     }
     terminal["contract_version"] = "1.5"
+    terminal["host_execution"] = deepcopy(example["terminal_evidence"]["host_execution"])
+    terminal["host_execution"]["start"]["target_commit"] = source_revision
+    terminal["validation_controls"] = deepcopy(example["terminal_evidence"]["validation_controls"])
+    for item in controls:
+        terminal["validation_controls"]["controls"][item["validation_id"]]["command_id"] = item["command_id"]
     terminal["run"]["effect_qualified"] = True
     terminal["run"]["delivery_qualified"] = revision is not None
     terminal["repository"]["candidate"] = subject["candidate_revision"]
