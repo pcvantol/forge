@@ -21,6 +21,7 @@ import socket
 import subprocess
 import sys
 from threading import Lock
+import time
 from typing import Any
 from unittest.mock import patch
 from zipfile import ZipFile
@@ -28,6 +29,7 @@ from zipfile import ZipFile
 import forge
 import forge.runtime.dynamic_mission as composition
 from forge.ep_simulator import EpSimulatorScenario, EpSimulatorServer, EpSimulatorState, SIMULATOR_CONTRACT_VERSION
+from forge.execution import ExecutionLoopError, RecoveryAuthorization
 from forge.execution_host_configuration import (
     EngineeringPlatformExecutionHostFactory, EngineeringPlatformPeerConfigurationService,
 )
@@ -53,7 +55,9 @@ from forge.qualification.producer_fixture_conformance import (
 )
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
-from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
+from forge.runtime.bootstrap import RuntimeResolutionError
+from forge.runtime.dynamic_mission import InstalledDynamicMissionError, InstalledDynamicMissionRuntime
+from forge.runtime.service import RuntimeServiceBusy
 from forge.secure_store import MacOSKeychainSecureStoreAdapter, SecretReference, SecretState
 
 
@@ -65,7 +69,7 @@ HOST = "synthetic-host"
 GOVERNANCE_PROFILE = "solo"
 GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = (
-    "partial", "single", "delayed", "tampered", "artifact-corrupt",
+    "partial", "single", "delayed", "host-recovery", "concurrent-start", "tampered", "artifact-corrupt",
     "artifact-withheld", "artifact-unavailable",
     "assurance-blocked", "budget-exhausted", "ambiguous",
 )
@@ -126,9 +130,14 @@ def _loopback_only():
             raise PermissionError("qualification denies non-loopback name resolution")
         return original_getaddrinfo(host, *args, **kwargs)
 
+    def checked_process(*_args, **_kwargs):
+        raise PermissionError("qualification denies real provider, gh, and host subprocesses")
+
     with patch.object(socket.socket, "connect", checked_connect), \
          patch.object(socket.socket, "connect_ex", checked_connect_ex), \
-         patch.object(socket, "getaddrinfo", checked_getaddrinfo):
+         patch.object(socket, "getaddrinfo", checked_getaddrinfo), \
+         patch.object(subprocess, "run", checked_process), \
+         patch.object(subprocess, "Popen", checked_process):
         yield
 EP_IDENTITY_READBACK_CANDIDATE = {
     "repository": "pcvantol/engineering-platform",
@@ -233,6 +242,31 @@ def _installed_wheel(wheel: Path) -> dict[str, Any]:
             module_digests[module] = "sha256:" + sha256(expected).hexdigest()
     return {"version": installed.version, "wheel_sha256": "sha256:" + digest,
             "module_sha256": module_digests}
+
+
+def _installed_identity_negative(root: Path, wheel: Path) -> dict[str, str]:
+    """Require a byte-drifted wheel to fail before any installed scenario starts."""
+    root.mkdir(parents=True)
+    altered = root / "altered-candidate.whl"
+    altered.write_bytes(wheel.read_bytes() + b"qualification-byte-drift")
+    command = [sys.executable, "-I", str(Path(__file__).resolve()),
+               "--wheel", str(altered), "--output-dir", str(root / "denial")]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False,
+                                timeout=30, env=_child_env(root))
+        (root / "denial.raw.private.log").write_text(result.stdout + result.stderr)
+        denial = fixture._read(root / "denial" / "installed-http-successor.public.json", {})
+        if (result.returncode != 1 or denial.get("result") != "FAIL"
+                or denial.get("failure") != {"stage": "installed_wheel_identity", "type": "RuntimeError"}):
+            raise RuntimeError("installed wheel byte drift did not fail before scenario setup")
+        return {"case": "installed-wheel-byte-drift", "result": "REJECTED",
+                "stage": "installed_wheel_identity"}
+    finally:
+        altered.unlink(missing_ok=True)
+        for directory in ("home", "scratch", "config"):
+            path = root / directory
+            if path.exists():
+                shutil.rmtree(path)
 
 
 def _open(root: Path, stack: ExitStack, *,
@@ -575,7 +609,7 @@ def _capture(root: Path, runtime: InstalledDynamicMissionRuntime, phase: str) ->
 
 def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
     if phase == "prepare":
-        _prepare(root, scenario, endpoint)
+        _prepare(root, scenario, endpoint, start=scenario != "concurrent-start")
         return
     with ExitStack() as stack:
         runtime = _open(root, stack)
@@ -606,6 +640,44 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
             runtime.accept_final_completion(
                 mission_id, decision, authenticated_principal_reference=principal,
             )
+        elif phase in {"recover-denied", "recover"}:
+            active = runtime.states.get(mission_id).current_engineering_action
+            if not isinstance(active, dict):
+                raise RuntimeError("terminal Action is missing at recovery boundary")
+            action_id = active["id"] if phase == "recover" else "foreign-action"
+            authorization = RecoveryAuthorization(
+                mission_id, action_id, "operator-installed-recovery-001",
+                "The simulated terminal blocker was resolved under exact Action authority.",
+                "a" * 40,
+            )
+            if phase == "recover-denied":
+                try:
+                    runtime.recover(mission_id, authorization)
+                except ExecutionLoopError as error:
+                    if str(error) != "recovery authorization must name the unresolved Engineering Action":
+                        raise
+                    fixture._write(root / "recover-denied.private.json", {
+                        "type": type(error).__name__, "reason": str(error),
+                    })
+                else:
+                    raise RuntimeError("foreign Action recovery unexpectedly succeeded")
+            else:
+                runtime.recover(mission_id, authorization)
+        elif phase in {"race-start-a", "race-start-b"}:
+            (root / f"{phase}.ready.private").write_text(str(os.getpid()))
+            deadline = time.monotonic() + 20
+            while not (root / "race-go.private").exists():
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("concurrent start barrier timed out")
+                time.sleep(0.01)
+            try:
+                runtime.start(mission_id, _initial_truth())
+            except Exception as error:
+                fixture._write(root / f"{phase}.race.private.json", {
+                    "result": "REJECTED", "type": type(error).__name__, "reason": str(error),
+                })
+            else:
+                fixture._write(root / f"{phase}.race.private.json", {"result": "STARTED"})
         elif phase != "readback":
             runtime.resume(mission_id)
         state = _capture(root, runtime, phase)
@@ -946,7 +1018,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     fixture._write(root / "artifact-a.json", {
         "report": {"fields": ["report_data"]},
         "policy": {"authorization_required": scenario in {
-            "single", "delayed", "ambiguous-recovered",
+            "single", "delayed", "host-recovery", "ambiguous-recovered",
         }},
     })
     fixture._write(root / "artifact-b.json", {
@@ -956,6 +1028,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
         initial = _run_phase(root, scenario, "prepare", server.base_url, wheel)
         fixture_receipts = []
         fixture_negatives = []
+        recovery_summary = None
         governance_negative = fixture._read(root / "governance-negative.private.json")["rejected"]
         assert governance_negative == ["missing-business", "missing-architecture", "changed-objective"]
         assert len(initial["actions"]) == len(simulator.submission_ids()) == 1
@@ -974,6 +1047,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 a, outcome="BLOCKED", assurance="FAIL", quality_review="FAIL",
                 security_review="UNRESOLVED",
             )
+        elif scenario == "host-recovery":
+            simulator.complete(a, outcome="BLOCKED")
         else:
             simulator.complete(a, delivery_revision="a" * 40)
         if scenario == "artifact-withheld":
@@ -1043,6 +1118,40 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 2
             assert final["pause_reason"]["schema_version"] == "forge-final-acceptance-requirement/v1"
             assert all(item["status"] == "PROVEN" for item in final["completion"]["criteria"])
+        elif scenario == "host-recovery":
+            assert after_a["status"] == "BLOCKED"
+            denied = _run_phase(root, scenario, "recover-denied", server.base_url, wheel)
+            assert denied == after_a and len(simulator.submission_ids()) == 1
+            recovered = _run_phase(root, scenario, "recover", server.base_url, wheel)
+            assert recovered["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
+            assert len(recovered["actions"]) == 1 and len(simulator.submission_ids()) == 2
+            assert len(fixture._read(root / "provider-inputs.private.json")) == 1
+            retry_id = next(item for item in simulator.submission_ids() if item != a)
+            retry_request = simulator.submitted_payload(retry_id)
+            assert retry_request["correlation_id"] != request_a["correlation_id"]
+            fixture_receipts.append(validate_fixture(
+                retry_request, simulator.readback(retry_id), None, project_id=PROJECT,
+                repository_id=fixture.SOURCE.repository_id, submission_id=retry_id,
+            ))
+            simulator.complete(retry_id, delivery_revision="b" * 40)
+            retry_readback, retry_artifact = simulator.terminal_documents(retry_id)
+            fixture_receipts.append(validate_fixture(
+                retry_request, retry_readback, retry_artifact, project_id=PROJECT,
+                repository_id=fixture.SOURCE.repository_id, submission_id=retry_id,
+            ))
+            final = _run_phase(root, scenario, "after-recovery", server.base_url, wheel)
+            assert final["status"] == "AWAITING_APPROVAL"
+            assert len(final["actions"]) == 1 and len(simulator.submission_ids()) == 2
+            assert [item["outcome"] for item in final["execution_history"]] == ["blocked", "complete"]
+            assert final["execution_history"][-1]["retry_of_correlation_id"] == request_a["correlation_id"]
+            assert all(item["status"] == "PROVEN" for item in final["completion"]["criteria"])
+            recovery_summary = {
+                "denied_foreign_action": fixture._read(root / "recover-denied.private.json")["type"],
+                "original_correlation_id": request_a["correlation_id"],
+                "retry_correlation_id": retry_request["correlation_id"],
+                "retry_of_correlation_id": final["execution_history"][-1]["retry_of_correlation_id"],
+                "terminal_outcomes": [item["outcome"] for item in final["execution_history"]],
+            }
         elif scenario == "budget-exhausted":
             final = after_a
             assert final["status"] == "BLOCKED"
@@ -1063,7 +1172,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             }
             assert final["completion"] is None or final["completion"].get("all_required_criteria_proven") is not True
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
-        if scenario in {"partial", "single", "delayed", "ambiguous-recovered"}:
+        if scenario in {"partial", "single", "delayed", "host-recovery", "ambiguous-recovered"}:
             fixture._write(root / "final-before-accept.state.private.json", final)
             accepted = _run_phase(root, scenario, "accept", server.base_url, wheel)
             replayed = _run_phase(root, scenario, "accept-replay", server.base_url, wheel)
@@ -1074,7 +1183,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             final = accepted
         readback = _run_phase(root, scenario, "readback", server.base_url, wheel)
         assert readback == final
-        if scenario in {"partial", "single", "delayed", "ambiguous-recovered"}:
+        if scenario in {"partial", "single", "delayed", "host-recovery", "ambiguous-recovered"}:
             stopped = _run_phase(root, scenario, "completed-resume", server.base_url, wheel)
             assert stopped == final
         assert not any(event["event"] == "submission_duplicate" for event in simulator.audit)
@@ -1086,8 +1195,10 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     phases = ["prepare", "after-a", "readback"]
     if scenario == "partial":
         phases += ["replay-b", "after-b"]
+    if scenario == "host-recovery":
+        phases += ["recover-denied", "recover", "after-recovery"]
     phases += poll_phases
-    if scenario in {"partial", "single", "delayed", "ambiguous-recovered"}:
+    if scenario in {"partial", "single", "delayed", "host-recovery", "ambiguous-recovered"}:
         phases += ["accept", "accept-replay", "completed-resume"]
     processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
     assert len(processes) == len(phases), "Forge phases must use distinct OS processes"
@@ -1100,7 +1211,126 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             "phase_statuses": {phase: fixture._read(root / f"{phase}.state.private.json")["status"]
                                for phase in phases},
             "planner_invocations": len(fixture._read(root / "provider-inputs.private.json")),
-            "waiting_polls": len(poll_phases)}
+            "waiting_polls": len(poll_phases),
+            **({"recovery": recovery_summary} if recovery_summary is not None else {})}
+
+
+def _concurrent_start_case(root: Path, wheel: Path) -> dict:
+    """Race two installed Forge processes at the public zero-Action start gate."""
+    root.mkdir()
+    fixture._write(root / "artifact-a.json", {
+        "report": {"fields": ["report_data"]},
+        "policy": {"authorization_required": True},
+    })
+    fixture._write(root / "artifact-b.json", {
+        "report": {"fields": ["report_data"]},
+        "policy": {"authorization_required": True},
+    })
+    simulator = EpSimulatorState(
+        project_id=PROJECT, repository_id=fixture.SOURCE.repository_id,
+        repository_identity=fixture.SOURCE.github_repository, consumer_id=CONSUMER,
+        instance_id=INSTANCE, bearer_token=TOKEN,
+    )
+    server = EpSimulatorServer(simulator)
+    requests = _count_ep_http_requests(server)
+    with server:
+        staged = _run_phase(root, "concurrent-start", "prepare", server.base_url, wheel)
+        assert staged["status"] == "APPROVED_PLANNABLE" and not staged["actions"]
+        children = []
+        handles = []
+        try:
+            for phase in ("race-start-a", "race-start-b"):
+                command = [sys.executable, "-I", str(Path(__file__).resolve()),
+                           "--wheel", str(wheel), "--output-dir", str(root),
+                           "--scenario", "concurrent-start", "--phase", phase,
+                           "--endpoint", server.base_url]
+                handle = (root / f"{phase}.raw.private.log").open("w")
+                handles.append(handle)
+                children.append(subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT,
+                                                 env=_child_env(root)))
+            deadline = time.monotonic() + 20
+            while True:
+                ready = [(root / f"{phase}.ready.private").exists()
+                         for phase in ("race-start-a", "race-start-b")]
+                if all(ready) or (any(ready) and any(child.poll() is not None for child in children)):
+                    break
+                if time.monotonic() >= deadline or all(child.poll() is not None for child in children):
+                    raise RuntimeError("installed starters did not reach the bounded race boundary")
+                time.sleep(0.01)
+            (root / "race-go.private").write_text("start")
+            for phase, child in zip(("race-start-a", "race-start-b"), children):
+                status = child.wait(timeout=90)
+                if status == 0:
+                    continue
+                log = (root / f"{phase}.raw.private.log").read_text()
+                if (status != 1 or "RuntimeResolutionError: another mutating Forge runtime owns this data root"
+                        not in log):
+                    raise RuntimeError("an installed race participant failed unexpectedly; see its private log")
+                fixture._write(root / f"{phase}.race.private.json", {
+                    "result": "REJECTED", "type": RuntimeResolutionError.__name__,
+                    "reason": "another mutating Forge runtime owns this data root",
+                    "stage": "runtime_bootstrap",
+                })
+                fixture._write(root / f"{phase}.process.private.json", {"pid": child.pid})
+                fixture._write(root / f"{phase}.state.private.json", staged)
+        finally:
+            for child in children:
+                if child.poll() is None:
+                    child.terminate()
+                    try:
+                        child.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.wait(timeout=5)
+            for handle in handles:
+                handle.close()
+        outcomes = [fixture._read(root / f"{phase}.race.private.json")
+                    for phase in ("race-start-a", "race-start-b")]
+        if (sorted(item["result"] for item in outcomes) != ["REJECTED", "STARTED"]
+                or next(item for item in outcomes if item["result"] == "REJECTED")["type"] not in {
+                    InstalledDynamicMissionError.__name__, RuntimeServiceBusy.__name__,
+                    RuntimeResolutionError.__name__, "RuntimeDatabaseError", "RuntimeIntegrityError",
+                }
+                or len(simulator.submission_ids()) != 1
+                or len(fixture._read(root / "provider-inputs.private.json")) != 1):
+            raise RuntimeError("concurrent starters crossed the single-flight Action boundary")
+        submission_id = simulator.submission_ids()[0]
+        payload = simulator.submitted_payload(submission_id)
+        pending = validate_fixture(
+            payload, simulator.readback(submission_id), None, project_id=PROJECT,
+            repository_id=fixture.SOURCE.repository_id, submission_id=submission_id,
+        )
+        simulator.complete(submission_id, delivery_revision="a" * 40)
+        terminal_readback, terminal_artifact = simulator.terminal_documents(submission_id)
+        terminal = validate_fixture(
+            payload, terminal_readback, terminal_artifact, project_id=PROJECT,
+            repository_id=fixture.SOURCE.repository_id, submission_id=submission_id,
+        )
+        final = _run_phase(root, "concurrent-start", "after-a", server.base_url, wheel)
+        assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 1
+        assert all(item["status"] == "PROVEN" for item in final["completion"]["criteria"])
+        fixture._write(root / "final-before-accept.state.private.json", final)
+        accepted = _run_phase(root, "concurrent-start", "accept", server.base_url, wheel)
+        replayed = _run_phase(root, "concurrent-start", "accept-replay", server.base_url, wheel)
+        readback = _run_phase(root, "concurrent-start", "readback", server.base_url, wheel)
+        stopped = _run_phase(root, "concurrent-start", "completed-resume", server.base_url, wheel)
+        assert accepted == replayed == readback == stopped
+        assert accepted["status"] == "COMPLETED"
+        posts = [request for request in requests if request.startswith("POST ")]
+        assert len(posts) == 1 and not any(event["event"] == "submission_duplicate"
+                                            for event in simulator.audit)
+    phases = ("prepare", "race-start-a", "race-start-b", "after-a",
+              "accept", "accept-replay", "readback", "completed-resume")
+    processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
+    assert len(processes) == len(phases)
+    return {
+        "scenario": "concurrent-start", "status": "COMPLETED", "actions": 1,
+        "submissions": 1, "submission_posts": 1, "planner_invocations": 1,
+        "forge_processes": len(processes), "race_outcomes": outcomes,
+        "producer_fixtures": [pending, terminal],
+        "phase_statuses": {phase: fixture._read(root / f"{phase}.state.private.json")["status"]
+                           for phase in phases},
+    }
 
 
 def _run_preflight_child(args: argparse.Namespace, parser: argparse.ArgumentParser,
@@ -1222,6 +1452,8 @@ def main() -> int:
     parser.add_argument("--preflight-case", choices=tuple(PREFLIGHT_CASES))
     parser.add_argument("--provider-case", choices=PROVIDER_CASES)
     parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b",
+                                            "recover-denied", "recover", "after-recovery",
+                                            "race-start-a", "race-start-b",
                                             *(f"poll-{index}" for index in range(1, 7)), "accept",
                                             "accept-replay", "completed-resume", "readback",
                                             "ambiguous-replay", "governance-first", "governance-repeat",
@@ -1304,6 +1536,7 @@ def main() -> int:
               "required_preflight_cases": list(PREFLIGHT_CASES),
               "required_governance_cases": list(GOVERNANCE_CASES),
               "required_provider_cases": list(PROVIDER_CASES),
+              "required_installed_identity_negative": "installed-wheel-byte-drift",
               "required_http_scenarios": list(SCENARIOS),
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
@@ -1312,6 +1545,18 @@ def main() -> int:
                               "Bounded serial write-mode subset; not full FCI-CI or FCO."]}
     if args.scenario in PRODUCER_CANDIDATE_SCENARIOS:
         report["ep_identity_readback_candidate"] = EP_IDENTITY_READBACK_CANDIDATE
+    if not any((args.scenario, args.preflight_case, args.governance_case, args.provider_case)):
+        try:
+            report["installed_identity_negative"] = _installed_identity_negative(
+                root / "installed-identity-negative", args.wheel.resolve(),
+            )
+        except Exception as error:
+            report.update(result="FAIL", failure={
+                "stage": "installed_identity_negative", "type": type(error).__name__,
+            })
+            fixture._write(root / "installed-http-successor.public.json", report)
+            print(json.dumps(report, sort_keys=True))
+            return 1
     preflight_cases = ()
     if args.preflight_case:
         preflight_cases = (args.preflight_case,)
@@ -1382,7 +1627,14 @@ def main() -> int:
     summaries = []
     for scenario in scenarios:
         try:
-            summaries.append(_with_case_cleanup(root / scenario, _scenario, scenario, args.wheel.resolve()))
+            if scenario == "concurrent-start":
+                summaries.append(_with_case_cleanup(
+                    root / scenario, _concurrent_start_case, args.wheel.resolve(),
+                ))
+            else:
+                summaries.append(_with_case_cleanup(
+                    root / scenario, _scenario, scenario, args.wheel.resolve(),
+                ))
         except Exception as error:
             report.update(result="FAIL", scenarios=summaries,
                           failure={"scenario": scenario, "type": type(error).__name__})

@@ -7,6 +7,7 @@ from copy import deepcopy
 import os
 from pathlib import Path
 import socket
+import subprocess
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -38,6 +39,8 @@ class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
             with _loopback_only(), socket.socket() as connection, \
                  self.assertRaisesRegex(PermissionError, "non-loopback"):
                 connection.connect(("8.8.8.8", 443))
+            with _loopback_only(), self.assertRaisesRegex(PermissionError, "real provider"):
+                subprocess.run(["/usr/bin/true"], check=True)
 
     def _producer_fixture(self):
         state = EpSimulatorState(project_id="test-project", repository_id="test-repository")
