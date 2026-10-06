@@ -13,6 +13,7 @@ from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
 from importlib.metadata import distribution
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -55,6 +56,7 @@ from forge.qualification.producer_fixture_conformance import (
 )
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
+from forge.runtime.bootstrap import RuntimeResolutionError
 from forge.runtime.dynamic_mission import InstalledDynamicMissionError, InstalledDynamicMissionRuntime
 from forge.runtime.service import RuntimeServiceBusy
 from forge.secure_store import MacOSKeychainSecureStoreAdapter, SecretReference, SecretState
@@ -74,7 +76,8 @@ SCENARIOS = (
     "assurance-blocked", "budget-exhausted", "ambiguous", "ambiguous-recovered",
 )
 PROVIDER_CASES = ("unavailable", "not-started", "local-rejected", "invalid-output",
-                  "scope-expansion", "ambiguous")
+                  "scope-expansion", "scope-outside", "unknown-dependency",
+                  "missing-human-gate", "missing-risk-input", "ambiguous")
 
 
 def _child_env(root: Path) -> dict[str, str]:
@@ -210,14 +213,16 @@ class _PreflightCredentialResolver(_SyntheticCredentialResolver):
         return super().resolve(reference)
 
 
-def _installed_wheel(wheel: Path) -> dict[str, Any]:
+def _installed_wheel(wheel: Path, *, source_revision: str | None = None,
+                     verify_source: bool = False) -> dict[str, Any]:
     if sys.version_info[:2] != (3, 14) or not sys.flags.isolated or sys.flags.optimize:
         raise RuntimeError("qualification requires assertion-enabled isolated Python 3.14.x")
     if not wheel.is_file():
         raise RuntimeError("candidate wheel is missing")
     installed = distribution("forge-autonomy")
     direct = json.loads(installed.read_text("direct_url.json") or "{}")
-    digest = sha256(wheel.read_bytes()).hexdigest()
+    wheel_bytes = wheel.read_bytes()
+    digest = sha256(wheel_bytes).hexdigest()
     if (direct.get("archive_info", {}).get("hashes", {}).get("sha256") != digest
             or direct.get("dir_info", {}).get("editable")):
         raise RuntimeError("installed distribution is not the exact candidate wheel")
@@ -232,7 +237,38 @@ def _installed_wheel(wheel: Path) -> dict[str, Any]:
         "forge/scheduler/ep_http_adapter.py", "forge/ep_simulator.py",
     )
     module_digests = {}
-    with ZipFile(wheel) as archive:
+    source_files_verified = 0
+    installed_files_verified = 0
+    source_root = Path(__file__).resolve().parents[2]
+    tracked = set()
+    if verify_source:
+        if source_revision is None or subprocess.check_output(
+            ["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True,
+        ).strip() != source_revision:
+            raise RuntimeError("qualification source revision is not exact HEAD")
+        if subprocess.check_output(
+            ["git", "-C", str(source_root), "status", "--porcelain"], text=True,
+        ).strip():
+            raise RuntimeError("qualification source checkout is dirty")
+        tracked = set(subprocess.check_output(
+            ["git", "-C", str(source_root), "ls-files", "-z", "--", "forge"],
+        ).decode("utf-8").split("\0"))
+    with ZipFile(BytesIO(wheel_bytes)) as archive:
+        for name in archive.namelist():
+            if not name.startswith("forge/") or name.endswith("/"):
+                continue
+            payload = archive.read(name)
+            installed_file = Path(installed.locate_file(name)).resolve()
+            if (not installed_file.is_relative_to(package_root)
+                    or installed_file.read_bytes() != payload):
+                raise RuntimeError("installed Forge payload differs from selected wheel")
+            installed_files_verified += 1
+            if verify_source:
+                if name not in tracked or (source_root / name).read_bytes() != payload:
+                    raise RuntimeError("wheel product payload differs from exact tracked source")
+                source_files_verified += 1
+        if installed_files_verified == 0 or verify_source and source_files_verified == 0:
+            raise RuntimeError("wheel lacks verified Forge product files")
         for module in modules:
             expected = archive.read(module)
             installed_file = Path(installed.locate_file(module)).resolve()
@@ -241,7 +277,9 @@ def _installed_wheel(wheel: Path) -> dict[str, Any]:
                 raise RuntimeError("installed Forge module bytes differ from the selected wheel")
             module_digests[module] = "sha256:" + sha256(expected).hexdigest()
     return {"version": installed.version, "wheel_sha256": "sha256:" + digest,
-            "module_sha256": module_digests}
+            "module_sha256": module_digests,
+            "installed_product_files_verified": installed_files_verified,
+            "source_product_files_verified": source_files_verified if verify_source else None}
 
 
 def _installed_identity_negative(root: Path, wheel: Path) -> dict[str, str]:
@@ -269,6 +307,47 @@ def _installed_identity_negative(root: Path, wheel: Path) -> dict[str, str]:
                 shutil.rmtree(path)
 
 
+def _installed_runtime_storage_negatives(root: Path) -> list[dict[str, str]]:
+    """Require existing-instance marker/storage errors to preserve identity."""
+    bootstrap = RuntimeBootstrap(data_root=root, forge_version="qualification")
+    with bootstrap.open() as database:
+        original_id = database.runtime_identity.runtime_id
+    marker = root / "instance" / "runtime-instance.json"
+    database_path = root / "forge.db"
+    marker_bytes = marker.read_bytes()
+    marker.write_text("foreign-runtime-id\n", encoding="utf-8")
+    try:
+        try:
+            bootstrap.open()
+        except RuntimeResolutionError:
+            pass
+        else:
+            raise RuntimeError("wrong Runtime marker reopened or replaced the instance")
+    finally:
+        marker.write_bytes(marker_bytes)
+    with bootstrap.open() as database:
+        if database.runtime_identity.runtime_id != original_id:
+            raise RuntimeError("marker denial changed installed Runtime identity")
+    held = root / "forge.db.held"
+    database_path.rename(held)
+    try:
+        try:
+            bootstrap.open()
+        except RuntimeResolutionError:
+            pass
+        else:
+            raise RuntimeError("missing Runtime storage initialized a replacement instance")
+        if database_path.exists() or marker.read_bytes() != marker_bytes:
+            raise RuntimeError("missing Runtime storage changed the selected instance")
+    finally:
+        held.rename(database_path)
+    with bootstrap.open() as database:
+        if database.runtime_identity.runtime_id != original_id:
+            raise RuntimeError("storage denial changed installed Runtime identity")
+    return [{"case": "wrong-runtime-marker", "result": "REJECTED"},
+            {"case": "missing-runtime-storage", "result": "REJECTED"}]
+
+
 def _open(root: Path, stack: ExitStack, *,
           credential_case: str = "", provider_case: str = "") -> InstalledDynamicMissionRuntime:
     transport = fixture._CodexTransport(root)
@@ -293,11 +372,22 @@ def _open(root: Path, stack: ExitStack, *,
                 return subprocess.CompletedProcess(
                     command, 0, '{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}\n', "",
                 )
-            if provider_case == "scope-expansion":
+            if provider_case in {"scope-expansion", "scope-outside", "unknown-dependency",
+                                 "missing-human-gate", "missing-risk-input"}:
                 result = original(command, **kwargs)
                 output = Path(command[command.index("--output-last-message") + 1])
                 document = json.loads(output.read_text())
-                document["result"]["proposals"][0]["write_scopes"] = ["unapproved/source"]
+                proposal = document["result"]["proposals"][0]
+                if provider_case == "scope-expansion":
+                    proposal["write_scopes"] = ["unapproved/source"]
+                elif provider_case == "scope-outside":
+                    proposal["scope"] = "foreign-repository"
+                elif provider_case == "unknown-dependency":
+                    proposal["dependencies"] = ["foreign-action"]
+                elif provider_case == "missing-human-gate":
+                    proposal["human_gates"] = []
+                else:
+                    proposal["risk_inputs"] = []
                 output.write_text(json.dumps(document))
                 return result
             raise RuntimeError("unsupported provider fault case")
@@ -1422,6 +1512,10 @@ def _provider_case(root: Path, case: str, wheel: Path) -> dict:
         "local-rejected": "GENERATION_NOT_STARTED",
         "invalid-output": "DETERMINISTIC_REJECTION",
         "scope-expansion": "DETERMINISTIC_REJECTION",
+        "scope-outside": "DETERMINISTIC_REJECTION",
+        "unknown-dependency": "DETERMINISTIC_REJECTION",
+        "missing-human-gate": "DETERMINISTIC_REJECTION",
+        "missing-risk-input": "DETERMINISTIC_REJECTION",
         "ambiguous": "GENERATION_MAY_HAVE_HAPPENED",
     }[case]
     durable = first["durable_attempts"]
@@ -1464,7 +1558,10 @@ def main() -> int:
         parser.error("source revision must be one exact Git commit SHA")
     root = args.output_dir.resolve()
     try:
-        artifact = _installed_wheel(args.wheel.resolve())
+        artifact = _installed_wheel(
+            args.wheel.resolve(), source_revision=args.source_revision,
+            verify_source=not bool(args.phase),
+        )
     except (OSError, ValueError, RuntimeError, KeyError) as error:
         if root.exists() and any(root.iterdir()):
             raise RuntimeError("qualification output directory must be fresh") from error
@@ -1535,6 +1632,7 @@ def main() -> int:
               "required_governance_cases": list(GOVERNANCE_CASES),
               "required_provider_cases": list(PROVIDER_CASES),
               "required_installed_identity_negative": "installed-wheel-byte-drift",
+              "required_runtime_storage_negatives": ["wrong-runtime-marker", "missing-runtime-storage"],
               "required_http_scenarios": list(SCENARIOS),
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
@@ -1545,6 +1643,9 @@ def main() -> int:
         try:
             report["installed_identity_negative"] = _installed_identity_negative(
                 root / "installed-identity-negative", args.wheel.resolve(),
+            )
+            report["runtime_storage_negatives"] = _installed_runtime_storage_negatives(
+                root / "runtime-storage-negative",
             )
         except Exception as error:
             report.update(result="FAIL", failure={

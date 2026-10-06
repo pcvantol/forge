@@ -19,11 +19,19 @@ from forge.qualification.producer_fixture_conformance import (
     validate_identity_fixture,
 )
 from scripts.qualification.qualify_installed_http_successor import (
-    _child_env, _count_ep_http_requests, _loopback_only,
+    _child_env, _count_ep_http_requests, _installed_runtime_storage_negatives, _loopback_only,
 )
 
 
 class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
+    def test_installed_runtime_marker_and_missing_storage_fail_without_new_identity(self) -> None:
+        with TemporaryDirectory() as directory:
+            cases = _installed_runtime_storage_negatives(Path(directory) / "runtime")
+        self.assertEqual(cases, [
+            {"case": "wrong-runtime-marker", "result": "REJECTED"},
+            {"case": "missing-runtime-storage", "result": "REJECTED"},
+        ])
+
     def test_scenario_process_receives_no_host_credentials_or_external_network(self) -> None:
         with TemporaryDirectory() as directory, patch.dict(os.environ, {
             "GH_TOKEN": "private", "OPENAI_API_KEY": "private", "AWS_SECRET_ACCESS_KEY": "private",
