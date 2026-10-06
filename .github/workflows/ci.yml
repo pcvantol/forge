@@ -48,16 +48,18 @@ jobs:
             --output-dir "$RUNNER_TEMP/forge-http-successor"
           qualification_exit=$?
           set -e
-          if test -f "$RUNNER_TEMP/forge-http-successor/installed-http-successor.public.json"; then
-            cp "$RUNNER_TEMP/forge-http-successor/installed-http-successor.public.json" \
-              "$GITHUB_WORKSPACE/installed-http-successor.public.json"
-          fi
-          exit "$qualification_exit"
+          if test "$qualification_exit" -ne 0; then exit "$qualification_exit"; fi
+          "$RUNNER_TEMP/forge-installed/bin/python" -I \
+            "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_fci_failure_gate.py" \
+            --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
+            --output-dir "$RUNNER_TEMP/forge-fci-failure-gate"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: forge-installed-http-successor-${{ github.sha }}
-          path: installed-http-successor.public.json
+          path: |
+            ${{ runner.temp }}/forge-http-successor/installed-http-successor.public.json
+            ${{ runner.temp }}/forge-fci-failure-gate/installed-fci-failure-gate.public.json
           if-no-files-found: ignore
       - name: Qualify installed Action authority boundary
         run: |

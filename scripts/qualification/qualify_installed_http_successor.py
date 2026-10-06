@@ -261,10 +261,14 @@ def _fci_manifest(report: dict[str, Any]) -> dict[str, Any]:
     if set(_FIE_MODE_VARIANTS) != set(expected):
         raise RuntimeError("required FIE mode variants are incomplete")
     observed = {
-        *("scenario:" + item["scenario"] for item in report["scenarios"]),
-        *("preflight:" + item["case"] for item in report["preflight_matrix"]),
-        *("governance:" + item["case"] for item in report["governance_matrix"]),
-        *("provider:" + item["case"] for item in report["provider_matrix"]),
+        *("scenario:" + item["scenario"] for item in report["scenarios"]
+          if item.get("qualification_result") == "PASS"),
+        *("preflight:" + item["case"] for item in report["preflight_matrix"]
+          if item.get("qualification_result") == "PASS"),
+        *("governance:" + item["case"] for item in report["governance_matrix"]
+          if item.get("qualification_result") == "PASS"),
+        *("provider:" + item["case"] for item in report["provider_matrix"]
+          if item.get("qualification_result") == "PASS"),
         "identity:" + report["installed_identity_negative"]["case"],
         *("storage:" + item["case"] for item in report["runtime_storage_negatives"]),
     }
@@ -320,12 +324,16 @@ def _with_case_cleanup(root: Path, operation, *args):
         result = operation(root, *args)
         if not isinstance(result, dict):
             raise RuntimeError("installed qualification case returned no result")
-        return {**result, "duration_ms": round((time.monotonic() - started) * 1000)}
     finally:
         for directory in ("home", "scratch", "config"):
             path = root / directory
             if path.exists():
                 shutil.rmtree(path)
+    return {**result, "qualification_result": "PASS",
+            "duration_ms": round((time.monotonic() - started) * 1000),
+            "stage_trace": fixture._read(root / "stage-trace.public.json", []),
+            "cleanup": {"owned_home_scratch_config_removed": all(
+                not (root / name).exists() for name in ("home", "scratch", "config"))}}
 
 
 @contextmanager
@@ -1265,12 +1273,20 @@ def _run_phase(root: Path, scenario: str, phase: str, endpoint: str, wheel: Path
     command = [sys.executable, "-I", str(Path(__file__).resolve()),
                "--wheel", str(wheel), "--output-dir", str(root), "--scenario", scenario,
                "--phase", phase, "--endpoint", endpoint]
+    started = time.monotonic()
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
                             env=_child_env(root))
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed {scenario}/{phase} failed; see private phase log")
-    return fixture._read(root / f"{phase}.state.private.json")
+    state = fixture._read(root / f"{phase}.state.private.json")
+    fixture._append(root / "stage-trace.public.json", {
+        "phase": phase, "status": state["status"], "actions": len(state["actions"]),
+        "duration_ms": round((time.monotonic() - started) * 1000),
+        "all_required_criteria_proven": bool(
+            state.get("completion") and state["completion"].get("all_required_criteria_proven")),
+    })
+    return state
 
 
 def _run_governance_phase(root: Path, case: str, phase: str,
@@ -1278,12 +1294,17 @@ def _run_governance_phase(root: Path, case: str, phase: str,
     command = [sys.executable, "-I", str(Path(__file__).resolve()),
                "--wheel", str(wheel), "--output-dir", str(root),
                "--governance-case", case, "--phase", phase, "--endpoint", endpoint]
+    started = time.monotonic()
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
                             env=_child_env(root))
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed governance {case}/{phase} failed; see private phase log")
-    return fixture._read(root / f"{phase}.governance.private.json")
+    observation = fixture._read(root / f"{phase}.governance.private.json")
+    fixture._append(root / "stage-trace.public.json", {
+        "phase": phase, "status": "REJECTED", "counts": observation["counts"],
+        "duration_ms": round((time.monotonic() - started) * 1000)})
+    return observation
 
 
 def _count_ep_http_requests(server: EpSimulatorServer) -> list[str]:
@@ -1432,14 +1453,18 @@ def _run_preflight_phase(root: Path, case: str, phase: str,
     command = [sys.executable, "-I", str(Path(__file__).resolve()),
                "--wheel", str(wheel), "--output-dir", str(root),
                "--preflight-case", case, "--phase", phase, "--endpoint", endpoint]
+    started = time.monotonic()
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
                             env=_child_env(root))
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed preflight {case}/{phase} failed; see private phase log")
-    if phase == "preflight-stage":
-        return fixture._read(root / f"{phase}.state.private.json")
-    return fixture._read(root / f"{phase}.preflight.private.json")
+    observation = fixture._read(root / f"{phase}.state.private.json" if phase == "preflight-stage"
+                                else root / f"{phase}.preflight.private.json")
+    fixture._append(root / "stage-trace.public.json", {
+        "phase": phase, "status": observation["status"],
+        "duration_ms": round((time.monotonic() - started) * 1000)})
+    return observation
 
 
 def _preflight_case(root: Path, case: str, wheel: Path) -> dict:
@@ -1630,7 +1655,7 @@ def _faulted_effect_documents(fault: str, readback: dict, result: dict,
     return readback, result, raw
 
 
-def _target_effect_probes(root: Path) -> dict[str, Any]:
+def _target_effect_probes(root: Path, endpoint: str) -> dict[str, Any]:
     """Observe transient forbidden writes on an isolated synthetic EP target."""
     target = root / "synthetic-target"
     (target / "docs").mkdir(parents=True)
@@ -1654,13 +1679,34 @@ def _target_effect_probes(root: Path) -> dict[str, Any]:
     escape = target / "docs" / "escape.md"
     escape.symlink_to(outside)
     assert escape.is_symlink() and escape.resolve() == outside.resolve()
-    attempts.append("symlink-escape-prevented")
+    escape.write_bytes(b"forbidden symlink write\n")
+    assert outside.read_bytes() != baseline[outside.name]
+    attempts.append("symlink-write-observed-and-reverted")
+    outside.write_bytes(baseline[outside.name])
     escape.unlink()
+    scratch = root / "synthetic-owned-scratch"
+    scratch.mkdir()
+    escape = scratch / "report.md"
+    escape.symlink_to(tracked)
+    escape.write_bytes(b"forbidden write through report path\n")
+    attempts.append("scratch-report-target-write-observed-and-reverted")
+    tracked.write_bytes(baseline[tracked.name])
+    escape.unlink()
+    scratch.rmdir()
+    with _loopback_only(endpoint):
+        try:
+            socket.create_connection(("github.com", 443), timeout=1)
+        except PermissionError:
+            attempts.append("remote-mutation-transport-denied-before-connect")
+        else:
+            raise RuntimeError("non-simulator remote mutation transport was allowed")
     if ({path.name: path.read_bytes() for path in (tracked, outside)} != baseline
             or untracked.exists() or ignored.exists() or escape.exists()):
         raise RuntimeError("adversarial target probes left a persistent mutation")
     return {"attempts": attempts, "final_target_matches_baseline": True,
-            "transient_writes_observed": 3, "symlink_escape_prevented": True}
+            "transient_writes_observed": 5, "forbidden_effects_observed": True,
+            "remote_transport_prevented_by_qualifier": True,
+            "ep_enforcement": "SIMULATED_VIOLATION_NOT_REAL_SANDBOX_QUALIFICATION"}
 
 
 def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
@@ -1695,8 +1741,10 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert not any(item.startswith("POST ") for item in requests)
             return {"scenario": scenario, "status": "EXPECTED_REJECTION",
                     "mode": "READ_ONLY_ASSESSMENT", "delivery": "EVIDENCE_ONLY",
+                    "approved_write_paths": [], "output_kind": "EVIDENCE_ONLY",
                     "fault": "provider-scope-expansion", "forge_processes": 2,
                     "submission_posts": 0, "submissions": 0,
+                    "planner_invocations": 1, "ep_http_requests": len(requests),
                     "canonical_completion_prevented": True}
         assert initial["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
         assert len(initial["actions"]) == len(simulator.submission_ids()) == 1
@@ -1719,9 +1767,24 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
         )
         if scenario == "effect-read-only-no-change":
             assert "no repository change" in result["artifact"]["content"]["result"]["summary"]
-        target_probe = (_target_effect_probes(root) if fault == "target-effect-probes" else None)
+        target_probe = (_target_effect_probes(root, server.base_url)
+                        if fault == "target-effect-probes" else None)
         if fault and fault != "report-missing":
             readback, result, terminal = _faulted_effect_documents(fault, readback, result, terminal)
+        binding = {
+            "approved_write_paths": list(effect["write_paths"]),
+            "approved_read_paths": list(effect["read_paths"]),
+            "output_kind": effect["delivery"],
+            "output_location": result["artifact"]["id"],
+            "received_report_digest": result["artifact"]["digest"],
+            "received_terminal_digest": readback["evidence"]["terminal_artifact"]["digest"],
+            "profile_digest": result["validation_controls"][0]["profile_digest"],
+            "criterion_ids": [item["id"] for item in effect["criteria"]],
+            "controls": [item["validation_id"] for item in result["validation_controls"]],
+            "reviews": [item["reviewer"] for item in result["assurance_reviews"]],
+            "artifact_binding_status": "REJECTED" if fault else "VERIFIED",
+            "execution_observation": "SOURCE_PINNED_SIMULATED_EP_RECEIPT",
+        }
         simulator.seed_terminal(submission_id, readback, terminal)
         if fault != "report-missing":
             simulator.seed_effect_result(submission_id, result)
@@ -1754,11 +1817,12 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
             phases = ("prepare", "after-a", "readback")
             processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
             assert len(processes) == len(phases)
-            return {"scenario": scenario, "status": "EXPECTED_REJECTION", "fault": fault,
+            return {**binding, "scenario": scenario, "status": "EXPECTED_REJECTION", "fault": fault,
                     "mode": effect["mode"], "delivery": effect["delivery"],
                     "source_revision": effect["source_revision"],
                     "forge_processes": len(processes), "submissions": 1,
                     "submission_posts": posts, "ep_http_requests": len(requests),
+                    "planner_invocations": 1,
                     "target_revision_unchanged": revision is None,
                     "canonical_completion_prevented": True,
                     "target_effect_probe": target_probe}
@@ -1829,11 +1893,12 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 processes = {fixture._read(root / f"{phase}.process.private.json")["pid"]
                              for phase in phases}
                 assert len(processes) == len(phases)
-                return {"scenario": scenario, "status": "EXPECTED_REJECTION",
+                return {**binding, "scenario": scenario, "status": "EXPECTED_REJECTION",
                         "mode": effect["mode"], "delivery": effect["delivery"],
                         "requested_new_effect": _EFFECT_SCOPE_CASES[scenario][1],
                         "forge_processes": len(processes), "submissions": 1,
                         "submission_posts": 1, "ep_http_requests": len(requests),
+                        "planner_invocations": 1,
                         "original_mission_completed": True,
                         "scope_expansion_prevented": True,
                         "original_allowances_preserved": True}
@@ -1876,15 +1941,18 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
                  "new-scope-accept", "new-scope-readback") if scope_transition else ()))
     processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
     assert len(processes) == len(phases)
-    return {"scenario": scenario, "status": "COMPLETED", "mode": effect["mode"],
+    return {**binding, "scenario": scenario, "status": "COMPLETED", "mode": effect["mode"],
             "delivery": effect["delivery"], "source_revision": effect["source_revision"],
             "delivery_revision": revision, "report_digest": result["artifact"]["digest"],
             "effect_producer_source": producer["producer_source_sha"],
             "forge_processes": len(processes),
             "submissions": 2 if successor or scope_transition else 1,
             "submission_posts": posts, "ep_http_requests": len(requests),
+            "planner_invocations": len(fixture._read(root / "provider-inputs.private.json")),
             "target_revision_unchanged": revision is None,
             "per_criterion_proven": True, "successor_derived": successor,
+            "criterion_artifact_bindings": [item["effect_result"]
+                                             for item in final["execution_history"]],
             "accepted_post_lost_ack_recovered": lost_ack,
             "approved_new_scope": scope_transition,
             "original_allowances_preserved": scope_transition}
@@ -2370,13 +2438,18 @@ def _run_provider_phase(root: Path, case: str, phase: str,
     command = [sys.executable, "-I", str(Path(__file__).resolve()),
                "--wheel", str(wheel), "--output-dir", str(root),
                "--provider-case", case, "--phase", phase, "--endpoint", endpoint]
+    started = time.monotonic()
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
                             env=_child_env(root))
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed provider {case}/{phase} failed; see private phase log")
-    return fixture._read(root / f"{phase}.state.private.json" if phase == "provider-stage"
-                         else root / f"{phase}.provider.private.json")
+    observation = fixture._read(root / f"{phase}.state.private.json" if phase == "provider-stage"
+                                else root / f"{phase}.provider.private.json")
+    fixture._append(root / "stage-trace.public.json", {
+        "phase": phase, "status": observation.get("status", "REJECTED"),
+        "duration_ms": round((time.monotonic() - started) * 1000)})
+    return observation
 
 
 def _provider_case(root: Path, case: str, wheel: Path) -> dict:
@@ -2548,7 +2621,9 @@ def main() -> int:
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
                               "EP v1.3 identity readback recovers accepted lost-ack submissions; v1.2-only hosts fail closed.",
                               "EP producer v1.2 schema omits two retry-resolution fields emitted by its source; this subset validates source shape, not full schema conformance.",
-                              "Bounded serial write-mode subset; not full FCI-CI or FCO."]}
+                              "Synthetic repository-effect violations qualify Forge rejection, not real EP sandbox enforcement.",
+                              "FIE-27 selects a separately approved new Candidate scope; previous Mission history and allowances remain immutable.",
+                              "No outer-loop or live activation qualification."]}
     if not any((args.scenario, args.preflight_case, args.governance_case, args.provider_case)):
         try:
             report["installed_identity_negative"] = _installed_identity_negative(
