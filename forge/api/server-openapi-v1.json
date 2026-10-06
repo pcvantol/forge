@@ -582,6 +582,66 @@
           "409": {"description": "Wrong, stale, unauthorized or concurrent decision"}
         }
       }
+    },
+    "/v1/reviews": {
+      "get": {
+        "summary": "Read the explicitly scoped Workspace Mission review inbox",
+        "description": "Requires the distinct owner-issued Workspace review bearer. An empty item list is complete only within its explicit Mission set, never globally.",
+        "security": [{"workspaceReviewBearer": []}],
+        "responses": {
+          "200": {"description": "Current scoped review inbox", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/inbox"}}}},
+          "401": {"description": "Review grant absent, expired, revoked or invalid"},
+          "403": {"description": "Credential does not authorize the review route"},
+          "503": {"description": "Installed Mission readback unavailable"}
+        }
+      }
+    },
+    "/v1/reviews/missions/{mission_id}": {
+      "get": {
+        "summary": "Read one authorized Mission's current review requirement and safe evidence references",
+        "security": [{"workspaceReviewBearer": []}],
+        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "responses": {
+          "200": {"description": "Current Mission review", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/item"}}}},
+          "401": {"description": "Review grant absent, expired, revoked or invalid"},
+          "403": {"description": "Mission is outside the grant"},
+          "503": {"description": "Installed Mission readback unavailable"}
+        }
+      }
+    },
+    "/v1/reviews/missions/{mission_id}/decisions": {
+      "post": {
+        "summary": "Record or replay one exact scoped progression decision",
+        "description": "The operation ID is the canonical Forge decision ID. Actor, role and capability come only from the authenticated owner-issued grant. This is never Mission-end acceptance.",
+        "security": [{"workspaceReviewBearer": []}],
+        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/decision_request"}}}},
+        "responses": {
+          "200": {"description": "Exact operation replay", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/decision_response"}}}},
+          "201": {"description": "Canonical operation recorded", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/decision_response"}}}},
+          "401": {"description": "Review grant absent, expired, revoked or invalid"},
+          "403": {"description": "Mission or current role is outside the grant"},
+          "409": {"description": "Stale or conflicting decision"},
+          "503": {"description": "Installed decision service unavailable"}
+        }
+      }
+    },
+    "/v1/reviews/missions/{mission_id}/decisions/{operation_id}": {
+      "get": {
+        "summary": "Recover one same-principal canonical review operation and current fence",
+        "security": [{"workspaceReviewBearer": []}],
+        "parameters": [
+          {"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}},
+          {"name": "operation_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}
+        ],
+        "responses": {
+          "200": {"description": "Durable operation and current Mission review", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/operation_response"}}}},
+          "401": {"description": "Review grant absent, expired, revoked or invalid"},
+          "403": {"description": "Mission is outside the grant"},
+          "404": {"description": "Operation absent or belongs to another principal"},
+          "503": {"description": "Installed decision readback unavailable"}
+        }
+      }
     }
   },
   "components": {
@@ -594,6 +654,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate instance and configured-repository bound read grant for GET /v1/instance and GET /v1/status only"
+      },
+      "workspaceReviewBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate owner-issued, revocable, expiring instance/principal/Mission/role-scoped review grant. Never an administrator or status read bearer."
       }
     },
     "schemas": {

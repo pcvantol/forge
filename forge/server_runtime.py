@@ -65,6 +65,11 @@ from .root_identity import RootIdentity
 from .runtime.dynamic_mission import DynamicMissionRunResult, InstalledDynamicMissionRuntime
 from .runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeServiceLock
 from .workspace_read_grant import WorkspaceReadGrant
+from .workspace_review_grant import ReviewPrincipal, WorkspaceReviewGrant
+from .workspace_review_inbox import (
+    OPERATION_VERSION as REVIEW_OPERATION_CONTRACT,
+    canonical_decision_request, scoped_item, scoped_list,
+)
 
 
 SERVER_API_VERSION = "1"
@@ -96,6 +101,10 @@ SERVER_ROUTE_INVENTORY = (
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
     ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
+    ("GET", "/v1/reviews"),
+    ("GET", "/v1/reviews/missions/{mission_id}"),
+    ("POST", "/v1/reviews/missions/{mission_id}/decisions"),
+    ("GET", "/v1/reviews/missions/{mission_id}/decisions/{operation_id}"),
 )
 DEFAULT_PROVIDER_ID = "codex-chatgpt-session"
 _MAX_BODY = 1_048_576
@@ -549,6 +558,55 @@ class ForgeServerApplicationServices:
                 )
                 return _result_document(result), recording_status == "RECORDED"
 
+    def workspace_review_list(self, principal: ReviewPrincipal) -> dict[str, Any]:
+        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+            return scoped_list(runtime, principal)
+
+    def workspace_review_detail(self, principal: ReviewPrincipal, mission_id: str) -> dict[str, Any]:
+        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+            return scoped_item(runtime, principal, mission_id)
+
+    def workspace_review_decide(
+        self, principal: ReviewPrincipal, mission_id: str, document: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        canonical = canonical_decision_request(document)
+        existing = self.workspace_review_operation(principal, mission_id, canonical["decision_id"])
+        if existing is None:
+            current = self.workspace_review_detail(principal, mission_id)
+            if canonical["decision"] not in current["allowed_outcomes"]:
+                raise PermissionError("review principal lacks the current required role")
+        result, recorded = self.mission_progression_decide(
+            mission_id, canonical,
+            authenticated_principal_reference=principal.reference,
+        )
+        operation = self.workspace_review_operation(principal, mission_id,
+                                                    canonical["decision_id"])
+        if operation is None:
+            raise RuntimeError("recorded review decision is unavailable")
+        return {"contract_version": REVIEW_OPERATION_CONTRACT,
+                "operation": operation["operation"], "current": operation["current"],
+                "runtime_status": result.get("status"), "recorded": recorded}, recorded
+
+    def workspace_review_operation(
+        self, principal: ReviewPrincipal, mission_id: str, operation_id: str,
+    ) -> dict[str, Any] | None:
+        if mission_id not in principal.mission_ids:
+            raise PermissionError("review grant does not include this Mission")
+        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+            from .governed_continuation import GovernedContinuationService
+            operation = GovernedContinuationService(
+                runtime.database, runtime.repository, runtime.states, runtime.clock,
+            ).decision_operation_status(
+                mission_id, operation_id,
+                authenticated_principal_reference=principal.reference,
+            )
+            if operation is None:
+                return None
+            return {"contract_version": REVIEW_OPERATION_CONTRACT,
+                    "operation": operation,
+                    "current": scoped_item(runtime, principal, mission_id),
+                    "read_only": True}
+
     def mission_archive_no_dispatch(
         self, mission_id: str, document: Mapping[str, Any], *,
         authenticated_principal_reference: str,
@@ -571,7 +629,8 @@ class ForgeServerAPI:
 
     def __init__(self, services: ForgeServerApplicationServices, bearer_credential: str,
                  *, root_identity: RootIdentity | None = None,
-                 read_grant: WorkspaceReadGrant | None = None) -> None:
+                 read_grant: WorkspaceReadGrant | None = None,
+                 review_grant: WorkspaceReviewGrant | None = None) -> None:
         if not bearer_credential:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
@@ -580,6 +639,7 @@ class ForgeServerAPI:
         self._admin_principal = "forge-server-admin-principal:v1:" + instance.instance_id
         self.root_identity = root_identity or RootIdentity(services.root)
         self.read_grant = read_grant
+        self.review_grant = review_grant
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
 
     @staticmethod
@@ -603,6 +663,8 @@ class ForgeServerAPI:
             return "ADMIN"
         if self.read_grant is not None and self.read_grant.authenticate(authorization):
             return "WORKSPACE_READ"
+        if self.review_grant is not None and self.review_grant.authenticate(authorization):
+            return "WORKSPACE_REVIEW"
         return None
 
     def _admin_principal_reference(self, authorization: str | None) -> str:
@@ -633,6 +695,68 @@ class ForgeServerAPI:
             }}, self._headers())
 
     @staticmethod
+    def _review_scope_denied() -> APIResponse:
+        return APIResponse(403, {"api_version": SERVER_API_VERSION, "error": {
+            "code": "REVIEW_SCOPE_DENIED", "message": "Review grant does not authorize this route or Mission",
+        }}, ForgeServerAPI._headers())
+
+    def _review_mission_for_decision(self, method: str, path: str,
+                                     authorization: str | None) -> str | None:
+        if method != "POST" or self.review_grant is None:
+            return None
+        parts = path.split("/")
+        if len(parts) != 6 or parts[:4] != ["", "v1", "reviews", "missions"] or parts[5] != "decisions":
+            return None
+        mission_id = unquote(parts[4])
+        principal = self.review_grant.authenticate(authorization)
+        return mission_id if principal is not None and mission_id in principal.mission_ids else None
+
+    def _workspace_review(self, method: str, path: str, authorization: str | None,
+                          body: Mapping[str, Any] | None) -> APIResponse:
+        principal = self.review_grant.authenticate(authorization) if self.review_grant else None
+        if principal is None:
+            return self._authentication_required()
+        try:
+            if method == "GET" and path == "/v1/reviews":
+                return APIResponse(200, self.services.workspace_review_list(principal), self._headers())
+            parts = path.split("/")
+            if len(parts) < 5 or parts[:4] != ["", "v1", "reviews", "missions"]:
+                return self._review_scope_denied()
+            mission_id = unquote(parts[4])
+            if mission_id not in principal.mission_ids:
+                return self._review_scope_denied()
+            if method == "GET" and len(parts) == 5:
+                return APIResponse(200, self.services.workspace_review_detail(principal, mission_id),
+                                   self._headers())
+            if len(parts) == 6 and parts[5] == "decisions" and method == "POST":
+                result, recorded = self.services.workspace_review_decide(principal, mission_id, body or {})
+                return APIResponse(201 if recorded else 200, result, self._headers())
+            if (len(parts) == 7 and parts[5] == "decisions" and method == "GET"):
+                operation = self.services.workspace_review_operation(
+                    principal, mission_id, unquote(parts[6]),
+                )
+                if operation is None:
+                    return APIResponse(404, {"api_version": SERVER_API_VERSION, "error": {
+                        "code": "REVIEW_OPERATION_NOT_FOUND", "message": "Review operation was not found",
+                    }}, self._headers())
+                return APIResponse(200, operation, self._headers())
+            return self._review_scope_denied()
+        except PermissionError:
+            return self._review_scope_denied()
+        except RuntimeServiceBusy:
+            return APIResponse(503, {"api_version": SERVER_API_VERSION, "error": {
+                "code": "REVIEW_BUSY", "message": "Retry the same operation ID after readback",
+            }}, self._headers() | {"Retry-After": "1"})
+        except (OSError, RuntimeError, sqlite3.Error) as error:
+            return APIResponse(503, {"api_version": SERVER_API_VERSION, "error": {
+                "code": "REVIEW_UNAVAILABLE", "message": type(error).__name__,
+            }}, self._headers())
+        except (ValueError, KeyError) as error:
+            return APIResponse(409, {"api_version": SERVER_API_VERSION, "error": {
+                "code": "REVIEW_CONFLICT", "message": type(error).__name__,
+            }}, self._headers())
+
+    @staticmethod
     def _authentication_required() -> APIResponse:
         return APIResponse(401, {"api_version": SERVER_API_VERSION, "error": {
             "code": "AUTHENTICATION_REQUIRED", "message": "Authentication is required",
@@ -660,6 +784,10 @@ class ForgeServerAPI:
             }}, headers)
         if kind == "WORKSPACE_READ":
             return self._workspace_read(method, path)
+        if kind == "WORKSPACE_REVIEW":
+            return self._workspace_review(method, path, authorization, body)
+        if path == "/v1/reviews" or path.startswith("/v1/reviews/"):
+            return self._review_scope_denied()
         if path == "/v1/projects" or path.startswith("/v1/projects/"):
             return self._read_api.handle(method, target, authorization)
         if method == "GET" and (
@@ -861,8 +989,12 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 elif api.root_identity.drifted():
                     response = api._root_unavailable()
                 else:
-                    body = self._body() if kind == "ADMIN" else None
                     target = raw_request_target(self.raw_requestline)
+                    path = origin_form_path(target)
+                    review_mission = api._review_mission_for_decision(
+                        self.command, path, authorization,
+                    ) if kind == "WORKSPACE_REVIEW" else None
+                    body = self._body() if kind == "ADMIN" or review_mission is not None else None
                     response = api.handle(self.command, target, authorization, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
@@ -913,8 +1045,9 @@ class ForgeServerRuntime:
         grant_path = (Path(read_grant_file) if read_grant_file is not None
                       else self.root / "credentials" / "workspace-read-grant.json")
         read_grant = WorkspaceReadGrant(self.root, self.instance.instance_id, grant_path)
+        review_grant = WorkspaceReviewGrant(self.root, self.instance.instance_id)
         self.api = ForgeServerAPI(self.services, self._credential, root_identity=self.root_identity,
-                                  read_grant=read_grant)
+                                  read_grant=read_grant, review_grant=review_grant)
         self.server = make_server(host, port, self.api)
         address, actual_port = self.server.server_address
         self.state.update(listener={"host": address, "port": actual_port}, lifecycle="STARTING")

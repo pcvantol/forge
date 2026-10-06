@@ -47,6 +47,10 @@ EXPECTED_ROUTES = frozenset({
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
     ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
+    ("GET", "/v1/reviews"),
+    ("GET", "/v1/reviews/missions/{mission_id}"),
+    ("POST", "/v1/reviews/missions/{mission_id}/decisions"),
+    ("GET", "/v1/reviews/missions/{mission_id}/decisions/{operation_id}"),
 })
 
 SERVICE_ROUTES = {
@@ -115,7 +119,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 26)
+        self.assertEqual(len(EXPECTED_ROUTES), 30)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -185,6 +189,11 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path.startswith("/v1/reviews"):
+                                self.assertEqual(status, 403)
+                                self.assertEqual(body["error"]["code"], "REVIEW_SCOPE_DENIED")
+                                observed.add((method, path))
+                                continue
                             self._assert_recognized(status, body)
                             expected_service = SERVICE_ROUTES.get((method, path))
                             if expected_service is not None:
