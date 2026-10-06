@@ -625,6 +625,7 @@ def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
                 "approved-effect-report", kind="effect_report"),)),
         ), "maximum_actions": maximum_actions,
             "maximum_consecutive_no_progress_actions": 1,
+            "repository_evidence_source": fixture.SOURCE,
             "effect_policy": policy}
         title = "Assess the deployment boundary"
         objective = "Produce a source-backed report under the approved effect mode."
