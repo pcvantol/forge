@@ -74,7 +74,9 @@ GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = (
     "partial", "post-assessment-reopen", "single", "delayed", "pre-send-reopen",
     "host-recovery", "failed-recovery",
-    "concurrent-start", "tampered", "artifact-corrupt",
+    "concurrent-start", "tampered", "tampered-action", "tampered-run",
+    "tampered-repository", "tampered-producer", "tampered-request-digest",
+    "artifact-corrupt", "artifact-schema",
     "artifact-withheld", "artifact-unavailable",
     "assurance-blocked", "budget-exhausted", "ambiguous", "ambiguous-recovered",
 )
@@ -1191,9 +1193,24 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 request_a, source_readback, source_artifact, project_id=PROJECT,
                 repository_id=fixture.SOURCE.repository_id, submission_id=a,
             )
-        if scenario == "tampered":
+        if scenario.startswith("tampered") or scenario == "artifact-schema":
             readback, artifact = simulator.terminal_documents(a)
-            readback["correlation"]["mission_id"] = "wrong-mission"
+            if scenario == "tampered":
+                readback["correlation"]["mission_id"] = "wrong-mission"
+            elif scenario == "tampered-action":
+                readback["correlation"]["engineering_action_id"] = "wrong-action"
+            elif scenario == "tampered-run":
+                readback["run"]["id"] = "wrong-run"
+            elif scenario == "tampered-repository":
+                readback["submission"]["repository_id"] = "wrong-repository"
+            elif scenario == "tampered-producer":
+                readback["producer"]["id"] = "wrong-producer"
+            elif scenario == "tampered-request-digest":
+                readback["submission"]["accepted_request_digest"] = "sha256:" + "0" * 64
+            elif scenario == "artifact-schema":
+                document = json.loads(artifact)
+                del document["report"]
+                artifact = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
             simulator.seed_terminal(a, readback, artifact)
         if scenario == "post-assessment-reopen":
             cut = _run_phase(root, scenario, "after-a-cut", server.base_url, wheel)
