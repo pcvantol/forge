@@ -24,6 +24,7 @@ POLICY_ASSIGNMENT_CONTRACT = "forge-progression-policy-assignment/v1"
 DECISION_REQUIREMENT_CONTRACT = "forge-decision-requirement/v1"
 CONTINUATION_INTENT_CONTRACT = "forge-continuation-intent/v1"
 DECISION_CONTRACT = "forge-progression-decision/v1"
+WORKSPACE_REVIEW_REQUEST_CONTRACT = "forge-workspace-review-decision/v1"
 FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT = "forge-final-acceptance-requirement/v1"
 PROFILE_DEFINITION_REVISION = "1"
 PROGRESSION_POLICY_REVISION = "1"
@@ -86,6 +87,22 @@ def _digest(value: object) -> str:
     return "sha256:" + sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()
+
+
+def workspace_review_request_digest(mission_id: str, request: Mapping[str, Any]) -> str:
+    """Bind recovery readback to every Workspace-supplied decision field."""
+    return _digest({
+        "contract_version": WORKSPACE_REVIEW_REQUEST_CONTRACT,
+        "mission_id": mission_id,
+        "operation_id": request["operation_id"],
+        "requirement_id": request["requirement_id"],
+        "subject_digest": request["subject_digest"],
+        "mission_state_revision": request["mission_state_revision"],
+        "evidence_digest": request["evidence_digest"],
+        "policy_revision": request["policy_revision"],
+        "decision": request["decision"],
+        "reason": request["reason"],
+    })
 
 
 def _text(value: object, field: str) -> str:
@@ -443,11 +460,22 @@ class GovernedContinuationService:
                 or evidence.get("authenticated_principal_reference")
                 != authenticated_principal_reference):
             return None
+        request_digest = workspace_review_request_digest(mission_id, {
+            "operation_id": decision_id,
+            "requirement_id": evidence["requirement_id"],
+            "subject_digest": evidence["subject_digest"],
+            "mission_state_revision": evidence["mission_state_revision"],
+            "evidence_digest": evidence["evidence_digest"],
+            "policy_revision": evidence["policy_revision"],
+            "decision": evidence["decision"],
+            "reason": evidence["reason"],
+        })
         return {
             "operation_id": decision_id, "mission_id": mission_id,
             "requirement_id": evidence["requirement_id"],
             "subject_digest": evidence["subject_digest"],
             "decision": value["decision"], "decision_digest": _digest(value),
+            "request_digest": request_digest,
             "recorded_at": value["occurred_at"],
         }
 

@@ -2,22 +2,31 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from http.client import HTTPConnection
 import json
 from pathlib import Path
 from threading import Barrier, Thread
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from jsonschema import Draft202012Validator, FormatChecker
 
 from forge.governance_authority import CanonicalGovernanceRepository
+from forge.governed_continuation import workspace_review_request_digest
+from forge.provider_security import (
+    CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE, CODEX_CLI_CHATGPT_SESSION_TYPE,
+    PlanningProviderSecurityService, ProviderAuthenticationMode,
+)
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
 from forge.server_runtime import ForgeServerRuntime, existing_instance
 from forge.state.mission_state import MissionExecutionStatus
 from forge.workspace_review_grant import WorkspaceReviewGrant, main as grant_main
+from forge.workspace_review_inbox import scoped_item
 from tests.criterion_fixture import ExactRepositoryBytes
 from tests import test_installed_dynamic_mission_runtime as runtime_fixture
 
@@ -91,6 +100,10 @@ class WorkspaceReviewInboxTests(unittest.TestCase):
         credential.chmod(0o600)
         server = ForgeServerRuntime(data_root=self.root, credential_file=credential,
                                     host="127.0.0.1", port=0)
+        identity_patch = patch("forge.runtime.dynamic_mission.MacOSGeneratedUIDIdentityAdapter",
+                               return_value=SimpleNamespace(resolve=lambda: self.fixture.identity))
+        identity_patch.start()
+        self.addCleanup(identity_patch.stop)
         worker = Thread(target=server.server.serve_forever, daemon=True)
         worker.start()
         self.addCleanup(worker.join, 3)
@@ -175,6 +188,9 @@ class WorkspaceReviewInboxTests(unittest.TestCase):
             self.assertEqual(set(inbox["items"][0]["allowed_outcomes"]),
                              {"approve", "reject", "amend", "defer"})
             self.assertIsNotNone(inbox["items"][0]["action_result"]["evidence_reference"])
+            self.assertEqual(inbox["items"][0]["action_result"]["outcome"], "complete")
+            self.assertEqual(inbox["items"][0]["action_result"]["evidence_reference"]["receipt_id"],
+                             "ep-receipt-status-projection")
             status, detail = _request(port, "GET", f"/v1/reviews/missions/{mission_a}", alice)
             self.assertEqual(status, 200)
             _schema("item", detail)
@@ -200,7 +216,10 @@ class WorkspaceReviewInboxTests(unittest.TestCase):
             operation_path = decision_path + "/" + command["operation_id"]
             for malformed in (
                 command | {"mission_state_revision": command["mission_state_revision"] + 1},
+                command | {"mission_state_revision": float(command["mission_state_revision"])},
+                command | {"mission_state_revision": True},
                 command | {"subject_digest": "sha256:" + "0" * 64},
+                command | {"evidence_digest": "sha256:not-a-digest"},
                 command | {"role_actor": "primary_operator"},
                 command | {"decision": []},
             ):
@@ -211,6 +230,11 @@ class WorkspaceReviewInboxTests(unittest.TestCase):
             _schema("decision_response", recorded)
             self.assertTrue(recorded["recorded"])
             self.assertEqual(recorded["operation"]["operation_id"], command["operation_id"])
+            self.assertEqual(recorded["operation"]["request_digest"],
+                             workspace_review_request_digest(mission_a, command))
+            self.assertNotEqual(recorded["operation"]["request_digest"],
+                                workspace_review_request_digest(
+                                    mission_a, command | {"reason": "Changed intent"}))
             self.assertEqual(self.fixture.provider.calls, 2)
             server.server.shutdown()
             server.server.server_close()
@@ -271,12 +295,124 @@ class WorkspaceReviewInboxTests(unittest.TestCase):
                 "requirement_id": requirement["requirement_id"],
                 "subject_digest": requirement["subject_digest"],
                 "mission_state_revision": requirement["mission_state_revision"],
-                "evidence_digest": requirement["evidence_digest"],
+                "evidence_digest": "sha256:" + "0" * 64,
                 "policy_revision": requirement["policy_revision"],
                 "decision": "approve", "reason": "Must remain a separate owner acceptance.",
             }
             self.assertEqual(_request(server.server.server_port, "POST", path + "/decisions",
                                       token, command)[0], 403)
+
+    def test_canonical_intake_without_policy_is_a_scoped_no_review_item(self) -> None:
+        mission, envelope = self.fixture._mission_and_envelope(identity_suffix="-review-intake")
+        admitted = self.fixture.runtime.admit(mission, envelope)
+        self.assertEqual(admitted.status, MissionExecutionStatus.APPROVED_PLANNABLE)
+        token, _ = self._issue("reviewer-intake", (mission.id,))
+        server, _ = self._server()
+        database_path = self.root / "forge.db"
+        before_database = sha256(database_path.read_bytes()).hexdigest()
+        before_metadata = self.fixture.runtime.database.metadata
+        with patch.object(InstalledDynamicMissionRuntime, "open",
+                          side_effect=AssertionError("read invoked execution adapters")):
+            port = server.server.server_port
+            status, inbox = _request(port, "GET", "/v1/reviews", token)
+            self.assertEqual(status, 200, inbox)
+            _schema("inbox", inbox)
+            self.assertEqual(inbox["scope"]["mission_ids"], [mission.id])
+            self.assertEqual(len(inbox["items"]), 1)
+            self.assertEqual(inbox["items"][0]["review_kind"], "NONE")
+            self.assertEqual(inbox["items"][0]["allowed_outcomes"], [])
+            detail_status, detail = _request(port, "GET",
+                                             f"/v1/reviews/missions/{mission.id}", token)
+            self.assertEqual(detail_status, 200, detail)
+            _schema("item", detail)
+        self.assertEqual(sha256(database_path.read_bytes()).hexdigest(), before_database)
+        self.assertEqual(self.fixture.runtime.database.metadata, before_metadata)
+
+    def test_scoped_projection_redacts_free_text_and_marks_blocker_scope(self) -> None:
+        mission_id = self._mission("-review-redaction", paused=True)
+        token, _ = self._issue("reviewer-redaction", (mission_id,))
+        principal = self.grant.authenticate("Bearer " + token)
+        self.assertIsNotNone(principal)
+        state = self.fixture.runtime.states.get(mission_id)
+        current = self.fixture.runtime.progression_status(mission_id)
+        requirement = dict(current["decision_requirement"])
+        requirement["continuation_scope"] = ["repo Bearer private-review-token"]
+        fake = SimpleNamespace(
+            states=SimpleNamespace(get=lambda _: replace(
+                state, mission=state.mission | {"title": "Bearer private-title-token"},
+            )),
+            progression_status=lambda _: current | {"decision_requirement": requirement},
+        )
+        item = scoped_item(fake, principal, mission_id)
+        _schema("item", item)
+        self.assertTrue(item["requirement"]["blocking_scope_redacted"])
+        self.assertNotIn("private-review-token", json.dumps(item))
+        self.assertNotIn("private-title-token", json.dumps(item))
+
+    def test_read_snapshot_keeps_one_mission_revision_during_concurrent_transition(self) -> None:
+        mission, envelope = self.fixture._mission_and_envelope(identity_suffix="-review-snapshot")
+        self.fixture.runtime.admit(mission, envelope)
+        token, _ = self._issue("reviewer-snapshot", (mission.id,))
+        principal = self.grant.authenticate("Bearer " + token)
+        self.assertIsNotNone(principal)
+        with patch("forge.runtime.dynamic_mission.MacOSGeneratedUIDIdentityAdapter",
+                   return_value=SimpleNamespace(resolve=lambda: self.fixture.identity)):
+            with InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as reader:
+                before = reader.states.get(mission.id)
+                self.fixture.runtime.states.transition(
+                    mission.id, MissionExecutionStatus.CREATED,
+                    occurred_at="2026-09-11T16:00:00Z", reason="snapshot_isolation_test",
+                )
+                item = scoped_item(reader, principal, mission.id)
+        self.assertEqual(item["lifecycle_state"], "APPROVED_PLANNABLE")
+        self.assertEqual(item["mission_state_revision"], before.revision)
+
+    def test_real_runtime_composition_records_one_scoped_decision(self) -> None:
+        mission_id = self._mission("-review-real-composition", paused=True)
+        token, _ = self._issue("reviewer-composed", (mission_id,))
+        service = PlanningProviderSecurityService(
+            self.fixture.runtime.database, SimpleNamespace(),
+            self.fixture.runtime.repository.operators,
+        )
+        service.configure(
+            configuration_id="review-qualifier-codex",
+            provider_id="codex-chatgpt-session",
+            operator_context=self.fixture.runtime.repository.operators.context(),
+            authentication_mode=ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION,
+            provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,
+            external_session_type=CODEX_CLI_CHATGPT_SESSION_TYPE,
+            executable_path="/usr/bin/true", adapter_version="1.0",
+            timeout_seconds=30, input_token_bound=16000,
+            context_token_bound=32768, output_token_bound=4096,
+        )
+        server, _ = self._server()
+        with patch("forge.runtime.dynamic_mission.CodexCliChatGPTSessionPlanningProvider",
+                   return_value=self.fixture.provider), \
+             patch("forge.runtime.dynamic_mission.EngineeringPlatformExecutionHostFactory.from_database",
+                   return_value=self.fixture.host):
+            port = server.server.server_port
+            detail_status, detail = _request(
+                port, "GET", f"/v1/reviews/missions/{mission_id}", token,
+            )
+            self.assertEqual(detail_status, 200, detail)
+            requirement = detail["requirement"]
+            command = {
+                "contract_version": "forge-workspace-review-decision/v1",
+                "operation_id": "review-real-composition-defer-001",
+                "requirement_id": requirement["requirement_id"],
+                "subject_digest": requirement["subject_digest"],
+                "mission_state_revision": requirement["mission_state_revision"],
+                "evidence_digest": requirement["evidence_digest"],
+                "policy_revision": requirement["policy_revision"],
+                "decision": "defer", "reason": "Installed composition keeps successor fenced.",
+            }
+            path = f"/v1/reviews/missions/{mission_id}/decisions"
+            recorded_status, recorded = _request(port, "POST", path, token, command)
+            self.assertEqual(recorded_status, 201, recorded)
+            _schema("decision_response", recorded)
+            self.assertEqual(recorded["operation"]["request_digest"],
+                             workspace_review_request_digest(mission_id, command))
+            self.assertEqual(_request(port, "POST", path, token, command)[0], 200)
 
     def test_external_gate_never_exposes_local_approval(self) -> None:
         mission_id = self._mission("-review-external")

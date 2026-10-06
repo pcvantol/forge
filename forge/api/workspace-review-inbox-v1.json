@@ -20,7 +20,7 @@
     },
     "requirement": {
       "type": "object", "additionalProperties": false,
-      "required": ["requirement_id", "subject_digest", "subject_revision", "mission_state_revision", "completed_action_id", "evidence_digest", "policy_revision", "policy_digest", "required_role", "required_role_actor", "required_capability", "reason", "blocking_scope", "status"],
+      "required": ["requirement_id", "subject_digest", "subject_revision", "mission_state_revision", "completed_action_id", "evidence_digest", "policy_revision", "policy_digest", "required_role", "required_role_actor", "required_capability", "reason", "blocking_scope", "blocking_scope_redacted", "status"],
       "properties": {
         "requirement_id": {"$ref": "#/$defs/id"},
         "subject_digest": {"$ref": "#/$defs/digest"},
@@ -35,6 +35,7 @@
         "required_capability": {"type": "string", "maxLength": 64},
         "reason": {"type": ["string", "null"], "maxLength": 512},
         "blocking_scope": {"type": "array", "maxItems": 64, "items": {"type": "string", "maxLength": 256}},
+        "blocking_scope_redacted": {"type": "boolean"},
         "status": {"type": ["string", "null"], "maxLength": 64}
       }
     },
@@ -42,7 +43,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["decision_id", "outcome", "decision_digest"],
       "properties": {
-        "decision_id": {"$ref": "#/$defs/id"},
+        "decision_id": {"$ref": "#/$defs/nullable_id"},
         "outcome": {"enum": ["approve", "reject", "amend", "defer"]},
         "decision_digest": {"$ref": "#/$defs/digest"}
       }
@@ -123,7 +124,7 @@
     },
     "operation": {
       "type": "object", "additionalProperties": false,
-      "required": ["operation_id", "mission_id", "requirement_id", "subject_digest", "decision", "decision_digest", "recorded_at"],
+      "required": ["operation_id", "mission_id", "requirement_id", "subject_digest", "decision", "decision_digest", "request_digest", "recorded_at"],
       "properties": {
         "operation_id": {"$ref": "#/$defs/id"},
         "mission_id": {"$ref": "#/$defs/id"},
@@ -131,6 +132,7 @@
         "subject_digest": {"$ref": "#/$defs/digest"},
         "decision": {"enum": ["approve", "reject", "amend", "defer"]},
         "decision_digest": {"$ref": "#/$defs/digest"},
+        "request_digest": {"$ref": "#/$defs/digest"},
         "recorded_at": {"type": "string", "format": "date-time"}
       }
     },

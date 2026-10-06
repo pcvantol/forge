@@ -559,11 +559,11 @@ class ForgeServerApplicationServices:
                 return _result_document(result), recording_status == "RECORDED"
 
     def workspace_review_list(self, principal: ReviewPrincipal) -> dict[str, Any]:
-        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+        with InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as runtime:
             return scoped_list(runtime, principal)
 
     def workspace_review_detail(self, principal: ReviewPrincipal, mission_id: str) -> dict[str, Any]:
-        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+        with InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as runtime:
             return scoped_item(runtime, principal, mission_id)
 
     def workspace_review_decide(
@@ -592,7 +592,7 @@ class ForgeServerApplicationServices:
     ) -> dict[str, Any] | None:
         if mission_id not in principal.mission_ids:
             raise PermissionError("review grant does not include this Mission")
-        with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
+        with InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as runtime:
             from .governed_continuation import GovernedContinuationService
             operation = GovernedContinuationService(
                 runtime.database, runtime.repository, runtime.states, runtime.clock,

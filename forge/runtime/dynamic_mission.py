@@ -248,6 +248,21 @@ class InstalledDynamicMissionRuntime:
             database.close()
             raise
 
+    @classmethod
+    def open_for_governance_read(cls, data_root: str) -> "InstalledDynamicMissionRuntime":
+        """Compose canonical Mission/governance reads without provider or EP readiness."""
+        from forge._version import canonical_version
+
+        database = RuntimeBootstrap(data_root=data_root, forge_version=canonical_version()).open_read_snapshot()
+        try:
+            repository = CanonicalGovernanceRepository.for_runtime(
+                database, MacOSGeneratedUIDIdentityAdapter().resolve, data_root=data_root,
+            )
+            return cls(database, repository, data_root=data_root, provider=None, host=None)
+        except Exception:
+            database.close()
+            raise
+
     def close(self) -> None:
         self.database.close()
 

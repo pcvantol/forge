@@ -19,6 +19,8 @@ import stat
 import tempfile
 from typing import Any, Iterator
 
+from .models.producer import redact_action_summary
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - mutation fails closed without OS locking
@@ -125,6 +127,7 @@ def _validate_record(value: object, instance_id: str) -> dict[str, Any]:
     if (not isinstance(value["grant_id"], str) or _GRANT_ID.fullmatch(value["grant_id"]) is None
             or not isinstance(value["principal_id"], str)
             or _PRINCIPAL_ID.fullmatch(value["principal_id"]) is None
+            or redact_action_summary(value["principal_id"]) != value["principal_id"]
             or value["instance_id"] != instance_id
             or value["role"] != SUPPORTED_ROLE or value["role_actor"] != SUPPORTED_ACTOR
             or value["capability"] != SUPPORTED_CAPABILITY
@@ -242,7 +245,8 @@ class WorkspaceReviewGrant:
 
     def issue(self, *, principal_id: str, mission_ids: tuple[str, ...],
               expires_at: str, token_path: Path) -> dict[str, object]:
-        if not isinstance(principal_id, str) or _PRINCIPAL_ID.fullmatch(principal_id) is None:
+        if (not isinstance(principal_id, str) or _PRINCIPAL_ID.fullmatch(principal_id) is None
+                or redact_action_summary(principal_id) != principal_id):
             raise ValueError("review principal identifier is invalid")
         selected = sorted(set(mission_ids))
         if (not selected or len(selected) > 32
