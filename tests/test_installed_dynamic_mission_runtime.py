@@ -313,6 +313,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
 
     def _mission_and_envelope(self, *, two_repositories: bool = False,
                               repository_scopes: tuple[str, str] | None = None,
+                              write_scopes: tuple[str, ...] | None = None,
                               identity_suffix: str = "", maximum_no_progress: int = 2):
         repository, context = self.runtime.repository, self.runtime.repository.operators.context()
         contracts = (CriterionAssessmentContract(
@@ -328,7 +329,8 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         source = (sources[0] if two_repositories else
                   ApprovedRepositoryEvidenceSource("forge", "synthetic/forge"))
         planning = ArchitecturePlanningEvidence(
-            scope, ("NONE",) if two_repositories else ("forge/__main__.py",),
+            scope, write_scopes if write_scopes is not None else
+            (("NONE",) if two_repositories else ("forge/__main__.py",)),
             ("no unrelated runtime work",),
             ("scope-drift",), ("protected-delivery",), ("ep-v1.2",), 16_000, 4_000, "1",
             criterion_assessment_contracts=contracts, maximum_actions=4,
@@ -380,6 +382,18 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             "expected_state_revision": admitted.revision,
         })
         return admitted
+
+    def test_explicit_empty_write_authority_admits_but_rejects_a_provider_write(self) -> None:
+        mission, envelope = self._mission_and_envelope(
+            write_scopes=(), identity_suffix="-empty-write-authority",
+        )
+        admitted = self._admit(mission, envelope)
+        self.assertEqual(admitted.admission_contract["planning"]["write_scopes"], [])
+        result = self.runtime.start(mission.id, self._truth())
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertEqual(self.provider.calls, 1)
+        self.assertEqual(self.host.requests, [])
+        self.assertEqual(self.runtime.states.get(mission.id).actions, ())
 
     def _progression_principal(self) -> str:
         context = self.runtime.repository.operators.context()
@@ -799,11 +813,59 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         self.assertEqual(captured["principal"], "local-operator:v1:operator-fingerprint")
         self.assertEqual(captured["mission_id"], "MISSION-0001")
 
+    def test_cli_final_acceptance_binds_authorized_local_operator(self) -> None:
+        captured: dict[str, object] = {}
+
+        class _Runtime:
+            database = SimpleNamespace(path=Path(self.root) / "forge.db")
+            repository = SimpleNamespace(
+                operators=SimpleNamespace(
+                    context=lambda: SimpleNamespace(installation_id="installation", generated_uid="operator", binding_version=1),
+                    authorize=lambda _context: True,
+                ),
+                _operator_id=lambda _context: "operator-fingerprint",
+            )
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def accept_final_completion(self, mission_id, document, *, authenticated_principal_reference):
+                captured.update({
+                    "mission_id": mission_id, "document": document,
+                    "principal": authenticated_principal_reference,
+                })
+                return {"status": "COMPLETED"}
+
+        acceptance = {"schema_version": "forge-final-acceptance-decision/v1"}
+        acceptance_path = Path(self.temporary.name) / "acceptance.json"
+        acceptance_path.write_text(json.dumps(acceptance))
+        with patch.object(InstalledDynamicMissionRuntime, "open", return_value=_Runtime()), \
+             patch.object(mission_cli, "require_no_controller"), \
+             patch.object(mission_cli, "asdict", side_effect=lambda value: value):
+            result = mission_cli.accept_final_completion(
+                str(self.root), "MISSION-0001", str(acceptance_path),
+            )
+        self.assertEqual(result["status"], "COMPLETED")
+        self.assertEqual(captured, {
+            "mission_id": "MISSION-0001", "document": acceptance,
+            "principal": "local-operator:v1:operator-fingerprint",
+        })
+
+        with patch.object(InstalledDynamicMissionRuntime, "open", return_value=_Runtime()), \
+             patch.object(mission_cli, "require_no_controller"), \
+             patch.object(_Runtime.repository.operators, "authorize", return_value=False), \
+             self.assertRaisesRegex(PermissionError, "trusted bound operator"):
+            mission_cli.accept_final_completion(str(self.root), "MISSION-0001", str(acceptance_path))
+
     def test_packaged_cli_exposes_policy_status_and_decision_routes(self) -> None:
         cases = (
             ("progression-policy", "progression_policy", ["--input", "policy.json"]),
             ("progression-status", "progression_status", []),
             ("progression-decide", "progression_decide", ["--input", "decision.json"]),
+            ("accept-final-completion", "accept_final_completion", ["--input", "acceptance.json"]),
         )
         for command, function, trailing in cases:
             with self.subTest(command=command), \
@@ -835,6 +897,7 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
             ["mission", "progression-policy", "--mission-id", "MISSION-0001", "--input", "policy.json"],
             ["mission", "progression-status", "--mission-id", "MISSION-0001"],
             ["mission", "progression-decide", "--mission-id", "MISSION-0001", "--input", "decision.json"],
+            ["mission", "accept-final-completion", "--mission-id", "MISSION-0001", "--input", "acceptance.json"],
             ["operations-api", "--credential-file", "credential"],
         )
         for command in commands:
@@ -1213,6 +1276,58 @@ class InstalledDynamicMissionRuntimeTests(unittest.TestCase):
         acceptance = self.runtime.progression_status(mission.id)["final_acceptance_requirement"]
         self.assertEqual(acceptance["schema_version"], "forge-final-acceptance-requirement/v1")
         self.assertEqual(acceptance["reason"], "mission_end_acceptance_required")
+
+    def test_final_business_acceptance_completes_without_new_host_or_provider_effect(self) -> None:
+        mission, envelope = self._mission_and_envelope(identity_suffix="-final-business-acceptance")
+        self._admit(mission, envelope)
+        self.runtime.start(mission.id, self._truth())
+        self.host.return_evidence = True
+        paused = self.runtime.resume(mission.id)
+        self.assertEqual(paused.status, "AWAITING_APPROVAL")
+        state = self.runtime.states.get(mission.id)
+        requirement = self.runtime.progression_status(mission.id)["final_acceptance_requirement"]
+        decision = {
+            "schema_version": "forge-final-acceptance-decision/v1",
+            "decision_id": "business-final-acceptance-001",
+            "requirement_id": requirement["requirement_id"],
+            "subject_digest": requirement["subject_digest"],
+            "mission_state_revision": requirement["mission_state_revision"],
+            "completion_digest": requirement["completion_digest"],
+            "terminal_evidence_digest": requirement["terminal_evidence_digest"],
+            "policy_revision": requirement["policy_revision"],
+            "decision": "accept", "reason": "Approved evidence satisfies the Mission objective.",
+        }
+        with self.assertRaisesRegex(ValueError, "Business acceptance"):
+            self.runtime.states.transition(
+                mission.id, MissionExecutionStatus.COMPLETED,
+                occurred_at="2026-09-11T17:00:00Z", reason="bypass",
+            )
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "actor"):
+            self.runtime.accept_final_completion(
+                mission.id, decision, authenticated_principal_reference="unrelated-principal",
+            )
+        with self.assertRaisesRegex(InstalledDynamicMissionError, "stale"):
+            self.runtime.accept_final_completion(
+                mission.id, {**decision, "completion_digest": "sha256:" + "0" * 64},
+                authenticated_principal_reference=self._progression_principal(),
+            )
+        calls, requests = self.provider.calls, len(self.host.requests)
+        accepted = self.runtime.accept_final_completion(
+            mission.id, decision, authenticated_principal_reference=self._progression_principal(),
+        )
+        self.assertEqual(accepted.status, "COMPLETED")
+        self.assertEqual((self.provider.calls, len(self.host.requests)), (calls, requests))
+        completed = self.runtime.states.get(mission.id)
+        self.assertEqual(completed.revision, state.revision + 1)
+        self.assertEqual(completed.approval_record["decision_reference"], requirement["requirement_id"])
+        self.runtime.close()
+        self.runtime = self._open_runtime()
+        replayed = self.runtime.accept_final_completion(
+            mission.id, decision, authenticated_principal_reference=self._progression_principal(),
+        )
+        self.assertEqual(replayed.status, "COMPLETED")
+        self.assertEqual(self.runtime.states.get(mission.id).revision, completed.revision)
+        self.assertEqual((self.provider.calls, len(self.host.requests)), (calls, requests))
 
     def test_two_repository_derivation_is_atomic_durable_and_never_dispatches(self) -> None:
         self.provider = _TwoRepositoryProvider()

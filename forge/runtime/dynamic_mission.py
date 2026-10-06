@@ -33,6 +33,7 @@ from forge.intake import MissionIntake
 from forge.models.action import EngineeringAction
 from forge.models.action_derivation import DerivationPolicy, GovernanceRefinementRequired
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.mission_effect import EffectRequest, MissionEffectPolicy
 from forge.models.execution_host import ExecutionDispatch, ExecutionEvidenceOutcome, ExecutionHostEvidence
 from forge.models.producer import RepositoryRevisionBinding
 from forge.models.mission_completion import (
@@ -723,6 +724,54 @@ class InstalledDynamicMissionRuntime:
         )
         return result
 
+    def accept_final_completion(
+        self, mission_id: str, document: Mapping[str, Any], *,
+        authenticated_principal_reference: str,
+    ) -> DynamicMissionRunResult:
+        """Apply one exact Business acceptance after evidence-derived completion.
+
+        The canonical decision is recorded before the terminal state change. A
+        process stop between either write or dispatcher release is recoverable
+        by replaying the same decision; no Host or provider call is made here.
+        """
+        with RuntimeServiceLock(self.database.path).acquire():
+            state = self.states.get(mission_id)
+            service = GovernedContinuationService(
+                self.database, self.repository, self.states, self.clock,
+            )
+            try:
+                recorded = service.record_final_acceptance(
+                    mission_id, document, project_id=self.host.config.project_id,
+                    authenticated_principal_reference=authenticated_principal_reference,
+                )
+            except GovernedContinuationError as error:
+                raise InstalledDynamicMissionError(str(error)) from error
+            if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
+                requirement = service.validate_final_acceptance(
+                    state, state.pause_reason or {}, project_id=self.host.config.project_id,
+                )
+                state = self.states.transition(
+                    mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self.clock(),
+                    reason="mission_final_business_acceptance_recorded",
+                    approval_record={
+                        "approval_id": recorded["decision_id"], "approved_by": "business_owner",
+                        "approved_at": self.clock(),
+                        "decision_reference": requirement["requirement_id"],
+                        "decision_digest": recorded["decision_digest"],
+                    },
+                    expected_revision=state.revision,
+                )
+            row = self.database._connection.execute(
+                "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton = 1"
+            ).fetchone()
+            if row is not None and row["status"] == "ACTIVE":
+                if row["active_mission_id"] != mission_id:
+                    raise InstalledDynamicMissionError("dispatcher points to another Mission")
+                _InstalledMissionDispatcher(
+                    self.database, self.states, mission_id, self.clock,
+                ).complete(mission_id)
+            return self._result(state)
+
     def decide_progression_with_recording_status(
         self, mission_id: str, document: Mapping[str, Any], *,
         authenticated_principal_reference: str,
@@ -1077,6 +1126,7 @@ class InstalledDynamicMissionRuntime:
             runtime_database=self.database,
             governance_repository=self.repository,
             repository_revision_binding_factory=self._repository_revision_binding,
+            effect_request_factory=self._effect_request,
             keep_running=self._keep_running,
         )
 
@@ -1128,6 +1178,36 @@ class InstalledDynamicMissionRuntime:
             )
         except ValueError as error:
             raise InstalledDynamicMissionError(str(error)) from error
+
+    @staticmethod
+    def _effect_request(
+        state: MissionExecutionState, action: EngineeringAction,
+        binding: RepositoryRevisionBinding | None,
+    ) -> EffectRequest | None:
+        mission = ArchitectureMission.from_dict(dict(state.mission))
+        admission = state.admission_contract
+        planning = admission.get("planning") if isinstance(admission, Mapping) else None
+        if not isinstance(planning, Mapping):
+            raise InstalledDynamicMissionError("Action lacks approved planning authority")
+        document = planning.get("effect_policy")
+        if document is None:
+            if mission.effect_policy is not None or "effect_policy" in planning:
+                raise InstalledDynamicMissionError("Mission effect approval is incomplete")
+            return None
+        try:
+            policy = MissionEffectPolicy.from_dict(document)
+            if (mission.effect_policy != policy or binding is None
+                    or tuple(planning["write_scopes"]) != policy.write_paths):
+                raise ValueError("effect approval, write scope, or source binding differs")
+            selected = tuple(criterion for criterion in mission.acceptance_criteria
+                             if criterion in action.expected_evidence)
+            if not selected or len(selected) != len(action.expected_evidence):
+                raise ValueError("Action evidence is not an exact subset of approved effect criteria")
+            return EffectRequest(policy, binding.requested_revision,
+                                 tuple((mission_criterion_id(mission.id, criterion), criterion)
+                                       for criterion in selected))
+        except (KeyError, TypeError, ValueError) as error:
+            raise InstalledDynamicMissionError("Action effect request is outside exact Mission approval") from error
 
     def _planning_input(self, state: MissionExecutionState) -> MissionPlannerInput:
         mission = ArchitectureMission.from_dict(dict(state.mission))
@@ -1258,6 +1338,16 @@ class InstalledDynamicMissionRuntime:
         report_id = getattr(evidence, "report_id", None)
         if not repository or not receipt_id or not report_id or not repository.repository_revision:
             raise InstalledDynamicMissionError("terminal Host evidence lacks repository provenance")
+        effect = getattr(evidence, "effect_result", None)
+        if isinstance(effect, Mapping) and effect.get("delivery") == "EVIDENCE_ONLY":
+            current = state.repository_truth
+            if (not isinstance(current, Mapping)
+                    or effect.get("source_revision") != current.get("revision")
+                    or repository.repository_revision != current.get("revision")
+                    or effect.get("delivery_revision") is not None
+                    or repository.candidate_revision is not None):
+                raise InstalledDynamicMissionError("evidence-only result changed Repository Truth")
+            return dict(current)
         return {
             "source_id": f"execution-receipt:{receipt_id}", "revision": repository.repository_revision,
             "locator": f"execution-host://{getattr(evidence, 'host_id')}/{report_id}",
@@ -1275,6 +1365,8 @@ class InstalledDynamicMissionRuntime:
         )
         observations = list(self._criterion_observer.observe(mission, reference, self.host.config.repository_id))
         observations.extend(self._host_control_observer.observe(mission, reference, evidence))
+        from forge.completion.effect_report_observer import EffectReportCriterionObserver
+        observations.extend(EffectReportCriterionObserver().observe(mission, reference, evidence))
         # Original observations retain their original revision and receipt. No
         # blanket copying of historical references to the current Truth occurs.
         old = {}
@@ -1321,9 +1413,9 @@ class InstalledDynamicMissionRuntime:
         if not isinstance(contract, Mapping) or any(not contract.get(item) for item in required):
             raise InstalledDynamicMissionError("Mission lacks its canonical admission contract")
         planning = contract["planning"]
-        if not isinstance(planning, Mapping) or any(not planning.get(item) for item in (
-            "write_scopes", "human_gates", "risk_inputs",
-        )):
+        if (not isinstance(planning, Mapping)
+                or not isinstance(planning.get("write_scopes"), list)
+                or any(not planning.get(item) for item in ("human_gates", "risk_inputs"))):
             raise InstalledDynamicMissionError("Mission admission planning authority is incomplete")
         return contract
 

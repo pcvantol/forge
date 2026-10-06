@@ -16,6 +16,7 @@ from forge.models.architecture_mission import ArchitectureMission, ArchitectureM
 from forge.models.criterion_assessment import ApprovedRepositoryEvidenceSource
 from forge.models.criterion_observation import canonical_digest
 from forge.models.mission_recommendation import RequiredDiscipline
+from forge.models.mission_effect import MissionEffectPolicy
 from forge.operator_identity import InstallationOperatorService, NamedOperatorIdentity
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.dynamic_mission import InstalledDynamicMissionRuntime
@@ -123,6 +124,46 @@ class GovernedCandidateIntakeTests(unittest.TestCase):
             "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0], 1)
         self.assertEqual(self.lifecycle.get_recommendation("recommendation").status,
                          RecommendationStatus.MISSION_ALLOCATED)
+
+    def test_read_only_effect_requires_exact_candidate_and_architecture_approval(self) -> None:
+        effect = MissionEffectPolicy("READ_ONLY_ASSESSMENT", "EVIDENCE_ONLY", ("docs/",), ())
+        self.candidate = self.lifecycle.update_candidate(
+            self.candidate.id, effect_policy=effect,
+            acceptance_criteria=("A useful report identifies current documentation gaps.",))
+        preview, planning = self.approved_input()
+        preview = replace(preview, effect_policy=effect)
+        planning = replace(planning, write_scopes=(), effect_policy=effect,
+                           mission_spec_digest=canonical_digest(preview.to_dict()))
+        self.approve(preview, planning)
+        state = self.bridge.admit(self.candidate.id, preview, planning,
+                                  occurred_at="2026-10-03T00:00:04Z")
+        self.assertEqual(state.actions, ())
+        self.assertEqual(state.admission_contract["planning"]["effect_policy"], effect.to_dict())
+        self.assertEqual(state.admission_contract["planning"]["write_scopes"], [])
+        with self.reopened_bridge() as reopened:
+            self.assertEqual(reopened.admit(self.candidate.id, preview, planning,
+                                            occurred_at="2026-10-03T00:00:05Z"), state)
+
+    def test_effect_mode_change_after_business_approval_cannot_reuse_decision(self) -> None:
+        effect = MissionEffectPolicy("READ_ONLY_ASSESSMENT", "EVIDENCE_ONLY", ("docs/",), ())
+        self.candidate = self.lifecycle.update_candidate(
+            self.candidate.id, effect_policy=effect,
+            acceptance_criteria=("A useful report identifies current documentation gaps.",))
+        preview, planning = self.approved_input()
+        preview = replace(preview, effect_policy=effect)
+        planning = replace(planning, write_scopes=(), effect_policy=effect,
+                           mission_spec_digest=canonical_digest(preview.to_dict()))
+        self.bridge.approve_business(self.candidate.id, actor="business_owner",
+                                     occurred_at="now", rationale="Value approved.",
+                                     human_gates=planning.human_gates)
+        changed = MissionEffectPolicy("ARCHITECTURE_DESIGN_ONLY", "EVIDENCE_ONLY", ("docs/",), ())
+        self.lifecycle.update_candidate(self.candidate.id, effect_policy=changed)
+        with self.assertRaises(GovernedCandidateIntakeError):
+            self.bridge.approve_architecture(self.candidate.id, preview, planning,
+                                             actor="platform_architect", occurred_at="later",
+                                             rationale="Changed authority.")
+        self.assertEqual(self.database._connection.execute(
+            "SELECT COUNT(*) FROM mission_id_allocations").fetchone()[0], 0)
 
     def test_two_approved_repository_sources_admit_without_serial_execution(self) -> None:
         self.candidate = self.lifecycle.update_candidate(

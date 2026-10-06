@@ -6,6 +6,7 @@ from hashlib import sha256
 import json
 from typing import Any, Mapping, Sequence
 
+from forge.completion.effect_report_observer import canonical_record, criterion_record
 from forge.models.architecture_mission import ArchitectureMission
 from forge.models.mission_completion import (
     CanonicalExecutionEvidenceReference,
@@ -95,6 +96,36 @@ def _host_control_observation_matches(observation, requirement, validity_policy:
                  and record["test_count"] >= requirement.minimum_test_count))
 
 
+def _effect_report_observation_matches(observation, requirement, mission,
+                                       canonical_document: Mapping[str, Any] | None) -> bool:
+    if (observation.schema_version != "1.2" or observation.source_kind != "effect_report"
+            or observation.source_identity != observation.report_id
+            or observation.artifact_path != "ep-effect-result"
+            or observation.requirement_digest != requirement.digest
+            or observation.result != "PASS"
+            or observation.reason != "VERIFIED_EP_EFFECT_CRITERION_SATISFIED"
+            or canonical_document is None or mission.effect_policy is None):
+        return False
+    effect = canonical_document.get("effect_result")
+    if (not isinstance(effect, Mapping) or effect.get("mode") != mission.effect_policy.mode
+            or effect.get("delivery") != mission.effect_policy.delivery
+            or effect.get("report_id") != observation.report_id
+            or effect.get("report_digest") != observation.content_digest
+            or effect.get("controls") is None
+            or effect.get("reviews") != ["quality", "security"]):
+        return False
+    if effect["delivery"] == "EVIDENCE_ONLY":
+        if (effect.get("source_revision") != observation.repository_revision
+                or effect.get("delivery_revision") is not None
+                or observation.candidate_revision is not None):
+            return False
+    elif (effect.get("delivery_revision") != observation.repository_revision
+          or observation.candidate_revision is None):
+        return False
+    record = criterion_record(effect, observation.criterion_id)
+    return record is not None and observation.observed_json == canonical_record(record)
+
+
 class MissionCompletionEvaluator:
     """Interpret approved predicates over Forge-observed facts; never provider PASS."""
 
@@ -105,6 +136,9 @@ class MissionCompletionEvaluator:
         truth = _truth_reference(repository_truth)
         identifiers = {mission_criterion_id(mission.id, criterion): criterion for criterion in mission.acceptance_criteria}
         canonical = _canonical_execution_references(mission.id, execution_evidence)
+        canonical_documents = {document.get("receipt_id"): document for document in execution_evidence
+                               if isinstance(document, Mapping)
+                               and canonical.get(document.get("receipt_id")) is not None}
         contracts = {mission_criterion_id(mission.id, item.criterion): item
                      for item in mission.criterion_assessment_contracts}
         bindings = {} if evidence is None else {item.criterion_id: item for item in evidence.bindings}
@@ -119,6 +153,9 @@ class MissionCompletionEvaluator:
             reason = None
             if contract is None:
                 reason = "APPROVED_ASSESSMENT_CONTRACT_MISSING"
+            elif (mission.effect_policy is not None
+                  and not any(item.kind == "effect_report" for item in contract.requirements)):
+                reason = "APPROVED_EFFECT_REPORT_REQUIREMENT_MISSING"
             elif evidence is not None and evidence.schema_version != "2.0":
                 reason = "LEGACY_ASSOCIATIONS_ARE_NOT_SUBSTANTIVE_EVIDENCE"
             elif binding is None:
@@ -183,6 +220,24 @@ class MissionCompletionEvaluator:
                             proven = _host_control_observation_matches(selected, requirement, contract.validity_policy)
                             result = "PROVEN" if proven else "UNSATISFIED"
                             why = "APPROVED_HOST_CONTROL_EXECUTED_AND_PASSED" if proven else selected.reason
+                            matched = (selected.id,)
+                    elif requirement.kind == "effect_report":
+                        if any(obs.source_kind != "effect_report"
+                               or obs.source_identity != obs.report_id
+                               or obs.artifact_path != "ep-effect-result"
+                               or obs.requirement_digest != requirement.digest for obs in candidates):
+                            result, why, matched = "UNSATISFIED", "OBSERVATION_SOURCE_MISMATCH", ()
+                        elif not candidates:
+                            result, why, matched = "UNSATISFIED", "CURRENT_OBSERVATION_MISSING", ()
+                        else:
+                            selected = candidates[-1]
+                            proven = _effect_report_observation_matches(
+                                selected, requirement, mission,
+                                canonical_documents.get(selected.receipt_id),
+                            )
+                            result = "PROVEN" if proven else "UNSATISFIED"
+                            why = ("VERIFIED_EP_EFFECT_CRITERION_SATISFIED" if proven
+                                   else "EFFECT_REPORT_PROVENANCE_MISMATCH")
                             matched = (selected.id,)
                     elif requirement.kind != "repository_json":
                         result, why, matched = "UNSATISFIED", "UNSUPPORTED_AUTHORITATIVE_EVIDENCE_SOURCE", ()

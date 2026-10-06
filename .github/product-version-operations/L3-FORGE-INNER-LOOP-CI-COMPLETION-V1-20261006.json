@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.65",
+  "classification_rationale": "L3-FORGE-INNER-LOOP-CI-COMPLETION-V1-20261006",
+  "component": "product",
+  "event_lineage": "L3-FORGE-INNER-LOOP-CI-COMPLETION-V1-20261006",
+  "expected_head": "2273e2a63c9a3770e708938d4370799b3cebc261",
+  "operation_id": "L3-FORGE-INNER-LOOP-CI-COMPLETION-V1-20261006",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.66"
+}

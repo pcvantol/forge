@@ -98,6 +98,12 @@ class CriterionEvidenceRequirement:
             except (ValueError, TypeError, RecursionError) as error:
                 raise ValueError("repository assertion expected JSON is invalid") from error
             object.__setattr__(self, "expected_json", canonical)
+        elif self.kind == "effect_report":
+            if any((self.control_identity, self.command, self.artifact_path, self.json_pointer,
+                    self.expected_json, self.validation_id, self.validation_profile_version,
+                    self.profile_reference, self.control_category, self.control_definition_digest,
+                    self.minimum_test_count)):
+                raise ValueError("effect report requirement names only its approved criterion")
         else:
             raise ValueError("criterion evidence requirement kind is unsupported")
 
@@ -113,6 +119,8 @@ class CriterionEvidenceRequirement:
                                 "control_definition_digest": self.control_definition_digest,
                                 "minimum_test_count": self.minimum_test_count})
             return control
+        if self.kind == "effect_report":
+            return value
         return {**value, "artifact_path": self.artifact_path,
                 "json_pointer": self.json_pointer, "expected_json": self.expected_json}
 
@@ -126,6 +134,7 @@ class CriterionEvidenceRequirement:
             raise ValueError("criterion evidence requirement schema is invalid")
         keys = ({"requirement_id", "kind", "control_identity", "command"}
                 if document.get("kind") == "host_control" else
+                {"requirement_id", "kind"} if document.get("kind") == "effect_report" else
                 {"requirement_id", "kind", "artifact_path", "json_pointer", "expected_json"})
         extended = keys | {"validation_id", "validation_profile_version", "profile_reference",
                            "control_category", "control_definition_digest", "minimum_test_count"}

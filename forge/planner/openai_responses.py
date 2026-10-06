@@ -190,7 +190,7 @@ class CanonicalTokenPreflightAuthority:
             raise PermissionError("canonical approved Mission derivation policy is invalid")
         values = tuple(tuple(sorted(set(item for item in items if isinstance(item, str) and item)))
                        for items in raw_values)
-        if any(not item for item in values) or any(len(item) != len(items)
+        if any(not item for item in values[1:]) or any(len(item) != len(items)
                                                     for item, items in zip(values, raw_values)):
             raise PermissionError("canonical approved Mission derivation policy is invalid")
         write_scopes = values[0]
@@ -672,7 +672,7 @@ def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[s
     """Bind strict output to canonical Mission scope and derivation constraints."""
     if not scopes or any(not isinstance(scope, str) or not scope for scope in scopes):
         raise ValueError("canonical approved Mission scopes are required")
-    if (not write_scopes or len(write_scopes) != len(set(write_scopes))
+    if (len(write_scopes) != len(set(write_scopes))
             or any(not isinstance(scope, str) or not scope for scope in write_scopes)
             or ("NONE" in write_scopes and write_scopes != ("NONE",))
             or not human_gates or not risk_inputs):
@@ -693,7 +693,7 @@ def _schema_for_approved_contract(scopes: tuple[str, ...], write_scopes: tuple[s
     # ``NONE`` remains a governance state, never a provider grant to a write
     # path.  Otherwise the strict schema exposes only the finite, canonical
     # allow-list; deterministic validation remains the final authority check.
-    if write_scopes == ("NONE",):
+    if not write_scopes or write_scopes == ("NONE",):
         properties["write_scopes"] = {"type": "array", "items": {"type": "string"}, "maxItems": 0}
     else:
         properties["write_scopes"] = {

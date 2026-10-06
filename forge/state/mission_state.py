@@ -434,6 +434,40 @@ class MissionStateStore:
             "revision": current.revision + 1,
         })
         if status is MissionExecutionStatus.COMPLETED:
+            pending = current.pause_reason
+            if (current.status is MissionExecutionStatus.AWAITING_APPROVAL
+                    and isinstance(pending, Mapping)
+                    and pending.get("schema_version") == "forge-final-acceptance-requirement/v1"):
+                approval = document.get("approval_record")
+                if (not isinstance(approval, Mapping)
+                        or set(approval) != {
+                            "approval_id", "approved_by", "approved_at",
+                            "decision_reference", "decision_digest",
+                        }
+                        or approval.get("approved_by") != "business_owner"
+                        or approval.get("decision_reference") != pending.get("requirement_id")
+                        or not _is_digest(approval.get("decision_digest"))):
+                    raise MissionStateStoreError("final completion requires exact Business acceptance")
+                row = self._runtime._connection.execute(
+                    "SELECT document,digest FROM governance_decisions WHERE decision_id=?",
+                    (approval["approval_id"],),
+                ).fetchone()
+                if row is None:
+                    raise MissionStateStoreError("final Business acceptance decision is absent")
+                canonical = json.loads(row["document"])
+                decision_evidence = canonical.get("evidence")
+                if (_digest(canonical) != row["digest"]
+                        or row["digest"] != approval["decision_digest"]
+                        or canonical.get("subject_id") != pending.get("requirement_id")
+                        or canonical.get("subject_revision") != pending.get("subject_digest")
+                        or canonical.get("capability") != "BUSINESS_APPROVAL"
+                        or canonical.get("decision") != "accept"
+                        or not isinstance(decision_evidence, Mapping)
+                        or decision_evidence.get("schema_version") != "forge-final-acceptance-decision/v1"
+                        or decision_evidence.get("mission_id") != mission_id
+                        or decision_evidence.get("completion_digest") != _digest(current.completion)
+                        or decision_evidence.get("terminal_evidence_digest") != _digest(current.execution_evidence)):
+                    raise MissionStateStoreError("final Business acceptance does not bind Mission evidence")
             evidence = document["execution_evidence"]
             required = ("host_id", "receipt_id", "host_run_id", "correlation_id", "report_id", "outcome",
                         "repository_evidence", "execution_started_at", "execution_completed_at", "execution_duration_ms")

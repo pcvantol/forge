@@ -17,6 +17,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from forge.execution_host_configuration import canonical_endpoint
 from forge.models.execution_host import ExecutionDispatch, ExecutionHostEvidence, ExecutionHostTemporaryUnavailable, ExecutionRequest
+from .ep_effect_v15 import terminal_evidence as effect_terminal_evidence
 from .ep_v12 import terminal_evidence
 
 
@@ -123,17 +124,24 @@ class EngineeringPlatformHttpExecutionHost:
     def _segment(value: str) -> str:
         return quote(value, safe="")
 
-    def _json(self, path: str, *, method: str = "GET", body: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def _json(self, path: str, *, method: str = "GET", body: Mapping[str, Any] | None = None,
+              headers: Mapping[str, str] | None = None) -> dict[str, Any]:
         # The digest persisted with a correlation binds the exact serialized
         # submission.  Reuse the transport serializer so non-ASCII prompt text
         # cannot make the audited digest differ from the bytes sent to EP.
         data = None if body is None else self._canonical_json_bytes(body)
+        request_headers = {"Authorization": "Bearer " + self.config.bearer_token,
+                           "Content-Type": "application/json",
+                           "EP-Project-ID": self.config.project_id,
+                           "EP-Repository-ID": self.config.repository_id,
+                           "EP-Producer-Readback-Contract": "1.3"}
+        if headers is not None:
+            if any(key in {"Authorization", "Content-Type", "EP-Project-ID",
+                           "EP-Producer-Readback-Contract"} for key in headers):
+                raise ValueError("EP request identity headers cannot override authentication or contract")
+            request_headers.update(headers)
         request = Request(self.config.base_url.rstrip("/") + path, data=data, method=method,
-                          headers={"Authorization": "Bearer " + self.config.bearer_token,
-                                   "Content-Type": "application/json",
-                                   "EP-Project-ID": self.config.project_id,
-                                   "EP-Repository-ID": self.config.repository_id,
-                                   "EP-Producer-Readback-Contract": "1.3"})
+                          headers=request_headers)
         try:
             with _open(request, timeout=self.config.timeout) as response:
                 raw = response.read(1_048_577)
@@ -417,12 +425,16 @@ class EngineeringPlatformHttpExecutionHost:
         if any(value.startswith("ep-merge-delegation:") or value == "ep-delivery-control-validation:1"
                for value in contract.execution_constraints):
             forge_execution["execution_constraints"] = list(contract.execution_constraints)
+        constraints = {"forge_execution": forge_execution,
+                       "repository_revision_binding": revision_binding.ep_constraint(request.origin_identity)}
+        if contract.effect_request is not None:
+            if contract.effect_request.source_revision != revision_binding.requested_revision:
+                raise ValueError("EP_EFFECT_SOURCE_BINDING_MISMATCH")
+            constraints["effect_contract"] = contract.effect_request.to_dict()
         return {"repository_id": request.repository_id, "producer": contract.producer.identity.to_dict(),
                 "prompt": contract.runtime_prompt.content, "idempotency_key": request.correlation_id,
                 "correlation_id": request.correlation_id, "mission_id": request.mission_id,
-                "engineering_action_id": request.action_id, "constraints": {"forge_execution": forge_execution,
-                    "repository_revision_binding": revision_binding.ep_constraint(
-                        request.origin_identity)}}
+                "engineering_action_id": request.action_id, "constraints": constraints}
 
     def _audit_document(self, request: ExecutionRequest, binding: Mapping[str, Any], *, receipt: Mapping[str, Any] | None = None) -> dict[str, object]:
         contract = request.producer_contract
@@ -648,6 +660,8 @@ class EngineeringPlatformHttpExecutionHost:
                 or not set(contracts).issubset({
                     "producer_readback", "terminal_evidence", "validation_controls",
                     "delivery_revision_validation", "bounded_merge_delegation",
+                    "submission_identity_readback", "effect_request", "effect_result",
+                    "effect_validation_profile",
                 })
                 or not isinstance(authentication, Mapping)
                 or set(authentication) != {
@@ -677,15 +691,42 @@ class EngineeringPlatformHttpExecutionHost:
                 or any(version not in self.SUPPORTED_PRODUCER_READBACK_CONTRACTS for version in versions)):
             raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
         terminal_versions = contracts.get("terminal_evidence")
-        if not isinstance(terminal_versions, list) or terminal_versions != [self.config.terminal_evidence_contract]:
+        if terminal_versions not in ([self.config.terminal_evidence_contract],
+                                     [self.config.terminal_evidence_contract, "1.5"],
+                                     [self.config.terminal_evidence_contract, "1.6"]):
             raise ValueError("EP_TERMINAL_CONTRACT_INCOMPATIBLE")
+        effect_declared = any(key in contracts for key in (
+            "effect_request", "effect_result", "effect_validation_profile"))
+        if effect_declared or any(version in terminal_versions for version in ("1.5", "1.6")):
+            legacy = (contracts.get("effect_result") == ["1.0"]
+                      and "effect_validation_profile" not in contracts
+                      and terminal_versions == [self.config.terminal_evidence_contract, "1.5"])
+            current = (contracts.get("effect_result") == ["1.1"]
+                       and contracts.get("effect_validation_profile") == ["1.0"]
+                       and terminal_versions == [self.config.terminal_evidence_contract, "1.6"])
+            if contracts.get("effect_request") != ["1.0"] or not (legacy or current):
+                raise ValueError("EP_EFFECT_CONTRACT_DECLARATION_MALFORMED")
         if ("validation_controls" in contracts
                 and contracts["validation_controls"] not in (["1.0"], ["1.0", "1.1"])):
             raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
-        for capability in ("delivery_revision_validation", "bounded_merge_delegation"):
+        for capability in ("delivery_revision_validation", "bounded_merge_delegation",
+                           "submission_identity_readback"):
             if capability in contracts and contracts[capability] != ["1.0"]:
                 raise ValueError("EP_CAPABILITY_DECLARATION_MALFORMED")
         return declaration
+
+    @staticmethod
+    def _require_effect_capability(request: ExecutionRequest,
+                                   declaration: Mapping[str, Any]) -> None:
+        if request.producer_contract.effect_request is None:
+            return
+        contracts = declaration.get("contracts")
+        if (not isinstance(contracts, Mapping)
+                or contracts.get("effect_request") != ["1.0"]
+                or contracts.get("effect_result") != ["1.1"]
+                or contracts.get("effect_validation_profile") != ["1.0"]
+                or "1.6" not in contracts.get("terminal_evidence", ())):
+            raise ValueError("EP_EFFECT_CAPABILITY_REQUIRED")
 
     def managed_workspace_readiness(self) -> dict[str, Any]:
         """Read EP's current Managed workspace capability without submission."""
@@ -745,6 +786,70 @@ class EngineeringPlatformHttpExecutionHost:
         if not isinstance(submission_id, str) or not submission_id:
             return None
         return self._readback_for_submission(request, binding, submission_id)
+
+    def _recover_submission_identity(
+        self, request: ExecutionRequest, binding: Mapping[str, Any],
+        declaration: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Read one accepted POST by its original durable identity, without resubmitting."""
+        contracts = declaration.get("contracts")
+        if (not isinstance(contracts, Mapping)
+                or contracts.get("submission_identity_readback") != ["1.0"]
+                or request.repository_revision_binding is None):
+            raise ValueError("EP_SUBMISSION_OUTCOME_AMBIGUOUS")
+        digest = self._expected_ep_accepted_request_digest(request)
+        try:
+            recovered = self._json(
+                f"/v1/projects/{self._segment(self.config.project_id)}/submissions/by-identity",
+                headers={
+                    "EP-Submission-Identity-Contract": "1.0",
+                    "EP-Correlation-ID": request.correlation_id,
+                    "Idempotency-Key": request.correlation_id,
+                    "EP-Accepted-Request-Digest": digest,
+                },
+            )
+        except ValueError as error:
+            if str(error) == "EP rejected request: 404":
+                raise ValueError("EP_SUBMISSION_OUTCOME_AMBIGUOUS") from error
+            raise
+        expected = {"contract_version", "identity", "receipt", "readback"}
+        identity = recovered.get("identity")
+        readback = recovered.get("readback")
+        if (set(recovered) != expected or recovered.get("contract_version") != "1.0"
+                or not isinstance(identity, Mapping) or set(identity) != {
+                    "project_id", "repository_id", "consumer_id", "correlation_id",
+                    "accepted_request_digest",
+                }
+                or dict(identity) != {
+                    "project_id": self.config.project_id,
+                    "repository_id": request.repository_id,
+                    "consumer_id": self.config.expected_consumer_id,
+                    "correlation_id": request.correlation_id,
+                    "accepted_request_digest": digest,
+                }
+                or not isinstance(readback, Mapping)):
+            raise ValueError("EP submission identity readback is malformed or foreign")
+        submission = readback.get("submission")
+        submission_id = submission.get("id") if isinstance(submission, Mapping) else None
+        if not isinstance(submission_id, str) or not submission_id:
+            raise ValueError("EP identity readback lacks a submission ID")
+        identified = {**binding, "submission_id": submission_id}
+        receipt = self._validate_submission_receipt(
+            request, identified, {"receipt": recovered["receipt"]},
+        )
+        self._validate_readback(request, identified, readback)
+        if readback["submission"]["id"] != submission_id:
+            raise ValueError("EP identity readback submission differs")
+        identified = self._bindings.save_execution_host_binding(request.correlation_id, {
+            "correlation_id": request.correlation_id,
+            "submission_id": submission_id,
+            "submission_receipt": dict(receipt),
+        })
+        self._bindings.record_execution_host_exchange_audit(
+            request.correlation_id, direction="EP_TO_FORGE", event_kind="EP_SUBMISSION_RECEIPT_RECEIVED",
+            document=self._audit_document(request, identified, receipt=receipt),
+        )
+        return identified, dict(readback)
 
     def _readback_for_submission(self, request: ExecutionRequest, binding: Mapping[str, Any],
                                  submission_id: str, *, host_retry_successor: bool = False) -> dict[str, Any]:
@@ -856,7 +961,8 @@ class EngineeringPlatformHttpExecutionHost:
         # A compatibility failure has no EP submission/action/repair side effect.
         self._validate_request_scope(request)
         binding = self._binding(request)
-        self.preflight()
+        declaration = self.preflight()
+        self._require_effect_capability(request, declaration)
         readback = self._readback(request, binding)
         if readback is None:
             sent = any(
@@ -865,7 +971,8 @@ class EngineeringPlatformHttpExecutionHost:
                 for item in self._bindings.execution_host_exchange_audit(request.correlation_id)
             )
             if sent:
-                raise ValueError("EP_SUBMISSION_OUTCOME_AMBIGUOUS")
+                binding, readback = self._recover_submission_identity(request, binding, declaration)
+                return self._dispatch_from_readback(request, binding, readback)
             self._bindings.record_execution_host_exchange_audit(
                 request.correlation_id, direction="FORGE_TO_EP", event_kind="FORGE_SUBMISSION_SENT",
                 document=self._audit_document(request, binding),
@@ -896,14 +1003,34 @@ class EngineeringPlatformHttpExecutionHost:
         # stored.  It is never backfilled with the new constraint or retried
         # as a new submission; absent binding storage still fails closed.
         binding = self._binding(request, allow_historical_readback=True)
-        self.preflight()
-        return self._dispatch_from_readback(request, binding, self._readback(request, binding))
+        declaration = self.preflight()
+        self._require_effect_capability(request, declaration)
+        readback = self._readback(request, binding)
+        if readback is None and binding.get("submission_id") is None:
+            sent = any(
+                item.get("direction") == "FORGE_TO_EP"
+                and item.get("event_kind") == "FORGE_SUBMISSION_SENT"
+                for item in self._bindings.execution_host_exchange_audit(request.correlation_id)
+            )
+            if sent:
+                contracts = declaration.get("contracts")
+                if (not isinstance(contracts, Mapping)
+                        or contracts.get("submission_identity_readback") != ["1.0"]):
+                    return None
+                binding, readback = self._recover_submission_identity(request, binding, declaration)
+        return self._dispatch_from_readback(request, binding, readback)
 
     def _dispatch_from_readback(self, request: ExecutionRequest, binding: Mapping[str, Any], readback: Mapping[str, Any] | None) -> ExecutionDispatch | None:
         if readback is None:
             return None
         run = readback.get("run")
         if run is None:
+            disposition = readback.get("disposition")
+            if isinstance(disposition, Mapping) and disposition.get("terminal") is True:
+                if (disposition.get("state") == "DECLINED"
+                        and disposition.get("execution_eligible") is False):
+                    raise ValueError("EP_DECLINED_BEFORE_RUN")
+                raise ValueError("EP_TERMINAL_NO_RUN_DISPOSITION_INVALID")
             return None  # accepted but not yet claimed: ordinary resumable waiting
         if not isinstance(run, Mapping) or not isinstance(run.get("id"), str) or not run["id"]:
             raise ValueError("EP readback run identity is invalid")
@@ -918,7 +1045,7 @@ class EngineeringPlatformHttpExecutionHost:
         request, binding = dispatch.request, self._binding(
             dispatch.request, allow_historical_readback=True,
         )
-        self.preflight()
+        self._require_effect_capability(request, self.preflight())
         if binding.get("host_run_id") not in (None, dispatch.host_run_id):
             raise ValueError("persisted dispatch run differs from requested evidence run")
         readback = self._readback(request, binding)
@@ -954,11 +1081,33 @@ class EngineeringPlatformHttpExecutionHost:
         raw = self._bytes(
             f"/v1/projects/{self._segment(self.config.project_id)}/artifacts/{self._segment(terminal['id'])}"
         )
-        evidence = terminal_evidence(
-            readback, raw, host_id=self.config.host_id,
-            repository_revision_binding=request.repository_revision_binding,
-            resolved_from_host_run_id=resolved_from_host_run_id,
-        )
+        if request.producer_contract.effect_request is not None:
+            # A declared capability is not terminal evidence. In particular,
+            # the legacy v1.4 Git artifact cannot complete an effect request.
+            try:
+                effect_terminal = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ValueError("EP_EFFECT_TERMINAL_INVALID") from error
+            if (not isinstance(effect_terminal, Mapping)
+                    or effect_terminal.get("contract_version") != "1.6"):
+                raise ValueError("EP_EFFECT_TERMINAL_V16_REQUIRED")
+            submission_id = binding.get("submission_id")
+            if not isinstance(submission_id, str) or not submission_id:
+                raise ValueError("EP_EFFECT_SUBMISSION_BINDING_MISSING")
+            effect_result = self._json(
+                f"/v1/projects/{self._segment(self.config.project_id)}/submissions/"
+                f"{self._segment(submission_id)}/effect-result"
+            )
+            evidence = effect_terminal_evidence(
+                request, readback, raw, effect_result, host_id=self.config.host_id,
+                expected_accepted_digest=self._expected_ep_accepted_request_digest(request),
+            )
+        else:
+            evidence = terminal_evidence(
+                readback, raw, host_id=self.config.host_id,
+                repository_revision_binding=request.repository_revision_binding,
+                resolved_from_host_run_id=resolved_from_host_run_id,
+            )
         evidence = replace(evidence, receipt_id=self._submission_receipt_id(request, binding))
         observed_identity = (evidence.correlation_id, evidence.host_run_id, evidence.repository_evidence.runtime_prompt_id,
             evidence.repository_evidence.mission_id, evidence.repository_evidence.intent_id,

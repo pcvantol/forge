@@ -10,6 +10,7 @@ import json
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from forge.models.action import EngineeringAction, EngineeringActionStatus
+from forge.models.mission_effect import EffectRequest
 from forge.models.mission_completion import MissionCompletionEvaluation
 from forge.models.execution_host import (
     ExecutionDispatch,
@@ -71,6 +72,13 @@ class RepositoryRevisionBindingFactory(Protocol):
     """Freeze the Forge-owned Repository Truth and recovery authority for one Action."""
 
     def __call__(self, state: MissionExecutionState, action: EngineeringAction) -> RepositoryRevisionBinding: ...
+
+
+class EffectRequestFactory(Protocol):
+    """Bind an approved Mission effect to one current Action and source revision."""
+
+    def __call__(self, state: MissionExecutionState, action: EngineeringAction,
+                 binding: RepositoryRevisionBinding | None) -> EffectRequest | None: ...
 
 
 def _document(value: Any) -> dict[str, Any]:
@@ -188,6 +196,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
             context_document = contract_document.get("action_context")
             planning_document = contract_document.get("planning_context")
             revision_document = contract_document.get("repository_revision_binding")
+            effect_document = contract_document.get("effect_request")
             if not isinstance(producer, Mapping) or not isinstance(prompt, Mapping) or not isinstance(metadata, Mapping) or not isinstance(constraints, list):
                 raise TypeError
             identity = producer["identity"]
@@ -276,6 +285,9 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
                     required(revision_document["repository_truth_digest"]), authority,
                 )
             mission_id = required(contract_document["mission_id"])
+            effect_request = None
+            if "effect_request" in contract_document:
+                effect_request = EffectRequest.from_dict(effect_document)
             contract = ProducerContract(
                 Producer(ProducerIdentity(required(identity["id"]), required(identity["type"]), required(identity["version"])),
                          required(producer["contract_version"])),
@@ -287,6 +299,7 @@ def _request(document: Mapping[str, Any]) -> ExecutionRequest:
                 receipt_references=tuple(ExecutionReceiptReference(item["host_id"], item["receipt_id"]) for item in receipts),
                 execution_evidence_references=tuple(evidence_references), contract_version=required(contract_document["contract_version"]),
                 repository_revision_binding=revision_binding,
+                effect_request=effect_request,
             )
         except (KeyError, TypeError, ValueError) as error:
             raise MissionRunnerError("persisted Producer Contract is malformed") from error
@@ -377,6 +390,7 @@ class BootstrapMissionRunner:
         evidence_progression_gate: EvidenceProgressionGate | None = None,
         runtime_instance_id: str | None = None,
         repository_revision_binding_factory: RepositoryRevisionBindingFactory | None = None,
+        effect_request_factory: EffectRequestFactory | None = None,
         keep_running: Callable[[], bool] | None = None,
     ) -> None:
         if not all((host_id, workspace_id, repository_id)):
@@ -397,6 +411,7 @@ class BootstrapMissionRunner:
         self._evidence_progression_gate = evidence_progression_gate
         self._runtime_instance_id = runtime_instance_id
         self._repository_revision_binding_factory = repository_revision_binding_factory
+        self._effect_request_factory = effect_request_factory
         self._keep_running = keep_running or (lambda: True)
 
     def start(self, mission: Any, intents: Sequence[Any], actions: Sequence[Any]) -> MissionExecutionState:
@@ -456,6 +471,8 @@ class BootstrapMissionRunner:
             None if self._repository_revision_binding_factory is None
             else self._repository_revision_binding_factory(state, action)
         )
+        effect_request = (None if self._effect_request_factory is None else
+                          self._effect_request_factory(state, action, revision_binding))
         request = ExecutionRequest(
             self._host_id, state.mission_id, action.intent_id, action.intent_revision, action.id, prompt,
             self._workspace_id, self._repository_id, self._correlation_id_factory(), self._now(),
@@ -464,6 +481,7 @@ class BootstrapMissionRunner:
             origin_identity=self._origin_identity,
             planning_context=planning_context,
             repository_revision_binding=revision_binding,
+            effect_request=effect_request,
         )
         envelope = {"request": _request_document(request), "host_run_id": None}
         return self._store.transition(

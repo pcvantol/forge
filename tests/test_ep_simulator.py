@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from forge.ep_simulator import EpSimulatorScenario, EpSimulatorServer, EpSimulatorState
 from forge.models import ExecutionEvidenceOutcome
 from forge.models.execution_host import ExecutionHostTemporaryUnavailable
+from forge.models.mission_effect import EffectRequest, MissionEffectPolicy
 from forge.runtime.database import RuntimeDatabase
 from forge.scheduler.ep_http_adapter import EngineeringPlatformHttpConfiguration, EngineeringPlatformHttpExecutionHost
 from tests.test_ep_http_adapter import _request
@@ -27,6 +30,81 @@ class EpSimulatorTests(unittest.TestCase):
             consumer_id="forge-consumer", instance_id="sim-ep", bearer_token="sim-token",
             scenario=scenario,
         )
+
+    def test_identity_capability_only_appears_when_the_scenario_supports_it(self) -> None:
+        baseline = self._state().compatibility()["contracts"]
+        self.assertEqual(baseline["producer_readback"], ["1.2"])
+        self.assertNotIn("submission_identity_readback", baseline)
+        supported = self._state(EpSimulatorScenario(identity_readback_supported=True)).compatibility()["contracts"]
+        self.assertEqual(supported["producer_readback"], ["1.2", "1.3"])
+        self.assertEqual(supported["submission_identity_readback"], ["1.0"])
+
+    def test_legacy_submission_stays_on_terminal_v14_when_ep_advertises_effect_v16(self) -> None:
+        state = self._state(EpSimulatorScenario(effect_declaration_supported=True))
+        with EpSimulatorServer(state) as server:
+            host = self._host(server)
+            contracts = host.preflight()["contracts"]
+            self.assertEqual(contracts["terminal_evidence"], ["1.4", "1.6"])
+            self.assertEqual(contracts["effect_request"], ["1.0"])
+            self.assertEqual(contracts["effect_result"], ["1.1"])
+            self.assertEqual(contracts["effect_validation_profile"], ["1.0"])
+            request = _request()
+            self.assertIsNone(host.dispatch(request))
+            submission_id, = state.submission_ids()
+            state.complete(submission_id, delivery_revision="a" * 40)
+            dispatch = host.recover_dispatch(request)
+            self.assertIsNotNone(dispatch)
+            evidence = host.retrieve_evidence(dispatch)
+            self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+            self.assertEqual(len(state.submission_ids()), 1)
+
+    def test_effect_request_requires_capability_and_transmits_exact_approved_contract(self) -> None:
+        base = _request()
+        effect = EffectRequest(
+            MissionEffectPolicy("READ_ONLY_ASSESSMENT", "EVIDENCE_ONLY", ("docs/",), ()),
+            "a" * 40, (("criterion-1", "Assess the documented architecture boundary."),),
+        )
+        request = replace(base, producer_contract=replace(base.producer_contract,
+                                                           effect_request=effect),
+                          effect_request=effect)
+        baseline = self._state()
+        with EpSimulatorServer(baseline) as server:
+            with self.assertRaisesRegex(ValueError, "EP_EFFECT_CAPABILITY_REQUIRED"):
+                self._host(server).dispatch(request)
+            self.assertEqual(baseline.submission_ids(), ())
+        supported = self._state(EpSimulatorScenario(effect_declaration_supported=True))
+        with EpSimulatorServer(supported) as server:
+            host = self._host(server)
+            self.assertIsNone(host.dispatch(request))
+            submission_id, = supported.submission_ids()
+            payload = supported.submitted_payload(submission_id)
+            self.assertEqual(payload["constraints"]["effect_contract"], effect.to_dict())
+            self.assertEqual(payload["constraints"]["repository_revision_binding"]["requested_revision"],
+                             effect.source_revision)
+            supported.complete(submission_id, delivery_revision="b" * 40)
+            dispatch = host.recover_dispatch(request)
+            self.assertIsNotNone(dispatch)
+            with self.assertRaisesRegex(ValueError, "EP_EFFECT_TERMINAL_V16_REQUIRED"):
+                host.retrieve_evidence(dispatch)
+
+    def test_historical_effect_declaration_cannot_dispatch_current_profile_bound_request(self) -> None:
+        base = _request()
+        effect = EffectRequest(
+            MissionEffectPolicy("READ_ONLY_ASSESSMENT", "EVIDENCE_ONLY", ("docs/",), ()),
+            "a" * 40, (("criterion-1", "Assess the documented architecture boundary."),))
+        request = replace(base, producer_contract=replace(base.producer_contract, effect_request=effect),
+                          effect_request=effect)
+        state = self._state(EpSimulatorScenario(effect_declaration_supported=True))
+        legacy = state.compatibility()
+        legacy["contracts"]["effect_result"] = ["1.0"]
+        legacy["contracts"]["terminal_evidence"] = ["1.4", "1.5"]
+        del legacy["contracts"]["effect_validation_profile"]
+        with patch.object(state, "compatibility", return_value=legacy), EpSimulatorServer(state) as server:
+            host = self._host(server)
+            self.assertEqual(host.preflight()["contracts"]["effect_result"], ["1.0"])
+            with self.assertRaisesRegex(ValueError, "EP_EFFECT_CAPABILITY_REQUIRED"):
+                host.dispatch(request)
+            self.assertEqual(state.submission_ids(), ())
 
     def _host(
         self,
@@ -62,6 +140,27 @@ class EpSimulatorTests(unittest.TestCase):
             events = [item["event"] for item in state.audit]
             self.assertIn("submission_accepted", events)
 
+    def test_declined_submission_without_run_fails_closed_on_http_readback(self) -> None:
+        state = self._state()
+        with EpSimulatorServer(state) as server:
+            host = self._host(server)
+            request = _request()
+            self.assertIsNone(host.dispatch(request))
+            submission_id, = state.submission_ids()
+            state.decline_before_run(submission_id)
+            readback = state.pending_readback(submission_id)
+            self.assertEqual(readback["submission"]["state"], "DECLINED")
+            self.assertTrue(readback["disposition"]["terminal"])
+            self.assertIsNone(readback["run"])
+            with self.assertRaisesRegex(ValueError, "EP_DECLINED_BEFORE_RUN"):
+                host.recover_dispatch(request)
+            with self.assertRaisesRegex(ValueError, "EP_DECLINED_BEFORE_RUN"):
+                host.recover_dispatch(request)
+            self.assertEqual(state.submission_ids(), (submission_id,))
+            self.assertEqual([item["event"] for item in state.audit], [
+                "submission_accepted", "submission_declined",
+            ])
+
     def test_accepted_post_lost_response_stays_ambiguous_without_resubmission(self) -> None:
         state = self._state(EpSimulatorScenario(
             name="accepted-response-lost",
@@ -80,6 +179,68 @@ class EpSimulatorTests(unittest.TestCase):
                 [item["event"] for item in state.audit],
                 ["submission_accepted", "submission_response_lost"],
             )
+
+    def test_accepted_post_lost_response_recovers_by_producer_identity_without_reposting(self) -> None:
+        state = self._state(EpSimulatorScenario(
+            name="accepted-response-recovered", identity_readback_supported=True,
+            connection_loss_at=frozenset({"submission-after-accept-once"}),
+        ))
+        with EpSimulatorServer(state) as server:
+            request = _request()
+            with self.assertRaises(ExecutionHostTemporaryUnavailable):
+                self._host(server).dispatch(request)
+            self.assertEqual(len(state.submission_ids()), 1)
+            self.assertIsNone(self._host(server).recover_dispatch(request))
+            binding = self.database.execution_host_binding(request.correlation_id)
+            self.assertEqual(binding["submission_id"], state.submission_ids()[0])
+            self.assertEqual(binding["submission_receipt"]["submission_id"], binding["submission_id"])
+            state.complete(binding["submission_id"])
+            recovered = self._host(server).recover_dispatch(request)
+            self.assertIsNotNone(recovered)
+            evidence = self._host(server).retrieve_evidence(recovered)
+            self.assertEqual(evidence.outcome, ExecutionEvidenceOutcome.COMPLETE)
+            self.assertEqual(len(state.submission_ids()), 1)
+            self.assertEqual(
+                [event["event"] for event in state.audit].count("submission_accepted"), 1,
+            )
+            self.assertNotIn("submission_duplicate", [event["event"] for event in state.audit])
+            self.assertEqual(
+                [event["event"] for event in state.audit].count("submission_identity_read"), 1,
+            )
+
+    def test_identity_lookup_absent_or_foreign_remains_fail_closed(self) -> None:
+        for label in ("absent", "foreign"):
+            with self.subTest(label=label):
+                state = self._state(EpSimulatorScenario(
+                    name=label, identity_readback_supported=True,
+                    connection_loss_at=frozenset({"submission-after-accept-once"}),
+                ))
+                database = RuntimeDatabase(
+                    Path(self.temporary.name),
+                    path=Path(self.temporary.name) / f"identity-{label}.db",
+                    forge_version="test",
+                )
+                self.addCleanup(database.close)
+                with EpSimulatorServer(state) as server:
+                    request = _request()
+                    with self.assertRaises(ExecutionHostTemporaryUnavailable):
+                        self._host(server, database).dispatch(request)
+                    original = state.identity_readback
+
+                    def altered(**values):
+                        if label == "absent":
+                            raise ValueError("SUBMISSION_IDENTITY_NOT_FOUND")
+                        recovered = original(**values)
+                        recovered["identity"]["repository_id"] = "foreign-repository"
+                        return recovered
+
+                    with patch.object(state, "identity_readback", side_effect=altered):
+                        with self.assertRaises(ValueError):
+                            self._host(server, database).recover_dispatch(request)
+                    binding = database.execution_host_binding(request.correlation_id)
+                    self.assertNotIn("submission_id", binding)
+                    self.assertEqual(len(state.submission_ids()), 1)
+                    self.assertNotIn("submission_duplicate", [event["event"] for event in state.audit])
 
     def test_success_terminal_evidence_round_trips_through_production_client(self) -> None:
         state = self._state()

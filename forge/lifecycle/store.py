@@ -15,6 +15,8 @@ import re
 import sqlite3
 from typing import Callable
 
+from forge.models.mission_effect import MissionEffectPolicy
+
 
 class LifecycleError(ValueError):
     """Raised when a lifecycle transition or immutable record is invalid."""
@@ -117,6 +119,7 @@ class MissionCandidate:
     acceptance_criteria: tuple[str, ...]
     architecture_constraints: tuple[str, ...]
     dependencies: tuple[str, ...] = ()
+    effect_policy: MissionEffectPolicy | None = None
 
     def __post_init__(self) -> None:
         if not all((self.id, self.recommendation_id, self.title, self.objective)):
@@ -126,13 +129,28 @@ class MissionCandidate:
             if any(not item for item in values) or len(values) != len(set(values)):
                 raise LifecycleError(f"candidate {name} must be unique and non-empty when supplied")
             object.__setattr__(self, name, tuple(sorted(values)))
+        if self.effect_policy is not None and not isinstance(self.effect_policy, MissionEffectPolicy):
+            raise LifecycleError("candidate effect policy is invalid")
+        if self.effect_policy is not None and (not 1 <= len(self.acceptance_criteria) <= 16
+                                               or any(not 20 <= len(item.strip()) <= 1000
+                                                      for item in self.acceptance_criteria)):
+            raise LifecycleError("effect Candidate requires substantive bounded criteria")
 
     def to_dict(self) -> dict[str, object]:
-        return asdict(self)
+        document = asdict(self)
+        if self.effect_policy is None:
+            document.pop("effect_policy")
+        else:
+            document["effect_policy"] = self.effect_policy.to_dict()
+        return document
 
     @classmethod
     def from_dict(cls, document: dict[str, object]) -> "MissionCandidate":
-        return cls(**{**document, **{key: tuple(document[key]) for key in ("scope", "acceptance_criteria", "architecture_constraints", "dependencies")}})  # type: ignore[arg-type]
+        fields = {**document, **{key: tuple(document[key]) for key in (
+            "scope", "acceptance_criteria", "architecture_constraints", "dependencies")}}
+        if fields.get("effect_policy") is not None:
+            fields["effect_policy"] = MissionEffectPolicy.from_dict(fields["effect_policy"])
+        return cls(**fields)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True)
@@ -295,7 +313,7 @@ class RecommendationLifecycleStore:
         return MissionCandidate.from_dict(json.loads(row["document"]))
 
     def update_candidate(self, candidate_id: str, **changes: object) -> MissionCandidate:
-        allowed = {"title", "objective", "scope", "acceptance_criteria", "architecture_constraints", "dependencies"}
+        allowed = {"title", "objective", "scope", "acceptance_criteria", "architecture_constraints", "dependencies", "effect_policy"}
         if not changes or set(changes) - allowed:
             raise LifecycleError("candidate update contains an unsupported field")
         with self._connection:
