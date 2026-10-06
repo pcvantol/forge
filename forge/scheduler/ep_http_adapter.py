@@ -661,6 +661,7 @@ class EngineeringPlatformHttpExecutionHost:
                     "producer_readback", "terminal_evidence", "validation_controls",
                     "delivery_revision_validation", "bounded_merge_delegation",
                     "submission_identity_readback", "effect_request", "effect_result",
+                    "effect_validation_profile",
                 })
                 or not isinstance(authentication, Mapping)
                 or set(authentication) != {
@@ -691,13 +692,19 @@ class EngineeringPlatformHttpExecutionHost:
             raise ValueError("EP_READBACK_CONTRACT_INCOMPATIBLE")
         terminal_versions = contracts.get("terminal_evidence")
         if terminal_versions not in ([self.config.terminal_evidence_contract],
-                                     [self.config.terminal_evidence_contract, "1.5"]):
+                                     [self.config.terminal_evidence_contract, "1.5"],
+                                     [self.config.terminal_evidence_contract, "1.6"]):
             raise ValueError("EP_TERMINAL_CONTRACT_INCOMPATIBLE")
-        effect_declared = "effect_request" in contracts or "effect_result" in contracts
-        if effect_declared or "1.5" in terminal_versions:
-            if (contracts.get("effect_request") != ["1.0"]
-                    or contracts.get("effect_result") != ["1.0"]
-                    or terminal_versions != [self.config.terminal_evidence_contract, "1.5"]):
+        effect_declared = any(key in contracts for key in (
+            "effect_request", "effect_result", "effect_validation_profile"))
+        if effect_declared or any(version in terminal_versions for version in ("1.5", "1.6")):
+            legacy = (contracts.get("effect_result") == ["1.0"]
+                      and "effect_validation_profile" not in contracts
+                      and terminal_versions == [self.config.terminal_evidence_contract, "1.5"])
+            current = (contracts.get("effect_result") == ["1.1"]
+                       and contracts.get("effect_validation_profile") == ["1.0"]
+                       and terminal_versions == [self.config.terminal_evidence_contract, "1.6"])
+            if contracts.get("effect_request") != ["1.0"] or not (legacy or current):
                 raise ValueError("EP_EFFECT_CONTRACT_DECLARATION_MALFORMED")
         if ("validation_controls" in contracts
                 and contracts["validation_controls"] not in (["1.0"], ["1.0", "1.1"])):
@@ -716,8 +723,9 @@ class EngineeringPlatformHttpExecutionHost:
         contracts = declaration.get("contracts")
         if (not isinstance(contracts, Mapping)
                 or contracts.get("effect_request") != ["1.0"]
-                or contracts.get("effect_result") != ["1.0"]
-                or "1.5" not in contracts.get("terminal_evidence", ())):
+                or contracts.get("effect_result") != ["1.1"]
+                or contracts.get("effect_validation_profile") != ["1.0"]
+                or "1.6" not in contracts.get("terminal_evidence", ())):
             raise ValueError("EP_EFFECT_CAPABILITY_REQUIRED")
 
     def managed_workspace_readiness(self) -> dict[str, Any]:
@@ -1081,8 +1089,8 @@ class EngineeringPlatformHttpExecutionHost:
             except (UnicodeDecodeError, json.JSONDecodeError) as error:
                 raise ValueError("EP_EFFECT_TERMINAL_INVALID") from error
             if (not isinstance(effect_terminal, Mapping)
-                    or effect_terminal.get("contract_version") != "1.5"):
-                raise ValueError("EP_EFFECT_TERMINAL_V15_REQUIRED")
+                    or effect_terminal.get("contract_version") != "1.6"):
+                raise ValueError("EP_EFFECT_TERMINAL_V16_REQUIRED")
             submission_id = binding.get("submission_id")
             if not isinstance(submission_id, str) or not submission_id:
                 raise ValueError("EP_EFFECT_SUBMISSION_BINDING_MISSING")

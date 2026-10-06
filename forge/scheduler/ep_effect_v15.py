@@ -1,4 +1,4 @@
-"""Strict consumer of EP's source-bound effect result and terminal v1.5.
+"""Strict consumer of EP's source-bound effect result v1.1 and terminal v1.6.
 
 EP owns execution and the immutable report. Forge checks the independently
 read back bytes before interpreting criterion and source evidence.
@@ -28,7 +28,7 @@ _TERMINAL_KEYS = frozenset({
 })
 _RESULT_KEYS = frozenset({
     "contract_version", "outcome", "terminal", "effect_qualified", "subject", "artifact",
-    "validation_controls", "assurance_reviews", "repair_rounds", "delivery",
+    "validation_controls", "validation_profile", "assurance_reviews", "repair_rounds", "delivery",
 })
 _BINDING_KEYS = frozenset({
     "run_id", "submission_id", "project_id", "repository_id", "producer_id", "producer_type",
@@ -118,13 +118,13 @@ def terminal_evidence(
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("EP_EFFECT_TERMINAL_INVALID") from error
     terminal = _object(terminal, _TERMINAL_KEYS, "TERMINAL")
-    if terminal["artifact_type"] != "EP_TERMINAL_EVIDENCE" or terminal["contract_version"] != "1.5":
-        raise ValueError("EP_EFFECT_TERMINAL_V15_REQUIRED")
+    if terminal["artifact_type"] != "EP_TERMINAL_EVIDENCE" or terminal["contract_version"] != "1.6":
+        raise ValueError("EP_EFFECT_TERMINAL_V16_REQUIRED")
     _host_execution(terminal)
     result = _object(result, _RESULT_KEYS, "RESULT")
     if terminal["effect_result"] != {key: value for key, value in result.items() if key != "artifact"}:
         raise ValueError("EP_EFFECT_TERMINAL_RESULT_MISMATCH")
-    if (result["contract_version"] != "1.0" or result["outcome"] != "COMPLETE"
+    if (result["contract_version"] != "1.1" or result["outcome"] != "COMPLETE"
             or result["terminal"] is not True or result["effect_qualified"] is not True):
         raise ValueError("EP_EFFECT_RESULT_NOT_QUALIFIED")
 
@@ -334,17 +334,26 @@ def terminal_evidence(
     if (len(profile_digests) != 1
             or any(item["command_id"] != f"{run['id']}:effect:{envelope['repair_ordinal']}:{index}"
                    for index, item in enumerate(controls))
-            or any(item["authority"] != "host_control" for item in controls
-                   if item["validation_id"] in required - {"repository_json"})):
+            or any(item["authority"] != ("repository_json" if item["validation_id"] == "repository_json"
+                                         else "host_control") for item in controls)):
         raise ValueError("EP_EFFECT_CONTROL_BINDING_MISMATCH")
-    if effect.policy.mode != "BOUNDED_REPOSITORY_CHANGE":
-        expected_profile = _digest({
-            "version": "effect-validation@1.0", "subject": subject,
-            "controls": [[item["validation_id"], item["authority"]] for item in controls],
-            "validation_bindings": [],
-        })
-        if profile_digests != {expected_profile}:
-            raise ValueError("EP_EFFECT_PROFILE_DIGEST_MISMATCH")
+    profile = _object(result["validation_profile"], frozenset({
+        "version", "subject", "controls", "validation_bindings"}), "PROFILE")
+    bindings = profile["validation_bindings"]
+    expected_bindings = ["repository_json"] if effect.policy.mode == "BOUNDED_REPOSITORY_CHANGE" else []
+    if (profile["version"] != "effect-validation@1.0" or profile["subject"] != subject
+            or profile["controls"] != [[item["validation_id"], item["authority"]] for item in controls]
+            or not isinstance(bindings, list)
+            or [item.get("validation_id") for item in bindings if isinstance(item, Mapping)] != expected_bindings
+            or any(not isinstance(item, Mapping) or set(item) != {"validation_id", "category", "command"}
+                   or item["category"] != "repository_json"
+                   or not isinstance(item["command"], list) or not item["command"]
+                   or any(not isinstance(argument, str) or not argument for argument in item["command"])
+                   for item in bindings)):
+        raise ValueError("EP_EFFECT_PROFILE_INPUTS_MISMATCH")
+    expected_profile = _digest(profile)
+    if profile_digests != {expected_profile}:
+        raise ValueError("EP_EFFECT_PROFILE_DIGEST_MISMATCH")
     terminal_controls = terminal["validation_controls"]
     if (not isinstance(terminal_controls, Mapping)
             or terminal_controls.get("contract_version") != "1.0"
@@ -444,6 +453,8 @@ def terminal_evidence(
         "criteria": criteria,
         "controls": sorted(item["validation_id"] for item in controls),
         "reviews": ["quality", "security"],
+        "validation_profile_digest": expected_profile,
+        "validation_profile_version": profile["version"],
     }
     return ExecutionHostEvidence(
         host_id, request.correlation_id, run["id"], artifact_ref["id"],

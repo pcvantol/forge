@@ -24,6 +24,7 @@ import subprocess
 import sys
 from threading import Lock
 import time
+import traceback
 from typing import Any
 from unittest.mock import patch
 from urllib.parse import urlsplit
@@ -59,7 +60,9 @@ from forge.qualification import criterion_completion as fixture
 from forge.qualification.producer_fixture_conformance import (
     rejection_matrix, source_receipt, validate_fixture, validate_identity_fixture,
 )
-from forge.qualification.effect_fixture_conformance import source_receipt as effect_source_receipt
+from forge.qualification.effect_fixture_conformance import (
+    capture as effect_capture, source_receipt as effect_source_receipt,
+)
 from forge.qualification.effect_simulator_fixture import qualified_effect_result
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
@@ -114,6 +117,9 @@ _EFFECT_LOST_ACK = {name + "-lost-ack": name for name in _EFFECT_BASE_SCENARIOS}
 _EFFECT_SUCCESSORS = {name + "-successor": name for name in (
     "effect-read-only", "effect-documentation", "effect-design-report", "effect-design-git",
 )}
+_EFFECT_SUCCESSOR_REJECTIONS = {
+    base + "-successor-effect-expansion": base for base in _EFFECT_SUCCESSORS.values()}
+_EFFECT_SUCCESSORS.update(_EFFECT_SUCCESSOR_REJECTIONS)
 _EFFECT_SCOPE_TRANSITIONS = {
     "effect-read-only": "effect-documentation",
     "effect-documentation": "effect-repository-change",
@@ -132,12 +138,15 @@ _EFFECT_REJECTIONS = {
     **{name + "-report-corrupt": (name, "report-corrupt")
        for name in ("effect-read-only", "effect-documentation", "effect-design-report",
                     "effect-design-git")},
+    **{name + "-" + fault: (name, fault)
+       for name in ("effect-read-only", "effect-documentation", "effect-design-report", "effect-design-git")
+       for fault in ("report-useless", "criterion-irrelevant")},
     **{name + "-stale-binding": (name, "stale-binding")
        for name in ("effect-read-only", "effect-documentation", "effect-design-report",
                     "effect-design-git")},
     **{name + "-profile-stale": (name, "profile-stale")
        for name in ("effect-read-only", "effect-documentation", "effect-design-report",
-                    "effect-design-git")},
+                    "effect-design-git", "effect-repository-change")},
     "effect-read-only-host-mutated": ("effect-read-only", "host-mutated"),
     "effect-read-only-target-effect-probes": ("effect-read-only", "target-effect-probes"),
     "effect-repository-change-write-no-output": ("effect-repository-change", "write-no-output"),
@@ -228,7 +237,7 @@ def _required_fie_cases(family: str, variant: str) -> tuple[str, ...]:
                 "scenario:effect-read-only-target-effect-probes")
     if family == "FIE-22":
         return (positive, *("scenario:" + base + "-" + fault for fault in (
-            "report-missing", "report-corrupt", "stale-binding")))
+            "report-missing", "report-corrupt", "report-useless", "criterion-irrelevant", "stale-binding")))
     if family == "FIE-23":
         return (("scenario:effect-read-only-no-change", "scenario:effect-read-only-report-missing")
                 if variant == _READ else
@@ -239,7 +248,8 @@ def _required_fie_cases(family: str, variant: str) -> tuple[str, ...]:
     if family == "FIE-25":
         return (positive, "scenario:" + base + "-lost-ack")
     if family == "FIE-26":
-        return (positive, "scenario:" + base + "-successor")
+        return (positive, "scenario:" + base + "-successor",
+                "scenario:" + base + "-successor-effect-expansion")
     if family == "FIE-27":
         return (positive, "scenario:" + base + "-effect-expansion-denied",
                 "scenario:" + base + "-approved-new-scope")
@@ -325,7 +335,8 @@ def _with_case_cleanup(root: Path, operation, *args):
         if not isinstance(result, dict):
             raise RuntimeError("installed qualification case returned no result")
     finally:
-        for directory in ("home", "scratch", "config"):
+        for directory in ("home", "scratch", "config", "runtime", "governance",
+                          "synthetic-target", "adversarial-target"):
             path = root / directory
             if path.exists():
                 shutil.rmtree(path)
@@ -333,7 +344,10 @@ def _with_case_cleanup(root: Path, operation, *args):
             "duration_ms": round((time.monotonic() - started) * 1000),
             "stage_trace": fixture._read(root / "stage-trace.public.json", []),
             "cleanup": {"owned_home_scratch_config_removed": all(
-                not (root / name).exists() for name in ("home", "scratch", "config"))}}
+                not (root / name).exists() for name in ("home", "scratch", "config")),
+                "owned_runtime_governance_targets_removed": all(
+                    not (root / name).exists() for name in (
+                        "runtime", "governance", "synthetic-target", "adversarial-target"))}}
 
 
 @contextmanager
@@ -412,6 +426,7 @@ PREFLIGHT_CASES = {
     "declaration-missing-auth-field": "EP_CAPABILITY_DECLARATION_MALFORMED",
     "effect-request-missing": "EP_EFFECT_CONTRACT_DECLARATION_MALFORMED",
     "effect-result-unsupported": "EP_EFFECT_CONTRACT_DECLARATION_MALFORMED",
+    "effect-profile-missing": "EP_EFFECT_CONTRACT_DECLARATION_MALFORMED",
     "terminal-effect-only": "EP_TERMINAL_CONTRACT_INCOMPATIBLE",
 }
 EP_PREFLIGHT_SOURCE = {
@@ -511,6 +526,7 @@ def _installed_wheel(wheel: Path, *, source_revision: str | None = None,
     source_root = Path(__file__).resolve().parents[2]
     tracked = set()
     expected_product_files = set()
+    source_tree_revision = None
     if verify_source:
         if source_revision is None or subprocess.check_output(
             ["git", "-C", str(source_root), "rev-parse", "HEAD"], text=True,
@@ -520,6 +536,11 @@ def _installed_wheel(wheel: Path, *, source_revision: str | None = None,
             ["git", "-C", str(source_root), "status", "--porcelain"], text=True,
         ).strip():
             raise RuntimeError("qualification source checkout is dirty")
+        source_version = json.loads((source_root / "product-version.json").read_text())["version"]
+        if source_version != installed.version:
+            raise RuntimeError("installed wheel version differs from the exact source manifest")
+        source_tree_revision = subprocess.check_output(
+            ["git", "-C", str(source_root), "rev-parse", "HEAD^{tree}"], text=True).strip()
         tracked = set(subprocess.check_output(
             ["git", "-C", str(source_root), "ls-files", "-z", "--", "forge"],
         ).decode("utf-8").split("\0"))
@@ -552,6 +573,7 @@ def _installed_wheel(wheel: Path, *, source_revision: str | None = None,
                 raise RuntimeError("installed Forge module bytes differ from the selected wheel")
             module_digests[module] = "sha256:" + sha256(expected).hexdigest()
     return {"version": installed.version, "wheel_sha256": "sha256:" + digest,
+            "source_tree_revision": source_tree_revision,
             "module_sha256": module_digests,
             "installed_product_files_verified": installed_files_verified,
             "source_product_files_verified": source_files_verified if verify_source else None}
@@ -661,6 +683,9 @@ def _open(root: Path, stack: ExitStack, *,
             proposal = document["result"]["proposals"][0]
             proposal["write_scopes"] = (["src/"] if effect_scenario == "effect-read-only-scope-expansion"
                                          else list(approved.write_paths))
+            if (effect_scenario in _EFFECT_SUCCESSOR_REJECTIONS
+                    and len(fixture._read(root / "provider-inputs.private.json")) > 1):
+                proposal["write_scopes"] = ["src/unapproved.py"]
             proposal["objective"] = "Assess the approved source criterion: " + proposal["expected_evidence"][0]
             if proposal["mission_gap"] is not None:
                 proposal["mission_gap"]["causal_objective"] = proposal["objective"]
@@ -925,7 +950,9 @@ def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
                                   ExecutionHostTemporaryUnavailable("synthetic pre-send interruption")):
                     runtime.start(mission_id, _initial_truth())
             else:
-                runtime.start(mission_id, _initial_truth())
+                initial_revision = fixture._read(root / "effect-target.private.json", {}).get(
+                    "source_revision", "0" * 40)
+                runtime.start(mission_id, _initial_truth(initial_revision))
         fixture._write(root / "population.private.json", {
             "mission_id": mission_id, "scenario": scenario,
             "runtime_id": runtime.database.runtime_identity.runtime_id,
@@ -1275,7 +1302,7 @@ def _run_phase(root: Path, scenario: str, phase: str, endpoint: str, wheel: Path
                "--phase", phase, "--endpoint", endpoint]
     started = time.monotonic()
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
-                            env=_child_env(root))
+                            env=_child_env(root), cwd=root)
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed {scenario}/{phase} failed; see private phase log")
@@ -1296,7 +1323,7 @@ def _run_governance_phase(root: Path, case: str, phase: str,
                "--governance-case", case, "--phase", phase, "--endpoint", endpoint]
     started = time.monotonic()
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
-                            env=_child_env(root))
+                            env=_child_env(root), cwd=root)
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed governance {case}/{phase} failed; see private phase log")
@@ -1341,8 +1368,9 @@ _DECLARATION_CHANGES = {
     "declaration-missing-producer": (("producer",), _REMOVE),
     "declaration-missing-auth-field": (("authentication", "consumer_status"), _REMOVE),
     "effect-request-missing": (("contracts", "effect_request"), _REMOVE),
-    "effect-result-unsupported": (("contracts", "effect_result"), ["1.1"]),
-    "terminal-effect-only": (("contracts", "terminal_evidence"), ["1.5"]),
+    "effect-result-unsupported": (("contracts", "effect_result"), ["9.9"]),
+    "effect-profile-missing": (("contracts", "effect_validation_profile"), _REMOVE),
+    "terminal-effect-only": (("contracts", "terminal_evidence"), ["1.6"]),
 }
 
 
@@ -1358,7 +1386,7 @@ def _preflight_fixture(case: str) -> tuple[EpSimulatorState, dict | None]:
     scenario = (EpSimulatorScenario(preflight_http_status=http_status)
                 if http_status is not None else
                 EpSimulatorScenario(effect_declaration_supported=True)
-                if case in {"effect-request-missing", "effect-result-unsupported",
+                if case in {"effect-request-missing", "effect-result-unsupported", "effect-profile-missing",
                             "terminal-effect-only"} else None)
     settings = {
         "project_id": PROJECT, "repository_id": fixture.SOURCE.repository_id,
@@ -1455,7 +1483,7 @@ def _run_preflight_phase(root: Path, case: str, phase: str,
                "--preflight-case", case, "--phase", phase, "--endpoint", endpoint]
     started = time.monotonic()
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
-                            env=_child_env(root))
+                            env=_child_env(root), cwd=root)
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed preflight {case}/{phase} failed; see private phase log")
@@ -1633,17 +1661,29 @@ def _faulted_effect_documents(fault: str, readback: dict, result: dict,
     elif fault == "document-executable":
         envelope = result["artifact"]["content"]
         envelope["result"]["files"][0]["path"] = "docs/execute.py"
+    elif fault == "report-useless":
+        result["artifact"]["content"]["result"]["summary"] = ""
+    elif fault == "criterion-irrelevant":
+        result["artifact"]["content"]["result"]["criteria"][0]["id"] = "unapproved-criterion"
     else:
         raise ValueError("unknown negative effect fixture")
-    if fault in {"document-executable", "stale-binding", "write-no-output"}:
+    if fault in {"document-executable", "stale-binding", "write-no-output",
+                 "report-useless", "criterion-irrelevant"}:
         envelope = result["artifact"]["content"]
         report_digest = "sha256:" + sha256(json.dumps(
             envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
         ).encode("ascii")).hexdigest()
         result["artifact"]["digest"] = report_digest
         result["subject"]["subject_digest"] = report_digest
+        result["validation_profile"]["subject"] = deepcopy(result["subject"])
+        profile_digest = "sha256:" + sha256(json.dumps(
+            result["validation_profile"], sort_keys=True, separators=(",", ":"),
+            ensure_ascii=True).encode("ascii")).hexdigest()
+        for control in result["validation_controls"]:
+            control["profile_digest"] = profile_digest
         for review in result["assurance_reviews"]:
             review["subject"] = deepcopy(result["subject"])
+            review["profile_digest"] = profile_digest
             for coverage in review["coverage"]:
                 coverage["evidence_ref"] = report_digest
         terminal["report"]["digest"] = report_digest
@@ -1657,7 +1697,7 @@ def _faulted_effect_documents(fault: str, readback: dict, result: dict,
 
 def _target_effect_probes(root: Path, endpoint: str) -> dict[str, Any]:
     """Observe transient forbidden writes on an isolated synthetic EP target."""
-    target = root / "synthetic-target"
+    target = root / "adversarial-target"
     (target / "docs").mkdir(parents=True)
     (target / "src").mkdir()
     tracked = target / "src" / "boundary.py"
@@ -1709,6 +1749,102 @@ def _target_effect_probes(root: Path, endpoint: str) -> dict[str, Any]:
             "ep_enforcement": "SIMULATED_VIOLATION_NOT_REAL_SANDBOX_QUALIFICATION"}
 
 
+def _effect_target_snapshot(target: Path) -> dict[str, str]:
+    return {str(path.relative_to(target)): sha256(path.read_bytes()).hexdigest()
+            for path in sorted(target.rglob("*")) if path.is_file()
+            and ".git" not in path.relative_to(target).parts}
+
+
+def _fixture_git(root: Path, target: Path, *arguments: str) -> str:
+    environment = {**_child_env(root), "GIT_AUTHOR_NAME": "Forge Fixture",
+                   "GIT_OPTIONAL_LOCKS": "0",
+                   "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
+                   "GIT_COMMITTER_NAME": "Forge Fixture",
+                   "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
+                   "GIT_AUTHOR_DATE": "2026-09-18T09:00:00+00:00",
+                   "GIT_COMMITTER_DATE": "2026-09-18T09:00:00+00:00"}
+    return subprocess.run(["/usr/bin/git", "-C", str(target), *arguments],
+                          env=environment, check=True, capture_output=True, text=True,
+                          timeout=30).stdout.strip()
+
+
+def _fixture_git_snapshot(root: Path, target: Path) -> dict[str, Any]:
+    return {"head": _fixture_git(root, target, "rev-parse", "HEAD"),
+            "refs": _fixture_git(root, target, "show-ref"),
+            "index_digest": sha256((target / ".git" / "index").read_bytes()).hexdigest(),
+            "status": _fixture_git(root, target, "status", "--porcelain", "--ignored"),
+            "file_modes": {str(path.relative_to(target)): path.stat().st_mode & 0o777
+                           for path in target.rglob("*") if path.is_file()
+                           and ".git" not in path.relative_to(target).parts}}
+
+
+def _effect_target_fixture(root: Path, scenario: str) -> tuple[Path, dict[str, str], dict[str, str]]:
+    """Independently observe the external, isolated repository execution fixture."""
+    policy = _effect_policy(scenario)
+    source = effect_capture(f"{policy.mode.lower()}-{policy.delivery.lower()}.json")
+    paths = source["effect_result"]["artifact"]["content"]["source_manifest"]
+    target = root / "synthetic-target"
+    for path in (*paths, "src/implementation.py", "tests/test_boundary.py", "config.json",
+                 "ordinary-untracked.txt", ".ignored-cache"):
+        selected = target / path
+        selected.parent.mkdir(parents=True, exist_ok=True)
+        selected.write_text("The approved deployment boundary separates planning and host execution.\n")
+    baseline = _effect_target_snapshot(target)
+    (target / ".gitignore").write_text(".ignored-cache\n")
+    _fixture_git(root, target, "init", "-b", "main")
+    _fixture_git(root, target, "remote", "add", "origin",
+                 "https://github.com/" + fixture.SOURCE.github_repository)
+    _fixture_git(root, target, "add", ".gitignore", "docs", "src", "tests", "config.json")
+    _fixture_git(root, target, "commit", "-m", "Isolated approved source fixture")
+    baseline = _effect_target_snapshot(target)
+    fixture._write(root / "effect-target.private.json", {
+        "source_revision": _fixture_git(root, target, "rev-parse", "HEAD")})
+    return target, baseline, {path: baseline[path] for path in paths}
+
+
+def _execute_effect_fixture(root: Path, target: Path, baseline: dict[str, str],
+                            payload: dict) -> tuple[str | None, dict[str, Any]]:
+    effect = payload["constraints"]["effect_contract"]
+    policy = MissionEffectPolicy(effect["mode"], effect["delivery"],
+                                 tuple(effect["read_paths"]), tuple(effect["write_paths"]))
+    example = effect_capture(f"{policy.mode.lower()}-{policy.delivery.lower()}.json")
+    outputs = deepcopy(example["effect_result"]["artifact"]["content"]["result"]["files"])
+    before = _effect_target_snapshot(target)
+    git_before = _fixture_git_snapshot(root, target)
+    assert git_before["head"] == effect["source_revision"]
+    for output in outputs:
+        output["content"] += "\n# evidence criteria: " + ", ".join(
+            item["id"] for item in effect["criteria"]) + "\n"
+        assert not Path(output["path"]).is_absolute() and ".." not in Path(output["path"]).parts
+        path = target / output["path"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(output["content"])
+    revision = None
+    if policy.delivery == "GIT":
+        _fixture_git(root, target, "add", "--", *(output["path"] for output in outputs))
+        _fixture_git(root, target, "commit", "-m", "Approved criterion output")
+        revision = _fixture_git(root, target, "rev-parse", "HEAD")
+    after = _effect_target_snapshot(target)
+    git_after = _fixture_git_snapshot(root, target)
+    changed = sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
+    allowed = policy.write_paths
+    assert all(any(path == scope or scope.endswith("/") and path.startswith(scope)
+                   for scope in allowed) for path in changed)
+    assert all(after.get(path) == digest for path, digest in baseline.items()
+               if not any(path == scope or scope.endswith("/") and path.startswith(scope)
+                          for scope in allowed))
+    if policy.delivery == "EVIDENCE_ONLY":
+        assert before == after == baseline and git_before == git_after
+    return revision, {"boundary": "CONTROLLED_EXTERNAL_REPOSITORY_FIXTURE",
+            "before_file_digests": before, "after_file_digests": after,
+            "before_git": git_before, "after_git": git_after,
+            "changed_paths": changed, "approved_write_paths": list(allowed),
+            "forbidden_effects_observed": False,
+            "source_revision": effect["source_revision"],
+            "delivery_revision": revision, "revision_boundary": "REAL_ISOLATED_LOCAL_GIT",
+            "ordinary_untracked_and_ignored_sentinels_preserved": True}
+
+
 def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
     """Qualify one governed Mission through the installed Forge/FME HTTP path."""
     root.mkdir()
@@ -1717,6 +1853,8 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
     scope_transition = scenario in _EFFECT_SCOPE_CASES
     fault = _EFFECT_REJECTIONS.get(scenario, (None, None))[1]
     producer = effect_source_receipt()
+    target, target_baseline, source_manifest = _effect_target_fixture(root, scenario)
+    target_observations = []
     simulator = EpSimulatorState(
         project_id=PROJECT, repository_id=fixture.SOURCE.repository_id,
         repository_identity=fixture.SOURCE.github_repository, consumer_id=CONSUMER,
@@ -1757,13 +1895,17 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
         assert effect["mode"] == _effect_policy(scenario).mode
         assert effect["delivery"] == _effect_policy(scenario).delivery
         assert effect["write_paths"] == list(_effect_policy(scenario).write_paths)
-        assert effect["source_revision"] == "0" * 40
+        assert effect["source_revision"] == fixture._read(root / "effect-target.private.json")["source_revision"]
         revision = None if effect["delivery"] == "EVIDENCE_ONLY" else "a" * 40
+        if not fault:
+            revision, observation = _execute_effect_fixture(root, target, target_baseline, payload)
+            target_observations.append(observation)
         simulator.complete(submission_id, delivery_revision=revision)
         baseline_readback, baseline_artifact = simulator.terminal_documents(submission_id)
         readback, result, terminal = qualified_effect_result(
             payload, baseline_readback, baseline_artifact,
             no_change_conclusion=scenario == "effect-read-only-no-change",
+            source_manifest=source_manifest,
         )
         if scenario == "effect-read-only-no-change":
             assert "no repository change" in result["artifact"]["content"]["result"]["summary"]
@@ -1789,11 +1931,37 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
         if fault != "report-missing":
             simulator.seed_effect_result(submission_id, result)
         after = _run_phase(root, scenario, "after-a", server.base_url, wheel)
+        if scenario in _EFFECT_SUCCESSOR_REJECTIONS:
+            assert after["status"] in {"FAILED", "BLOCKED"}
+            assert len(after["actions"]) == len(simulator.submission_ids()) == 1
+            assert after["execution_history"][0]["outcome"] == "complete"
+            proven = {item["criterion_id"] for item in after["completion"]["criteria"]
+                      if item["status"] == "PROVEN"}
+            assert proven == {item["id"] for item in effect["criteria"]}
+            assert sum(item["status"] == "UNSATISFIED" for item in after["completion"]["criteria"]) == 1
+            assert after["mission"] == initial["mission"]
+            assert after["execution_policy"] == initial["execution_policy"]
+            assert len(fixture._read(root / "provider-inputs.private.json")) == 2
+            assert _run_phase(root, scenario, "readback", server.base_url, wheel) == after
+            assert sum(item.startswith("POST ") for item in requests) == 1
+            processes = {fixture._read(root / f"{phase}.process.private.json")["pid"]
+                         for phase in ("prepare", "after-a", "readback")}
+            assert len(processes) == 3
+            return {**binding, "scenario": scenario, "status": "EXPECTED_REJECTION",
+                    "mode": effect["mode"], "delivery": effect["delivery"],
+                    "fault": "unapproved-successor-effect-expansion", "submissions": 1,
+                    "submission_posts": 1, "planner_invocations": 2,
+                    "ep_http_requests": len(requests), "forge_processes": len(processes),
+                    "history_and_allowances_preserved": True,
+                    "target_effect_observations": target_observations,
+                    "unapproved_successor_prevented": True}
         if fault:
             assert after["status"] == "FAILED", after.get("waiting_reason")
             expected_code = {
                 "report-missing": "VALUEERROR",
                 "report-corrupt": "EP_EFFECT_REPORT_BYTES_MISMATCH",
+                "report-useless": "EP_EFFECT_CRITERION_REPORT_INVALID",
+                "criterion-irrelevant": "EP_EFFECT_CRITERION_SET_MISMATCH",
                 "controls-failed": "EP_EFFECT_TERMINAL_CONTROL_FAILED",
                 "target-effect-probes": "EP_EFFECT_TERMINAL_CONTROL_FAILED",
                 "review-open": "EP_EFFECT_REVIEWS_UNQUALIFIED",
@@ -1825,7 +1993,8 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
                     "planner_invocations": 1,
                     "target_revision_unchanged": revision is None,
                     "canonical_completion_prevented": True,
-                    "target_effect_probe": target_probe}
+                    "target_effect_probe": target_probe,
+                    "target_fixture_unchanged": _effect_target_snapshot(target) == target_baseline}
         if lost_ack:
             recovered = [item for item in simulator.audit if item["event"] == "submission_identity_read"]
             assert len(recovered) == 1
@@ -1835,10 +2004,11 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
         assert evidence["effect_result"]["report_digest"] == result["artifact"]["digest"]
         assert evidence["effect_result"]["mode"] == effect["mode"]
         assert len(after["completion"]["criteria"]) == (2 if successor else 1)
-        assert after["completion"]["criteria"][0]["requirement_results"][0]["reason"] == (
-            "VERIFIED_EP_EFFECT_CRITERION_SATISFIED")
+        assessments = {item["criterion_id"]: item for item in after["completion"]["criteria"]}
+        assert all(assessments[item["id"]]["requirement_results"][0]["reason"] ==
+                   "VERIFIED_EP_EFFECT_CRITERION_SATISFIED" for item in effect["criteria"])
         if revision is None:
-            assert after["repository_truth"]["revision"] == "0" * 40
+            assert after["repository_truth"]["revision"] == effect["source_revision"]
             assert after["repository_truth"] == initial["repository_truth"]
             assert evidence["repository_evidence"]["candidate_revision"] is None
             assert result["delivery"]["pull_request"] is None
@@ -1848,8 +2018,9 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert result["delivery"]["pull_request"] is not None
         if successor:
             assert after["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
-            assert [item["status"] for item in after["completion"]["criteria"]] == [
-                "PROVEN", "UNSATISFIED"]
+            assert {item["criterion_id"] for item in after["completion"]["criteria"]
+                    if item["status"] == "PROVEN"} == {item["id"] for item in effect["criteria"]}
+            assert sum(item["status"] == "UNSATISFIED" for item in after["completion"]["criteria"]) == 1
             assert len(after["actions"]) == len(simulator.submission_ids()) == 2
             assert len(fixture._read(root / "provider-inputs.private.json")) == 2
             next_submission = next(item for item in simulator.submission_ids() if item != submission_id)
@@ -1859,11 +2030,14 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert next_effect["delivery"] == effect["delivery"]
             assert next_effect["write_paths"] == effect["write_paths"]
             assert next_effect["source_revision"] == (revision or effect["source_revision"])
-            next_revision = None if revision is None else "b" * 40
+            next_manifest = {path: _effect_target_snapshot(target)[path] for path in source_manifest}
+            next_revision, observation = _execute_effect_fixture(root, target, target_baseline, next_payload)
+            target_observations.append(observation)
             simulator.complete(next_submission, delivery_revision=next_revision)
             next_readback, next_artifact = simulator.terminal_documents(next_submission)
             next_readback, result, next_artifact = qualified_effect_result(
-                next_payload, next_readback, next_artifact)
+                next_payload, next_readback, next_artifact,
+                source_manifest=next_manifest)
             simulator.seed_terminal(next_submission, next_readback, next_artifact)
             simulator.seed_effect_result(next_submission, result)
             after = _run_phase(root, scenario, "after-b", server.base_url, wheel)
@@ -1901,6 +2075,7 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
                         "planner_invocations": 1,
                         "original_mission_completed": True,
                         "scope_expansion_prevented": True,
+                        "target_effect_observations": target_observations,
                         "original_allowances_preserved": True}
             new_effect = _EFFECT_SCOPE_CASES[scenario][1]
             fixture._write(root / "effect-scenario.private.json", {"scenario": new_effect})
@@ -1915,11 +2090,15 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert new_request["delivery"] == new_policy.delivery
             assert new_request["write_paths"] == list(new_policy.write_paths)
             assert new_request["source_revision"] == final["repository_truth"]["revision"]
-            new_revision = "b" * 40 if new_policy.delivery == "GIT" else None
+            new_manifest = {path: _effect_target_snapshot(target)[path] for path in source_manifest}
+            new_revision, observation = _execute_effect_fixture(
+                root, target, _effect_target_snapshot(target), new_payload)
+            target_observations.append(observation)
             simulator.complete(new_id, delivery_revision=new_revision)
             new_readback, new_artifact = simulator.terminal_documents(new_id)
             new_readback, new_result, new_artifact = qualified_effect_result(
-                new_payload, new_readback, new_artifact)
+                new_payload, new_readback, new_artifact,
+                source_manifest=new_manifest)
             simulator.seed_terminal(new_id, new_readback, new_artifact)
             simulator.seed_effect_result(new_id, new_result)
             new_pending = _run_phase(root, scenario, "new-scope-after", server.base_url, wheel)
@@ -1953,6 +2132,7 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
             "per_criterion_proven": True, "successor_derived": successor,
             "criterion_artifact_bindings": [item["effect_result"]
                                              for item in final["execution_history"]],
+            "target_effect_observations": target_observations,
             "accepted_post_lost_ack_recovered": lost_ack,
             "approved_new_scope": scope_transition,
             "original_allowances_preserved": scope_transition}
@@ -2315,7 +2495,7 @@ def _concurrent_start_case(root: Path, wheel: Path) -> dict:
                 handle = (root / f"{phase}.raw.private.log").open("w")
                 handles.append(handle)
                 child = subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT,
-                                         env=_child_env(root))
+                                         env=_child_env(root), cwd=root)
                 children.append(child)
                 deadline = time.monotonic() + 20
                 while not (root / f"{phase}.ready.private").exists():
@@ -2440,7 +2620,7 @@ def _run_provider_phase(root: Path, case: str, phase: str,
                "--provider-case", case, "--phase", phase, "--endpoint", endpoint]
     started = time.monotonic()
     result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=90,
-                            env=_child_env(root))
+                            env=_child_env(root), cwd=root)
     (root / f"{phase}.raw.private.log").write_text(result.stdout + result.stderr)
     if result.returncode:
         raise RuntimeError(f"installed provider {case}/{phase} failed; see private phase log")
@@ -2592,6 +2772,7 @@ def main() -> int:
               "source_revision": args.source_revision,
               "qualifier_sha256": "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest(),
               "producer_fixture_source": producer_source,
+              "effect_producer_fixture_source": effect_source_receipt(),
               "ep_preflight_source": EP_PREFLIGHT_SOURCE,
               "ep_identity_readback_source": EP_IDENTITY_READBACK_SOURCE,
               "required_producer_fixture_negatives": [
@@ -2616,12 +2797,14 @@ def main() -> int:
               "test_doubles": ["stateful-loopback-EP-HTTP-simulator",
                                "deterministic-external-Codex-process-transport",
                                "synthetic-operator-identity", "synthetic-secure-store-resolver",
-                               "immutable-synthetic-repository-artifact-reader"],
+                               "immutable-synthetic-repository-artifact-reader",
+                               "isolated-local-Git-execution-fixture"],
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
                               "EP v1.3 identity readback recovers accepted lost-ack submissions; v1.2-only hosts fail closed.",
                               "EP producer v1.2 schema omits two retry-resolution fields emitted by its source; this subset validates source shape, not full schema conformance.",
                               "Synthetic repository-effect violations qualify Forge rejection, not real EP sandbox enforcement.",
+                              "Effect positives use actual local Git source/output commits; remote publication is an EP fixture and sends no GitHub request.",
                               "FIE-27 selects a separately approved new Candidate scope; previous Mission history and allowances remain immutable.",
                               "No outer-loop or live activation qualification."]}
     if not any((args.scenario, args.preflight_case, args.governance_case, args.provider_case)):
@@ -2719,7 +2902,12 @@ def main() -> int:
                 ))
         except Exception as error:
             report.update(result="FAIL", scenarios=summaries,
-                          failure={"scenario": scenario, "type": type(error).__name__})
+                          failure={"scenario": scenario, "type": type(error).__name__,
+                                   "frames": [{"file": Path(frame.filename).name,
+                                               "function": frame.name, "line": frame.lineno}
+                                              for frame in traceback.extract_tb(error.__traceback__)],
+                                   "stage_trace": fixture._read(
+                                       root / scenario / "stage-trace.public.json", [])})
             fixture._write(root / "installed-http-successor.public.json", report)
             print(json.dumps(report, sort_keys=True))
             return 1

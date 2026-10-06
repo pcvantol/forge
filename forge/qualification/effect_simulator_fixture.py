@@ -23,8 +23,9 @@ def _digest(value: object) -> str:
 def qualified_effect_result(
     payload: Mapping[str, Any], readback: Mapping[str, Any], legacy_terminal: bytes,
     *, no_change_conclusion: bool = False,
+    source_manifest: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], bytes]:
-    """Return v1.2 readback, v1.0 result and v1.5 terminal for a bound Action."""
+    """Return v1.2 readback, v1.1 result and v1.6 terminal for a bound Action."""
     effect = payload["constraints"]["effect_contract"]
     fixture_name = f"{effect['mode'].lower()}-{effect['delivery'].lower()}.json"
     validate_capture(fixture_name)
@@ -61,7 +62,10 @@ def qualified_effect_result(
     example_id, = by_id
     rows["criteria"] = [{**deepcopy(by_id[example_id]), "id": item["id"]}
                         for item in effect["criteria"]]
-    manifest = deepcopy(template["source_manifest"])
+    for output in rows["files"]:
+        output["content"] += "\n# evidence criteria: " + ", ".join(
+            item["id"] for item in effect["criteria"]) + "\n"
+    manifest = deepcopy(template["source_manifest"] if source_manifest is None else dict(source_manifest))
     envelope = {
         "contract_version": "1.0", "artifact_type": "EP_EFFECT_RESULT",
         "binding": binding, "contract": deepcopy(effect),
@@ -81,16 +85,17 @@ def qualified_effect_result(
         "effect_contract_digest": _digest(effect),
         "criteria_digest": _digest(effect["criteria"]),
         "binding_digest": _digest(binding), "repair_ordinal": 0,
-        "candidate_revision": terminal["repository"]["candidate"] if revision else None,
+        "candidate_revision": revision,
     }
     template_result = example["effect_result"]
     controls = deepcopy(template_result["validation_controls"])
     # The simulator does not execute these EP-owned commands. The original
     # capture proves their public shape; this receipt rebinds each observation
     # to the accepted run/subject and remains explicitly simulated evidence.
-    profile = _digest({"version": "effect-validation@1.0", "subject": subject,
-                       "controls": [[item["validation_id"], item["authority"]] for item in controls],
-                       "validation_bindings": []})
+    profile_inputs = deepcopy(template_result["validation_profile"])
+    profile_inputs["subject"] = subject
+    profile_inputs["controls"] = [[item["validation_id"], item["authority"]] for item in controls]
+    profile = _digest(profile_inputs)
     for index, item in enumerate(controls):
         item["command_id"] = f"{run_id}:effect:0:{index}"
         item["profile_digest"] = profile
@@ -102,17 +107,18 @@ def qualified_effect_result(
         for row in review["coverage"]:
             row["evidence_ref"] = report_digest
     result = {
-        "contract_version": "1.0", "outcome": "COMPLETE", "terminal": True,
+        "contract_version": "1.1", "outcome": "COMPLETE", "terminal": True,
         "effect_qualified": True, "subject": subject,
         "artifact": {"id": report_id, "digest_algorithm": "sha256",
                      "digest": report_digest, "content_type": "application/json",
                      "content": envelope},
-        "validation_controls": controls, "assurance_reviews": reviews,
+        "validation_controls": controls, "validation_profile": profile_inputs,
+        "assurance_reviews": reviews,
         "repair_rounds": {"used": 0, "maximum": 3},
         "delivery": {"kind": delivery, "revision": revision,
                      "pull_request": None if revision is None else template_result["delivery"]["pull_request"]},
     }
-    terminal["contract_version"] = "1.5"
+    terminal["contract_version"] = "1.6"
     terminal["host_execution"] = deepcopy(example["terminal_evidence"]["host_execution"])
     terminal["host_execution"]["start"]["target_commit"] = source_revision
     terminal["validation_controls"] = deepcopy(example["terminal_evidence"]["validation_controls"])

@@ -8,9 +8,9 @@ import json
 from typing import Any
 
 
-PRODUCER_SOURCE = "ff2f5072bcf5df7aa2828dde0b2d1b0a6ad32433"
-PRODUCER_VERSION = "2.3.110"
-MANIFEST_SHA256 = "07c95ed1b3e12334806dc03ff2782588d23cd6d877f02421b5a80f9bddd9a119"
+PRODUCER_SOURCE = "bc2e8d6800cc64ef44990ce9412d6b9c1c8824ff"
+PRODUCER_VERSION = "2.3.111"
+MANIFEST_SHA256 = "4490eb31468028138d4942acda5380464f99fc70cb4666f32278b809a1922896"
 CAPTURES = (
     "read_only_assessment-evidence_only.json", "documentation_only-git.json",
     "architecture_design_only-evidence_only.json", "architecture_design_only-git.json",
@@ -18,7 +18,8 @@ CAPTURES = (
 )
 SCHEMAS = (
     "effect-request-v1.schema.json", "effect-report-envelope-v1.schema.json",
-    "effect-result-v1.schema.json", "terminal-evidence-v1.5.schema.json",
+    "effect-result-v1.1.schema.json", "terminal-evidence-v1.6.schema.json",
+    "effect-validation-profile-v1.schema.json",
 )
 
 
@@ -57,6 +58,7 @@ def source_receipt() -> dict[str, Any]:
             or set(manifest.get("schema_sha256", {})) != set(SCHEMAS)
             or set(manifest.get("serializer_sha256", {})) != {
                 "effect_readback.py", "server.py", "submission_service.py",
+                "effect_evidence.py", "effect_contract.py",
             }):
         raise EffectFixtureError("EP effect producer manifest identity changed")
     for section in ("captures_sha256", "schema_sha256"):
@@ -64,6 +66,8 @@ def source_receipt() -> dict[str, Any]:
             if _hash(_bytes(name)) != expected:
                 raise EffectFixtureError(f"EP effect producer {name} bytes changed")
     return {"producer_source_sha": PRODUCER_SOURCE, "producer_version": PRODUCER_VERSION,
+            "contract_versions": {"request": "1.0", "report_envelope": "1.0",
+                                  "result": "1.1", "validation_profile": "1.0", "terminal": "1.6"},
             "manifest_sha256": "sha256:" + MANIFEST_SHA256,
             "capture_sha256": dict(manifest["captures_sha256"]),
             "schema_sha256": dict(manifest["schema_sha256"]),
@@ -93,7 +97,8 @@ def validate_capture(name: str) -> dict[str, Any]:
         raise EffectFixtureError("EP effect capture omits a public HTTP document")
     try:
         envelope = result["artifact"]["content"]
-        inputs = (request["constraints"]["effect_contract"], envelope, result, terminal)
+        inputs = (request["constraints"]["effect_contract"], envelope, result, terminal,
+                  result["validation_profile"])
         for schema_name, value in zip(SCHEMAS, inputs, strict=True):
             schema = json.loads(_bytes(schema_name))
             Draft202012Validator(schema).validate(value)
@@ -106,6 +111,8 @@ def validate_capture(name: str) -> dict[str, Any]:
     report["readback_path"] = (f"/v1/projects/{envelope['binding']['project_id']}/submissions/"
                                f"{envelope['binding']['submission_id']}/effect-result")
     subject = result["subject"]
+    profile = result["validation_profile"]
+    profile_digest = _digest(profile)
     if (envelope["contract"] != request["constraints"]["effect_contract"]
             or envelope["contract_digest"] != _digest(envelope["contract"])[7:]
             or envelope["source_manifest_digest"] != _digest(envelope["source_manifest"])[7:]
@@ -121,6 +128,12 @@ def validate_capture(name: str) -> dict[str, Any]:
             or terminal["repository"]["requested_revision"] != envelope["contract"]["source_revision"]
             or result["delivery"]["kind"] != envelope["contract"]["delivery"]):
         raise EffectFixtureError("EP effect capture binding or report digest changed")
+    if (profile["subject"] != subject
+            or profile["controls"] != [[item["validation_id"], item["authority"]]
+                                       for item in result["validation_controls"]]
+            or any(item["profile_digest"] != profile_digest
+                   for item in (*result["validation_controls"], *result["assurance_reviews"]))):
+        raise EffectFixtureError("EP effect capture validation profile changed")
     return {"capture": name, "producer_source_sha": PRODUCER_SOURCE,
             "mode": envelope["contract"]["mode"], "delivery": result["delivery"]["kind"],
             "report_digest": report_digest, "qualified": result["effect_qualified"],

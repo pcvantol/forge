@@ -39,14 +39,15 @@ class EpSimulatorTests(unittest.TestCase):
         self.assertEqual(supported["producer_readback"], ["1.2", "1.3"])
         self.assertEqual(supported["submission_identity_readback"], ["1.0"])
 
-    def test_legacy_submission_stays_on_terminal_v14_when_ep_advertises_effect_v15(self) -> None:
+    def test_legacy_submission_stays_on_terminal_v14_when_ep_advertises_effect_v16(self) -> None:
         state = self._state(EpSimulatorScenario(effect_declaration_supported=True))
         with EpSimulatorServer(state) as server:
             host = self._host(server)
             contracts = host.preflight()["contracts"]
-            self.assertEqual(contracts["terminal_evidence"], ["1.4", "1.5"])
+            self.assertEqual(contracts["terminal_evidence"], ["1.4", "1.6"])
             self.assertEqual(contracts["effect_request"], ["1.0"])
-            self.assertEqual(contracts["effect_result"], ["1.0"])
+            self.assertEqual(contracts["effect_result"], ["1.1"])
+            self.assertEqual(contracts["effect_validation_profile"], ["1.0"])
             request = _request()
             self.assertIsNone(host.dispatch(request))
             submission_id, = state.submission_ids()
@@ -83,8 +84,27 @@ class EpSimulatorTests(unittest.TestCase):
             supported.complete(submission_id, delivery_revision="b" * 40)
             dispatch = host.recover_dispatch(request)
             self.assertIsNotNone(dispatch)
-            with self.assertRaisesRegex(ValueError, "EP_EFFECT_TERMINAL_V15_REQUIRED"):
+            with self.assertRaisesRegex(ValueError, "EP_EFFECT_TERMINAL_V16_REQUIRED"):
                 host.retrieve_evidence(dispatch)
+
+    def test_historical_effect_declaration_cannot_dispatch_current_profile_bound_request(self) -> None:
+        base = _request()
+        effect = EffectRequest(
+            MissionEffectPolicy("READ_ONLY_ASSESSMENT", "EVIDENCE_ONLY", ("docs/",), ()),
+            "a" * 40, (("criterion-1", "Assess the documented architecture boundary."),))
+        request = replace(base, producer_contract=replace(base.producer_contract, effect_request=effect),
+                          effect_request=effect)
+        state = self._state(EpSimulatorScenario(effect_declaration_supported=True))
+        legacy = state.compatibility()
+        legacy["contracts"]["effect_result"] = ["1.0"]
+        legacy["contracts"]["terminal_evidence"] = ["1.4", "1.5"]
+        del legacy["contracts"]["effect_validation_profile"]
+        with patch.object(state, "compatibility", return_value=legacy), EpSimulatorServer(state) as server:
+            host = self._host(server)
+            self.assertEqual(host.preflight()["contracts"]["effect_result"], ["1.0"])
+            with self.assertRaisesRegex(ValueError, "EP_EFFECT_CAPABILITY_REQUIRED"):
+                host.dispatch(request)
+            self.assertEqual(state.submission_ids(), ())
 
     def _host(
         self,

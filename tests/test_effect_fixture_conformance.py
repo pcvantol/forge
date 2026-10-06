@@ -1,4 +1,4 @@
-"""EP 2.3.110 installed HTTP captures stay byte and schema pinned in Forge."""
+"""EP 2.3.111 installed HTTP captures stay byte and schema pinned in Forge."""
 from __future__ import annotations
 
 from unittest.mock import patch

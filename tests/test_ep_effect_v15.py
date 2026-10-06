@@ -156,7 +156,7 @@ class EffectV15HttpTests(unittest.TestCase):
 
         cases = (
             ("terminal-version", lambda r, t, b: t.__setitem__("contract_version", "1.4"),
-             "EP_EFFECT_TERMINAL_V15_REQUIRED"),
+             "EP_EFFECT_TERMINAL_V16_REQUIRED"),
             ("result-outcome", lambda r, t, b: r.__setitem__("effect_qualified", False),
              "EP_EFFECT_RESULT_NOT_QUALIFIED"),
             ("accepted-digest", lambda r, t, b: b["submission"].__setitem__(
@@ -178,6 +178,14 @@ class EffectV15HttpTests(unittest.TestCase):
             ("controls", lambda r, t, b: r["validation_controls"].clear(),
              "EP_EFFECT_CONTROLS_UNQUALIFIED"),
             ("stale-profile", stale_profile, "EP_EFFECT_PROFILE_DIGEST_MISMATCH"),
+            ("profile-subject", lambda r, t, b: r["validation_profile"].__setitem__(
+                "subject", {**r["subject"], "source_revision": "b" * 40}),
+             "EP_EFFECT_PROFILE_INPUTS_MISMATCH"),
+            ("profile-controls", lambda r, t, b: r["validation_profile"].__setitem__(
+                "controls", []), "EP_EFFECT_PROFILE_INPUTS_MISMATCH"),
+            ("profile-binding", lambda r, t, b: r["validation_profile"]["validation_bindings"].append(
+                {"validation_id": "hidden", "category": "repository_json", "command": ["false"]}),
+             "EP_EFFECT_PROFILE_INPUTS_MISMATCH"),
             ("terminal-control", lambda r, t, b: t["validation_controls"]["controls"][
                 "effect_scope_containment"].__setitem__("result", "FAIL"),
              "EP_EFFECT_TERMINAL_CONTROL_FAILED"),
