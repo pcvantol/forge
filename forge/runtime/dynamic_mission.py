@@ -1338,6 +1338,16 @@ class InstalledDynamicMissionRuntime:
         report_id = getattr(evidence, "report_id", None)
         if not repository or not receipt_id or not report_id or not repository.repository_revision:
             raise InstalledDynamicMissionError("terminal Host evidence lacks repository provenance")
+        effect = getattr(evidence, "effect_result", None)
+        if isinstance(effect, Mapping) and effect.get("delivery") == "EVIDENCE_ONLY":
+            current = state.repository_truth
+            if (not isinstance(current, Mapping)
+                    or effect.get("source_revision") != current.get("revision")
+                    or repository.repository_revision != current.get("revision")
+                    or effect.get("delivery_revision") is not None
+                    or repository.candidate_revision is not None):
+                raise InstalledDynamicMissionError("evidence-only result changed Repository Truth")
+            return dict(current)
         return {
             "source_id": f"execution-receipt:{receipt_id}", "revision": repository.repository_revision,
             "locator": f"execution-host://{getattr(evidence, 'host_id')}/{report_id}",
@@ -1355,6 +1365,8 @@ class InstalledDynamicMissionRuntime:
         )
         observations = list(self._criterion_observer.observe(mission, reference, self.host.config.repository_id))
         observations.extend(self._host_control_observer.observe(mission, reference, evidence))
+        from forge.completion.effect_report_observer import EffectReportCriterionObserver
+        observations.extend(EffectReportCriterionObserver().observe(mission, reference, evidence))
         # Original observations retain their original revision and receipt. No
         # blanket copying of historical references to the current Truth occurs.
         old = {}

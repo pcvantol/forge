@@ -45,4 +45,4 @@ exclude = ["tests", "tests.*"]
 version = {attr = "forge._version.__version__"}
 
 [tool.setuptools.package-data]
-forge = ["schemas/*.json", "api/*.json"]
+forge = ["schemas/*.json", "api/*.json", "qualification/fixtures/fme-producer-v1/*.json"]

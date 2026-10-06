@@ -73,12 +73,18 @@ class EpSimulatorTests(unittest.TestCase):
             self.assertEqual(baseline.submission_ids(), ())
         supported = self._state(EpSimulatorScenario(effect_declaration_supported=True))
         with EpSimulatorServer(supported) as server:
-            self.assertIsNone(self._host(server).dispatch(request))
+            host = self._host(server)
+            self.assertIsNone(host.dispatch(request))
             submission_id, = supported.submission_ids()
             payload = supported.submitted_payload(submission_id)
             self.assertEqual(payload["constraints"]["effect_contract"], effect.to_dict())
             self.assertEqual(payload["constraints"]["repository_revision_binding"]["requested_revision"],
                              effect.source_revision)
+            supported.complete(submission_id, delivery_revision="b" * 40)
+            dispatch = host.recover_dispatch(request)
+            self.assertIsNotNone(dispatch)
+            with self.assertRaisesRegex(ValueError, "EP_EFFECT_TERMINAL_V15_REQUIRED"):
+                host.retrieve_evidence(dispatch)
 
     def _host(
         self,

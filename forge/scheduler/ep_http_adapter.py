@@ -17,6 +17,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from forge.execution_host_configuration import canonical_endpoint
 from forge.models.execution_host import ExecutionDispatch, ExecutionHostEvidence, ExecutionHostTemporaryUnavailable, ExecutionRequest
+from .ep_effect_v15 import terminal_evidence as effect_terminal_evidence
 from .ep_v12 import terminal_evidence
 
 
@@ -1072,11 +1073,33 @@ class EngineeringPlatformHttpExecutionHost:
         raw = self._bytes(
             f"/v1/projects/{self._segment(self.config.project_id)}/artifacts/{self._segment(terminal['id'])}"
         )
-        evidence = terminal_evidence(
-            readback, raw, host_id=self.config.host_id,
-            repository_revision_binding=request.repository_revision_binding,
-            resolved_from_host_run_id=resolved_from_host_run_id,
-        )
+        if request.producer_contract.effect_request is not None:
+            # A declared capability is not terminal evidence. In particular,
+            # the legacy v1.4 Git artifact cannot complete an effect request.
+            try:
+                effect_terminal = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise ValueError("EP_EFFECT_TERMINAL_INVALID") from error
+            if (not isinstance(effect_terminal, Mapping)
+                    or effect_terminal.get("contract_version") != "1.5"):
+                raise ValueError("EP_EFFECT_TERMINAL_V15_REQUIRED")
+            submission_id = binding.get("submission_id")
+            if not isinstance(submission_id, str) or not submission_id:
+                raise ValueError("EP_EFFECT_SUBMISSION_BINDING_MISSING")
+            effect_result = self._json(
+                f"/v1/projects/{self._segment(self.config.project_id)}/submissions/"
+                f"{self._segment(submission_id)}/effect-result"
+            )
+            evidence = effect_terminal_evidence(
+                request, readback, raw, effect_result, host_id=self.config.host_id,
+                expected_accepted_digest=self._expected_ep_accepted_request_digest(request),
+            )
+        else:
+            evidence = terminal_evidence(
+                readback, raw, host_id=self.config.host_id,
+                repository_revision_binding=request.repository_revision_binding,
+                resolved_from_host_run_id=resolved_from_host_run_id,
+            )
         evidence = replace(evidence, receipt_id=self._submission_receipt_id(request, binding))
         observed_identity = (evidence.correlation_id, evidence.host_run_id, evidence.repository_evidence.runtime_prompt_id,
             evidence.repository_evidence.mission_id, evidence.repository_evidence.intent_id,

@@ -41,8 +41,10 @@ from forge.governed_candidate_intake import GovernedCandidateIntake, GovernedCan
 from forge.lifecycle import (MissionCandidate, MissionRecommendation,
                              RecommendationLifecycleStore, RecommendationStatus)
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
+from forge.models.criterion_assessment import CriterionAssessmentContract, CriterionEvidenceRequirement
 from forge.models.criterion_observation import canonical_digest
 from forge.models.execution_host import ExecutionHostTemporaryUnavailable
+from forge.models.mission_effect import MissionEffectPolicy
 from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService
 from forge.planner.codex_cli_session import (
@@ -56,6 +58,8 @@ from forge.qualification import criterion_completion as fixture
 from forge.qualification.producer_fixture_conformance import (
     rejection_matrix, source_receipt, validate_fixture, validate_identity_fixture,
 )
+from forge.qualification.effect_fixture_conformance import source_receipt as effect_source_receipt
+from forge.qualification.effect_simulator_fixture import qualified_effect_result
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.bootstrap import RuntimeResolutionError
@@ -84,6 +88,8 @@ SCENARIOS = (
     "artifact-corrupt", "artifact-schema",
     "artifact-withheld", "artifact-unavailable",
     "assurance-blocked", "budget-exhausted", "ambiguous", "ambiguous-recovered",
+    "effect-read-only", "effect-documentation", "effect-design-report",
+    "effect-design-git", "effect-repository-change",
 )
 PROVIDER_CASES = ("unavailable", "login-expired", "not-started", "local-rejected", "invalid-output",
                   "scope-expansion", "scope-outside", "unknown-dependency",
@@ -96,6 +102,18 @@ _DOC = "DOCUMENTATION_ONLY/GIT"
 _DESIGN_REPORT = "ARCHITECTURE_DESIGN_ONLY/EVIDENCE_ONLY"
 _DESIGN_GIT = "ARCHITECTURE_DESIGN_ONLY/GIT"
 _ALL_EFFECT_VARIANTS = (_READ, _DOC, _DESIGN_REPORT, _DESIGN_GIT, _WRITE)
+_EFFECT_SCENARIOS = {
+    "effect-read-only": ("READ_ONLY_ASSESSMENT", "EVIDENCE_ONLY", ()),
+    "effect-documentation": ("DOCUMENTATION_ONLY", "GIT", ("docs/report.md",)),
+    "effect-design-report": ("ARCHITECTURE_DESIGN_ONLY", "EVIDENCE_ONLY", ()),
+    "effect-design-git": ("ARCHITECTURE_DESIGN_ONLY", "GIT", ("docs/report.md",)),
+    "effect-repository-change": ("BOUNDED_REPOSITORY_CHANGE", "GIT", ("src/boundary.py",)),
+}
+
+
+def _effect_policy(scenario: str) -> MissionEffectPolicy:
+    mode, delivery, writes = _EFFECT_SCENARIOS[scenario]
+    return MissionEffectPolicy(mode, delivery, ("docs/",), writes)
 _FIE_MODE_VARIANTS = {
     **{f"FIE-{number:02d}": (_WRITE,) for number in range(1, 17)},
     "FIE-17": (_READ,), "FIE-18": (_DOC,),
@@ -473,8 +491,31 @@ def _installed_runtime_storage_negatives(root: Path) -> list[dict[str, str]]:
 
 
 def _open(root: Path, stack: ExitStack, *,
-          credential_case: str = "", provider_case: str = "") -> InstalledDynamicMissionRuntime:
+          credential_case: str = "", provider_case: str = "",
+          effect_scenario: str = "") -> InstalledDynamicMissionRuntime:
     transport = fixture._CodexTransport(root)
+    if not effect_scenario and (root / "effect-scenario.private.json").exists():
+        effect_scenario = fixture._read(root / "effect-scenario.private.json")["scenario"]
+    if effect_scenario:
+        approved = _effect_policy(effect_scenario)
+        original_transport = transport
+
+        def effect_transport(command, **kwargs):
+            outcome = original_transport(command, **kwargs)
+            if "exec" not in command or outcome.returncode:
+                return outcome
+            output = Path(command[command.index("--output-last-message") + 1])
+            document = json.loads(output.read_text())
+            proposal = document["result"]["proposals"][0]
+            proposal["write_scopes"] = list(approved.write_paths)
+            proposal["objective"] = "Assess the approved source criterion: " + proposal["expected_evidence"][0]
+            proposal["validation_strategy"] = [
+                "Verify the EP source-bound effect report and its exact criterion evidence.",
+            ]
+            output.write_text(json.dumps(document))
+            return outcome
+
+        transport = effect_transport
     if provider_case:
         original = transport
 
@@ -571,16 +612,37 @@ def _configure(root: Path, endpoint: str) -> None:
 
 
 def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
-                       runtime: InstalledDynamicMissionRuntime, *, maximum_actions: int = 3) -> tuple[
+                       runtime: InstalledDynamicMissionRuntime, *, maximum_actions: int = 3,
+                       effect_scenario: str = "") -> tuple[
                            MissionCandidate, GovernedCandidateIntake,
                            ArchitectureMission, ArchitecturePlanningEvidence]:
-    options = {"criterion_assessment_contracts": fixture._contracts(), "maximum_actions": maximum_actions,
-               "maximum_consecutive_no_progress_actions": 1,
-               "repository_evidence_source": fixture.SOURCE}
+    if effect_scenario:
+        policy = _effect_policy(effect_scenario)
+        criterion = "Explain the deployment boundary with source evidence."
+        criteria = (criterion,)
+        options = {"criterion_assessment_contracts": (
+            CriterionAssessmentContract(criterion, (CriterionEvidenceRequirement(
+                "approved-effect-report", kind="effect_report"),)),
+        ), "maximum_actions": maximum_actions,
+            "maximum_consecutive_no_progress_actions": 1,
+            "effect_policy": policy}
+        title = "Assess the deployment boundary"
+        objective = "Produce a source-backed report under the approved effect mode."
+    else:
+        policy = None
+        criteria = (fixture.K1, fixture.K2)
+        options = {"criterion_assessment_contracts": fixture._contracts(), "maximum_actions": maximum_actions,
+                   "maximum_consecutive_no_progress_actions": 1,
+                   "repository_evidence_source": fixture.SOURCE}
+        title = "Synthetic export contract"
+        objective = "Publish two explicit JSON properties."
     recommendation = MissionRecommendation(
-        "synthetic-recommendation", "Synthetic export contract", "qualification",
-        "Provide an inspectable contract.", "Publish two explicit JSON properties.",
-        "Inspectability.", "Two verified JSON properties.", "No behavior claim.",
+        "synthetic-recommendation", title, "qualification",
+        "Provide an inspectable contract." if policy is None else
+        "Clarify the committed deployment boundary for the owner.",
+        objective,
+        "Inspectability.", "Two verified JSON properties." if policy is None else
+        "One reviewed source-backed criterion report.", "No behavior claim.",
         ("repository:synthetic",), "architecture-review:synthetic",
         ("external fixtures",), ("Defer this synthetic proof.",), 90,
         "2026-09-18T09:59:00Z",
@@ -593,7 +655,8 @@ def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
     candidate = lifecycle.create_candidate(MissionCandidate(
         "synthetic-candidate", recommendation.id, recommendation.title,
         recommendation.engineering_summary, ("synthetic-contract",),
-        (fixture.K1, fixture.K2), ("no behavior claim",), recommendation.dependencies,
+        criteria, ("no behavior claim",), recommendation.dependencies,
+        effect_policy=policy,
     ))
     bridge = GovernedCandidateIntake(
         lifecycle, runtime, resolve_governance_profile(GOVERNANCE_PROFILE),
@@ -609,7 +672,7 @@ def _candidate_fixture(lifecycle: RecommendationLifecycleStore,
         ("scope-drift",), ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING, **options,
     )
     planning = ArchitecturePlanningEvidence(
-        candidate.scope, ("contracts",), candidate.architecture_constraints,
+        candidate.scope, ("contracts",) if policy is None else policy.write_paths,
         ("scope-drift",), ("protected-delivery",), candidate.dependencies,
         40000, 8000, revision, mission_spec_digest=canonical_digest(mission_preview.to_dict()),
         **options,
@@ -628,11 +691,14 @@ def _initial_truth() -> RepositoryTruthSnapshot:
 def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
              capture_phase: str = "prepare") -> None:
     _configure(root, endpoint)
+    if scenario in _EFFECT_SCENARIOS:
+        fixture._write(root / "effect-scenario.private.json", {"scenario": scenario})
     with ExitStack() as stack:
-        runtime = _open(root, stack)
+        runtime = _open(root, stack, effect_scenario=(scenario if scenario in _EFFECT_SCENARIOS else ""))
         with RecommendationLifecycleStore(root / "governance" / "lifecycle.sqlite") as lifecycle:
             candidate, bridge, mission_preview, planning = _candidate_fixture(
                 lifecycle, runtime, maximum_actions=1 if scenario == "budget-exhausted" else 3,
+                effect_scenario=(scenario if scenario in _EFFECT_SCENARIOS else ""),
             )
             revision = bridge.decision_ids(candidate.id)[0]
             rejected = []
@@ -1263,7 +1329,86 @@ def _ambiguous_result(root: Path, simulator: EpSimulatorState, endpoint: str,
                                for phase in phases}, "planner_invocations": 1}
 
 
+def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
+    """Qualify one governed Mission through the installed Forge/FME HTTP path."""
+    root.mkdir()
+    producer = effect_source_receipt()
+    simulator = EpSimulatorState(
+        project_id=PROJECT, repository_id=fixture.SOURCE.repository_id,
+        repository_identity=fixture.SOURCE.github_repository, consumer_id=CONSUMER,
+        instance_id=INSTANCE, bearer_token=TOKEN,
+        scenario=EpSimulatorScenario(name=scenario, effect_declaration_supported=True),
+    )
+    server = EpSimulatorServer(simulator)
+    requests = _count_ep_http_requests(server)
+    with server:
+        initial = _run_phase(root, scenario, "prepare", server.base_url, wheel)
+        assert initial["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
+        assert len(initial["actions"]) == len(simulator.submission_ids()) == 1
+        assert initial["mission"]["effect_policy"] == _effect_policy(scenario).to_dict()
+        assert initial["admission_contract"]["planning"]["write_scopes"] == list(
+            _effect_policy(scenario).write_paths)
+        submission_id, = simulator.submission_ids()
+        payload = simulator.submitted_payload(submission_id)
+        effect = payload["constraints"]["effect_contract"]
+        assert effect["mode"] == _effect_policy(scenario).mode
+        assert effect["delivery"] == _effect_policy(scenario).delivery
+        assert effect["write_paths"] == list(_effect_policy(scenario).write_paths)
+        assert effect["source_revision"] == "0" * 40
+        revision = None if effect["delivery"] == "EVIDENCE_ONLY" else "a" * 40
+        simulator.complete(submission_id, delivery_revision=revision)
+        baseline_readback, baseline_artifact = simulator.terminal_documents(submission_id)
+        readback, result, terminal = qualified_effect_result(payload, baseline_readback, baseline_artifact)
+        simulator.seed_terminal(submission_id, readback, terminal)
+        simulator.seed_effect_result(submission_id, result)
+        after = _run_phase(root, scenario, "after-a", server.base_url, wheel)
+        assert after["status"] == "AWAITING_APPROVAL", after.get("waiting_reason")
+        assert len(after["actions"]) == len(after["execution_history"]) == 1
+        assert after["completion"]["all_required_criteria_proven"] is True
+        evidence = after["execution_history"][0]
+        assert evidence["effect_result"]["report_digest"] == result["artifact"]["digest"]
+        assert evidence["effect_result"]["mode"] == effect["mode"]
+        assert len(after["completion"]["criteria"]) == 1
+        assert after["completion"]["criteria"][0]["requirement_results"][0]["reason"] == (
+            "VERIFIED_EP_EFFECT_CRITERION_SATISFIED")
+        if revision is None:
+            assert after["repository_truth"]["revision"] == "0" * 40
+            assert after["repository_truth"] == initial["repository_truth"]
+            assert evidence["repository_evidence"]["candidate_revision"] is None
+            assert result["delivery"]["pull_request"] is None
+        else:
+            assert after["repository_truth"]["revision"] == revision
+            assert evidence["repository_evidence"]["candidate_revision"] is not None
+            assert result["delivery"]["pull_request"] is not None
+        fixture._write(root / "final-before-accept.state.private.json", after)
+        accepted = _run_phase(root, scenario, "accept", server.base_url, wheel)
+        replayed = _run_phase(root, scenario, "accept-replay", server.base_url, wheel)
+        assert accepted == replayed and accepted["status"] == "COMPLETED"
+        final = _run_phase(root, scenario, "readback", server.base_url, wheel)
+        assert final == accepted
+        stopped = _run_phase(root, scenario, "completed-resume", server.base_url, wheel)
+        assert stopped == final
+        assert len(simulator.submission_ids()) == 1
+        posts = sum(item.startswith("POST ") for item in requests)
+        assert posts == 1
+        assert any(item.endswith("/effect-result") for item in requests)
+        assert not any(item["event"] == "submission_duplicate" for item in simulator.audit)
+    phases = ("prepare", "after-a", "accept", "accept-replay", "readback", "completed-resume")
+    processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
+    assert len(processes) == len(phases)
+    return {"scenario": scenario, "status": "COMPLETED", "mode": effect["mode"],
+            "delivery": effect["delivery"], "source_revision": effect["source_revision"],
+            "delivery_revision": revision, "report_digest": result["artifact"]["digest"],
+            "effect_producer_source": producer["producer_source_sha"],
+            "forge_processes": len(processes), "submissions": 1,
+            "submission_posts": posts, "ep_http_requests": len(requests),
+            "target_revision_unchanged": revision is None,
+            "per_criterion_proven": True}
+
+
 def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
+    if scenario in _EFFECT_SCENARIOS:
+        return _effect_scenario(root, scenario, wheel)
     root.mkdir()
     simulator = EpSimulatorState(
         project_id=PROJECT, repository_id=fixture.SOURCE.repository_id,

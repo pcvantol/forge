@@ -299,6 +299,7 @@ class ExecutionHostEvidence:
     receipt_id: str | None = None
     execution_duration_ms: int | None = None
     validation_controls: dict[str, object] | None = None
+    effect_result: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not all((self.host_id, self.correlation_id, self.host_run_id, self.report_id)):
@@ -326,6 +327,8 @@ class ExecutionHostEvidence:
             raise ValueError("execution host evidence receipt identity cannot be empty")
         if self.execution_duration_ms is not None and self.execution_duration_ms < 0:
             raise ValueError("execution host evidence duration cannot be negative")
+        if self.effect_result is not None and not isinstance(self.effect_result, dict):
+            raise ValueError("execution host effect result must be a verified projection")
 
 
 class ExecutionHost(Protocol):

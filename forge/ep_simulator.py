@@ -87,6 +87,7 @@ class _Submission:
     terminal_readback: dict[str, Any] | None = None
     terminal_artifact: bytes | None = None
     terminal_artifact_id: str | None = None
+    effect_result: dict[str, Any] | None = None
 
 
 class EpSimulatorState:
@@ -546,6 +547,24 @@ class EpSimulatorState:
             item.terminal_artifact_id = terminal["id"]
             self.audit.append({"event": "terminal_seeded", "submission_id": submission_id})
 
+    def seed_effect_result(self, submission_id: str, result: Mapping[str, Any]) -> None:
+        """Retain externally supplied EP v1.0 result bytes for the HTTP seam."""
+        with self._lock:
+            item = self._by_id.get(submission_id)
+            if item is None or item.terminal_artifact is None:
+                raise ValueError("EP simulator effect result requires terminal evidence")
+            if "effect_contract" not in item.payload["constraints"]:
+                raise ValueError("EP simulator submission did not request an effect")
+            item.effect_result = json.loads(json.dumps(result))
+            self.audit.append({"event": "effect_result_seeded", "submission_id": submission_id})
+
+    def effect_result(self, submission_id: str) -> dict[str, Any]:
+        with self._lock:
+            item = self._by_id.get(submission_id)
+            if item is None or item.effect_result is None:
+                raise KeyError(submission_id)
+            return json.loads(json.dumps(item.effect_result))
+
     def withhold_terminal_artifact(self, submission_id: str) -> None:
         """Inject a terminal producer result whose required artifact never appears."""
         with self._lock:
@@ -758,7 +777,18 @@ class EpSimulatorServer:
                     if scenario.readback_http_status:
                         self._error(scenario.readback_http_status, "READBACK_FAULT")
                         return
-                    submission_id = unquote(path[len(prefix):])
+                    relative = path[len(prefix):]
+                    if relative.endswith("/effect-result"):
+                        if not scenario.effect_declaration_supported:
+                            self._error(404, "EFFECT_RESULT_UNSUPPORTED")
+                            return
+                        submission_id = unquote(relative[:-len("/effect-result")])
+                        try:
+                            self._send_json(200, state_ref.effect_result(submission_id))
+                        except KeyError:
+                            self._error(404, "EFFECT_RESULT_MISSING")
+                        return
+                    submission_id = unquote(relative)
                     try:
                         readback = state_ref.readback(submission_id)
                         if scenario.accepted_digest_mismatch_on_readback:
