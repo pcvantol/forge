@@ -5,7 +5,7 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from hashlib import sha256
 from importlib.resources import files
-from io import StringIO
+from io import BytesIO, StringIO
 import json
 from pathlib import Path
 import subprocess
@@ -45,23 +45,27 @@ def main() -> int:
         raise AssertionError("source checkout is not clean at the qualified commit")
     if not arguments.wheel.is_file():
         raise AssertionError("qualification wheel is absent")
+    wheel_bytes = arguments.wheel.read_bytes()
     if not str(Path(forge.__file__).resolve()).startswith(str(Path(sys.prefix).resolve())):
         raise AssertionError("Forge is not imported from the selected Python environment")
     if Path(forge.__file__).resolve().is_relative_to(SOURCE):
         raise AssertionError("Forge is imported from the source checkout")
     installed_root = Path(forge.__file__).resolve().parent
+    tracked_product_files = set(subprocess.check_output(
+        ["git", "-C", str(SOURCE), "ls-files", "-z", "--", "forge"],
+    ).decode("utf-8").split("\0"))
     wheel_members: set[str] = set()
-    with ZipFile(arguments.wheel) as wheel:
+    with ZipFile(BytesIO(wheel_bytes)) as wheel:
         for name in wheel.namelist():
             if not name.startswith("forge/") or name.endswith("/"):
                 continue
             wheel_members.add(name)
+            payload = wheel.read(name)
+            if name not in tracked_product_files or (SOURCE / name).read_bytes() != payload:
+                raise AssertionError("wheel Forge payload differs from tracked exact source: " + name)
             installed = installed_root / name.removeprefix("forge/")
-            if not installed.is_file() or installed.read_bytes() != wheel.read(name):
+            if not installed.is_file() or installed.read_bytes() != payload:
                 raise AssertionError("installed Forge bytes differ from selected wheel: " + name)
-    if not wheel_members:
-        raise AssertionError("selected wheel has no Forge product payload")
-    with ZipFile(arguments.wheel) as wheel:
         wheel_metadata = [name for name in wheel.namelist()
                           if name.endswith((".dist-info/METADATA", ".dist-info/WHEEL",
                                             ".dist-info/entry_points.txt"))]
@@ -71,6 +75,8 @@ def main() -> int:
             installed = installed_root.parent / name
             if not installed.is_file() or installed.read_bytes() != wheel.read(name):
                 raise AssertionError("installed Forge metadata differ from selected wheel: " + name)
+    if not wheel_members:
+        raise AssertionError("selected wheel has no Forge product payload")
     for contract in CONTRACTS:
         packaged = files("forge").joinpath("api", contract).read_bytes()
         if packaged != (SOURCE / "forge" / "api" / contract).read_bytes():
@@ -79,7 +85,10 @@ def main() -> int:
     # Product imports are pinned to the installed wheel before adding the
     # source-only synthetic OS, LLM, EP and repository test adapters.
     sys.path.append(str(SOURCE))
-    from tests.test_workspace_review_inbox import WorkspaceReviewInboxTests
+    from tests import test_workspace_review_inbox as qualification_tests
+    if Path(qualification_tests.__file__).resolve() != SOURCE / "tests/test_workspace_review_inbox.py":
+        raise AssertionError("review qualification tests do not come from exact source")
+    WorkspaceReviewInboxTests = qualification_tests.WorkspaceReviewInboxTests
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(WorkspaceReviewInboxTests)
     output = StringIO()
@@ -94,12 +103,19 @@ def main() -> int:
            or "forge/" + str(path.relative_to(installed_root)) not in wheel_members
            for path in product_modules):
         raise AssertionError("a Forge product module came from the source checkout")
+    test_modules = [Path(module.__file__).resolve() for name, module in sys.modules.items()
+                    if (name == "tests" or name.startswith("tests."))
+                    and getattr(module, "__file__", None) is not None]
+    if not test_modules or any(not path.is_relative_to(SOURCE / "tests")
+                               for path in test_modules):
+        raise AssertionError("a qualification test module came from outside exact source")
     receipt = {
         "source_revision": revision,
-        "wheel_sha256": sha256(arguments.wheel.read_bytes()).hexdigest(),
+        "wheel_sha256": sha256(wheel_bytes).hexdigest(),
         "installed_forge": str(Path(forge.__file__).resolve()),
         "installed_noneditable": True,
         "product_modules_checked": len(product_modules),
+        "source_test_modules_checked": len(test_modules),
         "wheel_product_files_verified": len(wheel_members),
         "contracts_checked": list(CONTRACTS),
         "suite": "WorkspaceReviewInboxTests",
