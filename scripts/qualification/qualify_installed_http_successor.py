@@ -73,6 +73,7 @@ GOVERNANCE_PROFILE = "solo"
 GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = (
     "partial", "post-assessment-reopen", "single", "effect-declaration-legacy",
+    "successor-stale-gap", "successor-proven-gap", "successor-optional",
     "delayed", "pre-send-reopen",
     "host-recovery", "failed-recovery",
     "concurrent-start", "tampered", "tampered-action", "tampered-run",
@@ -391,7 +392,8 @@ def _open(root: Path, stack: ExitStack, *,
                     command, 0, '{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}\n', "",
                 )
             if provider_case in {"scope-expansion", "scope-outside", "unknown-dependency",
-                                 "missing-human-gate", "missing-risk-input"}:
+                                 "missing-human-gate", "missing-risk-input",
+                                 "successor-stale-gap", "successor-proven-gap", "successor-optional"}:
                 result = original(command, **kwargs)
                 output = Path(command[command.index("--output-last-message") + 1])
                 document = json.loads(output.read_text())
@@ -404,8 +406,18 @@ def _open(root: Path, stack: ExitStack, *,
                     proposal["dependencies"] = ["foreign-action"]
                 elif provider_case == "missing-human-gate":
                     proposal["human_gates"] = []
-                else:
+                elif provider_case == "missing-risk-input":
                     proposal["risk_inputs"] = []
+                elif provider_case == "successor-stale-gap":
+                    proposal["mission_gap"]["planning_snapshot_digest"] = "sha256:" + "0" * 64
+                elif provider_case == "successor-proven-gap":
+                    incoming = json.loads(kwargs["input"])
+                    proven = [item["criterion_id"] for item in incoming["snapshot"]["criteria"]
+                              if item["status"] == "PROVEN"]
+                    assert len(proven) == 1
+                    proposal["mission_gap"]["criterion_ids"] = proven
+                else:
+                    proposal["mission_gap"] = None
                 output.write_text(json.dumps(document))
                 return result
             raise RuntimeError("unsupported provider fault case")
@@ -728,7 +740,9 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
         _prepare(root, scenario, endpoint, start=scenario != "concurrent-start")
         return
     with ExitStack() as stack:
-        runtime = _open(root, stack)
+        runtime = _open(root, stack, provider_case=(scenario if phase == "after-a" and scenario in {
+            "successor-stale-gap", "successor-proven-gap", "successor-optional",
+        } else ""))
         population = fixture._read(root / "population.private.json")
         mission_id = population["mission_id"]
         if runtime.database.runtime_identity.runtime_id != population["runtime_id"]:
@@ -808,6 +822,15 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
         elif phase != "readback":
             runtime.resume(mission_id)
         state = _capture(root, runtime, phase)
+        if phase == "after-a" and scenario in {"successor-stale-gap", "successor-proven-gap",
+                                                "successor-optional"}:
+            attempts = [json.loads(row["document"]) for row in runtime.database._connection.execute(
+                "SELECT document FROM action_derivations ORDER BY derivation_id",
+            ).fetchall()]
+            fixture._write(root / "successor-validation.private.json", [{
+                "processing_phase": item["processing_phase"], "lifecycle": item["lifecycle"],
+                "error_code": item.get("error_code"),
+            } for item in attempts])
         admitted = fixture._read(root / "prepare.state.private.json")
         if state["mission"] != admitted["mission"] or state["admission_contract"] != admitted["admission_contract"]:
             raise RuntimeError("approved Mission or admission changed across processes")
@@ -1346,6 +1369,21 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 "retry_of_correlation_id": final["execution_history"][-1]["retry_of_correlation_id"],
                 "terminal_outcomes": [item["outcome"] for item in final["execution_history"]],
             }
+        elif scenario in {"successor-stale-gap", "successor-proven-gap", "successor-optional"}:
+            expected_code = {
+                "successor-stale-gap": "STALE_MISSION_GAP_BINDING",
+                "successor-proven-gap": "MISSION_CRITERION_ALREADY_PROVEN",
+                "successor-optional": "FOLLOW_UP_NOT_CURRENT_MISSION",
+            }[scenario]
+            attempts = fixture._read(root / "successor-validation.private.json")
+            assert len(attempts) == 2
+            assert {(item["lifecycle"], item["error_code"]) for item in attempts} == {
+                ("MATERIALIZED", None), ("FAILED", expected_code),
+            }
+            assert after_a["status"] in {"BLOCKED", "FAILED"}
+            assert len(after_a["actions"]) == len(simulator.submission_ids()) == 1
+            assert len(fixture._read(root / "provider-inputs.private.json")) == 2
+            final = after_a
         elif scenario == "budget-exhausted":
             final = after_a
             assert final["status"] == "BLOCKED"
