@@ -76,6 +76,7 @@ SCENARIOS = (
     "successor-stale-gap", "successor-proven-gap", "successor-optional",
     "delayed", "pre-send-reopen",
     "host-recovery", "failed-recovery",
+    "declined-before-run",
     "concurrent-start", "tampered", "tampered-action", "tampered-run",
     "tampered-repository", "tampered-producer", "tampered-request-digest",
     "artifact-corrupt", "artifact-schema",
@@ -1222,7 +1223,9 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                     "governance_rejections": governance_negative,
                     "producer_fixtures": fixture_receipts, "producer_fixture_negatives": fixture_negatives,
                     "submission_posts": posts, "ep_http_requests": len(requests)}
-        if scenario == "assurance-blocked":
+        if scenario == "declined-before-run":
+            simulator.decline_before_run(a)
+        elif scenario == "assurance-blocked":
             simulator.complete(
                 a, outcome="BLOCKED", assurance="FAIL", quality_review="FAIL",
                 security_review="UNRESOLVED",
@@ -1234,7 +1237,9 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 simulator.complete(a, outcome="BLOCKED")
         else:
             simulator.complete(a, delivery_revision="a" * 40)
-        if scenario == "artifact-withheld":
+        if scenario == "declined-before-run":
+            pass  # No run, artifact or terminal evidence exists in this EP disposition.
+        elif scenario == "artifact-withheld":
             simulator.withhold_terminal_artifact(a)
         else:
             source_readback, source_artifact = simulator.terminal_documents(a)
@@ -1384,6 +1389,14 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert len(after_a["actions"]) == len(simulator.submission_ids()) == 1
             assert len(fixture._read(root / "provider-inputs.private.json")) == 2
             final = after_a
+        elif scenario == "declined-before-run":
+            final = after_a
+            assert final["status"] in {"BLOCKED", "FAILED"}
+            assert len(final["actions"]) == len(simulator.submission_ids()) == 1
+            assert len(fixture._read(root / "provider-inputs.private.json")) == 1
+            assert [event["event"] for event in simulator.audit] == [
+                "submission_accepted", "submission_declined",
+            ]
         elif scenario == "budget-exhausted":
             final = after_a
             assert final["status"] == "BLOCKED"

@@ -998,6 +998,12 @@ class EngineeringPlatformHttpExecutionHost:
             return None
         run = readback.get("run")
         if run is None:
+            disposition = readback.get("disposition")
+            if isinstance(disposition, Mapping) and disposition.get("terminal") is True:
+                if (disposition.get("state") == "DECLINED"
+                        and disposition.get("execution_eligible") is False):
+                    raise ValueError("EP_DECLINED_BEFORE_RUN")
+                raise ValueError("EP_TERMINAL_NO_RUN_DISPOSITION_INVALID")
             return None  # accepted but not yet claimed: ordinary resumable waiting
         if not isinstance(run, Mapping) or not isinstance(run.get("id"), str) or not run["id"]:
             raise ValueError("EP readback run identity is invalid")

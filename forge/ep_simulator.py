@@ -279,6 +279,24 @@ class EpSimulatorState:
                 return json.loads(json.dumps(item.terminal_readback))
             return readback
 
+    def decline_before_run(self, submission_id: str) -> None:
+        """Project EP's v1.2 terminal queue decline without inventing a run."""
+        readback = self.pending_readback(submission_id)
+        readback["submission"]["state"] = "DECLINED"
+        readback["disposition"].update({
+            "state": "DECLINED", "terminal": True, "execution_eligible": False,
+            "revision": 1, "operation_id": "sim-decline-0001",
+            "event_reference": "event:sim-decline-0001",
+            "reason": "The submission was declined before execution.",
+            "actor_reference": "sim-operator", "recorded_at": "2026-09-22T00:00:01+00:00",
+        })
+        with self._lock:
+            item = self._by_id[submission_id]
+            if item.terminal_readback is not None:
+                raise ValueError("EP simulator submission already has a terminal projection")
+            item.terminal_readback = readback
+            self.audit.append({"event": "submission_declined", "submission_id": submission_id})
+
     def complete(
         self,
         submission_id: str,
