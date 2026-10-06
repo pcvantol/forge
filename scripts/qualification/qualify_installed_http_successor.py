@@ -81,7 +81,7 @@ SCENARIOS = (
     "artifact-withheld", "artifact-unavailable",
     "assurance-blocked", "budget-exhausted", "ambiguous", "ambiguous-recovered",
 )
-PROVIDER_CASES = ("unavailable", "not-started", "local-rejected", "invalid-output",
+PROVIDER_CASES = ("unavailable", "login-expired", "not-started", "local-rejected", "invalid-output",
                   "scope-expansion", "scope-outside", "unknown-dependency",
                   "missing-human-gate", "missing-risk-input", "ambiguous")
 
@@ -178,6 +178,7 @@ PREFLIGHT_CASES = {
     "repository-unbound": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
     "scope-unauthorized": "EP_AUTHENTICATED_CONSUMER_SCOPE_MISMATCH",
     "credential-missing": "EP credential reference is not resolvable: MISSING",
+    "credential-revoked": "EP credential reference is not resolvable: REVOKED",
     "credential-invalid": "EP rejected request: 401",
     "http-401": "EP rejected request: 401",
     "http-403": "EP rejected request: 403",
@@ -221,6 +222,8 @@ class _PreflightCredentialResolver(_SyntheticCredentialResolver):
     def resolve(self, reference: SecretReference) -> tuple[SecretState, str | None]:
         if self.case == "credential-missing":
             return SecretState.MISSING, None
+        if self.case == "credential-revoked":
+            return SecretState.REVOKED, None
         if self.case == "credential-invalid":
             return SecretState.RESOLVABLE, "invalid-isolated-token"
         return super().resolve(reference)
@@ -370,6 +373,8 @@ def _open(root: Path, stack: ExitStack, *,
         def fault_transport(command, **kwargs):
             if provider_case == "unavailable" and "--version" in command:
                 return subprocess.CompletedProcess(command, 1, "", "")
+            if provider_case == "login-expired" and command[-2:] == ["login", "status"]:
+                return subprocess.CompletedProcess(command, 1, "Not logged in\n", "")
             if "exec" not in command:
                 return original(command, **kwargs)
             fixture._append(root / "provider-attempts.private.json", {"case": provider_case})
@@ -937,7 +942,8 @@ def _preflight_phase(root: Path, case: str, phase: str, endpoint: str) -> None:
         return
     mission_id = fixture._read(root / "population.private.json")["mission_id"]
     expected_reason = PREFLIGHT_CASES[case]
-    expected_type = "PeerConfigurationError" if case == "credential-missing" else "ValueError"
+    expected_type = ("PeerConfigurationError" if case in {"credential-missing", "credential-revoked"}
+                     else "ValueError")
     try:
         with ExitStack() as stack:
             runtime = _open(root, stack, credential_case=case)
@@ -997,6 +1003,7 @@ def _preflight_case(root: Path, case: str, wheel: Path) -> dict:
         "project_id": simulator.project_id, "repository_id": simulator.repository_id,
         "preflight_http_status": simulator.scenario.preflight_http_status,
         "credential_mode": ("missing" if case == "credential-missing" else
+                            "revoked" if case == "credential-revoked" else
                             "invalid" if case == "credential-invalid" else "valid"),
     }
     fixture_digest = "sha256:" + sha256(json.dumps(
@@ -1027,7 +1034,7 @@ def _preflight_case(root: Path, case: str, wheel: Path) -> dict:
     if (staged["status"] != "APPROVED_PLANNABLE" or staged["actions"] or staged["intents"]
             or staged["execution_correlation"] is not None):
         raise RuntimeError(f"{case} crossed the Action or execution gate")
-    expected_gets = 0 if case == "credential-missing" else 2
+    expected_gets = 0 if case in {"credential-missing", "credential-revoked"} else 2
     if (requests != ["GET /v1/producer-compatibility"] * expected_gets
             or simulator.submission_ids() or simulator.audit):
         raise RuntimeError(f"{case} made unexpected listener traffic or EP submission")
@@ -1604,12 +1611,13 @@ def _provider_case(root: Path, case: str, wheel: Path) -> dict:
             or simulator.submission_ids()
             or any(event["event"] == "submission_accepted" for event in simulator.audit)):
         raise RuntimeError(f"{case} escaped the provider denial boundary")
-    if first["attempts"] != (0 if case == "unavailable" else 1) or repeat["attempts"] != first["attempts"]:
+    if first["attempts"] != (0 if case in {"unavailable", "login-expired"} else 1) or repeat["attempts"] != first["attempts"]:
         raise RuntimeError(f"{case} generated again after a failed or uncertain attempt")
     if states[1] != states[2]:
         raise RuntimeError(f"{case} changed durable Mission state on fresh-process repeat")
     expected_phase = {
         "unavailable": None,
+        "login-expired": None,
         "not-started": "GENERATION_NOT_STARTED",
         "local-rejected": "GENERATION_NOT_STARTED",
         "invalid-output": "DETERMINISTIC_REJECTION",
