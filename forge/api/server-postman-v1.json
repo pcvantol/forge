@@ -579,6 +579,22 @@
     {
       "name": "Record Mission progression decision",
       "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression-decisions", "host": ["{{baseUrl}}"], "path": ["v1", "missions", "{{missionId}}", "progression-decisions"]}, "body": {"mode": "raw", "raw": "{}", "options": {"raw": {"language": "json"}}}}
+    },
+    {
+      "name": "Read scoped Workspace review inbox",
+      "request": {"method": "GET", "header": [], "url": {"raw": "{{baseUrl}}/v1/reviews", "host": ["{{baseUrl}}"], "path": ["v1", "reviews"]}}
+    },
+    {
+      "name": "Read scoped Workspace Mission review",
+      "request": {"method": "GET", "header": [], "url": {"raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}", "host": ["{{baseUrl}}"], "path": ["v1", "reviews", "missions", "{{missionId}}"]}}
+    },
+    {
+      "name": "Record exact Workspace Mission review decision",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}/decisions", "host": ["{{baseUrl}}"], "path": ["v1", "reviews", "missions", "{{missionId}}", "decisions"]}, "body": {"mode": "raw", "raw": "{}", "options": {"raw": {"language": "json"}}}}
+    },
+    {
+      "name": "Recover exact Workspace Mission review operation",
+      "request": {"method": "GET", "header": [], "url": {"raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}/decisions/{operation_id}", "host": ["{{baseUrl}}"], "path": ["v1", "reviews", "missions", "{{missionId}}", "decisions", "{operation_id}"]}}
     }
   ]
 }
