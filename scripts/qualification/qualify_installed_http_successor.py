@@ -71,7 +71,7 @@ HOST = "synthetic-host"
 GOVERNANCE_PROFILE = "solo"
 GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = (
-    "partial", "single", "delayed", "host-recovery", "concurrent-start", "tampered", "artifact-corrupt",
+    "partial", "single", "delayed", "host-recovery", "failed-recovery", "concurrent-start", "tampered", "artifact-corrupt",
     "artifact-withheld", "artifact-unavailable",
     "assurance-blocked", "budget-exhausted", "ambiguous", "ambiguous-recovered",
 )
@@ -1108,7 +1108,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     fixture._write(root / "artifact-a.json", {
         "report": {"fields": ["report_data"]},
         "policy": {"authorization_required": scenario in {
-            "single", "delayed", "host-recovery", "ambiguous-recovered",
+            "single", "delayed", "host-recovery", "failed-recovery", "ambiguous-recovered",
         }},
     })
     fixture._write(root / "artifact-b.json", {
@@ -1137,8 +1137,11 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                 a, outcome="BLOCKED", assurance="FAIL", quality_review="FAIL",
                 security_review="UNRESOLVED",
             )
-        elif scenario == "host-recovery":
-            simulator.complete(a, outcome="BLOCKED")
+        elif scenario in {"host-recovery", "failed-recovery"}:
+            if scenario == "failed-recovery":
+                simulator.complete(a, outcome="FAILED", assurance="NOT_RECORDED")
+            else:
+                simulator.complete(a, outcome="BLOCKED")
         else:
             simulator.complete(a, delivery_revision="a" * 40)
         if scenario == "artifact-withheld":
@@ -1217,8 +1220,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 2
             assert final["pause_reason"]["schema_version"] == "forge-final-acceptance-requirement/v1"
             assert all(item["status"] == "PROVEN" for item in final["completion"]["criteria"])
-        elif scenario == "host-recovery":
-            assert after_a["status"] == "BLOCKED"
+        elif scenario in {"host-recovery", "failed-recovery"}:
+            assert after_a["status"] == ("FAILED" if scenario == "failed-recovery" else "BLOCKED")
             denied = _run_phase(root, scenario, "recover-denied", server.base_url, wheel)
             assert denied == after_a and len(simulator.submission_ids()) == 1
             recovered = _run_phase(root, scenario, "recover", server.base_url, wheel)
@@ -1241,7 +1244,9 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             final = _run_phase(root, scenario, "after-recovery", server.base_url, wheel)
             assert final["status"] == "AWAITING_APPROVAL"
             assert len(final["actions"]) == 1 and len(simulator.submission_ids()) == 2
-            assert [item["outcome"] for item in final["execution_history"]] == ["blocked", "complete"]
+            assert [item["outcome"] for item in final["execution_history"]] == [
+                "failed" if scenario == "failed-recovery" else "blocked", "complete",
+            ]
             assert final["execution_history"][-1]["retry_of_correlation_id"] == request_a["correlation_id"]
             assert all(item["status"] == "PROVEN" for item in final["completion"]["criteria"])
             recovery_summary = {
@@ -1271,7 +1276,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             }
             assert final["completion"] is None or final["completion"].get("all_required_criteria_proven") is not True
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
-        if scenario in {"partial", "single", "delayed", "host-recovery", "ambiguous-recovered"}:
+        if scenario in {"partial", "single", "delayed", "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             fixture._write(root / "final-before-accept.state.private.json", final)
             accepted = _run_phase(root, scenario, "accept", server.base_url, wheel)
             replayed = _run_phase(root, scenario, "accept-replay", server.base_url, wheel)
@@ -1282,7 +1287,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             final = accepted
         readback = _run_phase(root, scenario, "readback", server.base_url, wheel)
         assert readback == final
-        if scenario in {"partial", "single", "delayed", "host-recovery", "ambiguous-recovered"}:
+        if scenario in {"partial", "single", "delayed", "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             stopped = _run_phase(root, scenario, "completed-resume", server.base_url, wheel)
             assert stopped == final
         assert not any(event["event"] == "submission_duplicate" for event in simulator.audit)
@@ -1294,10 +1299,10 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     phases = ["prepare", "after-a", "readback"]
     if scenario == "partial":
         phases += ["replay-b", "after-b"]
-    if scenario == "host-recovery":
+    if scenario in {"host-recovery", "failed-recovery"}:
         phases += ["recover-denied", "recover", "after-recovery"]
     phases += poll_phases
-    if scenario in {"partial", "single", "delayed", "host-recovery", "ambiguous-recovered"}:
+    if scenario in {"partial", "single", "delayed", "host-recovery", "failed-recovery", "ambiguous-recovered"}:
         phases += ["accept", "accept-replay", "completed-resume"]
     processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
     assert len(processes) == len(phases), "Forge phases must use distinct OS processes"
