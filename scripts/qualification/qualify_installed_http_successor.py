@@ -1392,6 +1392,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
         elif scenario == "declined-before-run":
             final = after_a
             assert final["status"] in {"BLOCKED", "FAILED"}
+            assert final["execution_history"][-1]["failure_code"] == "EP_DECLINED_BEFORE_RUN"
             assert len(final["actions"]) == len(simulator.submission_ids()) == 1
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
             assert [event["event"] for event in simulator.audit] == [
@@ -1471,6 +1472,11 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             "planner_invocations": len(fixture._read(root / "provider-inputs.private.json")),
             "waiting_polls": len(poll_phases),
             "submission_posts": posts, "ep_http_requests": len(requests),
+            **({"successor_rejection": expected_code} if scenario in {
+                "successor-stale-gap", "successor-proven-gap", "successor-optional",
+            } else {}),
+            **({"no_run_disposition": {"state": "DECLINED", "failure_code": "EP_DECLINED_BEFORE_RUN"}}
+               if scenario == "declined-before-run" else {}),
             **({"recovery": recovery_summary} if recovery_summary is not None else {})}
 
 
