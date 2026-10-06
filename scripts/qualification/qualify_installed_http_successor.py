@@ -55,10 +55,10 @@ from forge.qualification.producer_fixture_conformance import (
 )
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
-from forge.runtime.bootstrap import RuntimeResolutionError
 from forge.runtime.dynamic_mission import InstalledDynamicMissionError, InstalledDynamicMissionRuntime
 from forge.runtime.service import RuntimeServiceBusy
 from forge.secure_store import MacOSKeychainSecureStoreAdapter, SecretReference, SecretState
+from forge.state.mission_state import MissionStateStoreError
 
 
 TOKEN = "isolated-qualification-token"
@@ -1246,33 +1246,18 @@ def _concurrent_start_case(root: Path, wheel: Path) -> dict:
                            "--endpoint", server.base_url]
                 handle = (root / f"{phase}.raw.private.log").open("w")
                 handles.append(handle)
-                children.append(subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT,
-                                                 env=_child_env(root)))
-            deadline = time.monotonic() + 20
-            while True:
-                ready = [(root / f"{phase}.ready.private").exists()
-                         for phase in ("race-start-a", "race-start-b")]
-                if all(ready) or (any(ready) and any(child.poll() is not None for child in children)):
-                    break
-                if time.monotonic() >= deadline or all(child.poll() is not None for child in children):
-                    raise RuntimeError("installed starters did not reach the bounded race boundary")
-                time.sleep(0.01)
+                child = subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT,
+                                         env=_child_env(root))
+                children.append(child)
+                deadline = time.monotonic() + 20
+                while not (root / f"{phase}.ready.private").exists():
+                    if time.monotonic() >= deadline or child.poll() is not None:
+                        raise RuntimeError("installed starter did not open the same Runtime Instance")
+                    time.sleep(0.01)
             (root / "race-go.private").write_text("start")
             for phase, child in zip(("race-start-a", "race-start-b"), children):
-                status = child.wait(timeout=90)
-                if status == 0:
-                    continue
-                log = (root / f"{phase}.raw.private.log").read_text()
-                if (status != 1 or "RuntimeResolutionError: another mutating Forge runtime owns this data root"
-                        not in log):
-                    raise RuntimeError("an installed race participant failed unexpectedly; see its private log")
-                fixture._write(root / f"{phase}.race.private.json", {
-                    "result": "REJECTED", "type": RuntimeResolutionError.__name__,
-                    "reason": "another mutating Forge runtime owns this data root",
-                    "stage": "runtime_bootstrap",
-                })
-                fixture._write(root / f"{phase}.process.private.json", {"pid": child.pid})
-                fixture._write(root / f"{phase}.state.private.json", staged)
+                if child.wait(timeout=90) != 0:
+                    raise RuntimeError(f"installed {phase} failed after opening Runtime Instance")
         finally:
             for child in children:
                 if child.poll() is None:
@@ -1286,11 +1271,14 @@ def _concurrent_start_case(root: Path, wheel: Path) -> dict:
                 handle.close()
         outcomes = [fixture._read(root / f"{phase}.race.private.json")
                     for phase in ("race-start-a", "race-start-b")]
+        rejection = next((item for item in outcomes if item["result"] == "REJECTED"), {})
+        expected_rejections = {
+            RuntimeServiceBusy.__name__: "canonical runtime is busy",
+            MissionStateStoreError.__name__: "mission state transition CREATED -> CREATED is not permitted",
+            InstalledDynamicMissionError.__name__: "public start requires a canonically admitted zero-Action Mission",
+        }
         if (sorted(item["result"] for item in outcomes) != ["REJECTED", "STARTED"]
-                or next(item for item in outcomes if item["result"] == "REJECTED")["type"] not in {
-                    InstalledDynamicMissionError.__name__, RuntimeServiceBusy.__name__,
-                    RuntimeResolutionError.__name__, "RuntimeDatabaseError", "RuntimeIntegrityError",
-                }
+                or rejection.get("reason") != expected_rejections.get(rejection.get("type"))
                 or len(simulator.submission_ids()) != 1
                 or len(fixture._read(root / "provider-inputs.private.json")) != 1):
             raise RuntimeError("concurrent starters crossed the single-flight Action boundary")
