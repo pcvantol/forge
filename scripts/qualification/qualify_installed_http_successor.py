@@ -90,6 +90,91 @@ PROVIDER_CASES = ("unavailable", "login-expired", "not-started", "local-rejected
                   "missing-human-gate", "missing-risk-input", "ambiguous")
 
 
+_WRITE = "BOUNDED_REPOSITORY_CHANGE/GIT"
+_READ = "READ_ONLY_ASSESSMENT/EVIDENCE_ONLY"
+_DOC = "DOCUMENTATION_ONLY/GIT"
+_DESIGN_REPORT = "ARCHITECTURE_DESIGN_ONLY/EVIDENCE_ONLY"
+_DESIGN_GIT = "ARCHITECTURE_DESIGN_ONLY/GIT"
+_ALL_EFFECT_VARIANTS = (_READ, _DOC, _DESIGN_REPORT, _DESIGN_GIT, _WRITE)
+_FIE_MODE_VARIANTS = {
+    **{f"FIE-{number:02d}": (_WRITE,) for number in range(1, 17)},
+    "FIE-17": (_READ,), "FIE-18": (_DOC,),
+    "FIE-19": (_DESIGN_REPORT, _DESIGN_GIT), "FIE-20": (_READ,),
+    "FIE-21": (_READ,),
+    "FIE-22": (_READ, _DOC, _DESIGN_REPORT, _DESIGN_GIT),
+    "FIE-23": (_READ, _WRITE), "FIE-24": _ALL_EFFECT_VARIANTS,
+    "FIE-25": _ALL_EFFECT_VARIANTS,
+    "FIE-26": (_READ, _DOC, _DESIGN_REPORT, _DESIGN_GIT),
+    "FIE-27": (_READ, _DESIGN_REPORT, _DESIGN_GIT, _WRITE),
+    "FIE-28": _ALL_EFFECT_VARIANTS,
+}
+_FIE_SUBSET_EVIDENCE = {
+    "FIE-01": ("scenario:single",),
+    "FIE-02": ("scenario:partial", "scenario:post-assessment-reopen"),
+    "FIE-03": ("scenario:single",),
+    "FIE-04": ("governance:candidate-alone", "governance:stale-candidate"),
+    "FIE-05": ("preflight:credential-revoked", "provider:login-expired", "scenario:budget-exhausted"),
+    "FIE-06": ("provider:unavailable", "provider:invalid-output", "provider:ambiguous"),
+    "FIE-07": ("provider:scope-expansion", "provider:unknown-dependency",
+               "scenario:successor-stale-gap", "scenario:successor-proven-gap",
+               "scenario:successor-optional"),
+    "FIE-08": ("preflight:readback-absent", "preflight:wrong-instance",
+               "preflight:credential-invalid"),
+    "FIE-09": ("scenario:delayed",),
+    "FIE-10": ("scenario:ambiguous-recovered",),
+    "FIE-11": ("scenario:tampered-request-digest", "scenario:tampered-run",
+               "scenario:artifact-corrupt", "scenario:assurance-blocked"),
+    "FIE-12": ("scenario:artifact-withheld", "scenario:artifact-unavailable",
+               "scenario:declined-before-run"),
+    "FIE-13": ("scenario:host-recovery", "scenario:failed-recovery"),
+    "FIE-14": ("scenario:concurrent-start", "scenario:partial"),
+    "FIE-15": ("scenario:pre-send-reopen", "scenario:post-assessment-reopen",
+               "scenario:ambiguous-recovered"),
+    "FIE-16": ("identity:installed-wheel-byte-drift", "storage:wrong-runtime-marker",
+               "storage:missing-runtime-storage", "storage:unsupported-runtime-schema"),
+    "FIE-20": ("preflight:effect-request-missing",),
+    "FIE-28": ("preflight:effect-result-unsupported", "scenario:effect-declaration-legacy"),
+}
+
+
+def _fci_manifest(report: dict[str, Any]) -> dict[str, Any]:
+    """Report the whole owning inventory without promoting this subset to FCI PASS."""
+    roadmap = Path(__file__).resolve().parents[2] / "docs/roadmap/forge-inner-loop-ci-v1.json"
+    source = roadmap.read_bytes()
+    inventory = json.loads(source)["scenarios"]
+    ids = [entry["id"] for entry in inventory]
+    expected = [f"FIE-{number:02d}" for number in range(1, 29)]
+    if ids != expected or any(entry.get("required") is not True for entry in inventory):
+        raise RuntimeError("canonical FIE inventory changed without qualifier reconciliation")
+    if set(_FIE_MODE_VARIANTS) != set(expected):
+        raise RuntimeError("required FIE mode variants are incomplete")
+    observed = {
+        *("scenario:" + item["scenario"] for item in report["scenarios"]),
+        *("preflight:" + item["case"] for item in report["preflight_matrix"]),
+        *("governance:" + item["case"] for item in report["governance_matrix"]),
+        *("provider:" + item["case"] for item in report["provider_matrix"]),
+        "identity:" + report["installed_identity_negative"]["case"],
+        *("storage:" + item["case"] for item in report["runtime_storage_negatives"]),
+    }
+    families = []
+    for entry in inventory:
+        evidence = [case for case in _FIE_SUBSET_EVIDENCE.get(entry["id"], ()) if case in observed]
+        families.append({
+            "id": entry["id"], "name": entry["name"], "required": True,
+            "required_mode_variants": list(_FIE_MODE_VARIANTS[entry["id"]]),
+            "observed_subset_evidence": evidence,
+            "coverage_state": "PARTIAL_EVIDENCE" if evidence else "NO_EVIDENCE",
+            "result": "NOT_QUALIFIED",
+        })
+    return {
+        "result": "NOT_QUALIFIED",
+        "reason": "Complete FIE and effect-mode cases are not yet installed-qualified",
+        "inventory_sha256": "sha256:" + sha256(source).hexdigest(),
+        "families": families,
+        "required_mode_variants": list(_ALL_EFFECT_VARIANTS),
+    }
+
+
 def _child_env(root: Path) -> dict[str, str]:
     """Give every scenario an isolated identity, configuration and scratch root."""
     home, scratch, config = (root / name for name in ("home", "scratch", "config"))
@@ -1941,6 +2026,14 @@ def main() -> int:
             print(json.dumps(report, sort_keys=True))
             return 1
     report.update(result=("FOCUSED_PASS" if args.scenario else "PASS"), scenarios=summaries)
+    if not args.scenario:
+        try:
+            report["fci_manifest"] = _fci_manifest(report)
+        except (OSError, ValueError, KeyError, RuntimeError, TypeError) as error:
+            report.update(result="FAIL", failure={"stage": "fci_manifest", "type": type(error).__name__})
+            fixture._write(root / "installed-http-successor.public.json", report)
+            print(json.dumps(report, sort_keys=True))
+            return 1
     fixture._write(root / "installed-http-successor.public.json", report)
     print(json.dumps(report, sort_keys=True))
     return 0
