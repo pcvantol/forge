@@ -41,6 +41,7 @@ from forge.lifecycle import (MissionCandidate, MissionRecommendation,
                              RecommendationLifecycleStore, RecommendationStatus)
 from forge.models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from forge.models.criterion_observation import canonical_digest
+from forge.models.execution_host import ExecutionHostTemporaryUnavailable
 from forge.models.mission_recommendation import RequiredDiscipline
 from forge.operator_identity import InstallationOperatorService
 from forge.planner.codex_cli_session import (
@@ -71,7 +72,8 @@ HOST = "synthetic-host"
 GOVERNANCE_PROFILE = "solo"
 GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = (
-    "partial", "single", "delayed", "host-recovery", "failed-recovery", "concurrent-start", "tampered", "artifact-corrupt",
+    "partial", "single", "delayed", "pre-send-reopen", "host-recovery", "failed-recovery",
+    "concurrent-start", "tampered", "artifact-corrupt",
     "artifact-withheld", "artifact-unavailable",
     "assurance-blocked", "budget-exhausted", "ambiguous", "ambiguous-recovered",
 )
@@ -539,7 +541,15 @@ def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
             "expected_state_revision": admitted.revision,
         })
         if start:
-            runtime.start(mission_id, _initial_truth())
+            if scenario == "pre-send-reopen":
+                # Let the real runner persist its immutable request, then
+                # interrupt before the first EP POST. The next OS process must
+                # send that exact request without another provider turn.
+                with patch.object(runtime.host, "dispatch", side_effect=
+                                  ExecutionHostTemporaryUnavailable("synthetic pre-send interruption")):
+                    runtime.start(mission_id, _initial_truth())
+            else:
+                runtime.start(mission_id, _initial_truth())
         fixture._write(root / "population.private.json", {
             "mission_id": mission_id, "scenario": scenario,
             "runtime_id": runtime.database.runtime_identity.runtime_id,
@@ -1108,7 +1118,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     fixture._write(root / "artifact-a.json", {
         "report": {"fields": ["report_data"]},
         "policy": {"authorization_required": scenario in {
-            "single", "delayed", "host-recovery", "failed-recovery", "ambiguous-recovered",
+            "single", "delayed", "pre-send-reopen", "host-recovery", "failed-recovery",
+            "ambiguous-recovered",
         }},
     })
     fixture._write(root / "artifact-b.json", {
@@ -1116,6 +1127,15 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
     })
     with EpSimulatorServer(simulator) as server:
         initial = _run_phase(root, scenario, "prepare", server.base_url, wheel)
+        if scenario == "pre-send-reopen":
+            assert initial["status"] == "WAITING_FOR_EXECUTION"
+            assert len(initial["actions"]) == 1 and not simulator.submission_ids()
+            persisted = initial["execution_correlation"]["request"]
+            assert persisted["correlation_id"] and persisted["producer_contract"]
+            initial = _run_phase(root, scenario, "send-after-reopen", server.base_url, wheel)
+            assert initial["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
+            assert initial["execution_correlation"]["request"] == persisted
+            assert len(fixture._read(root / "provider-inputs.private.json")) == 1
         fixture_receipts = []
         fixture_negatives = []
         recovery_summary = None
@@ -1262,7 +1282,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert len(final["actions"]) == len(simulator.submission_ids()) == 1
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
             assert final["completion"]["all_required_criteria_proven"] is False
-        elif scenario in {"single", "delayed", "ambiguous-recovered"}:
+        elif scenario in {"single", "delayed", "pre-send-reopen", "ambiguous-recovered"}:
             final = after_a
             assert final["status"] == "AWAITING_APPROVAL" and len(final["actions"]) == 1
             assert final["pause_reason"]["schema_version"] == "forge-final-acceptance-requirement/v1"
@@ -1276,7 +1296,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             }
             assert final["completion"] is None or final["completion"].get("all_required_criteria_proven") is not True
             assert len(fixture._read(root / "provider-inputs.private.json")) == 1
-        if scenario in {"partial", "single", "delayed", "host-recovery", "failed-recovery", "ambiguous-recovered"}:
+        if scenario in {"partial", "single", "delayed", "pre-send-reopen",
+                        "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             fixture._write(root / "final-before-accept.state.private.json", final)
             accepted = _run_phase(root, scenario, "accept", server.base_url, wheel)
             replayed = _run_phase(root, scenario, "accept-replay", server.base_url, wheel)
@@ -1287,7 +1308,8 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             final = accepted
         readback = _run_phase(root, scenario, "readback", server.base_url, wheel)
         assert readback == final
-        if scenario in {"partial", "single", "delayed", "host-recovery", "failed-recovery", "ambiguous-recovered"}:
+        if scenario in {"partial", "single", "delayed", "pre-send-reopen",
+                        "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             stopped = _run_phase(root, scenario, "completed-resume", server.base_url, wheel)
             assert stopped == final
         assert not any(event["event"] == "submission_duplicate" for event in simulator.audit)
@@ -1297,12 +1319,15 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
         accepted = [event["submission_id"] for event in simulator.audit if event["event"] == "submission_accepted"]
         assert accepted == list(simulator.submission_ids())
     phases = ["prepare", "after-a", "readback"]
+    if scenario == "pre-send-reopen":
+        phases.append("send-after-reopen")
     if scenario == "partial":
         phases += ["replay-b", "after-b"]
     if scenario in {"host-recovery", "failed-recovery"}:
         phases += ["recover-denied", "recover", "after-recovery"]
     phases += poll_phases
-    if scenario in {"partial", "single", "delayed", "host-recovery", "failed-recovery", "ambiguous-recovered"}:
+    if scenario in {"partial", "single", "delayed", "pre-send-reopen",
+                    "host-recovery", "failed-recovery", "ambiguous-recovered"}:
         phases += ["accept", "accept-replay", "completed-resume"]
     processes = {fixture._read(root / f"{phase}.process.private.json")["pid"] for phase in phases}
     assert len(processes) == len(phases), "Forge phases must use distinct OS processes"
@@ -1547,7 +1572,7 @@ def main() -> int:
     parser.add_argument("--governance-case", choices=GOVERNANCE_CASES)
     parser.add_argument("--preflight-case", choices=tuple(PREFLIGHT_CASES))
     parser.add_argument("--provider-case", choices=PROVIDER_CASES)
-    parser.add_argument("--phase", choices=("prepare", "after-a", "replay-b", "after-b",
+    parser.add_argument("--phase", choices=("prepare", "send-after-reopen", "after-a", "replay-b", "after-b",
                                             "recover-denied", "recover", "after-recovery",
                                             "race-start-a", "race-start-b",
                                             *(f"poll-{index}" for index in range(1, 7)), "accept",
