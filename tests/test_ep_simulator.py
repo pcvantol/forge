@@ -89,6 +89,27 @@ class EpSimulatorTests(unittest.TestCase):
             events = [item["event"] for item in state.audit]
             self.assertIn("submission_accepted", events)
 
+    def test_declined_submission_without_run_fails_closed_on_http_readback(self) -> None:
+        state = self._state()
+        with EpSimulatorServer(state) as server:
+            host = self._host(server)
+            request = _request()
+            self.assertIsNone(host.dispatch(request))
+            submission_id, = state.submission_ids()
+            state.decline_before_run(submission_id)
+            readback = state.pending_readback(submission_id)
+            self.assertEqual(readback["submission"]["state"], "DECLINED")
+            self.assertTrue(readback["disposition"]["terminal"])
+            self.assertIsNone(readback["run"])
+            with self.assertRaisesRegex(ValueError, "EP_DECLINED_BEFORE_RUN"):
+                host.recover_dispatch(request)
+            with self.assertRaisesRegex(ValueError, "EP_DECLINED_BEFORE_RUN"):
+                host.recover_dispatch(request)
+            self.assertEqual(state.submission_ids(), (submission_id,))
+            self.assertEqual([item["event"] for item in state.audit], [
+                "submission_accepted", "submission_declined",
+            ])
+
     def test_accepted_post_lost_response_stays_ambiguous_without_resubmission(self) -> None:
         state = self._state(EpSimulatorScenario(
             name="accepted-response-lost",

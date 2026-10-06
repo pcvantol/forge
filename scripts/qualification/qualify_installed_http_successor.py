@@ -18,6 +18,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import socket
 import subprocess
 import sys
@@ -58,6 +59,7 @@ from forge.qualification.producer_fixture_conformance import (
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
 from forge.runtime.bootstrap import RuntimeResolutionError
+from forge.runtime.database import RuntimeIntegrityError
 from forge.runtime.dynamic_mission import InstalledDynamicMissionError, InstalledDynamicMissionRuntime
 from forge.runtime.service import RuntimeServiceBusy
 from forge.secure_store import MacOSKeychainSecureStoreAdapter, SecretReference, SecretState
@@ -362,8 +364,27 @@ def _installed_runtime_storage_negatives(root: Path) -> list[dict[str, str]]:
     with bootstrap.open() as database:
         if database.runtime_identity.runtime_id != original_id:
             raise RuntimeError("storage denial changed installed Runtime identity")
+    with sqlite3.connect(database_path) as connection:
+        current_schema = connection.execute("PRAGMA user_version").fetchone()[0]
+        connection.execute("PRAGMA user_version=999")
+    try:
+        try:
+            bootstrap.open()
+        except RuntimeIntegrityError:
+            pass
+        else:
+            raise RuntimeError("unsupported Runtime schema reopened the instance")
+        if not database_path.is_file() or marker.read_bytes() != marker_bytes:
+            raise RuntimeError("schema denial replaced the Runtime instance")
+    finally:
+        with sqlite3.connect(database_path) as connection:
+            connection.execute(f"PRAGMA user_version={current_schema}")
+    with bootstrap.open() as database:
+        if database.runtime_identity.runtime_id != original_id:
+            raise RuntimeError("schema denial changed installed Runtime identity")
     return [{"case": "wrong-runtime-marker", "result": "REJECTED"},
-            {"case": "missing-runtime-storage", "result": "REJECTED"}]
+            {"case": "missing-runtime-storage", "result": "REJECTED"},
+            {"case": "unsupported-runtime-schema", "result": "REJECTED"}]
 
 
 def _open(root: Path, stack: ExitStack, *,
@@ -1800,7 +1821,8 @@ def main() -> int:
               "required_governance_cases": list(GOVERNANCE_CASES),
               "required_provider_cases": list(PROVIDER_CASES),
               "required_installed_identity_negative": "installed-wheel-byte-drift",
-              "required_runtime_storage_negatives": ["wrong-runtime-marker", "missing-runtime-storage"],
+              "required_runtime_storage_negatives": ["wrong-runtime-marker", "missing-runtime-storage",
+                                                     "unsupported-runtime-schema"],
               "required_http_scenarios": list(SCENARIOS),
               "test_doubles": ["stateful-loopback-EP-HTTP-simulator",
                                "deterministic-external-Codex-process-transport",
