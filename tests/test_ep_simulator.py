@@ -29,13 +29,13 @@ class EpSimulatorTests(unittest.TestCase):
             scenario=scenario,
         )
 
-    def test_identity_capability_only_appears_with_the_source_qualified_candidate(self) -> None:
+    def test_identity_capability_only_appears_when_the_scenario_supports_it(self) -> None:
         baseline = self._state().compatibility()["contracts"]
         self.assertEqual(baseline["producer_readback"], ["1.2"])
         self.assertNotIn("submission_identity_readback", baseline)
-        candidate = self._state(EpSimulatorScenario(identity_readback_supported=True)).compatibility()["contracts"]
-        self.assertEqual(candidate["producer_readback"], ["1.2", "1.3"])
-        self.assertEqual(candidate["submission_identity_readback"], ["1.0"])
+        supported = self._state(EpSimulatorScenario(identity_readback_supported=True)).compatibility()["contracts"]
+        self.assertEqual(supported["producer_readback"], ["1.2", "1.3"])
+        self.assertEqual(supported["submission_identity_readback"], ["1.0"])
 
     def _host(
         self,

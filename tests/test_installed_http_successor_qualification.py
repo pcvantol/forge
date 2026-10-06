@@ -13,9 +13,10 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from forge.ep_simulator import EpSimulatorServer, EpSimulatorState
+from forge.ep_simulator import EpSimulatorScenario, EpSimulatorServer, EpSimulatorState
 from forge.qualification.producer_fixture_conformance import (
     ProducerFixtureError, rejection_matrix, source_receipt, validate_fixture,
+    validate_identity_fixture,
 )
 from scripts.qualification.qualify_installed_http_successor import (
     _child_env, _count_ep_http_requests, _loopback_only,
@@ -103,6 +104,46 @@ class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
             altered.write_text("{}", encoding="utf-8")
             with self.assertRaisesRegex(ProducerFixtureError, "schema bytes"):
                 source_receipt(altered)
+            with self.assertRaisesRegex(ProducerFixtureError, "identity readback schema bytes"):
+                source_receipt(identity_schema_path=altered)
+
+    def test_protected_main_identity_fixture_binds_terminal_v13_to_v12_source(self) -> None:
+        state, payload, submission_id = self._producer_fixture()
+        state.set_scenario(EpSimulatorScenario(identity_readback_supported=True))
+        state.complete(submission_id, delivery_revision="a" * 40)
+        source_readback, raw = state.terminal_documents(submission_id)
+        recovered = state.identity_readback(
+            repository_id="test-repository", correlation_id=payload["correlation_id"],
+            idempotency_key=payload["idempotency_key"],
+            accepted_request_digest=source_readback["submission"]["accepted_request_digest"],
+            identity_contract="1.0", readback_contract="1.3",
+        )
+        qualified = validate_identity_fixture(
+            payload, recovered, source_readback, raw,
+            project_id="test-project", repository_id="test-repository",
+            consumer_id=state.consumer_id, instance_id=state.instance_id,
+            submission_id=submission_id,
+        )
+        self.assertEqual(qualified["readback_contract_version"], "1.3")
+        self.assertEqual(qualified["run_id"], "sim-run-0001")
+        changed = deepcopy(recovered)
+        changed["identity"]["consumer_id"] = "foreign"
+        with self.assertRaisesRegex(ProducerFixtureError, "identity request binding"):
+            validate_identity_fixture(
+                payload, changed, source_readback, raw,
+                project_id="test-project", repository_id="test-repository",
+                consumer_id=state.consumer_id, instance_id=state.instance_id,
+                submission_id=submission_id,
+            )
+        changed = deepcopy(recovered)
+        changed["readback"]["disposition"]["execution_eligible"] = True
+        with self.assertRaisesRegex(ProducerFixtureError, "identity terminal disposition"):
+            validate_identity_fixture(
+                payload, changed, source_readback, raw,
+                project_id="test-project", repository_id="test-repository",
+                consumer_id=state.consumer_id, instance_id=state.instance_id,
+                submission_id=submission_id,
+            )
 
     def test_listener_counts_unauthorized_get_and_post_without_simulator_audit(self) -> None:
         state = EpSimulatorState(

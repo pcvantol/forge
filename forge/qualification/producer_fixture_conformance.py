@@ -16,14 +16,18 @@ from typing import Any, Mapping
 
 PRODUCER_SOURCE = {
     "repository": "pcvantol/engineering-platform",
-    "revision": "315ef4c1dd3498bf5cb3e98d853bbf4c6692353e",
-    "product_version": "2.3.108",
+    "revision": "66433d7a2260397ec438a3052acae8ef50a84022",
+    "product_version": "2.3.109",
     "serializer_path": "src/engineering_platform/submission_service.py",
     "serializer_sha256": "sha256:ff87489a8999b7a5f501ca0550effa389f7a694770e57738afd4e5d1af42fd7d",
     "host_evidence_path": "src/engineering_platform/execution_host_evidence.py",
     "host_evidence_sha256": "sha256:54cf158dc9a8337c85bf3cd398c2ed2b08dc76be90eadc52f2805deb30bee2e7",
     "schema_path": "src/engineering_platform/schemas/producer-readback-v1.2.schema.json",
     "schema_sha256": "sha256:2381647f1d35695c6d826b86ff52c294325f76aa984ae66984d722d696ff8c15",
+    "identity_schema_path": "src/engineering_platform/schemas/producer-readback-v1.3.schema.json",
+    "identity_schema_sha256": "sha256:1f8568bdb0dbb0cb10dbb69a9dc44b806dd7110f46c9cb797cd51ee14848e59c",
+    "identity_test_path": "tests/engineering/test_submission_service.py",
+    "identity_test_sha256": "sha256:23ddddc26918bb3038983121154c011e71c4b42b17a1c6fe7803a69cda24c35b",
     "contract_path": "docs/engineering/EP_PRODUCER_READBACK_CONTRACT.md",
     "contract_sha256": "sha256:6b72a08a7e2430c6c6f8331589fb3b42b8159e8d9cfa788f6d9faf22b503d242",
     "governed_continuation_contract_path": "docs/engineering/EP_GOVERNED_CONTINUATION_EVIDENCE_V1.md",
@@ -35,6 +39,7 @@ PRODUCER_SOURCE = {
     "terminal_contract": "1.4",
 }
 _SCHEMA = Path(__file__).resolve().parents[1] / "schemas/ep-producer-readback-v1.2.schema.json"
+_IDENTITY_SCHEMA = Path(__file__).resolve().parents[1] / "schemas/ep-producer-readback-v1.3.schema.json"
 _READBACK = frozenset((
     "contract_version", "submission", "producer", "correlation", "provenance",
     "disposition", "run", "result", "evidence",
@@ -166,7 +171,8 @@ def _validate_repository_delivery(
              "artifact delivery binding")
 
 
-def source_receipt(schema_path: Path = _SCHEMA) -> dict[str, Any]:
+def source_receipt(schema_path: Path = _SCHEMA,
+                   identity_schema_path: Path = _IDENTITY_SCHEMA) -> dict[str, Any]:
     raw = schema_path.read_bytes()
     _require(_digest(raw) == PRODUCER_SOURCE["schema_sha256"], "producer schema bytes")
     schema = json.loads(raw)
@@ -176,12 +182,87 @@ def source_receipt(schema_path: Path = _SCHEMA) -> dict[str, Any]:
     for field in ("submission", "producer", "correlation", "provenance", "result", "evidence"):
         _require(schema["properties"][field].get("additionalProperties") is False,
                  f"producer {field} schema policy")
+    identity_raw = identity_schema_path.read_bytes()
+    _require(_digest(identity_raw) == PRODUCER_SOURCE["identity_schema_sha256"],
+             "identity readback schema bytes")
+    identity_schema = json.loads(identity_raw)
+    _require(identity_schema.get("properties", {}).get("contract_version", {}).get("const") == "1.3"
+             and set(identity_schema.get("required", ())) == _READBACK
+             and set(identity_schema["properties"]["disposition"].get("required", ())) == _DISPOSITION
+             and identity_schema["properties"]["disposition"].get("additionalProperties") is False,
+             "identity readback schema shape")
     return {**PRODUCER_SOURCE, "schema_fixture_sha256": _digest(raw),
+            "identity_schema_fixture_sha256": _digest(identity_raw),
             "source_schema_discrepancy": (
                 "Producer source/tests emit resolution_submission_id and retry_parent_run_id "
                 "in v1.2 disposition; the pinned v1.2 schema omits them. "
                 "The serial-write gate validates the emitted source shape."
             )}
+
+
+def validate_identity_fixture(
+    payload: Mapping[str, Any], recovered: Mapping[str, Any],
+    source_readback: Mapping[str, Any], artifact_bytes: bytes | None, *,
+    project_id: str, repository_id: str, consumer_id: str, instance_id: str,
+    submission_id: str,
+) -> dict[str, str | None]:
+    """Check the v1.0 lookup and its pending v1.3 readback against EP source."""
+    _object(recovered, frozenset(("contract_version", "identity", "receipt", "readback")),
+            "identity response")
+    _require(recovered["contract_version"] == "1.0", "identity response version")
+    digest = _accepted_request_digest(payload)
+    identity = _object(recovered["identity"], frozenset((
+        "project_id", "repository_id", "consumer_id", "correlation_id",
+        "accepted_request_digest",
+    )), "identity")
+    _require(identity == {
+        "project_id": project_id, "repository_id": repository_id,
+        "consumer_id": consumer_id, "correlation_id": payload["correlation_id"],
+        "accepted_request_digest": digest,
+    }, "identity request binding")
+    receipt = _object(recovered["receipt"], frozenset((
+        "contract_version", "id", "event", "issued_at", "submission_id",
+        "ep_instance_id", "ep_application_version", "producer_contract_version",
+        "forge_provenance_contract_version", "forge_application_version",
+        "producer_readback_contract_version", "accepted_request_digest",
+    )), "identity receipt")
+    forge_execution = payload["constraints"]["forge_execution"]
+    _require(receipt["contract_version"] == "1.0"
+             and receipt["event"] == "FORGE_SUBMISSION_ACCEPTED"
+             and receipt["submission_id"] == submission_id
+             and receipt["ep_instance_id"] == instance_id
+             and receipt["producer_contract_version"] == forge_execution["producer_contract_version"]
+             and receipt["forge_provenance_contract_version"] == forge_execution["contract_version"]
+             and receipt["forge_application_version"] == payload["producer"]["version"]
+             and receipt["producer_readback_contract_version"] == "1.2"
+             and receipt["accepted_request_digest"] == digest
+             and all(isinstance(receipt[field], str) and receipt[field] for field in (
+                 "id", "issued_at", "ep_application_version")),
+             "identity receipt binding")
+    readback = _object(recovered["readback"], _READBACK, "identity readback")
+    _require(readback["contract_version"] == "1.3", "identity readback version")
+    disposition = _object(readback["disposition"], _DISPOSITION, "identity disposition")
+    normalized = deepcopy(readback)
+    normalized["contract_version"] = "1.2"
+    run = readback["run"]
+    if run is None:
+        _validate_queued_disposition(disposition)
+    else:
+        _require(isinstance(run, Mapping) and run.get("state") == "COMPLETE"
+                 and disposition["state"] == "COMPLETE"
+                 and disposition["terminal"] is True
+                 and disposition["execution_eligible"] is False,
+                 "identity terminal disposition")
+        normalized["disposition"].update({
+            "state": "QUEUED", "terminal": False, "execution_eligible": True,
+        })
+    _require(normalized == source_readback, "identity v1.3 projection differs from source")
+    fixture = validate_fixture(
+        payload, source_readback, artifact_bytes, project_id=project_id,
+        repository_id=repository_id, submission_id=submission_id,
+    )
+    return {**fixture, "readback_contract_version": "1.3",
+            "fixture_sha256": _digest(_canonical_bytes(recovered))}
 
 
 def _accepted_request_digest(payload: Mapping[str, Any]) -> str:

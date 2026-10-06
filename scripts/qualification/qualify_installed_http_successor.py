@@ -51,7 +51,7 @@ from forge.provider_security import (
 )
 from forge.qualification import criterion_completion as fixture
 from forge.qualification.producer_fixture_conformance import (
-    rejection_matrix, source_receipt, validate_fixture,
+    rejection_matrix, source_receipt, validate_fixture, validate_identity_fixture,
 )
 from forge.repository_truth import RepositoryTruthEvidence, RepositoryTruthSnapshot
 from forge.runtime import RuntimeBootstrap
@@ -71,9 +71,8 @@ GOVERNANCE_ACTOR = "primary_operator"
 SCENARIOS = (
     "partial", "single", "delayed", "host-recovery", "concurrent-start", "tampered", "artifact-corrupt",
     "artifact-withheld", "artifact-unavailable",
-    "assurance-blocked", "budget-exhausted", "ambiguous",
+    "assurance-blocked", "budget-exhausted", "ambiguous", "ambiguous-recovered",
 )
-PRODUCER_CANDIDATE_SCENARIOS = ("ambiguous-recovered",)
 PROVIDER_CASES = ("unavailable", "not-started", "local-rejected", "invalid-output",
                   "scope-expansion", "ambiguous")
 
@@ -139,14 +138,15 @@ def _loopback_only():
          patch.object(subprocess, "run", checked_process), \
          patch.object(subprocess, "Popen", checked_process):
         yield
-EP_IDENTITY_READBACK_CANDIDATE = {
+EP_IDENTITY_READBACK_SOURCE = {
     "repository": "pcvantol/engineering-platform",
-    "revision": "b7fc2c5b39d3d073d026a93f50a8f96a49beb8b3",
+    "revision": "66433d7a2260397ec438a3052acae8ef50a84022",
+    "product_version": "2.3.109",
     "contract_version": "1.0", "producer_readback_version": "1.3",
     "contract_sha256": "sha256:40d749293ce27c86f5b051d74867bbca01def74b8394ac059dac414a6e4083ca",
     "serializer_sha256": "sha256:c2335e9e4edd3cbe4b56d992527d1e5a64ed9296d482c40bd5fe3e915ceadbd3",
     "http_test_sha256": "sha256:23ddddc26918bb3038983121154c011e71c4b42b17a1c6fe7803a69cda24c35b",
-    "producer_state": "SOURCE_QUALIFIED_PENDING_PROTECTED_MERGE_AND_INSTALLED_MAIN",
+    "producer_state": "PROTECTED_MAIN_SOURCE_AND_INSTALLED_FIE10_QUALIFIED",
 }
 # These are adversarial EP-boundary fixtures, not Forge preflight stubs.  The
 # expected reasons are the product adapter/factory's stable, secret-free errors.
@@ -174,12 +174,12 @@ PREFLIGHT_CASES = {
 }
 EP_PREFLIGHT_SOURCE = {
     "repository": "pcvantol/engineering-platform",
-    "revision": "315ef4c1dd3498bf5cb3e98d853bbf4c6692353e",
-    "product_version": "2.3.108",
+    "revision": "66433d7a2260397ec438a3052acae8ef50a84022",
+    "product_version": "2.3.109",
     "path": "src/engineering_platform/server.py",
-    "sha256": "sha256:43f80126ed081c47bce5174968ab6393b1af64f107500e49470e5495f61ff7f4",
+    "sha256": "sha256:92e0e8c1c904bbefdf6200328bb9c03a55939b1a2fcf3b131c00ecd7d707013a",
     "declaration_contract": "1.1",
-    "producer_readback_contract": "1.2",
+    "producer_readback_contracts": ["1.2", "1.3"],
     "terminal_evidence_contract": "1.4",
     "governed_continuation_contract": "ep-governed-continuation-evidence/v1",
 }
@@ -1007,7 +1007,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
         scenario=(EpSimulatorScenario(connection_loss_at=frozenset({"submission-after-accept-once"}))
                   if scenario == "ambiguous" else
                   EpSimulatorScenario(
-                      name="identity-recovery-candidate", identity_readback_supported=True,
+                      name="identity-recovery", identity_readback_supported=True,
                       connection_loss_at=frozenset({"submission-after-accept-once"}),
                   ) if scenario == "ambiguous-recovered" else
                   EpSimulatorScenario(name="delayed-terminal", terminal_after_reads=6)
@@ -1071,6 +1071,15 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             readback["correlation"]["mission_id"] = "wrong-mission"
             simulator.seed_terminal(a, readback, artifact)
         after_a = _run_phase(root, scenario, "after-a", server.base_url, wheel)
+        if scenario == "ambiguous-recovered":
+            observed = [event["response"] for event in simulator.audit
+                        if event["event"] == "submission_identity_read"]
+            assert len(observed) == 1
+            fixture_receipts.append(validate_identity_fixture(
+                request_a, observed[0], source_readback, source_artifact,
+                project_id=PROJECT, repository_id=fixture.SOURCE.repository_id,
+                consumer_id=CONSUMER, instance_id=INSTANCE, submission_id=a,
+            ))
         poll_phases: list[str] = []
         if scenario == "delayed":
             assert after_a["status"] in {"WAITING_FOR_EXECUTION", "WAITING_FOR_EVIDENCE"}
@@ -1435,7 +1444,7 @@ def main() -> int:
     parser.add_argument("--wheel", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--source-revision")
-    parser.add_argument("--scenario", choices=SCENARIOS + PRODUCER_CANDIDATE_SCENARIOS)
+    parser.add_argument("--scenario", choices=SCENARIOS)
     parser.add_argument("--governance-case", choices=GOVERNANCE_CASES)
     parser.add_argument("--preflight-case", choices=tuple(PREFLIGHT_CASES))
     parser.add_argument("--provider-case", choices=PROVIDER_CASES)
@@ -1509,6 +1518,7 @@ def main() -> int:
               "qualifier_sha256": "sha256:" + sha256(Path(__file__).read_bytes()).hexdigest(),
               "producer_fixture_source": producer_source,
               "ep_preflight_source": EP_PREFLIGHT_SOURCE,
+              "ep_identity_readback_source": EP_IDENTITY_READBACK_SOURCE,
               "required_producer_fixture_negatives": [
                   "missing-provenance", "changed-provenance", "wrong-version", "changed-digest",
                   "foreign-project", "foreign-repository", "foreign-submission", "foreign-run",
@@ -1528,11 +1538,9 @@ def main() -> int:
               "required_http_scenarios": list(SCENARIOS),
               "limitations": ["Synthetic Business/Architecture actors and repository JSON; deterministic external Codex transport.",
                               "Local EP HTTP simulator only; no live EP/provider or production Mission claim.",
-                              "No EP correlation readback; ambiguous POST fails closed without recovery.",
+                              "EP v1.3 identity readback recovers accepted lost-ack submissions; v1.2-only hosts fail closed.",
                               "EP producer v1.2 schema omits two retry-resolution fields emitted by its source; this subset validates source shape, not full schema conformance.",
                               "Bounded serial write-mode subset; not full FCI-CI or FCO."]}
-    if args.scenario in PRODUCER_CANDIDATE_SCENARIOS:
-        report["ep_identity_readback_candidate"] = EP_IDENTITY_READBACK_CANDIDATE
     if not any((args.scenario, args.preflight_case, args.governance_case, args.provider_case)):
         try:
             report["installed_identity_negative"] = _installed_identity_negative(
@@ -1637,9 +1645,7 @@ def main() -> int:
             fixture._write(root / "installed-http-successor.public.json", report)
             print(json.dumps(report, sort_keys=True))
             return 1
-    report.update(result=("PRODUCER_CANDIDATE_PASS"
-                          if args.scenario in PRODUCER_CANDIDATE_SCENARIOS else
-                          "FOCUSED_PASS" if args.scenario else "PASS"), scenarios=summaries)
+    report.update(result=("FOCUSED_PASS" if args.scenario else "PASS"), scenarios=summaries)
     fixture._write(root / "installed-http-successor.public.json", report)
     print(json.dumps(report, sort_keys=True))
     return 0

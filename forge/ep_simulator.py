@@ -584,9 +584,7 @@ class EpSimulatorState:
                     "state": state, "terminal": state == "COMPLETE",
                     "execution_eligible": False,
                 })
-        with self._lock:
-            self.audit.append({"event": "submission_identity_read", "submission_id": submission_id})
-        return {
+        response = {
             "contract_version": "1.0",
             "identity": {
                 "project_id": self.project_id, "repository_id": repository_id,
@@ -596,6 +594,12 @@ class EpSimulatorState:
             "receipt": receipt,
             "readback": readback,
         }
+        with self._lock:
+            self.audit.append({
+                "event": "submission_identity_read", "submission_id": submission_id,
+                "response": json.loads(json.dumps(response)),
+            })
+        return response
 
     def artifact(self, artifact_id: str) -> bytes:
         with self._lock:
