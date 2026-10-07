@@ -1,0 +1,909 @@
+{
+  "schema_version": 1,
+  "assignment_id": "L3-FORGE-SCOPED-WORKLIST-HOLD-V1-20261007",
+  "plan_revision": "r37",
+  "scope": "HOLD_UNHOLD_HTTP_PRODUCER_ONLY",
+  "join": "L3-L4-WORKLIST-HOLD-CAPABILITY-V1-20261007",
+  "protected_implementation": "ec072205a2b7d3060a7dbbaa59f18b7fc01d0cad",
+  "implementation_pr": 252,
+  "reviewed_candidate": "7ca0f38b51447eee4242d7ccb4b3de9cdef84993",
+  "version": "2.7.69",
+  "required_candidate_ci": {
+    "run": 37681052128,
+    "conclusion": "SUCCESS"
+  },
+  "required_implementation_main_ci": {
+    "run": 37682754115,
+    "conclusion": "SUCCESS"
+  },
+  "owning_validation": {
+    "tests": 1256,
+    "failures": 0,
+    "existing_skips": 1,
+    "product_version": "PASS",
+    "projection": "PASS",
+    "changed_product_coverage_percent": {
+      "forge/approved_worklist.py": 94.33,
+      "forge/server_runtime.py": 83.08,
+      "forge/worklist_control.py": 95.77,
+      "forge/workspace_worklist_control_grant.py": 91.26
+    }
+  },
+  "independent_reviews": {
+    "quality": {
+      "result": "PASS",
+      "reviewed_head": "7ca0f38b51447eee4242d7ccb4b3de9cdef84993",
+      "receipt_sha256": "2684c0dc62d69c68c1220f0634e9b43d8bfa8541062ddfc8705ec72fd0d27efc",
+      "report": "# Independent Quality corrective review\n\nResult: PASS; no remaining blocking Quality finding identified in selectedr37 scope.\nExact reviewed SHA7ca0f38b51447eee4242d7ccb4b3de9cdef84993.\nProtected base47c9f406323cbecd1c36227696f7f01b6a7b1c11.\nReviewerquality_review_final; independent source-read-only review; no runtime/storage/credential/network effects.\n\nIncorporated prior whole-slice review and reviewed the complete49716f0..7ca0f38 corrective delta. The repeated receipt.request is now independently canonicalized and its actual canonical bytes/digest bound to the stored request digest, preventingTrue/1 aliases. Every original admitted binding must join the current independently validated canonical projection, while permitting an original subset of later admissions rather than rewriting its historical receipt. Both read and replay command paths pass those real projection bindings into validation. Current hold identity, reason and integer revision are also validated before intent/effect; legacy boolean-only unknown provenance remains readable and non-clearable by a scoped principal.\n\nIndependently repeated the prior pure-product-function counterexamples with real finish_operation output, without opening/mutating runtime storage: rehashed repeated expected_revision=True, coherent phantom admitted Mission substitution and contradictory held/cancelled effect all reject. Unaltered original receipt with its preserved canonical binding passes. Earlier8bf0241/49716f0 FAIL receipts remain historical and are not erased.\n\nActual exact-source installed receipt /private/tmp/forge-l3-hold-7ca-qualified/installed-worklist-control.public.json isWORKLIST_CONTROL_PASS43. Inspected three strict-type HTTP fault variants and15 coherent rehashed proof variants, each reported503 on the selected GET/replay or command paths with disposable restoration/no canonical command mutation. Existing real late replay separates original receipt from current owner hold; durable intent/atomic receipt, real SIGKILL, lost body/new-process reconciliation, real hold/claim race, canonical admission fallback, future-admission-only active-Mission continuation and final Business/counter gates remain preserved. Read/control/old-grant restrictions and L4 pinned read-only selection are unchanged.\n\nVerified artifact bytes sha256:a73c71ff44c923b9c02f8633724eb242a14f485d9e56393f04831d6535b55f4d, exact treefa6612a7d31751facbf03fb4d73fd371ae5e57b3 and230 source/installed product files. Raw qualifier digestdb6cd7e4971ef84c727d55c75501aa6bc693b5ba45a9b3c2d1864f4b15642057 matches current committed script bytes. Genuine revoked positive grant control returnsFAIL/AssertionError atpositive-command-replay; all owned cleanup flags are true. CI required case count is reconciled43 without weakening historical FCI/read/serial/Action-authority checks.\n\nInspected owning validation1256 tests, zero failures/one existing skip, version2.7.69 and projectionPASS; supplied four changed product files remain strictly>80.2% coverage. Did not rerun full source/installed suites. No broad TDE remediation or additional authority/family/consumer/live claim is selected. Independent Security review, required CI, protected implementation/finalization and exact-final-main installed evidence remain subsequent delivery gates; this review does not complete assignment.\n"
+    },
+    "security": {
+      "result": "PASS",
+      "reviewed_head": "7ca0f38b51447eee4242d7ccb4b3de9cdef84993",
+      "receipt_sha256": "3d9f8ceac0b946e7863d96810945a3ad53759abbaaf7d27040819ed0f50c35a7",
+      "report": "# Independent Security re-review \u2014 scoped worklist hold\n\nResult: PASS (no remaining blocking findings)\nReviewed source: 7ca0f38b51447eee4242d7ccb4b3de9cdef84993\nProtected base: 47c9f406323cbecd1c36227696f7f01b6a7b1c11\nAssignment: L3-FORGE-SCOPED-WORKLIST-HOLD-V1-20261007, r37\nJOIN: L3-L4-WORKLIST-HOLD-CAPABILITY-V1-20261007\nRepository: /private/tmp/forge-l3-inner-loop-ci\nHistorical FAIL receipts: /private/tmp/forge-l3-hold-security-8bf0241.md and /private/tmp/forge-l3-hold-security-49716f0.md, preserved.\n\n## Independently verified finding closure\n\nVerified exact HEAD and clean checkout; reviewed current authority/control delta. Repeated fully in-memory probes using canonical_request, finish_operation, _operation and _validate_effect. Valid original hold still validates. Opposite held/provenance effect, impossible original revisions and FAILED outcome all reject RuntimeError. The residual current operator_hold.control_revision=True now rejects before intent/effect. Separate receipt-only Boolean request ordinal rejects after re-canonicalization and digest comparison. A coherently rehashed fake admitted Mission/reference matching member/installation/digest shapes rejects when absent from the actual canonical bindings. A valid old hold receipt remains APPLIED after current hold state is subsequently cleared, proving historical originals are not invalidated or reapplied against newer current state.\n\nClosed intent/receipt/effect shapes, strict scalar types, exact original revision/outcome/hold-target/provenance joins, current hold validation and canonical admission membership resolve both Security blockers. The associated Quality repeated-request and actual admission-join fixes were also inspected and independently probed. No current revision comparison incorrectly rewrites or invalidates a valid historical receipt.\n\n## Security boundary retained\n\nPrivate bounded control grants remain independent of status/review/worklist-read/admin grants and bind exact instance/principal/worksets, finite expiry, revoke state and current operator. Authentication precedes mutator composition and is rechecked under the grant lifecycle lease at effect. Only scoped hold/unhold and current/operation GET are exposed. Intent precedes effect; atomic effect/original receipt commit retains CAS and canonical runtime/claim leases. Exact owning grant provenance is required for unhold; unknown legacy/local-owner/foreign conditions are not silently removed.\n\nHold remains FUTURE_ADMISSION_ONLY, preserving admitted/active Mission authority and truthful canonical allocation fallback. Unhold does not arm, approve, allocate, release, revoke a workset, cancel runtime work, reset allowance, remove final acceptance or weaken other current authority/evidence/generation gates. The existing canonical dynamic history remains the evidence store; the earlier withdrawn legacy receipt-ledger requirement stays withdrawn. Closed GP/FCI/serial predecessors, consumed budgets and L4's pinned read-only graph remain preserved. No second policy engine, planner, queue, writer or peer authority is introduced.\n\n## Exact installed evidence observed\n\n/private/tmp/forge-l3-hold-7ca-qualified/installed-worklist-control.public.json records WORKLIST_CONTROL_PASS43 cases on this SHA,230 source/installed product files and all owned cleanup true. /private/tmp/forge-l3-hold-7ca-failure/installed-worklist-control.public.json records the genuine positive control failure: FAIL, AssertionError at positive-command-replay after grant revocation, with owned cleanup true. These writer-owned installed results were inspected after completion. Full source validation/coverage, wheel SHA256a73c71ff44c923b9c02f8633724eb242a14f485d9e56393f04831d6535b55f4d, external process faults/race/lost acknowledgement and the selected private-store corruption negatives remain attributed evidence, not independent live production acceptance.\n\n## Limitations\n\nRead-only independent source/evidence review and in-memory counterexamples; no source/peer/runtime mutations, credentials, live queries/providers/EP calls, operational roots or target writes performed by this reviewer. Full historical matrices were not repeated. TDE policy failure is separate from workflow success and no policy PASS is inferred. PASS applies only to this immutable selected scope/SHA; required CI, protected merge, nonempty finalization and exact-final-main noneditable installed qualification remain subsequent gates. No L4 mutating consumer, live activation, public release or full family completion is claimed.\n"
+    }
+  },
+  "installed_receipts": {
+    "control": {
+      "sha256": "7e540453aeb646a88b07fe7851403e20fef443ecf71b51d08f6324a0eb854d96",
+      "receipt": {
+        "artifact": {
+          "installed_product_files_verified": 230,
+          "module_sha256": {
+            "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+            "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9",
+            "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+            "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a"
+          },
+          "source_product_files_verified": 230,
+          "source_tree_revision": "fa6612a7d31751facbf03fb4d73fd371ae5e57b3",
+          "version": "2.7.69",
+          "wheel_sha256": "sha256:ed8205f3acf8a479707fe620577017ad0443923e3c063862aabc15182217150e"
+        },
+        "case_count": 43,
+        "cases": [
+          {
+            "case": "same-id-different-payload",
+            "status": 409
+          },
+          {
+            "case": "same-workset-foreign-principal-operation-denied",
+            "status": 403
+          },
+          {
+            "case": "scope-bob.private-serial-set",
+            "status": 403
+          },
+          {
+            "case": "scope-read.private-serial-set",
+            "status": 403
+          },
+          {
+            "case": "scope-alice.private-bob-set",
+            "status": 403
+          },
+          {
+            "case": "stale",
+            "status": 409
+          },
+          {
+            "case": "wrong-instance",
+            "status": 403
+          },
+          {
+            "case": "wrong-definition",
+            "status": 409
+          },
+          {
+            "case": "malformed-role",
+            "status": 400
+          },
+          {
+            "case": "noncontrol-route-status",
+            "status": 403
+          },
+          {
+            "case": "noncontrol-route-worksets",
+            "status": 403
+          },
+          {
+            "case": "noncontrol-route-reviews",
+            "status": 403
+          },
+          {
+            "case": "noncontrol-route-projects",
+            "status": 403
+          },
+          {
+            "case": "noncontrol-route-arm",
+            "status": 403
+          },
+          {
+            "canonical_mutation": false,
+            "case": "repeated-request-and-current-hold-strict-types",
+            "get_and_command": 503,
+            "variants": 3
+          },
+          {
+            "bob_released": false,
+            "case": "two-principal-hold-unhold-no-implicit-arm",
+            "other_held": true
+          },
+          {
+            "case": "readonly-status-operation",
+            "database_changed": false
+          },
+          {
+            "allocations": 0,
+            "case": "held-future-not-admitted",
+            "provider_invocations": 0
+          },
+          {
+            "case": "old-hold-replay-after-unhold",
+            "current_held": false,
+            "original_held": true
+          },
+          {
+            "case": "late-unhold-receipt-keeps-current-owner-hold",
+            "current_held": true,
+            "original_held": false
+          },
+          {
+            "allocations": 1,
+            "case": "active-mission-not-cancelled",
+            "status": "AWAITING_APPROVAL"
+          },
+          {
+            "allocations": 1,
+            "case": "unhold-does-not-remove-final-acceptance",
+            "status": "AWAITING_APPROVAL"
+          },
+          {
+            "allocations": 2,
+            "case": "hold-unhold-real-canonical-a-b",
+            "consumed_activations": 2,
+            "provider_invocations": 2,
+            "submissions": 2
+          },
+          {
+            "case": "malformed-empty",
+            "status": 400
+          },
+          {
+            "case": "malformed-bool-revision",
+            "status": 400
+          },
+          {
+            "case": "malformed-bad-intent",
+            "status": 400
+          },
+          {
+            "case": "malformed-bad-reason",
+            "status": 400
+          },
+          {
+            "case": "malformed-bad-digest",
+            "status": 400
+          },
+          {
+            "case": "malformed-bad-hold-target",
+            "status": 400
+          },
+          {
+            "case": "malformed-unhold-without-target",
+            "status": 400
+          },
+          {
+            "case": "expired-command-and-operation-read",
+            "status": 401
+          },
+          {
+            "case": "revoked-command-and-operation-read",
+            "status": 401
+          },
+          {
+            "case": "local-owner-hold-not-removed",
+            "status": 409
+          },
+          {
+            "case": "legacy-unknown-hold-provenance-preserved",
+            "status": 409
+          },
+          {
+            "case": "concurrent-owner-hold-provenance-retained",
+            "status": 409
+          },
+          {
+            "case": "uncertain-grant-store-denied-restored",
+            "status": 401
+          },
+          {
+            "canonical_mutation": false,
+            "case": "uncertain-rehashed-command-receipt-binding-denied-restored",
+            "variants": [
+              {
+                "fault": "principal",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "contradictory-held",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "cancelled",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "missing-effect-field",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "outcome",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "schema",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "workset-revision",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "control-revision",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "hold-provenance",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "target",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "admitted-set",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "intent-revision",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "hold-control-bool",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "effect-observation",
+                "get": 503,
+                "replay": 503
+              },
+              {
+                "fault": "fabricated-canonical-admission",
+                "get": 503,
+                "replay": 503
+              }
+            ]
+          },
+          {
+            "case": "supported-owner-cli-provision-revoke",
+            "status": "PASS"
+          },
+          {
+            "case": "current-operator-revoked",
+            "status": 403
+          },
+          {
+            "case": "real-sigkill-after-durable-intent",
+            "original_pending_observed": true,
+            "pids": [
+              89118,
+              89165,
+              89177
+            ],
+            "provider_invocations": 0,
+            "same_operation_recovered": true,
+            "submissions": 0
+          },
+          {
+            "case": "lost-http-receipt-real-process-reopen",
+            "pids": [
+              89213,
+              89230,
+              89248
+            ],
+            "provider_invocations": 0,
+            "same_original_receipt": true,
+            "submissions": 0
+          },
+          {
+            "allocations": 1,
+            "case": "real-concurrent-hold-versus-canonical-claim",
+            "initial_hold_http_status": 409,
+            "ongoing_work_cancelled": false,
+            "pids": [
+              89293,
+              89294
+            ],
+            "provider_invocations": 1,
+            "receipt_admitted_count": 1
+          },
+          {
+            "allocations": 1,
+            "case": "already-admitted-before-hold-continues-with-canonical-correlation-recovery",
+            "hold_remains": true,
+            "killed_pid": 89344,
+            "missing_claim_correlation_fixture": true,
+            "provider_invocations": 1,
+            "same_canonical_mission": true,
+            "submissions": 1
+          }
+        ],
+        "cleanup": [
+          {
+            "case": "flow",
+            "owned_runtime_home_credentials_scratch_removed": true
+          },
+          {
+            "case": "denials",
+            "owned_runtime_home_credentials_scratch_removed": true
+          },
+          {
+            "case": "crash",
+            "owned_runtime_home_credentials_scratch_removed": true
+          },
+          {
+            "case": "lost",
+            "owned_runtime_home_credentials_scratch_removed": true
+          },
+          {
+            "case": "race",
+            "owned_runtime_home_credentials_scratch_removed": true
+          },
+          {
+            "case": "admitted",
+            "owned_runtime_home_credentials_scratch_removed": true
+          }
+        ],
+        "expected_failure_control": false,
+        "external_fault": null,
+        "failure": null,
+        "limitations": [
+          "Synthetic canonical decisions and external EP/LLM/OS/Git fixtures; no live EP/provider/operational activation.",
+          "Producer-only hold/unhold; no Workspace mutation consumer or full PRM/IAM family claim.",
+          "Declared disposable storage-input faults cover legacy provenance, rehashed receipt binding and missing claim correlation; no auth/command mocks or approval seeding."
+        ],
+        "qualification": "INSTALLED_SCOPED_WORKLIST_HOLD_V1",
+        "qualifier_sha256": "db6cd7e4971ef84c727d55c75501aa6bc693b5ba45a9b3c2d1864f4b15642057",
+        "result": "WORKLIST_CONTROL_PASS",
+        "scope": "HOLD_UNHOLD_HTTP_PRODUCER_ONLY",
+        "source_revision": "ec072205a2b7d3060a7dbbaa59f18b7fc01d0cad"
+      }
+    },
+    "control_failure": {
+      "sha256": "5d5ab6b9ad240dbbd415d9c636c7a8a60374bf783b29d5ed532facd8476562e2",
+      "receipt": {
+        "artifact": {
+          "installed_product_files_verified": 230,
+          "module_sha256": {
+            "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+            "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9",
+            "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+            "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a"
+          },
+          "source_product_files_verified": 230,
+          "source_tree_revision": "fa6612a7d31751facbf03fb4d73fd371ae5e57b3",
+          "version": "2.7.69",
+          "wheel_sha256": "sha256:ed8205f3acf8a479707fe620577017ad0443923e3c063862aabc15182217150e"
+        },
+        "case_count": 0,
+        "cases": [],
+        "cleanup": [
+          {
+            "case": "flow",
+            "owned_runtime_home_credentials_scratch_removed": true
+          }
+        ],
+        "expected_failure_control": true,
+        "external_fault": "REVOKED_CONTROL_GRANT",
+        "failure": {
+          "detail": "Declared qualification gate failed",
+          "stage": "positive-command-replay",
+          "type": "AssertionError"
+        },
+        "limitations": [
+          "Synthetic canonical decisions and external EP/LLM/OS/Git fixtures; no live EP/provider/operational activation.",
+          "Producer-only hold/unhold; no Workspace mutation consumer or full PRM/IAM family claim.",
+          "Declared disposable storage-input faults cover legacy provenance, rehashed receipt binding and missing claim correlation; no auth/command mocks or approval seeding."
+        ],
+        "qualification": "INSTALLED_SCOPED_WORKLIST_HOLD_V1",
+        "qualifier_sha256": "db6cd7e4971ef84c727d55c75501aa6bc693b5ba45a9b3c2d1864f4b15642057",
+        "result": "FAIL",
+        "scope": "HOLD_UNHOLD_HTTP_PRODUCER_ONLY",
+        "source_revision": "ec072205a2b7d3060a7dbbaa59f18b7fc01d0cad"
+      }
+    },
+    "read": {
+      "sha256": "5fc484b92e17b8a9592fb094d6a8623342987911092fa80cbe793461a275e723",
+      "receipt": {
+        "artifact": {
+          "installed_product_files_verified": 230,
+          "module_sha256": {
+            "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+            "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9",
+            "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+            "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a"
+          },
+          "source_product_files_verified": 230,
+          "source_tree_revision": "fa6612a7d31751facbf03fb4d73fd371ae5e57b3",
+          "version": "2.7.69",
+          "wheel_sha256": "sha256:ed8205f3acf8a479707fe620577017ad0443923e3c063862aabc15182217150e"
+        },
+        "canonical_transition_readbacks": [
+          {
+            "phase": "final-pending",
+            "read_only": true,
+            "snapshot": {
+              "activation_support": "QUALIFIED_SERIAL_APPROVED_WORKLIST",
+              "completeness": "COMPLETE_WITHIN_SCOPE",
+              "continuation": {
+                "candidate_id": "synthetic-candidate",
+                "committed_order": 0,
+                "mission_id": "MISSION-0001",
+                "reason_codes": [
+                  "FINAL_ACCEPTANCE_REQUIRED",
+                  "ACTIVATION_INPUTS_UNAVAILABLE"
+                ],
+                "state": "BLOCKED"
+              },
+              "contract_version": "forge-workspace-worklist/v1",
+              "freshness": "CURRENT_READBACK",
+              "installation_id": "79fa2151-29b0-4a38-8fee-f2ceab89f42e",
+              "instance_id": "forge-runtime-5d523a3a-4586-4c0c-becf-00d273770f0a",
+              "items": [
+                {
+                  "active": false,
+                  "allocation_binding": {
+                    "candidate_id": "synthetic-candidate",
+                    "envelope_digest": "sha256:58dfee46d03490a2c3466e27f7e07d9cae3fd63a44f4a419eacf12981cc5f30e",
+                    "installation_id": "79fa2151-29b0-4a38-8fee-f2ceab89f42e",
+                    "kind": "CANONICAL_CANDIDATE_INTAKE",
+                    "mission_id": "MISSION-0001",
+                    "subject_revision": "sha256:227fee48ad1f0c23459a4c63642a0310efcc96b1193d47cc9a1986be50592d4a"
+                  },
+                  "approved": true,
+                  "blocking_reasons": [
+                    "FINAL_ACCEPTANCE_REQUIRED",
+                    "ACTIVATION_INPUTS_UNAVAILABLE"
+                  ],
+                  "candidate_id": "synthetic-candidate",
+                  "committed_order": 0,
+                  "completed": false,
+                  "dependencies": [],
+                  "detail_reference": {
+                    "kind": "MISSION_REVIEW",
+                    "mission_id": "MISSION-0001"
+                  },
+                  "effect_mode": "UNKNOWN",
+                  "eligibility": "BLOCKED",
+                  "engineering_result": "PROVEN",
+                  "evidence_references": [
+                    {
+                      "digest": "sha256:3fb2c39574752664c53e00d3dc6d0d48d8f69b660a2f1e6ea2435516da819cc9",
+                      "kind": "MISSION_COMPLETION",
+                      "subject_id": "MISSION-0001"
+                    }
+                  ],
+                  "execution_state": "AWAITING_APPROVAL",
+                  "final_acceptance": "WAITING",
+                  "mission_id": "MISSION-0001",
+                  "mission_state_revision": 10,
+                  "released": true,
+                  "review_state": "NONE",
+                  "subject_revision": "sha256:227fee48ad1f0c23459a4c63642a0310efcc96b1193d47cc9a1986be50592d4a",
+                  "title": "Synthetic export contract"
+                },
+                {
+                  "active": false,
+                  "allocation_binding": null,
+                  "approved": true,
+                  "blocking_reasons": [
+                    "DEPENDENCY_NOT_PROVEN",
+                    "ACTIVATION_INPUTS_UNAVAILABLE"
+                  ],
+                  "candidate_id": "synthetic-candidate-followup",
+                  "committed_order": 1,
+                  "completed": false,
+                  "dependencies": [
+                    "synthetic-candidate"
+                  ],
+                  "detail_reference": null,
+                  "effect_mode": "UNKNOWN",
+                  "eligibility": "BLOCKED",
+                  "engineering_result": "UNKNOWN",
+                  "evidence_references": [],
+                  "execution_state": "PENDING_INTAKE",
+                  "final_acceptance": "UNKNOWN",
+                  "mission_id": null,
+                  "mission_state_revision": null,
+                  "released": true,
+                  "review_state": "NONE",
+                  "subject_revision": "sha256:de1697018f0ecea401944abbb5b5977104c83f454746f4ae7feb88fdcc5e73c2",
+                  "title": "Synthetic export contract"
+                }
+              ],
+              "membership_revision": "sha256:ad23110e2d5c322bdf045c80bb84015e0cb7ad14909863831b498de4d6988f2a",
+              "observed_at": "2026-10-07T20:34:20.185856+00:00",
+              "read_only": true,
+              "scope": {
+                "kind": "EXPLICIT_WORKSET",
+                "principal_id": "transition-final-pending",
+                "project_id": null,
+                "workset_id": "transition-set"
+              },
+              "selector_revision": "sha256:ad23110e2d5c322bdf045c80bb84015e0cb7ad14909863831b498de4d6988f2a",
+              "snapshot_revision": "sha256:bebcb6da3dc0c2d1a750ac4de2be4af92060b0e40b1f22418e6ba1194e6ad144",
+              "workset_revision": 4
+            }
+          },
+          {
+            "phase": "accepted",
+            "read_only": true,
+            "snapshot": {
+              "activation_support": "QUALIFIED_SERIAL_APPROVED_WORKLIST",
+              "completeness": "COMPLETE_WITHIN_SCOPE",
+              "continuation": {
+                "candidate_id": "synthetic-candidate-followup",
+                "committed_order": 1,
+                "mission_id": null,
+                "reason_codes": [
+                  "ACTIVATION_INPUTS_UNAVAILABLE"
+                ],
+                "state": "BLOCKED"
+              },
+              "contract_version": "forge-workspace-worklist/v1",
+              "freshness": "CURRENT_READBACK",
+              "installation_id": "79fa2151-29b0-4a38-8fee-f2ceab89f42e",
+              "instance_id": "forge-runtime-5d523a3a-4586-4c0c-becf-00d273770f0a",
+              "items": [
+                {
+                  "active": false,
+                  "allocation_binding": {
+                    "candidate_id": "synthetic-candidate",
+                    "envelope_digest": "sha256:58dfee46d03490a2c3466e27f7e07d9cae3fd63a44f4a419eacf12981cc5f30e",
+                    "installation_id": "79fa2151-29b0-4a38-8fee-f2ceab89f42e",
+                    "kind": "CANONICAL_CANDIDATE_INTAKE",
+                    "mission_id": "MISSION-0001",
+                    "subject_revision": "sha256:227fee48ad1f0c23459a4c63642a0310efcc96b1193d47cc9a1986be50592d4a"
+                  },
+                  "approved": true,
+                  "blocking_reasons": [],
+                  "candidate_id": "synthetic-candidate",
+                  "committed_order": 0,
+                  "completed": true,
+                  "dependencies": [],
+                  "detail_reference": {
+                    "kind": "MISSION_REVIEW",
+                    "mission_id": "MISSION-0001"
+                  },
+                  "effect_mode": "UNKNOWN",
+                  "eligibility": "UNKNOWN",
+                  "engineering_result": "PROVEN",
+                  "evidence_references": [
+                    {
+                      "digest": "sha256:3fb2c39574752664c53e00d3dc6d0d48d8f69b660a2f1e6ea2435516da819cc9",
+                      "kind": "MISSION_COMPLETION",
+                      "subject_id": "MISSION-0001"
+                    },
+                    {
+                      "digest": "sha256:d75e2cf7965492f98719770fb1b36a25ee9556b0e7932bb640f93dd8070fc701",
+                      "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                      "subject_id": "installed-business-acceptance-single"
+                    }
+                  ],
+                  "execution_state": "COMPLETED",
+                  "final_acceptance": "ACCEPTED",
+                  "mission_id": "MISSION-0001",
+                  "mission_state_revision": 11,
+                  "released": true,
+                  "review_state": "NONE",
+                  "subject_revision": "sha256:227fee48ad1f0c23459a4c63642a0310efcc96b1193d47cc9a1986be50592d4a",
+                  "title": "Synthetic export contract"
+                },
+                {
+                  "active": false,
+                  "allocation_binding": null,
+                  "approved": true,
+                  "blocking_reasons": [
+                    "ACTIVATION_INPUTS_UNAVAILABLE"
+                  ],
+                  "candidate_id": "synthetic-candidate-followup",
+                  "committed_order": 1,
+                  "completed": false,
+                  "dependencies": [
+                    "synthetic-candidate"
+                  ],
+                  "detail_reference": null,
+                  "effect_mode": "UNKNOWN",
+                  "eligibility": "BLOCKED",
+                  "engineering_result": "UNKNOWN",
+                  "evidence_references": [],
+                  "execution_state": "PENDING_INTAKE",
+                  "final_acceptance": "UNKNOWN",
+                  "mission_id": null,
+                  "mission_state_revision": null,
+                  "released": true,
+                  "review_state": "NONE",
+                  "subject_revision": "sha256:de1697018f0ecea401944abbb5b5977104c83f454746f4ae7feb88fdcc5e73c2",
+                  "title": "Synthetic export contract"
+                }
+              ],
+              "membership_revision": "sha256:ad23110e2d5c322bdf045c80bb84015e0cb7ad14909863831b498de4d6988f2a",
+              "observed_at": "2026-10-07T20:34:21.166599+00:00",
+              "read_only": true,
+              "scope": {
+                "kind": "EXPLICIT_WORKSET",
+                "principal_id": "transition-accepted",
+                "project_id": null,
+                "workset_id": "transition-set"
+              },
+              "selector_revision": "sha256:ad23110e2d5c322bdf045c80bb84015e0cb7ad14909863831b498de4d6988f2a",
+              "snapshot_revision": "sha256:08572f41fc73277e10205216e11e04f21a1bfd820c8b2b725f38bc8c561ca74c",
+              "workset_revision": 4
+            }
+          }
+        ],
+        "checks": [
+          "scoped-complete-schema-bound-read",
+          "two-actor-scope-isolation",
+          "mutation-and-unrelated-route-denial",
+          "stable-snapshot-zero-storage-mutation",
+          "real-control-transition-readback",
+          "source-outage-denial",
+          "current-revocation-denial",
+          "real-expiry-denial",
+          "zero-allocation-planning-provider-and-ep-effects",
+          "real-completion-dependency-and-final-acceptance-readbacks"
+        ],
+        "cleanup": {
+          "owned_canonical_transition_runtime_removed": true,
+          "owned_runtime_home_credentials_scratch_removed": true
+        },
+        "environment": "ISOLATED_CHILD_HOME_CONFIG_SCRATCH",
+        "expected_failure_control": false,
+        "explicit_setup_mission_flow": {
+          "forge_processes": 6,
+          "planner_invocations": 1,
+          "scenario": "single",
+          "submission_posts": 1,
+          "submissions": 1
+        },
+        "external_fault": null,
+        "failure_stage": null,
+        "failure_type": null,
+        "forge_processes": 1,
+        "limitations": [
+          "Read proof alone does not qualify serial activation; use the separate installed serial receipt.",
+          "Synthetic separate canonical approvals are not independent live people.",
+          "No live EP/provider/operational activation or publication."
+        ],
+        "mutation_counts": {
+          "ep_submit": 0,
+          "intake": 0,
+          "mission_allocation": 0,
+          "planning": 0,
+          "provider": 0
+        },
+        "observed_read_status": 200,
+        "qualification": "INSTALLED_SCOPED_WORKLIST_READ_V1",
+        "qualifier_sha256": "sha256:16d9bd3cc006169a6f3f34763ed4b69174ff73551363d81e6bcce0a5b73c3b47",
+        "request_trace": [
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/bob-set",
+            "status": 403
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 403
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/bob-set",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "path": "/v1/status",
+            "status": 403
+          },
+          {
+            "method": "GET",
+            "path": "/v1/reviews",
+            "status": 403
+          },
+          {
+            "method": "GET",
+            "path": "/v1/missions",
+            "status": 403
+          },
+          {
+            "method": "POST",
+            "path": "/v1/worksets/alice-set/hold",
+            "status": 403
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 503
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 200
+          },
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 401
+          }
+        ],
+        "result": "WORKLIST_READ_PASS",
+        "source_revision": "ec072205a2b7d3060a7dbbaa59f18b7fc01d0cad"
+      }
+    },
+    "read_failure": {
+      "sha256": "11ffb27a72a11275c9e3639986f7cf3761a40b52ee6b56a3257fff0a3f27b8ca",
+      "receipt": {
+        "artifact": {
+          "installed_product_files_verified": 230,
+          "module_sha256": {
+            "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+            "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9",
+            "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+            "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a"
+          },
+          "source_product_files_verified": 230,
+          "source_tree_revision": "fa6612a7d31751facbf03fb4d73fd371ae5e57b3",
+          "version": "2.7.69",
+          "wheel_sha256": "sha256:ed8205f3acf8a479707fe620577017ad0443923e3c063862aabc15182217150e"
+        },
+        "checks": [],
+        "cleanup": {
+          "owned_runtime_home_credentials_scratch_removed": true
+        },
+        "environment": "ISOLATED_CHILD_HOME_CONFIG_SCRATCH",
+        "expected_failure_control": true,
+        "external_fault": "revoked-positive-read-credential",
+        "failure_stage": "positive-read",
+        "failure_type": "AssertionError",
+        "forge_processes": 1,
+        "limitations": [
+          "Read proof alone does not qualify serial activation; use the separate installed serial receipt.",
+          "Synthetic separate canonical approvals are not independent live people.",
+          "No live EP/provider/operational activation or publication."
+        ],
+        "mutation_counts": null,
+        "observed_read_status": 401,
+        "qualification": "INSTALLED_SCOPED_WORKLIST_READ_V1",
+        "qualifier_sha256": "sha256:16d9bd3cc006169a6f3f34763ed4b69174ff73551363d81e6bcce0a5b73c3b47",
+        "request_trace": [
+          {
+            "method": "GET",
+            "path": "/v1/worksets/alice-set",
+            "status": 401
+          }
+        ],
+        "result": "FAIL",
+        "source_revision": "ec072205a2b7d3060a7dbbaa59f18b7fc01d0cad"
+      }
+    }
+  },
+  "tde_observe": {
+    "candidate_run": 37681052341,
+    "workflow": "SUCCESS",
+    "assessment": "FAIL",
+    "failed_policy_rules": 46,
+    "repository_qualification": "FAILED",
+    "assessment_exit": 2,
+    "qualification_exit": 2,
+    "policy_pass_claim": false,
+    "protected_implementation_main": {
+      "run": 37682753910,
+      "workflow": "SUCCESS",
+      "assessment": "FAIL",
+      "failed_policy_rules": 46,
+      "repository_qualification": "FAILED",
+      "assessment_sha256": "e78cf92cb896062ea27482251226ccb3b098fffffdbac9b1c564e037f043dfc4",
+      "qualification_sha256": "2a0df572a86e2ade53ab3b958560936705f30e781924bf7ddd3a34a973f769c0",
+      "summary": "assessment_exit=2\nqualification_exit=2"
+    }
+  },
+  "delivery_state": "PROTECTED_IMPLEMENTATION_INSTALLED_QUALIFIED_FINALIZATION_PENDING",
+  "remaining_gates": [
+    "independent exact-head finalization Quality/Security",
+    "required finalization PR CI",
+    "normal protected finalization merge",
+    "exact-final-main installed qualification and required main CI",
+    "terminal selected-scope register proof"
+  ],
+  "boundaries": {
+    "predecessors_reopened": false,
+    "live_ep": false,
+    "public_release": false,
+    "operation_workset_activation": false,
+    "second_writer": false,
+    "l4_graph_assignment_changed": false,
+    "l4_selected_forge_source": "47c9f406323cbecd1c36227696f7f01b6a7b1c11",
+    "l4_selected_version": "2.7.68",
+    "full_prm_iam_family_claim": false
+  },
+  "historical_regression_receipts": {
+    "installed-http-successor.public.json": {
+      "run": 37682754115,
+      "result": "FORGE_INNER_LOOP_CI_PASS",
+      "sha256": "f8a73d301a93e71f5e31bdfff30c64510bed01e2bc03d64ba6feecc941589e6a"
+    },
+    "installed-fci-failure-gate.public.json": {
+      "run": 37682754115,
+      "result": "PASS",
+      "sha256": "b989b683918a18d5a16e915dcc69d3d611fd61552155833a80e8d343cac09010"
+    },
+    "forge-worklist-activation-failure/installed-worklist-activation.public.json": {
+      "run": 37682754115,
+      "result": "FAIL",
+      "case_count": 0,
+      "sha256": "c777a9e89eef7a83ad6f29eaeda356e0e0a8245d27a4d98d06a2cb486ca82c11"
+    },
+    "forge-worklist-activation/installed-worklist-activation.public.json": {
+      "run": 37682754115,
+      "result": "SERIAL_APPROVED_WORKLIST_PASS",
+      "case_count": 24,
+      "sha256": "3bda0c25abc59548a16d34868d4e6c0542e0f28826945a104e84812ddd7f17b9"
+    }
+  }
+}

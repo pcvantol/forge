@@ -140,3 +140,33 @@ readback. Fresh valid late replay remains separate from current hold state;
 unavailable canonical proof denies read/replay instead of optimistic success.
 Real revision1 Bob commands and no-mutation coherent store negatives cover
 the Boolean/int alias and fabricated admission; all FAIL receipts are retained.
+
+## Protected implementation and separate source finalization
+
+Assignment r37 implementation PR252 is normally protected-merged at
+`ec072205a2b7d3060a7dbbaa59f18b7fc01d0cad`, Forge **2.7.69**.
+Independent Quality and Security both PASS on exact candidate
+`7ca0f38b51447eee4242d7ccb4b3de9cdef84993`; earlier FAIL findings and
+corrections remain above. Owning validation1256 PASS/one existing skip, all four
+changed production files strictly above80.2%, required candidate CI37681052128
+SUCCESS. Protected implementation main CI37682754115 also SUCCESS, retaining
+FCI/read/serial24/control/Action-authority gates. No protection or test gate
+was bypassed.
+
+The [immutable selected implementation proof](../qualification/scoped-worklist-hold-selected-completion-2026-10-07.json)
+binds actual noneditable outside-checkout main wheel SHA256
+`ed8205f3acf8a479707fe620577017ad0443923e3c063862aabc15182217150e`
+to230 tracked/source/wheel/installed product files and43 real installed
+hold/unhold cases PASS. Genuine revoked command grant fails the positive replay
+gate; existing scoped read qualification PASS and its revoked positive-read
+control fails401. All declared owned fixture resources are cleaned.
+
+This nonempty normal NO_BUMP2.7.69 finalization records implementation evidence;
+its own independent exact-head reviews, required PR CI, protected merge,
+exact-final-main installed matrix/read-controls and required main CI remain
+explicit final gates. Terminal qualification is published in #207 and a brief
+JOIN reference in #208 after those actual readbacks. This document does not
+claim a future final SHA or consumer qualification. Actual TDE candidate policy
+FAIL46 rules/repository qualification FAILED/exits2 remains separate from its
+green observe workflow; no policy suppression or broad cleanup is introduced.
+L4 graph remains pinned47c9f406/2.7.68; no full roadmap-family gate is closed.

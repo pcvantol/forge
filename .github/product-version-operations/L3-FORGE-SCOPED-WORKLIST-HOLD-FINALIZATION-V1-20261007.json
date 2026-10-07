@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.69",
+  "classification_rationale": "L3-FORGE-SCOPED-WORKLIST-HOLD-V1-20261007",
+  "component": "product",
+  "event_lineage": "L3-FORGE-SCOPED-WORKLIST-HOLD-V1-20261007",
+  "expected_head": "ec072205a2b7d3060a7dbbaa59f18b7fc01d0cad",
+  "operation_id": "L3-FORGE-SCOPED-WORKLIST-HOLD-FINALIZATION-V1-20261007",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "NO_BUMP",
+  "requested_bump": "none",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.69"
+}

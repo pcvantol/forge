@@ -517,11 +517,14 @@
     {
       "assignment_id": "L3-FORGE-SCOPED-WORKLIST-HOLD-V1-20261007",
       "plan_revision": "r37",
-      "state": "CANDIDATE_QUALIFICATION_PENDING",
+      "state": "PROTECTED_IMPLEMENTATION_INSTALLED_QUALIFIED_FINALIZATION_PENDING",
       "scope": "HOLD_UNHOLD_HTTP_PRODUCER_ONLY",
       "handoff": "docs/handoff/SCOPED_WORKLIST_HOLD_V1.md",
       "full_node_completion": false,
-      "consumer_assignment_changed": false
+      "consumer_assignment_changed": false,
+      "protected_source": "ec072205a2b7d3060a7dbbaa59f18b7fc01d0cad",
+      "version": "2.7.69",
+      "evidence": "docs/qualification/scoped-worklist-hold-selected-completion-2026-10-07.json"
     }
   ]
 }
