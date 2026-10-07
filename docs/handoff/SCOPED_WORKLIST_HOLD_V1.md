@@ -70,7 +70,9 @@ conflicting intervening revision stays uncertain/conflicted and has no blind
 effect. Exact replay of an applied old hold never undoes a newer unhold.
 
 Hold affects future admission only. Already admitted/active Mission IDs are
-truthfully included; no cancellation, EP signal or forced resource release.
+verified from canonical intake and truthfully included, even before complete
+claim correlation. Already admitted but not yet started work can continue through
+its own current guards while the workset hold still fences future admission; no cancellation, EP signal or forced resource release.
 Concurrent hold/claim uses the same real canonical leases: whichever is first
 wins its boundary, the other sees current revision/busy state. Provenance
 records local-owner or exact grant principal, operation and control revision.
@@ -101,7 +103,7 @@ Existing GP/FCI/serial/read official regression gates remain required.
 | Selected boundary | Actual evidence requirement |
 | --- | --- |
 | Scoped capability | Two principals/worksets, foreign/read-token/routes, same-workset foreign operation denial, provision/revoke/expiry/current operator |
-| Durable commands | Same-ID payload conflict, original receipt plus current state, lost HTTP body, fresh process reopen and real SIGKILL after committed intent |
+| Durable commands | Same-ID payload conflict, original receipt plus current state including late unhold versus owner hold, lost HTTP body, fresh process reopen and real SIGKILL after committed intent |
 | Hold/unhold | Held future0allocation/provider, active Mission untouched, exact provenance, old replay after unhold, final acceptance remains blocking |
 | Canonical serial | Real preapproved A/B, hold/unhold around actual scheduler/admission, final acceptance and finite consumption2, no invented IDs |
 | Race | Real separate hold/claim processes; busy/CAS denial or truthful already-admitted receipt, no duplicate intake/provider/EP |

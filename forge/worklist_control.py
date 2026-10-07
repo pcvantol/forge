@@ -56,7 +56,7 @@ def canonical_request(body):
             raise ValueError('unhold requires exact hold revision')
     return json.loads(json.dumps(body,sort_keys=True))
 
-def control_state(value, principal):
+def control_state(value, principal, admitted_mission_ids=None):
     hold=value.get('operator_hold')
     if (type(value['held']) is not bool or type(value['revision']) is not int or value['revision']<1
             or type(value.get('control_revision',0)) is not int or value.get('control_revision',0)<0
@@ -74,7 +74,8 @@ def control_state(value, principal):
                      'reason_code':hold['reason_code'],'owned_by_principal':hold['principal_reference']==principal.reference}
                     if hold else None),
             'hold_provenance':'RECORDED' if hold else 'LEGACY_UNKNOWN' if value['held'] else 'NONE',
-            'admitted_mission_ids':sorted(c['mission_id'] for c in value['claims'].values() if c.get('mission_id')),
+            'admitted_mission_ids':sorted(admitted_mission_ids if admitted_mission_ids is not None else
+                (c['mission_id'] for c in value['claims'].values() if c.get('mission_id'))),
             'boundary':'FUTURE_ADMISSION_ONLY','ongoing_work_cancelled':False,
             'observed_at':datetime.now(UTC).isoformat()}
 
@@ -82,7 +83,7 @@ def finish_operation(value, operation):
     """Effect and original receipt are committed atomically in the same workset row."""
     principal=operation['principal']
     request=operation['request']
-    state=control_state({**value,'revision':value['revision']+1},principal)
+    state=control_state({**value,'revision':value['revision']+1},principal,operation['admitted_mission_ids'])
     receipt={'contract_version':RECEIPT,'operation_id':request['operation_id'],
              'principal_id':principal.principal_id,'grant_id':principal.grant_id,
              'request':request,'request_digest':canonical_digest(request),'outcome':'APPLIED',
@@ -95,10 +96,25 @@ def _operation(value, operation_id, principal):
     if stored is None:return None
     if stored['principal_reference']!=principal.reference:
         raise PermissionError('command belongs to another grant principal')
-    if stored['request_digest']!=canonical_digest(stored['request']):raise RuntimeError('intent integrity failed')
+    try:request=canonical_request(stored['request'])
+    except ValueError as error:raise RuntimeError('invalid persisted intent') from error
+    if (stored['request_digest']!=canonical_digest(request) or request['operation_id']!=operation_id
+            or request['instance_id']!=principal.instance_id
+            or request['workset_id']!=value['definition']['workset_id']
+            or request['definition_revision']!=value['definition_digest']):
+        raise RuntimeError('intent integrity failed')
     if stored['state'] not in {'PENDING','APPLIED'}:raise RuntimeError('invalid intent state')
     if stored['state']=='APPLIED' and stored['receipt_digest']!=canonical_digest(stored['receipt']):
         raise RuntimeError('receipt integrity failed')
+    if stored['state']=='APPLIED':
+        receipt=stored['receipt']
+        if (receipt['request']!=request or receipt['request_digest']!=stored['request_digest']
+                or receipt['operation_id']!=operation_id or receipt['grant_id']!=principal.grant_id
+                or receipt['principal_id']!=principal.principal_id
+                or receipt['effect']['instance_id']!=principal.instance_id
+                or receipt['effect']['workset_id']!=request['workset_id']
+                or receipt['effect']['definition_revision']!=request['definition_revision']):
+            raise RuntimeError('receipt binding failed')
     return stored
 
 def _validate_effect(value, request, principal, expected):
@@ -140,15 +156,18 @@ class WorklistControlService:
             return {'contract_version':READBACK,'principal_id':principal.principal_id,'read_only':True,
                     'operation':({'state':stored['state'],'original_receipt':stored.get('receipt'),
                                   'operation_id':operation_id,'execution_known':stored['state']=='APPLIED'} if stored else None),
-                    'current':control_state(value,principal),'worklist':snapshot}
+                    'current':control_state(value,principal,[i['mission_id'] for i in snapshot['items'] if i['allocation_binding']]),'worklist':snapshot}
 
     def execute(self, authorization, key, body):
         request=canonical_request(body)
-        with control_runtime(self.root) as runtime:
-            with RuntimeServiceLock(runtime.database.path).acquire(reuse_current=True),_locked(self.grant.path):
+        # Deny scope and live authority before composing any mutating database.
+        # Keep the grant lease through commit; canonical runtime leases are nonblocking.
+        with _locked(self.grant.path):
+            principal=self._authorize(authorization,key)
+            if request['instance_id']!=principal.instance_id or request['workset_id']!=key:
+                raise PermissionError('command instance or workset mismatch')
+            with control_runtime(self.root) as runtime,RuntimeServiceLock(runtime.database.path).acquire(reuse_current=True):
                 principal=self._authorize(authorization,key)
-                if request['instance_id']!=principal.instance_id or request['workset_id']!=key:
-                    raise PermissionError('command instance or workset mismatch')
                 with RecommendationLifecycleStore(candidate_source(self.root)) as lifecycle:
                     service=ApprovedWorklistService(runtime,lifecycle);value=service._get(key)
                     if value['runtime_generation']!=runtime.database._connection.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:
@@ -171,8 +190,10 @@ class WorklistControlService:
                     value=service._get(key);_validate_effect(value,request,principal,expected)
                     provenance={'principal_reference':principal.reference,'operation_id':request['operation_id'],
                                 'reason_code':request['reason_code']}
+                    snapshot=projection(self.root,principal.instance_id,key,principal.principal_id)
                     value=service._control_locked(key,expected_revision=expected,operation=request['intent'],
-                        hold_provenance=provenance,command_operation={'principal':principal,'request':request})
+                        hold_provenance=provenance,command_operation={'principal':principal,'request':request,
+                            'admitted_mission_ids':[i['mission_id'] for i in snapshot['items'] if i['allocation_binding']]})
                     return value['control_operations'][request['operation_id']]['receipt'],True
 
     def handle(self, method, path, authorization, body):

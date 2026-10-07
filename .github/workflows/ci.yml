@@ -128,7 +128,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_worklist_control.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-worklist-control"
-          "$RUNNER_TEMP/forge-installed/bin/python" -I -c 'import json,pathlib; d=json.loads(pathlib.Path("forge-worklist-control/installed-worklist-control.public.json").read_text()); assert d["result"] == "WORKLIST_CONTROL_PASS" and d["case_count"] == 37 and all(c["owned_runtime_home_credentials_scratch_removed"] for c in d["cleanup"])'
+          "$RUNNER_TEMP/forge-installed/bin/python" -I -c 'import json,pathlib; d=json.loads(pathlib.Path("forge-worklist-control/installed-worklist-control.public.json").read_text()); assert d["result"] == "WORKLIST_CONTROL_PASS" and d["case_count"] == 42 and all(c["owned_runtime_home_credentials_scratch_removed"] for c in d["cleanup"])'
           set +e
           "$RUNNER_TEMP/forge-installed/bin/python" -I \
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_worklist_control.py" \

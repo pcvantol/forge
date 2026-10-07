@@ -183,6 +183,13 @@ def source_flow(root,*,phase_runner=None,failure_control=False):
                 assert status==403;records.append({'case':'noncontrol-route-'+forbidden.rsplit('/',1)[-1],'status':status})
             status,bob=request(port,root/'bob.private','GET','/v1/workset-controls/bob-set');assert status==200
             status,_=request(port,root/'bob.private','POST','/v1/workset-controls/bob-set/commands',body(bob['current'],op='bob-hold'));assert status==200
+            status,bob_held=request(port,root/'bob.private','GET','/v1/workset-controls/bob-set');assert status==200
+            status,bob_unheld=request(port,root/'bob.private','POST','/v1/workset-controls/bob-set/commands',body(bob_held['current'],op='bob-unhold',intent='unhold',hold=bob_held['current']['hold']))
+            assert status==200 and not bob_unheld['original_receipt']['effect']['held']
+            assert all(not i['released'] for i in bob_unheld['current_readback']['worklist']['items'])
+            status,alice_held=request(port,token,'GET',path);assert status==200 and alice_held['current']['held']
+            records.append({'case':'two-principal-hold-unhold-no-implicit-arm','other_held':True,'bob_released':False})
+
             db=root/'runtime'/'forge.db';before_bytes=sha256(db.read_bytes()).hexdigest()
             for method,route in [('GET',path),('GET',path+'/commands/hold-1'),('GET',path+'/commands/unknown')]:
                 status,value=request(port,token,method,route);assert status in {200,404}
@@ -193,6 +200,14 @@ def source_flow(root,*,phase_runner=None,failure_control=False):
         replay=phase_runner(root,'replay');assert replay['status']==200 and replay['response']['original_receipt']==receipt
         assert replay['response']['current_readback']['current']['held'] is False
         records.append({'case':'old-hold-replay-after-unhold','current_held':False,'original_held':True})
+        serial._phase(root,'effect-read-only','hold',endpoint)
+        with http_owner(root) as port:
+            status,late=request(port,root/'alice.private','POST','/v1/workset-controls/serial-set/commands',utils.fixture._read(root/'unhold-request.private.json'))
+            assert status==200 and late['original_receipt']['effect']['held'] is False
+            assert late['current_readback']['current']['held'] is True
+        records.append({'case':'late-unhold-receipt-keeps-current-owner-hold','original_held':False,'current_held':True})
+        serial._phase(root,'effect-read-only','unhold',endpoint)
+
         first=serial._phase(root,'effect-read-only','tick',endpoint);assert first['allocations']==first['provider_invocations']==1
         with http_owner(root) as port:
             status,read=request(port,root/'alice.private','GET','/v1/workset-controls/serial-set');assert status==200
@@ -270,6 +285,23 @@ def source_denials(root):
             targeted=body(read['current'],op='foreign-unhold',intent='unhold',hold=read['current']['hold'])
             status,value=request(port,token,'POST',path+'/commands',targeted);assert status==409
             outcomes.append({'case':'local-owner-hold-not-removed','status':409})
+            # Compatibility fixture from the earlier bool-only workset format;
+            # remove additive provenance in this disposable root and restore exact bytes.
+            with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                original_document=db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0]
+                legacy=json.loads(original_document);legacy.pop('operator_hold',None);legacy.pop('control_revision',None)
+                with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(json.dumps(legacy,sort_keys=True),'serial-set'))
+            try:
+                status,legacy_read=request(port,token,'GET',path)
+                assert status==200 and legacy_read['current']['hold_provenance']=='LEGACY_UNKNOWN'
+                target=body(legacy_read['current'],op='legacy-unhold',intent='unhold',hold={'operation_id':'unknown-owner-hold','control_revision':1})
+                status,_=request(port,token,'POST',path+'/commands',target);assert status==409
+            finally:
+                with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                    with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(original_document,'serial-set'))
+                    assert db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0]==original_document
+            outcomes.append({'case':'legacy-unknown-hold-provenance-preserved','status':409})
+
             serial._phase(root,'effect-read-only','unhold',endpoint)
             status,read=request(port,token,'GET',path);own=body(read['current'],op='own-hold')
             status,value=request(port,token,'POST',path+'/commands',own);assert status==200
@@ -285,6 +317,25 @@ def source_denials(root):
                 status,value=request(port,token,'POST',path+'/commands',payload);assert status==401
             finally:store.write_bytes(original)
             outcomes.append({'case':'uncertain-grant-store-denied-restored','status':401})
+            # Disposable canonical command-store corruption: even a rehashed
+            # receipt must retain its exact original principal/request binding.
+            with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                original_document=db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0]
+                corrupted=json.loads(original_document);entry=corrupted['control_operations']['own-hold']
+                replay_payload=entry['request'];entry['receipt']['principal_id']='foreign-principal'
+                entry['receipt_digest']=utils.canonical_digest(entry['receipt'])
+                with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(json.dumps(corrupted,sort_keys=True),'serial-set'))
+            try:
+                status,_=request(port,token,'GET',path+'/commands/own-hold');assert status==503
+                status,_=request(port,token,'POST',path+'/commands',replay_payload);assert status==503
+                with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                    assert json.loads(db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0])==corrupted
+            finally:
+                with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                    with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(original_document,'serial-set'))
+                    assert db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0]==original_document
+            outcomes.append({'case':'uncertain-rehashed-command-receipt-binding-denied-restored','status':503})
+
             # Owner CLI is exercised without printing any bearer.
             from contextlib import redirect_stdout
             from io import StringIO
@@ -398,6 +449,41 @@ def concurrent_claim(root,runner):
                 if child.poll() is None:child.kill();child.communicate(timeout=5)
 
 
+def admitted_before_hold(root,runner):
+    with prepared(root) as (endpoint,simulator):
+        utils.fixture._write(root/'external-pause.private.json',{'boundary':'github-before-start'})
+        child=runner.start(root,'admitted-pause',endpoint)
+        try:
+            deadline=time.monotonic()+15
+            while not (root/'external-pause.ready.private').exists():
+                if child.poll() is not None:raise AssertionError('admission child exited before actual external boundary')
+                if time.monotonic()>deadline:raise AssertionError('admission boundary expired')
+                time.sleep(0.01)
+            child.kill();child.communicate(timeout=5);assert child.returncode<0
+        finally:
+            if child.poll() is None:child.kill();child.communicate(timeout=5)
+            (root/'external-pause.private.json').unlink(missing_ok=True)
+        observed=serial._phase(root,'effect-read-only','read',endpoint)
+        assert observed['allocations']==1 and observed['provider_invocations']==0
+        assert observed['states'][0]['status']=='APPROVED_PLANNABLE'
+        mission_id=observed['states'][0]['mission_id']
+        # Explicit disposable correlation-loss fault over a real canonical intake,
+        # not an invented Mission/approval or a replacement positive A/B driver.
+        with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+            value=json.loads(db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0])
+            value['claims']['synthetic-candidate-a']['mission_id']=None
+            with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(json.dumps(value,sort_keys=True),'serial-set'))
+        held=runner(root,'hold');assert held['status']==200
+        assert held['response']['original_receipt']['effect']['admitted_mission_ids']==[mission_id]
+        resumed=serial._phase(root,'effect-read-only','tick',endpoint)
+        assert resumed['allocations']==resumed['provider_invocations']==1 and resumed['workset']['held']
+        assert resumed['states'][0]['mission_id']==mission_id and resumed['states'][0]['status']=='WAITING_FOR_EXECUTION'
+        assert len(simulator.submission_ids())==1
+        return {'case':'already-admitted-before-hold-continues-with-canonical-correlation-recovery',
+                'killed_pid':child.pid,'missing_claim_correlation_fixture':True,'allocations':1,
+                'provider_invocations':1,'submissions':1,'same_canonical_mission':True,'hold_remains':True}
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument('--wheel',type=Path,required=True);parser.add_argument('--source-revision',required=True)
@@ -416,7 +502,8 @@ def main(argv=None):
             return original(sock,address)
         with patch('socket.socket.connect',loopback_only):
             phase=args.child_phase
-            if phase=='race-hold':result=command_phase(args.case_root,'race-command')
+            if phase=='admitted-pause':result=serial._phase(args.case_root,'effect-read-only','tick',args.endpoint)
+            elif phase=='race-hold':result=command_phase(args.case_root,'race-command')
             elif phase=='race-tick':
                 (args.case_root/(phase+'.ready.private')).write_text(str(os.getpid()))
                 deadline=time.monotonic()+12
@@ -435,7 +522,7 @@ def main(argv=None):
     output.mkdir(parents=True);(output/'qualification-owner.private.json').write_text(json.dumps({'source_revision':args.source_revision}))
     runner=InstalledPhases(args);outcomes=[];failure=None;cleanup=[]
     cases=[('flow',lambda root:source_flow(root,phase_runner=runner,failure_control=args.failure_control))]
-    if not args.failure_control:cases += [('denials',source_denials),('crash',lambda root:[process_recovery(root,runner)]),('lost',lambda root:[lost_response(root,runner)]),('race',lambda root:[concurrent_claim(root,runner)])]
+    if not args.failure_control:cases += [('denials',source_denials),('crash',lambda root:[process_recovery(root,runner)]),('lost',lambda root:[lost_response(root,runner)]),('race',lambda root:[concurrent_claim(root,runner)]),('admitted',lambda root:[admitted_before_hold(root,runner)])]
     try:
         for name,run in cases:
             root=output/('case-'+name)
@@ -456,7 +543,8 @@ def main(argv=None):
              'expected_failure_control':args.failure_control,'external_fault':'REVOKED_CONTROL_GRANT' if args.failure_control else None,
              'cleanup':cleanup,'qualifier_sha256':sha256(Path(__file__).read_bytes()).hexdigest(),
              'limitations':['Synthetic canonical decisions and external EP/LLM/OS/Git fixtures; no live EP/provider/operational activation.',
-                            'Producer-only hold/unhold; no Workspace mutation consumer or full PRM/IAM family claim.']}
+                            'Producer-only hold/unhold; no Workspace mutation consumer or full PRM/IAM family claim.',
+                            'Declared disposable storage-input faults cover legacy provenance, rehashed receipt binding and missing claim correlation; no auth/command mocks or approval seeding.']}
     (output/'installed-worklist-control.public.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
     print(json.dumps({k:receipt[k] for k in ('result','source_revision','case_count','failure')}))
     return 0 if failure is None else 1

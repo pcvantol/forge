@@ -228,7 +228,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
         items=[]
         for order,member in enumerate(definition['members']):
             claim=value['claims'].get(member['candidate_id']);state=None
-            if claim is None:
+            if claim is None or claim.get('mission_id') is None:
                 allocation=db.execute('SELECT document FROM candidates.allocations WHERE candidate_id=?',(member['candidate_id'],)).fetchone()
                 if allocation:
                     allocated=json.loads(allocation[0])
@@ -274,7 +274,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             if value['runtime_generation']!=db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:reasons.append('RUNTIME_GENERATION_CHANGED')
             if value['revoked']:reasons.append('RELEASE_REVOKED')
             if timestamp(definition['expires_at'])<=datetime.now(UTC):reasons.append('RELEASE_EXPIRED')
-            if value['held']:reasons.append('WORKSET_HELD')
+            if value['held'] and binding is None:reasons.append('WORKSET_HELD')
             if value['release']!='AUTO_WHEN_ELIGIBLE':reasons.append('NOT_RELEASED')
             if set(value['decisions'])!={'business','architecture'}:reasons.append('WORKSET_UNAPPROVED')
             if claim and state is None:reasons.append('MISSION_STATE_UNAVAILABLE')
