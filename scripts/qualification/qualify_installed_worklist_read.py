@@ -18,6 +18,7 @@ import subprocess
 import sys
 from threading import Thread
 import time
+import traceback
 from urllib.error import HTTPError
 from urllib.request import Request,urlopen
 from jsonschema import Draft202012Validator,FormatChecker
@@ -103,6 +104,7 @@ def main(argv=None):
                     with urlopen(Request(f'http://127.0.0.1:{port}/v1/worksets/transition-set',headers={'Authorization':'Bearer '+token.read_text().strip()}),timeout=4) as response:
                         assert response.status==200;doc=json.load(response)
                     assert sha256((data/'forge.db').read_bytes()).hexdigest()==before
+                    (output/f'transition-{phase}.private.json').write_text(json.dumps({'snapshot':doc,'state':state,'receipt_ids':[row[0] for row in runtime.database._connection.execute('SELECT receipt_id FROM execution_receipts')]},indent=2))
                     assert doc['snapshot_revision']==snapshot_revision(doc)
                     schema=json.loads((Path(forge.__file__).parent/'api/workspace-worklist-v1.json').read_text())
                     Draft202012Validator(schema,format_checker=FormatChecker()).validate(doc)
@@ -129,6 +131,7 @@ def main(argv=None):
                 (output/'installed-worklist-read.public.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
             except (AssertionError,ValueError,RuntimeError,OSError) as exc:
                 receipt['result']='FAIL';receipt['failure_type']=type(exc).__name__;receipt['failure_stage']='canonical-transition'
+                receipt['failure_frames']=[{'file':Path(frame.filename).name,'function':frame.name,'line':frame.lineno} for frame in traceback.extract_tb(exc.__traceback__)[-5:]]
                 done=subprocess.CompletedProcess([],1)
             finally:
                 if case.exists():shutil.rmtree(case)
