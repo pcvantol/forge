@@ -18,10 +18,13 @@ class WorklistConditionTests(unittest.TestCase):
 
     def test_real_receipt_reference_still_requires_current_business_acceptance(self):
         self.db.execute("INSERT INTO execution_receipts VALUES ('receipt')")
+        repository={'mission_id':'MISSION-1','action_id':'action','report_id':'report','content_digest':'sha256:'+'a'*64}
+        from forge.models.criterion_observation import canonical_digest
         state={'mission_id':'MISSION-1','status':'AWAITING_APPROVAL',
-            'completion':{'all_required_criteria_proven':True,'criteria':[{'status':'PROVEN','observations':['fixture']}]},
-            'execution_evidence':{'outcome':'complete','receipt_id':'receipt'},
+            'completion':{'all_required_criteria_proven':True,'criteria':[{'status':'PROVEN','observations':['fixture'],'execution_evidence':[{'receipt_id':'receipt','action_id':'action','repository_evidence_digest':canonical_digest(repository)}]}]},
+            'execution_evidence':{'outcome':'complete','receipt_id':'receipt','repository_evidence':repository},
             'pause_reason':{'schema_version':'forge-final-acceptance-requirement/v1'}}
+        state['execution_history']=[deepcopy(state['execution_evidence'])]
         proven,final,refs=completion_facts(self.db,state)
         self.assertFalse(proven);self.assertEqual(final,'WAITING');self.assertEqual(refs[0]['kind'],'MISSION_COMPLETION')
         state['pause_reason']=None;state['status']='COMPLETED'

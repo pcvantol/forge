@@ -15,8 +15,24 @@ def completion_facts(db, state: dict[str,Any] | None) -> tuple[bool,str,list[dic
             or not isinstance(terminal,dict) or terminal.get('outcome')!='complete'
             or not isinstance(terminal.get('receipt_id'),str)):
         return False,'UNKNOWN',[]
-    if db.execute('SELECT 1 FROM execution_receipts WHERE receipt_id=?',(terminal['receipt_id'],)).fetchone() is None:
+    repository=terminal.get('repository_evidence')
+    if (not isinstance(repository,dict) or repository.get('mission_id')!=state.get('mission_id')
+            or not isinstance(repository.get('report_id'),str) or not repository['report_id']
+            or not isinstance(repository.get('content_digest'),str)
+            or not repository['content_digest'].startswith('sha256:')
+            or not isinstance(state.get('execution_history'),list)
+            or not any(canonical_digest(item)==canonical_digest(terminal) for item in state['execution_history'])):
         return False,'UNKNOWN',[]
+    for criterion in completion['criteria']:
+        references=criterion.get('execution_evidence')
+        if (not isinstance(references,list) or not references
+                or not any(ref.get('receipt_id')==evidence.get('receipt_id')
+                           and ref.get('action_id')==(evidence.get('repository_evidence') or {}).get('action_id')
+                           and (evidence.get('repository_evidence') or {}).get('mission_id')==state['mission_id']
+                           and evidence.get('outcome')=='complete'
+                           and ref.get('repository_evidence_digest')==canonical_digest(evidence.get('repository_evidence'))
+                           for ref in references for evidence in state['execution_history'])):
+            return False,'UNKNOWN',[]
     refs=[{'kind':'MISSION_COMPLETION','subject_id':state['mission_id'],'digest':canonical_digest(completion)}]
     pause=state.get('pause_reason') or {}
     if pause.get('schema_version')==FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT:
