@@ -17,6 +17,7 @@ utils=module_from_spec(spec);spec.loader.exec_module(utils)
 from forge.approved_worklist import ApprovedWorklistService,CONTRACT,projection
 from forge.lifecycle import RecommendationLifecycleStore
 from forge.runtime.service import ForgeRuntimeService,RuntimeServiceBusy
+from forge.runtime.bootstrap import RuntimeResolutionError
 from forge.server_runtime import _ResumeOnlyLoop
 
 
@@ -231,6 +232,30 @@ def evidence_denial(root,case,*,phase_runner=None):
         return {'case':case,'status':'EXPECTED_DENIAL','allocations':1,'provider_invocations':1,'submissions':1,
             'mission_state':duplicate['states'][0]['status'],'blocking_reasons':duplicate['read']['items'][1]['blocking_reasons']}
 
+
+def created_crash_denial(root,runner):
+    root.mkdir();utils._effect_target_fixture(root,'effect-read-only')
+    simulator=utils.EpSimulatorState(project_id=utils.PROJECT,repository_id=utils.fixture.SOURCE.repository_id,
+        repository_identity=utils.fixture.SOURCE.github_repository,consumer_id=utils.CONSUMER,
+        instance_id=utils.INSTANCE,bearer_token=utils.TOKEN,
+        scenario=utils.EpSimulatorScenario(name='created-process-crash',effect_declaration_supported=True))
+    server=utils.EpSimulatorServer(simulator);requests=utils._count_ep_http_requests(server)
+    with server:
+        setup=runner(root,'effect-read-only','setup',server.base_url)
+        runner.special='created-readiness'
+        held=runner(root,'effect-read-only','tick',server.base_url)
+        runner.special=None
+        duplicate=runner(root,'effect-read-only','tick',server.base_url)
+        assert held['states'][0]['status']==duplicate['states'][0]['status']=='BLOCKED'
+        assert held['allocations']==duplicate['allocations']==duplicate['workset']['consumed_activations']==1
+        assert held['provider_invocations']==duplicate['provider_invocations']==0
+        assert held['states'][0]['mission_id']==duplicate['states'][0]['mission_id']
+        assert duplicate['read']['items'][1]['mission_id'] is None and not simulator.submission_ids()
+        assert not any(request.startswith('POST ') for request in requests)
+        return {'case':'crash-created','status':'EXPECTED_AMBIGUITY_HOLD','allocations':1,'claims':1,
+            'provider_invocations':0,'submissions':0,'mission_id':duplicate['states'][0]['mission_id'],
+            'process_faults':list(runner.process_faults),'blocking_reasons':duplicate['read']['items'][0]['blocking_reasons']}
+
 def _summary(records):
     final=records[-1]
     return {'trace':[{'phase':r['phase'],'pid':r['pid'],'runtime_id':r['runtime_id'],'allocations':r['allocations'],
@@ -357,9 +382,10 @@ def main(argv=None):
                 time.sleep(0.01)
         with patch('socket.socket.connect',only_simulator):
             try:result=_phase(args.case_root,args.scenario,args.child_phase,args.endpoint)
-            except RuntimeServiceBusy as error:
+            except (RuntimeServiceBusy,RuntimeResolutionError) as error:
                 if args.barrier_name is None:raise
-                result={'observed_denial':'RuntimeServiceBusy','pid':os.getpid()}
+                if isinstance(error,RuntimeResolutionError) and str(error)!='another mutating Forge runtime owns this data root':raise
+                result={'observed_denial':type(error).__name__,'pid':os.getpid()}
             except PermissionError as error:
                 if utils.fixture._read(args.case_root/'case.private.json',{}).get('case')!='operator-revoked':raise
                 with closing(sqlite3.connect((args.case_root/'runtime'/'forge.db').resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -383,11 +409,13 @@ def main(argv=None):
     try:
         for name,kind in cases:
             root=output/('case-'+name)
+            runner.process_faults=[]
             try:
                 if kind=='positive':
                     records=source_flow(root,name,phase_runner=runner,failure_control=args.failure_control)
                     result=_summary(records);result.update({'case':name,'status':'PASS','kind':kind})
                     if args.failure_control:raise AssertionError('faulted positive flow unexpectedly passed')
+                elif name=='crash-created':result=created_crash_denial(root,runner)
                 elif kind in {'crash','concurrent'}:
                     runner.special=('concurrent' if kind=='concurrent' else 'created-readiness' if name=='crash-created' else 'github-before-start')
                     result=_summary(source_flow(root,'effect-read-only',phase_runner=runner));result.update({'case':name,'status':'PASS','kind':kind,
