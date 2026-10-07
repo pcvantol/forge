@@ -19,6 +19,10 @@
     {
       "key": "projectId",
       "value": "replace-with-configured-project-id"
+    },
+    {
+      "key": "worklistControlToken",
+      "value": "replace-with-private-scoped-control-token"
     }
   ],
   "auth": {
@@ -926,6 +930,94 @@
             "worksets",
             "{workset_id}",
             "revoke"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /v1/workset-controls/{workset_id}",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worklistControlToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/workset-controls/{workset_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "workset-controls",
+            "{workset_id}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/workset-controls/{workset_id}/commands",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worklistControlToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/workset-controls/{workset_id}/commands",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "workset-controls",
+            "{workset_id}",
+            "commands"
+          ]
+        },
+        "description": "Supply the complete versioned request from workspace-worklist-control-v1.json using current authorized definition/workset/hold revisions. No client actor/role."
+      }
+    },
+    {
+      "name": "GET /v1/workset-controls/{workset_id}/commands/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worklistControlToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/workset-controls/{workset_id}/commands/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "workset-controls",
+            "{workset_id}",
+            "commands",
+            "{operation_id}"
           ]
         }
       }

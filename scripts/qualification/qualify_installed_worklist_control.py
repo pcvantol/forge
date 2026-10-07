@@ -16,6 +16,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import traceback
 from unittest.mock import patch
 
 _SOURCE=Path(__file__).resolve().parents[2]
@@ -99,6 +100,11 @@ def command_phase(root,phase):
     with http_owner(root,pause_intent=phase=='crash-intent') as port:
         token=root/'alice.private';path='/v1/workset-controls/serial-set'
         if phase=='race-command':
+            (root/'race-hold.ready.private').write_text(str(os.getpid()))
+            deadline=time.monotonic()+12
+            while not (root/'race-go.private').exists():
+                if time.monotonic()>deadline:raise AssertionError('race release expired')
+                time.sleep(0.01)
             status,response=request(port,token,'POST',path+'/commands',utils.fixture._read(root/'hold-request.private.json'))
             return {'status':status,'response':response,'pid':os.getpid()}
         status,read=request(port,token,'GET',path);assert status==200
@@ -410,20 +416,19 @@ def main(argv=None):
             return original(sock,address)
         with patch('socket.socket.connect',loopback_only):
             phase=args.child_phase
-            if phase.startswith('race-'):
+            if phase=='race-hold':result=command_phase(args.case_root,'race-command')
+            elif phase=='race-tick':
                 (args.case_root/(phase+'.ready.private')).write_text(str(os.getpid()))
                 deadline=time.monotonic()+12
                 while not (args.case_root/'race-go.private').exists():
                     if time.monotonic()>deadline:raise AssertionError('race release expired')
                     time.sleep(0.01)
-                if phase=='race-hold':result=command_phase(args.case_root,'race-command')
-                else:
-                    try:
-                        value=serial._phase(args.case_root,'effect-read-only','tick',args.endpoint)
-                        result={'allocations':value['allocations'],'pid':os.getpid()}
-                    except (serial.RuntimeServiceBusy,serial.RuntimeResolutionError) as error:
-                        if isinstance(error,serial.RuntimeResolutionError) and str(error)!='another mutating Forge runtime owns this data root':raise
-                        result={'busy':True,'pid':os.getpid()}
+                try:
+                    value=serial._phase(args.case_root,'effect-read-only','tick',args.endpoint)
+                    result={'allocations':value['allocations'],'pid':os.getpid()}
+                except (serial.RuntimeServiceBusy,serial.RuntimeResolutionError) as error:
+                    if isinstance(error,serial.RuntimeResolutionError) and str(error)!='another mutating Forge runtime owns this data root':raise
+                    result={'busy':True,'pid':os.getpid()}
             else:result=command_phase(args.case_root,phase)
         print(json.dumps(result,sort_keys=True));return 0
     if output.exists():raise ValueError('fresh qualification output required')
@@ -435,6 +440,11 @@ def main(argv=None):
         for name,run in cases:
             root=output/('case-'+name)
             try:outcomes.extend(run(root))
+            except Exception:
+                (output/(name+'-failure.private.log')).write_text(traceback.format_exc())
+                for log in root.glob('*.private.log'):
+                    shutil.copyfile(log,output/(name+'-'+log.name))
+                raise
             finally:
                 if root.exists():shutil.rmtree(root)
                 cleanup.append({'case':name,'owned_runtime_home_credentials_scratch_removed':not root.exists()})

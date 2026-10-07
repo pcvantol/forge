@@ -1231,6 +1231,259 @@
           }
         }
       ]
+    },
+    "/v1/workset-controls/{workset_id}": {
+      "get": {
+        "summary": "Scoped command and current workset readback",
+        "security": [
+          {
+            "workspaceWorklistControlBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original receipt and separately current readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/readback"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing Forge v1 unauthenticated transport envelope"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/workset-controls/{workset_id}/commands": {
+      "post": {
+        "summary": "Scoped durable workset hold command",
+        "security": [
+          {
+            "workspaceWorklistControlBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original receipt and separately current readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/result"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing Forge v1 unauthenticated transport envelope"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "workspace-worklist-control-v1.json#/$defs/request"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/workset-controls/{workset_id}/commands/{operation_id}": {
+      "get": {
+        "summary": "Scoped command and current workset readback",
+        "security": [
+          {
+            "workspaceWorklistControlBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original receipt and separately current readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/readback"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded failure without unauthorized effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing Forge v1 unauthenticated transport envelope"
+          },
+          "404": {
+            "description": "No stored operation within granted scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-control-v1.json#/$defs/readback"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "operation_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
     }
   },
   "components": {
@@ -1253,6 +1506,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate explicit workset read capability; no status/review/admin rights."
+      },
+      "workspaceWorklistControlBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate owner-issued instance/principal/exact-workset expiring hold/unhold command capability. Scoped current/operation readback only; no administrator, status/review/read grant upgrade."
       }
     },
     "schemas": {

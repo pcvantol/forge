@@ -22,7 +22,7 @@ F5 is not a scheduler; its parent refinement is navigation, not a backward edge.
 | PRM-F-DELEGATION | Explicit bounded delegated project decisions without implicit approval or mandate expansion | PRM-F-PRIORITY, PRM-F-ACTIVATION |
 | PRM-F-Q | Installed service, restart and separately scoped project-mode qualification | PRM-F-ACTIVATION, PRM-F-CHANGES, PRM-F-REPOSITORY, PRM-F-DELEGATION |
 
-All nine nodes remain PLANNED with empty qualification evidence. External evidence
+All nine full-node gates remain PLANNED; scoped producer evidence below does not close them. External evidence
 is a real producer subset, not permission to allocate peer implementation.
 
 The bounded [project-bound Mission/Action read projection](../architecture/FORGE_PROJECT_DAG_READ_V1.md)
@@ -152,3 +152,17 @@ policy separate. Shared source pins are historical observations, not current
 service status. Use normal protected source delivery; separately authorize live
 activation/configuration. Never reset a failed lineage or move parked unrelated
 work into this design's scope.
+
+## Selected scoped producer deliveries
+
+The serial approved-worklist subset is completed at protected47c9f406/Forge2.7.68
+according to #207/6043738358 and the immutable selected qualification record.
+It preserves full PRM/FCO graph gates and remains separate from consumer proof.
+The selected r37 hold/unhold HTTP producer is tracked in
+[SCOPED_WORKLIST_HOLD_V1](../handoff/SCOPED_WORKLIST_HOLD_V1.md): bounded
+PRM-F-CONTRACT/PROJECTION/ACTIVATION producer compatibility for later PRM-W-MANAGE.
+It is not full delegation/IAM/project management, approval or runtime authority.
+Its current source/evidence state is candidate pending installed qualification,
+independent reviews, protected delivery and finalization; no completed family
+gate or live operation is inferred. L4's separate read-only graph selection
+retains47c9f406/2.7.68 and is not switched or expanded by this producer assignment.
