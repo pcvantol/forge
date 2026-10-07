@@ -57,8 +57,8 @@ def main(argv=None):
         assert receipt['artifact']==artifact and receipt['source_revision']==args.source_revision
         print(json.dumps(receipt,sort_keys=True));return done.returncode
     artifact=json.loads((output/'artifact.parent.private.json').read_text())
-    root=output/'isolated';root.mkdir()
-    for folder in ['home','config','scratch']:(root/folder).mkdir()
+    root=output/'isolated';root.mkdir(exist_ok=True)
+    for folder in ['home','config','scratch']:(root/folder).mkdir(exist_ok=True)
     checks=[];result=None;error=None;stage='setup';observed_read_status=None
     try:
         with ExitStack() as stack:
