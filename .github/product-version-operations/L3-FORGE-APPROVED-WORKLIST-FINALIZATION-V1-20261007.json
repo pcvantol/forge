@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.7.68",
+  "classification_rationale": "L3-FORGE-APPROVED-WORKLIST-V1-20261007",
+  "component": "product",
+  "event_lineage": "L3-FORGE-APPROVED-WORKLIST-V1-20261007",
+  "expected_head": "7ffa98d6fa70d44c52e9274bd3b2d4365dab3857",
+  "operation_id": "L3-FORGE-APPROVED-WORKLIST-FINALIZATION-V1-20261007",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "NO_BUMP",
+  "requested_bump": "none",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.7.68"
+}
