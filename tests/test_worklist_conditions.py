@@ -18,15 +18,20 @@ class WorklistConditionTests(unittest.TestCase):
 
     def test_real_receipt_reference_still_requires_current_business_acceptance(self):
         self.db.execute("INSERT INTO execution_receipts VALUES ('receipt')")
-        repository={'mission_id':'MISSION-1','action_id':'action','report_id':'report','content_digest':'sha256:'+'a'*64}
+        repository={'mission_id':'MISSION-1','action_id':'action','report_id':'report','repository_revision':'revision','content_digest':'sha256:'+'a'*64}
         from forge.models.criterion_observation import canonical_digest
         state={'mission_id':'MISSION-1','status':'AWAITING_APPROVAL',
-            'completion':{'all_required_criteria_proven':True,'criteria':[{'status':'PROVEN','observations':['fixture'],'execution_evidence':[{'receipt_id':'receipt','action_id':'action','repository_evidence_digest':repository['content_digest']}]}]},
-            'execution_evidence':{'outcome':'complete','receipt_id':'receipt','repository_evidence':repository},
+            'completion':{'all_required_criteria_proven':True,'criteria':[{'status':'PROVEN','observations':['fixture'],'execution_evidence':[{'receipt_id':'receipt','action_id':'action','report_id':'report','repository_revision':'revision','repository_evidence_digest':repository['content_digest']}]}]},
+            'execution_evidence':{'outcome':'complete','receipt_id':'receipt','report_id':'report','repository_evidence':repository},
             'pause_reason':{'schema_version':'forge-final-acceptance-requirement/v1'}}
         state['execution_history']=[deepcopy(state['execution_evidence'])]
         proven,final,refs=completion_facts(self.db,state)
         self.assertFalse(proven);self.assertEqual(final,'WAITING');self.assertEqual(refs[0]['kind'],'MISSION_COMPLETION')
+        for key in ('report_id','repository_revision','candidate_revision','receipt_id'):
+            changed=deepcopy(state);changed['completion']['criteria'][0]['execution_evidence'][0][key]='foreign'
+            self.assertEqual(completion_facts(self.db,changed)[1],'UNKNOWN')
+        changed=deepcopy(state);changed['completion']['criteria'][0]['execution_evidence'].append({'receipt_id':'foreign'})
+        self.assertEqual(completion_facts(self.db,changed)[1],'UNKNOWN')
         state['pause_reason']=None;state['status']='COMPLETED'
         self.assertFalse(completion_facts(self.db,state)[0])
         state['approval_record']={'approval_id':'missing'}

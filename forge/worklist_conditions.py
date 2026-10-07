@@ -26,12 +26,15 @@ def completion_facts(db, state: dict[str,Any] | None) -> tuple[bool,str,list[dic
     for criterion in completion['criteria']:
         references=criterion.get('execution_evidence')
         if (not isinstance(references,list) or not references
-                or not any(ref.get('receipt_id')==evidence.get('receipt_id')
+                or not all(any(ref.get('receipt_id')==evidence.get('receipt_id')
                            and ref.get('action_id')==(evidence.get('repository_evidence') or {}).get('action_id')
+                           and ref.get('report_id')==evidence.get('report_id')==(evidence.get('repository_evidence') or {}).get('report_id')
+                           and ref.get('repository_revision')==(evidence.get('repository_evidence') or {}).get('repository_revision')
+                           and ref.get('candidate_revision')==(evidence.get('repository_evidence') or {}).get('candidate_revision')
                            and (evidence.get('repository_evidence') or {}).get('mission_id')==state['mission_id']
                            and evidence.get('outcome')=='complete'
                            and ref.get('repository_evidence_digest')==(evidence.get('repository_evidence') or {}).get('content_digest')
-                           for ref in references for evidence in state['execution_history'])):
+                           for evidence in state['execution_history']) for ref in references)):
             return False,'UNKNOWN',[]
     refs=[{'kind':'MISSION_COMPLETION','subject_id':state['mission_id'],'digest':canonical_digest(completion)}]
     pause=state.get('pause_reason') or {}

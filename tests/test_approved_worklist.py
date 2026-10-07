@@ -39,6 +39,20 @@ class ApprovedWorklistTests(unittest.TestCase):
             value=self.service.decide('approved-set',expected_revision=value['revision'],role=role,actor=actor)
         return self.service.control('approved-set',expected_revision=value['revision'],operation='arm')
 
+    def test_candidate_parent_symlink_denied_before_read_or_command_open(self):
+        self.prepare()
+        parent=self.root/'governance';outside=self.root.parent/'redirected-governance'
+        parent.rename(outside);parent.symlink_to(outside,target_is_directory=True)
+        before=(outside/'candidates.sqlite').read_bytes()
+        instance=existing_instance(self.root)
+        with self.assertRaises(ValueError):projection(self.root,instance.instance_id,'approved-set','actor')
+        with self.assertRaises(ValueError):ApprovedWorklistService(self.fixture.runtime,self.fixture.lifecycle)
+        from forge.server_runtime import ForgeServerApplicationServices,ServerRuntimeState
+        services=ForgeServerApplicationServices(self.root,ServerRuntimeState(instance,'codex'))
+        with self.assertRaises(ValueError):services.workset_command('approved-set','hold',{'expected_revision':4})
+        self.assertEqual(before,(outside/'candidates.sqlite').read_bytes())
+        parent.unlink();outside.rename(parent)
+
     def test_scoped_projection_is_read_only_and_never_claims_activation(self):
         value=self.prepare();instance=existing_instance(self.root)
         before=sha256((self.root/'forge.db').read_bytes()).hexdigest()

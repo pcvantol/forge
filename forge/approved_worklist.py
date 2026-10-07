@@ -44,11 +44,23 @@ def timestamp(value: object) -> datetime:
     return result.astimezone(UTC)
 
 
+def candidate_source(data_root: Path) -> Path:
+    """Reject redirected aggregate ancestry before any SQLite open or attach."""
+    root=Path(data_root).absolute()
+    source=root/'governance'/'candidates.sqlite'
+    if any(path.is_symlink() for path in (root,source.parent,source)):
+        raise ValueError('Candidate aggregate ancestry must not contain symlinks')
+    if not source.is_file() or source.resolve().parent.parent!=root.resolve():
+        raise ValueError('Candidate read source unavailable')
+    return source
+
+
 class ApprovedWorklistService:
     """Single-runtime governed workset definition and release service."""
     def __init__(self, runtime, lifecycle: RecommendationLifecycleStore):
-        source=Path(lifecycle._connection.execute('PRAGMA database_list').fetchone()[2]).resolve()
-        if source!=(Path(runtime.data_root)/'governance'/'candidates.sqlite').resolve():
+        expected=candidate_source(Path(runtime.data_root))
+        source=Path(lifecycle._connection.execute('PRAGMA database_list').fetchone()[2]).absolute()
+        if source.resolve()!=expected.resolve():
             raise ValueError('worklist requires the canonical instance Candidate aggregate')
         self.runtime, self.lifecycle = runtime, lifecycle
         self.db = runtime.database._connection
@@ -187,8 +199,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
         value=json.loads(row[0]);definition=value['definition']
         if canonical_digest(definition)!=value['definition_digest'] or value['authority_digest']!=canonical_digest((value['definition_digest'],value['installation_id'],value['runtime_generation'])):raise ValueError('workset integrity failed')
         if value['installation_id']!=metadata['installation_id']:raise ValueError('foreign workset installation')
-        source=data_root/'governance'/'candidates.sqlite'
-        if source.is_symlink() or not source.is_file():raise ValueError('Candidate read source unavailable')
+        source=candidate_source(data_root)
         db.execute('ATTACH DATABASE ? AS candidates',(source.resolve().as_uri()+'?mode=ro',))
         for role,decision_id in value['decisions'].items():
             found=db.execute('SELECT document,digest FROM governance_decisions WHERE decision_id=?',(decision_id,)).fetchone()

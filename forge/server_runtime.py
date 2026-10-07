@@ -570,10 +570,11 @@ class ForgeServerApplicationServices:
                 return _result_document(result), recording_status == "RECORDED"
 
     def workset_command(self, workset_id, operation, document):
-        from .approved_worklist import ApprovedWorklistService
+        from .approved_worklist import ApprovedWorklistService,candidate_source
         from .lifecycle import RecommendationLifecycleStore
+        source=candidate_source(self.root)
         with InstalledDynamicMissionRuntime.open(str(self.root),provider_id=self.provider_id) as runtime:
-            with RecommendationLifecycleStore(self.root/'governance'/'candidates.sqlite') as lifecycle:
+            with RecommendationLifecycleStore(source) as lifecycle:
                 service=ApprovedWorklistService(runtime,lifecycle)
                 if operation=='propose':
                     if document.get('workset_id')!=workset_id:raise ValueError('workset identity mismatch')
