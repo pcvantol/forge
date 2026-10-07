@@ -49,6 +49,9 @@ EXPECTED_ROUTES = frozenset({
     ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
     ("GET", "/v1/worksets"),
     ("GET", "/v1/worksets/{workset_id}"),
+    ("GET", "/v1/workset-controls/{workset_id}"),
+    ("POST", "/v1/workset-controls/{workset_id}/commands"),
+    ("GET", "/v1/workset-controls/{workset_id}/commands/{operation_id}"),
     ("POST", "/v1/worksets/{workset_id}/propose"),
     ("POST", "/v1/worksets/{workset_id}/decide"),
     ("POST", "/v1/worksets/{workset_id}/arm"),
@@ -136,7 +139,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 39)
+        self.assertEqual(len(EXPECTED_ROUTES), 42)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -206,6 +209,11 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path.startswith('/v1/workset-controls/'):
+                                self.assertEqual(status,403)
+                                self.assertEqual(body['error']['code'],'CONTROL_SCOPE_DENIED')
+                                observed.add((method,path))
+                                continue
                             if path.startswith("/v1/reviews") or (method == "GET" and path.startswith("/v1/worksets")):
                                 self.assertEqual(status, 403)
                                 self.assertEqual(body["error"]["code"], "REVIEW_SCOPE_DENIED" if path.startswith("/v1/reviews") else "WORKLIST_SCOPE_DENIED")

@@ -155,36 +155,50 @@ class ApprovedWorklistService:
         if operation not in {'arm','disarm','hold','unhold','revoke'}:
             raise ValueError('unsupported workset control')
         with RuntimeServiceLock(self.runtime.database.path).acquire():
-            value=self._get(workset_id)
-            if type(expected_revision) is not int or expected_revision != value['revision']:
-                raise ValueError('stale workset revision')
-            # All mutating controls require the currently bound operator, never a read token.
-            context=self.runtime.repository.operators.context()
-            if not self.runtime.repository.operators.authorize(context):
-                raise PermissionError('current installed operator required')
-            if operation=='arm':
-                if value['runtime_generation']!=self.db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:raise ValueError('workset runtime generation changed')
-                if value['revoked'] or timestamp(value['definition']['expires_at']) <= datetime.now(UTC):
-                    raise ValueError('workset release authority is not current')
-                if set(value['decisions']) != {'business','architecture'}:
-                    raise ValueError('two exact workset decisions required')
-                for role,decision_id in value['decisions'].items():
-                    d=self.runtime.repository.decision(decision_id)
-                    if d['subject_revision'] != value['authority_digest'] or d['installation_id'] != self.installation_id or d['decision']!='approved':
-                        raise ValueError('workset decision lineage mismatch')
-                for member in value['definition']['members']:
-                    GovernedCandidateIntake(self.lifecycle,self.runtime,resolve_governance_profile(value['definition']['profile_id'])).approved_envelope(
-                        member['candidate_id'],ArchitectureMission.from_dict(member['mission']),
-                        ArchitecturePlanningEvidence.from_dict(member['planning']))
-                for row in self.db.execute('SELECT document FROM approved_worksets WHERE workset_id!=?',(workset_id,)):
-                    other=json.loads(row[0])
-                    if other['release']=='AUTO_WHEN_ELIGIBLE' and not other['revoked']:
-                        raise ValueError('another selected workset is armed')
-                value['release']='AUTO_WHEN_ELIGIBLE'
-            elif operation=='disarm': value['release']='DISARMED'
-            elif operation=='revoke': value['revoked']=True;value['release']='DISARMED'
-            else:value['held']=operation=='hold'
-            return self._save(value,expected_revision)
+            return self._control_locked(workset_id,expected_revision=expected_revision,operation=operation)
+
+    def _control_locked(self, workset_id, *, expected_revision, operation, hold_provenance=None,
+                        command_operation=None):
+        """Caller retains the canonical mutation lease across intent/effect/receipt."""
+        value=self._get(workset_id)
+        if type(expected_revision) is not int or expected_revision != value['revision']:
+            raise ValueError('stale workset revision')
+        context=self.runtime.repository.operators.context()
+        if not self.runtime.repository.operators.authorize(context):
+            raise PermissionError('current installed operator required')
+        if operation=='arm':
+            if value['runtime_generation']!=self.db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:raise ValueError('workset runtime generation changed')
+            if value['revoked'] or timestamp(value['definition']['expires_at']) <= datetime.now(UTC):
+                raise ValueError('workset release authority is not current')
+            if set(value['decisions']) != {'business','architecture'}:
+                raise ValueError('two exact workset decisions required')
+            for role,decision_id in value['decisions'].items():
+                d=self.runtime.repository.decision(decision_id)
+                if d['subject_revision'] != value['authority_digest'] or d['installation_id'] != self.installation_id or d['decision']!='approved':
+                    raise ValueError('workset decision lineage mismatch')
+            for member in value['definition']['members']:
+                GovernedCandidateIntake(self.lifecycle,self.runtime,resolve_governance_profile(value['definition']['profile_id'])).approved_envelope(
+                    member['candidate_id'],ArchitectureMission.from_dict(member['mission']),
+                    ArchitecturePlanningEvidence.from_dict(member['planning']))
+            for row in self.db.execute('SELECT document FROM approved_worksets WHERE workset_id!=?',(workset_id,)):
+                other=json.loads(row[0])
+                if other['release']=='AUTO_WHEN_ELIGIBLE' and not other['revoked']:
+                    raise ValueError('another selected workset is armed')
+            value['release']='AUTO_WHEN_ELIGIBLE'
+        elif operation=='disarm': value['release']='DISARMED'
+        elif operation=='revoke': value['revoked']=True;value['release']='DISARMED'
+        else:
+            value['held']=operation=='hold'
+            value['control_revision']=value.get('control_revision',0)+1
+            value['operator_hold']=(hold_provenance or {
+                'principal_reference':'local-owner','operation_id':f'owner:{expected_revision}',
+                'reason_code':'OWNER_REQUEST'}) if value['held'] else None
+            if value['operator_hold'] is not None:
+                value['operator_hold']['control_revision']=value['control_revision']
+        if command_operation is not None:
+            from .worklist_control import finish_operation
+            finish_operation(value,command_operation)
+        return self._save(value,expected_revision)
 
 
 
@@ -214,7 +228,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
         items=[]
         for order,member in enumerate(definition['members']):
             claim=value['claims'].get(member['candidate_id']);state=None
-            if claim is None:
+            if claim is None or claim.get('mission_id') is None:
                 allocation=db.execute('SELECT document FROM candidates.allocations WHERE candidate_id=?',(member['candidate_id'],)).fetchone()
                 if allocation:
                     allocated=json.loads(allocation[0])
@@ -260,7 +274,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             if value['runtime_generation']!=db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:reasons.append('RUNTIME_GENERATION_CHANGED')
             if value['revoked']:reasons.append('RELEASE_REVOKED')
             if timestamp(definition['expires_at'])<=datetime.now(UTC):reasons.append('RELEASE_EXPIRED')
-            if value['held']:reasons.append('WORKSET_HELD')
+            if value['held'] and binding is None:reasons.append('WORKSET_HELD')
             if value['release']!='AUTO_WHEN_ELIGIBLE':reasons.append('NOT_RELEASED')
             if set(value['decisions'])!={'business','architecture'}:reasons.append('WORKSET_UNAPPROVED')
             if claim and state is None:reasons.append('MISSION_STATE_UNAVAILABLE')
