@@ -47,6 +47,15 @@ EXPECTED_ROUTES = frozenset({
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
     ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
+    ("GET", "/v1/worksets"),
+    ("GET", "/v1/worksets/{workset_id}"),
+    ("POST", "/v1/worksets/{workset_id}/propose"),
+    ("POST", "/v1/worksets/{workset_id}/decide"),
+    ("POST", "/v1/worksets/{workset_id}/arm"),
+    ("POST", "/v1/worksets/{workset_id}/disarm"),
+    ("POST", "/v1/worksets/{workset_id}/hold"),
+    ("POST", "/v1/worksets/{workset_id}/unhold"),
+    ("POST", "/v1/worksets/{workset_id}/revoke"),
     ("GET", "/v1/reviews"),
     ("GET", "/v1/reviews/missions/{mission_id}"),
     ("POST", "/v1/reviews/missions/{mission_id}/decisions"),
@@ -54,6 +63,14 @@ EXPECTED_ROUTES = frozenset({
 })
 
 SERVICE_ROUTES = {
+    ("POST", "/v1/worksets/{workset_id}/propose"): "workset_command",
+    ("POST", "/v1/worksets/{workset_id}/decide"): "workset_command",
+    ("POST", "/v1/worksets/{workset_id}/arm"): "workset_command",
+    ("POST", "/v1/worksets/{workset_id}/disarm"): "workset_command",
+    ("POST", "/v1/worksets/{workset_id}/hold"): "workset_command",
+    ("POST", "/v1/worksets/{workset_id}/unhold"): "workset_command",
+    ("POST", "/v1/worksets/{workset_id}/revoke"): "workset_command",
+
     ("GET", "/v1/readiness"): "readiness",
     ("GET", "/v1/readiness/standalone"): "standalone_readiness",
     ("GET", "/v1/instance"): "instance",
@@ -86,7 +103,7 @@ READ_ROUTES = {
 def _concrete(path: str) -> str:
     return (path.replace("{project_id}", "qualified-project")
             .replace("{operation_id}", "qualified-operation")
-            .replace("{mission_id}", "MISSION-QUAL"))
+            .replace("{workset_id}", "qualified-workset").replace("{mission_id}", "MISSION-QUAL"))
 
 
 def _request(port: int, method: str, path: str, *, authorization: str | None) -> tuple[int, dict]:
@@ -119,7 +136,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 30)
+        self.assertEqual(len(EXPECTED_ROUTES), 39)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -160,7 +177,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
                         "detach_execution_host", "detach_execution_host_status",
                         "mission_document", "mission_start", "mission_reopen",
                         "mission_progression_status", "mission_progression_policy",
-                        "mission_progression_decide", "mission_archive_no_dispatch",
+                        "mission_progression_decide", "mission_archive_no_dispatch", "workset_command",
                     ):
                         mocked_services[name] = stack.enter_context(patch.object(
                             server.services, name, return_value={"service": name},
@@ -189,9 +206,9 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
-                            if path.startswith("/v1/reviews"):
+                            if path.startswith("/v1/reviews") or (method == "GET" and path.startswith("/v1/worksets")):
                                 self.assertEqual(status, 403)
-                                self.assertEqual(body["error"]["code"], "REVIEW_SCOPE_DENIED")
+                                self.assertEqual(body["error"]["code"], "REVIEW_SCOPE_DENIED" if path.startswith("/v1/reviews") else "WORKLIST_SCOPE_DENIED")
                                 observed.add((method, path))
                                 continue
                             self._assert_recognized(status, body)

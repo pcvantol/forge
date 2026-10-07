@@ -26,10 +26,25 @@
         "summary": "Read the installed Server's project-DAG HTTP capability subset",
         "description": "Authenticated capability support is not project-binding or execution readiness. This response describes only the existing project list and repository-scoped Mission/Action roadmap reads; project Mission attribution, capability graph and Candidate/Expected views remain unavailable.",
         "responses": {
-          "200": {"description": "Instance-bound read-only capability", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectDagCapability"}}}},
-          "401": {"description": "Authentication required"},
-          "409": {"description": "Installed instance is inconsistent"},
-          "503": {"description": "Selected instance root is unavailable"}
+          "200": {
+            "description": "Instance-bound read-only capability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDagCapability"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Installed instance is inconsistent"
+          },
+          "503": {
+            "description": "Selected instance root is unavailable"
+          }
         }
       }
     },
@@ -37,7 +52,14 @@
       "get": {
         "summary": "Read installed runtime status",
         "description": "A separately issued Workspace read bearer is limited to this GET and GET /v1/instance. Its 200 response includes workspace_read_scope; the exact typed response is workspace-status-read-v1.json#/$defs/status. The ordinary Server bearer remains a distinct administrator credential.",
-        "security": [{"bearerAuth": []}, {"workspaceReadBearer": []}],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "workspaceReadBearer": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Accepted JSON response"
@@ -45,7 +67,9 @@
           "401": {
             "description": "Authentication required"
           },
-          "403": {"description": "Workspace read bearer is outside its route scope"},
+          "403": {
+            "description": "Workspace read bearer is outside its route scope"
+          },
           "409": {
             "description": "Fail-closed application or runtime conflict"
           }
@@ -88,7 +112,14 @@
       "get": {
         "summary": "Read instance identity and deployment bindings",
         "description": "A separately issued Workspace read bearer is limited to this GET and GET /v1/status. Its 200 response includes workspace_read_scope; the exact typed response is workspace-status-read-v1.json#/$defs/instance. The ordinary Server bearer remains a distinct administrator credential.",
-        "security": [{"bearerAuth": []}, {"workspaceReadBearer": []}],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "workspaceReadBearer": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Accepted JSON response"
@@ -96,7 +127,9 @@
           "401": {
             "description": "Authentication required"
           },
-          "403": {"description": "Workspace read bearer is outside its route scope"},
+          "403": {
+            "description": "Workspace read bearer is outside its route scope"
+          },
           "409": {
             "description": "Fail-closed application or runtime conflict"
           }
@@ -411,16 +444,25 @@
         "summary": "Archive one exact quiescent historical no-dispatch Mission",
         "description": "Requires the trusted bound operator, owner programme authorization, a versioned credential-independent authenticated admin principal bound to the Runtime Instance, exact Runtime Instance identity and expected Mission revision. Preserves Mission, Action, Intent and planning lineage without completion, provider invocation, Host dispatch or target write.",
         "responses": {
-          "200": {"description": "Mission archived with immutable lifecycle audit"},
-          "401": {"description": "Authentication required"},
-          "409": {"description": "Authority, identity, revision, quiescence or integrity check failed"}
+          "200": {
+            "description": "Mission archived with immutable lifecycle audit"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Authority, identity, revision, quiescence or integrity check failed"
+          }
         },
         "parameters": [
           {
             "name": "mission_id",
             "in": "path",
             "required": true,
-            "schema": {"type": "string", "minLength": 1}
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "requestBody": {
@@ -430,12 +472,29 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["expected_instance_id", "expected_revision", "reason_code", "correlation_id"],
+                "required": [
+                  "expected_instance_id",
+                  "expected_revision",
+                  "reason_code",
+                  "correlation_id"
+                ],
                 "properties": {
-                  "expected_instance_id": {"type": "string", "minLength": 1},
-                  "expected_revision": {"type": "integer", "minimum": 1},
-                  "reason_code": {"type": "string", "minLength": 1},
-                  "correlation_id": {"type": "string", "minLength": 1}
+                  "expected_instance_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "expected_revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "reason_code": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "correlation_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
                 }
               }
             }
@@ -451,7 +510,9 @@
             "description": "Standalone service is ready for its declared non-EP scope",
             "content": {
               "application/json": {
-                "schema": {"$ref": "#/components/schemas/StandaloneReadiness"}
+                "schema": {
+                  "$ref": "#/components/schemas/StandaloneReadiness"
+                }
               }
             }
           },
@@ -475,7 +536,9 @@
             "description": "Exact durable local detach receipt",
             "content": {
               "application/json": {
-                "schema": {"$ref": "#/components/schemas/PeerDetachReceipt"}
+                "schema": {
+                  "$ref": "#/components/schemas/PeerDetachReceipt"
+                }
               }
             }
           },
@@ -514,8 +577,13 @@
         },
         "parameters": [
           {
-            "name": "operation_id", "in": "path", "required": true,
-            "schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            }
           }
         ]
       }
@@ -525,9 +593,22 @@
         "summary": "Read the configured project binding for this Forge instance",
         "description": "Read-only. Returns an empty list with UNCONFIGURED when no current binding exists; never creates a Project.",
         "responses": {
-          "200": {"description": "Configured project or explicit empty state", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectIndex"}}}},
-          "401": {"description": "Authentication required"},
-          "503": {"description": "Installed source or binding is unavailable"}
+          "200": {
+            "description": "Configured project or explicit empty state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectIndex"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "503": {
+            "description": "Installed source or binding is unavailable"
+          }
         }
       }
     },
@@ -535,51 +616,150 @@
       "get": {
         "summary": "Read the persisted Mission and Action DAG subset for one configured project",
         "description": "The repository scope reports exact active Mission IDs/count and NONE, SINGLE or UNSUPPORTED_MULTIPLE cardinality, plus per-Mission recorded-transition source times and freshness. Aggregate freshness is UNKNOWN when any Mission timeline is missing or malformed, and is never refreshed merely by reopening the runtime. These fields do not claim project membership or parallel execution. Capability, Candidate, Expected and cross-Mission project graph views remain unavailable. No peer call or Mission mutation occurs.",
-        "parameters": [{"name": "project_id", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"}}],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            }
+          }
+        ],
         "responses": {
-          "200": {"description": "Consistent installed Mission/Action snapshot", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProjectRoadmap"}}}},
-          "400": {"description": "Invalid project reference"},
-          "401": {"description": "Authentication required"},
-          "404": {"description": "Project is not the configured project"},
-          "409": {"description": "Stored Mission/Action graph is inconsistent"},
-          "503": {"description": "Project binding or bounded projection is unavailable"}
+          "200": {
+            "description": "Consistent installed Mission/Action snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRoadmap"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project reference"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Project is not the configured project"
+          },
+          "409": {
+            "description": "Stored Mission/Action graph is inconsistent"
+          },
+          "503": {
+            "description": "Project binding or bounded projection is unavailable"
+          }
         }
       }
     },
     "/v1/missions/{mission_id}/progression": {
       "get": {
         "summary": "Read the Mission progression policy and durable decision fence without effects",
-        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
         "responses": {
-          "200": {"description": "Current policy assignment and decision fence"},
-          "401": {"description": "Authentication required"},
-          "409": {"description": "Fail-closed application or runtime conflict"}
+          "200": {
+            "description": "Current policy assignment and decision fence"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
         }
       }
     },
     "/v1/missions/{mission_id}/progression-policy": {
       "post": {
         "summary": "Assign an approved Mission-bound progression policy",
-        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JsonObject"}}}},
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {"description": "Exact policy replay"},
-          "201": {"description": "Policy assigned"},
-          "401": {"description": "Authentication required"},
-          "409": {"description": "Conflicting, stale or unauthorized assignment"}
+          "200": {
+            "description": "Exact policy replay"
+          },
+          "201": {
+            "description": "Policy assigned"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Conflicting, stale or unauthorized assignment"
+          }
         }
       }
     },
     "/v1/missions/{mission_id}/progression-decisions": {
       "post": {
         "summary": "Record and apply one exact governed progression decision",
-        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JsonObject"}}}},
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {"description": "Exact decision replay"},
-          "201": {"description": "Decision recorded"},
-          "401": {"description": "Authentication required"},
-          "409": {"description": "Wrong, stale, unauthorized or concurrent decision"}
+          "200": {
+            "description": "Exact decision replay"
+          },
+          "201": {
+            "description": "Decision recorded"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Wrong, stale, unauthorized or concurrent decision"
+          }
         }
       }
     },
@@ -587,25 +767,73 @@
       "get": {
         "summary": "Read the explicitly scoped Workspace Mission review inbox",
         "description": "Requires the distinct owner-issued Workspace review bearer. An empty item list is complete only within its explicit Mission set, never globally.",
-        "security": [{"workspaceReviewBearer": []}],
+        "security": [
+          {
+            "workspaceReviewBearer": []
+          }
+        ],
         "responses": {
-          "200": {"description": "Current scoped review inbox", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/inbox"}}}},
-          "401": {"description": "Review grant absent, expired, revoked or invalid"},
-          "403": {"description": "Credential does not authorize the review route"},
-          "503": {"description": "Installed Mission readback unavailable"}
+          "200": {
+            "description": "Current scoped review inbox",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-review-inbox-v1.json#/$defs/inbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Review grant absent, expired, revoked or invalid"
+          },
+          "403": {
+            "description": "Credential does not authorize the review route"
+          },
+          "503": {
+            "description": "Installed Mission readback unavailable"
+          }
         }
       }
     },
     "/v1/reviews/missions/{mission_id}": {
       "get": {
         "summary": "Read one authorized Mission's current review requirement and safe evidence references",
-        "security": [{"workspaceReviewBearer": []}],
-        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "security": [
+          {
+            "workspaceReviewBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
         "responses": {
-          "200": {"description": "Current Mission review", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/item"}}}},
-          "401": {"description": "Review grant absent, expired, revoked or invalid"},
-          "403": {"description": "Mission is outside the grant"},
-          "503": {"description": "Installed Mission readback unavailable"}
+          "200": {
+            "description": "Current Mission review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-review-inbox-v1.json#/$defs/item"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Review grant absent, expired, revoked or invalid"
+          },
+          "403": {
+            "description": "Mission is outside the grant"
+          },
+          "503": {
+            "description": "Installed Mission readback unavailable"
+          }
         }
       }
     },
@@ -613,35 +841,396 @@
       "post": {
         "summary": "Record or replay one exact scoped progression decision",
         "description": "The operation ID is the canonical Forge decision ID. Actor, role and capability come only from the authenticated owner-issued grant. This is never Mission-end acceptance.",
-        "security": [{"workspaceReviewBearer": []}],
-        "parameters": [{"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}],
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/decision_request"}}}},
+        "security": [
+          {
+            "workspaceReviewBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "workspace-review-inbox-v1.json#/$defs/decision_request"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {"description": "Exact operation replay", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/decision_response"}}}},
-          "201": {"description": "Canonical operation recorded", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/decision_response"}}}},
-          "401": {"description": "Review grant absent, expired, revoked or invalid"},
-          "403": {"description": "Mission or current role is outside the grant"},
-          "409": {"description": "Stale or conflicting decision"},
-          "503": {"description": "Installed decision service unavailable"}
+          "200": {
+            "description": "Exact operation replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-review-inbox-v1.json#/$defs/decision_response"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Canonical operation recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-review-inbox-v1.json#/$defs/decision_response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Review grant absent, expired, revoked or invalid"
+          },
+          "403": {
+            "description": "Mission or current role is outside the grant"
+          },
+          "409": {
+            "description": "Stale or conflicting decision"
+          },
+          "503": {
+            "description": "Installed decision service unavailable"
+          }
         }
       }
     },
     "/v1/reviews/missions/{mission_id}/decisions/{operation_id}": {
       "get": {
         "summary": "Recover one same-principal canonical review operation and current fence",
-        "security": [{"workspaceReviewBearer": []}],
+        "security": [
+          {
+            "workspaceReviewBearer": []
+          }
+        ],
         "parameters": [
-          {"name": "mission_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}},
-          {"name": "operation_id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 1}}
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Durable operation and current Mission review", "content": {"application/json": {"schema": {"$ref": "workspace-review-inbox-v1.json#/$defs/operation_response"}}}},
-          "401": {"description": "Review grant absent, expired, revoked or invalid"},
-          "403": {"description": "Mission is outside the grant"},
-          "404": {"description": "Operation absent or belongs to another principal"},
-          "503": {"description": "Installed decision readback unavailable"}
+          "200": {
+            "description": "Durable operation and current Mission review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-review-inbox-v1.json#/$defs/operation_response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Review grant absent, expired, revoked or invalid"
+          },
+          "403": {
+            "description": "Mission is outside the grant"
+          },
+          "404": {
+            "description": "Operation absent or belongs to another principal"
+          },
+          "503": {
+            "description": "Installed decision readback unavailable"
+          }
         }
       }
+    },
+    "/v1/worksets": {
+      "get": {
+        "summary": "Read explicit approved workset scope",
+        "security": [
+          {
+            "workspaceWorklistBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scoped readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-v1.json#/$defs/scopes"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked grant"
+          },
+          "403": {
+            "description": "Outside explicit scope"
+          },
+          "503": {
+            "description": "Read source unavailable"
+          }
+        }
+      }
+    },
+    "/v1/worksets/{workset_id}": {
+      "get": {
+        "summary": "Read one consistent scoped workset snapshot",
+        "security": [
+          {
+            "workspaceWorklistBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scoped readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workspace-worklist-v1.json#/$defs/projection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked grant"
+          },
+          "403": {
+            "description": "Outside explicit scope"
+          },
+          "503": {
+            "description": "Read source unavailable"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/worksets/{workset_id}/propose": {
+      "post": {
+        "summary": "Guarded owner workset propose",
+        "responses": {
+          "200": {
+            "description": "Canonical operation readback"
+          },
+          "400": {
+            "description": "Invalid or stale request"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          },
+          "403": {
+            "description": "Current authority required"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/worksets/{workset_id}/decide": {
+      "post": {
+        "summary": "Guarded owner workset decide",
+        "responses": {
+          "200": {
+            "description": "Canonical operation readback"
+          },
+          "400": {
+            "description": "Invalid or stale request"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          },
+          "403": {
+            "description": "Current authority required"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/worksets/{workset_id}/arm": {
+      "post": {
+        "summary": "Guarded owner workset arm",
+        "responses": {
+          "200": {
+            "description": "Canonical operation readback"
+          },
+          "400": {
+            "description": "Invalid or stale request"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          },
+          "403": {
+            "description": "Current authority required"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/worksets/{workset_id}/disarm": {
+      "post": {
+        "summary": "Guarded owner workset disarm",
+        "responses": {
+          "200": {
+            "description": "Canonical operation readback"
+          },
+          "400": {
+            "description": "Invalid or stale request"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          },
+          "403": {
+            "description": "Current authority required"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/worksets/{workset_id}/hold": {
+      "post": {
+        "summary": "Guarded owner workset hold",
+        "responses": {
+          "200": {
+            "description": "Canonical operation readback"
+          },
+          "400": {
+            "description": "Invalid or stale request"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          },
+          "403": {
+            "description": "Current authority required"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/worksets/{workset_id}/unhold": {
+      "post": {
+        "summary": "Guarded owner workset unhold",
+        "responses": {
+          "200": {
+            "description": "Canonical operation readback"
+          },
+          "400": {
+            "description": "Invalid or stale request"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          },
+          "403": {
+            "description": "Current authority required"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/v1/worksets/{workset_id}/revoke": {
+      "post": {
+        "summary": "Guarded owner workset revoke",
+        "responses": {
+          "200": {
+            "description": "Canonical operation readback"
+          },
+          "400": {
+            "description": "Invalid or stale request"
+          },
+          "401": {
+            "description": "Owner authentication required"
+          },
+          "403": {
+            "description": "Current authority required"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "workset_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
     }
   },
   "components": {
@@ -659,103 +1248,372 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate owner-issued, revocable, expiring instance/principal/Mission/role-scoped review grant. Never an administrator or status read bearer."
+      },
+      "workspaceWorklistBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate explicit workset read capability; no status/review/admin rights."
       }
     },
     "schemas": {
       "ProjectDagCapability": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["api_version", "contract_version", "instance_id", "server_product_version", "capability_id", "support", "authentication", "project_scope", "adapter", "operations", "project_mission_attribution", "project_capability_graph", "candidate_and_expected_views", "read_only"],
+        "required": [
+          "api_version",
+          "contract_version",
+          "instance_id",
+          "server_product_version",
+          "capability_id",
+          "support",
+          "authentication",
+          "project_scope",
+          "adapter",
+          "operations",
+          "project_mission_attribution",
+          "project_capability_graph",
+          "candidate_and_expected_views",
+          "read_only"
+        ],
         "properties": {
-          "api_version": {"const": "1"},
-          "contract_version": {"const": "forge-project-dag-http-capability/v1"},
-          "instance_id": {"type": "string", "minLength": 1},
-          "server_product_version": {"type": "string", "minLength": 1},
-          "capability_id": {"const": "PROJECT_DAG_READ_V1"},
-          "support": {"const": "SUPPORTED_NOT_READINESS"},
-          "authentication": {"const": "INSTANCE_BEARER"},
-          "project_scope": {"const": "CONFIGURED_PROJECT_ID_ONLY"},
-          "adapter": {"const": "HTTP"},
-          "operations": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "object", "additionalProperties": false, "required": ["method", "path"], "properties": {"method": {"const": "GET"}, "path": {"enum": ["/v1/projects", "/v1/projects/{project_id}/roadmap"]}}}},
-          "project_mission_attribution": {"const": "UNAVAILABLE"},
-          "project_capability_graph": {"const": "UNAVAILABLE"},
-          "candidate_and_expected_views": {"const": "UNAVAILABLE"},
-          "read_only": {"const": true}
+          "api_version": {
+            "const": "1"
+          },
+          "contract_version": {
+            "const": "forge-project-dag-http-capability/v1"
+          },
+          "instance_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "server_product_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "capability_id": {
+            "const": "PROJECT_DAG_READ_V1"
+          },
+          "support": {
+            "const": "SUPPORTED_NOT_READINESS"
+          },
+          "authentication": {
+            "const": "INSTANCE_BEARER"
+          },
+          "project_scope": {
+            "const": "CONFIGURED_PROJECT_ID_ONLY"
+          },
+          "adapter": {
+            "const": "HTTP"
+          },
+          "operations": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "method",
+                "path"
+              ],
+              "properties": {
+                "method": {
+                  "const": "GET"
+                },
+                "path": {
+                  "enum": [
+                    "/v1/projects",
+                    "/v1/projects/{project_id}/roadmap"
+                  ]
+                }
+              }
+            }
+          },
+          "project_mission_attribution": {
+            "const": "UNAVAILABLE"
+          },
+          "project_capability_graph": {
+            "const": "UNAVAILABLE"
+          },
+          "candidate_and_expected_views": {
+            "const": "UNAVAILABLE"
+          },
+          "read_only": {
+            "const": true
+          }
         }
       },
       "ProjectIndex": {
-        "type": "object", "additionalProperties": false,
-        "required": ["api_version", "contract_version", "instance_id", "availability", "projects", "read_only"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "api_version",
+          "contract_version",
+          "instance_id",
+          "availability",
+          "projects",
+          "read_only"
+        ],
         "properties": {
-          "api_version": {"const": "1"},
-          "contract_version": {"const": "project-roadmap-read/v1"},
-          "instance_id": {"type": "string", "minLength": 1},
-          "availability": {"enum": ["AVAILABLE", "UNCONFIGURED"]},
-          "projects": {"type": "array", "maxItems": 1, "items": {"$ref": "#/components/schemas/ProjectBinding"}},
-          "read_only": {"const": true}
+          "api_version": {
+            "const": "1"
+          },
+          "contract_version": {
+            "const": "project-roadmap-read/v1"
+          },
+          "instance_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "availability": {
+            "enum": [
+              "AVAILABLE",
+              "UNCONFIGURED"
+            ]
+          },
+          "projects": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ProjectBinding"
+            }
+          },
+          "read_only": {
+            "const": true
+          }
         }
       },
       "ProjectBinding": {
-        "type": "object", "additionalProperties": false,
-        "required": ["project_id", "repository_id", "roadmap_url"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project_id",
+          "repository_id",
+          "roadmap_url"
+        ],
         "properties": {
-          "project_id": {"type": "string", "minLength": 1},
-          "repository_id": {"type": "string", "minLength": 1},
-          "roadmap_url": {"type": "string", "pattern": "^/v1/projects/[^/?#]+/roadmap$"}
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repository_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "roadmap_url": {
+            "type": "string",
+            "pattern": "^/v1/projects/[^/?#]+/roadmap$"
+          }
         }
       },
       "ProjectRoadmap": {
-        "type": "object", "additionalProperties": false,
-        "required": ["api_version", "contract_version", "instance_id", "project_id", "repository_id", "availability", "freshness", "source_observed_at", "graph_kind", "project_mission_attribution", "project_capability_graph", "candidate_and_expected_views", "repository_scope", "read_only"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "api_version",
+          "contract_version",
+          "instance_id",
+          "project_id",
+          "repository_id",
+          "availability",
+          "freshness",
+          "source_observed_at",
+          "graph_kind",
+          "project_mission_attribution",
+          "project_capability_graph",
+          "candidate_and_expected_views",
+          "repository_scope",
+          "read_only"
+        ],
         "properties": {
-          "api_version": {"const": "1"},
-          "contract_version": {"const": "project-roadmap-read/v1"},
-          "instance_id": {"type": "string", "minLength": 1},
-          "project_id": {"type": "string", "minLength": 1},
-          "repository_id": {"type": "string", "minLength": 1},
-          "availability": {"const": "AVAILABLE"},
-          "freshness": {"enum": ["CURRENT", "STALE", "UNKNOWN"]},
-          "source_observed_at": {"type": ["string", "null"], "format": "date-time"},
-          "graph_kind": {"const": "REPOSITORY_MISSION_ACTION_SUBSET"},
-          "project_mission_attribution": {"const": "UNAVAILABLE"},
-          "project_capability_graph": {"const": "UNAVAILABLE"},
-          "candidate_and_expected_views": {"const": "UNAVAILABLE"},
-          "repository_scope": {"$ref": "#/components/schemas/ProjectRoadmapRepositoryScope"},
-          "read_only": {"const": true}
+          "api_version": {
+            "const": "1"
+          },
+          "contract_version": {
+            "const": "project-roadmap-read/v1"
+          },
+          "instance_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repository_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "availability": {
+            "const": "AVAILABLE"
+          },
+          "freshness": {
+            "enum": [
+              "CURRENT",
+              "STALE",
+              "UNKNOWN"
+            ]
+          },
+          "source_observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "graph_kind": {
+            "const": "REPOSITORY_MISSION_ACTION_SUBSET"
+          },
+          "project_mission_attribution": {
+            "const": "UNAVAILABLE"
+          },
+          "project_capability_graph": {
+            "const": "UNAVAILABLE"
+          },
+          "candidate_and_expected_views": {
+            "const": "UNAVAILABLE"
+          },
+          "repository_scope": {
+            "$ref": "#/components/schemas/ProjectRoadmapRepositoryScope"
+          },
+          "read_only": {
+            "const": true
+          }
         }
       },
       "ProjectRoadmapRepositoryScope": {
-        "type": "object", "additionalProperties": false,
-        "required": ["repository_id", "active_mission_ids", "active_mission_count", "active_mission_multiplicity", "missions"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repository_id",
+          "active_mission_ids",
+          "active_mission_count",
+          "active_mission_multiplicity",
+          "missions"
+        ],
         "properties": {
-          "repository_id": {"type": "string", "minLength": 1},
-          "active_mission_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
-          "active_mission_count": {"type": "integer", "minimum": 0},
-          "active_mission_multiplicity": {"enum": ["NONE", "SINGLE", "UNSUPPORTED_MULTIPLE"]},
-          "missions": {"type": "array", "maxItems": 256, "items": {"$ref": "#/components/schemas/ProjectRoadmapMission"}}
+          "repository_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "active_mission_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "active_mission_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "active_mission_multiplicity": {
+            "enum": [
+              "NONE",
+              "SINGLE",
+              "UNSUPPORTED_MULTIPLE"
+            ]
+          },
+          "missions": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "$ref": "#/components/schemas/ProjectRoadmapMission"
+            }
+          }
         }
       },
       "ProjectRoadmapMission": {
-        "type": "object", "additionalProperties": false,
-        "required": ["mission_id", "mission_detail_url", "group", "status", "revision", "source_observed_at", "freshness", "actions"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mission_id",
+          "mission_detail_url",
+          "group",
+          "status",
+          "revision",
+          "source_observed_at",
+          "freshness",
+          "actions"
+        ],
         "properties": {
-          "mission_id": {"type": "string", "minLength": 1, "maxLength": 128},
-          "mission_detail_url": {"type": "string", "pattern": "^/v1/missions/[^/?#]+$"},
-          "group": {"enum": ["ACTIVE", "APPROVED_PENDING", "HISTORY"]},
-          "status": {"type": "string", "minLength": 1},
-          "revision": {"type": "integer", "minimum": 1},
-          "source_observed_at": {"type": ["string", "null"], "format": "date-time"},
-          "freshness": {"enum": ["CURRENT", "STALE", "UNKNOWN"]},
-          "actions": {"type": "array", "maxItems": 256, "items": {"$ref": "#/components/schemas/ProjectRoadmapAction"}}
+          "mission_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "mission_detail_url": {
+            "type": "string",
+            "pattern": "^/v1/missions/[^/?#]+$"
+          },
+          "group": {
+            "enum": [
+              "ACTIVE",
+              "APPROVED_PENDING",
+              "HISTORY"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source_observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "freshness": {
+            "enum": [
+              "CURRENT",
+              "STALE",
+              "UNKNOWN"
+            ]
+          },
+          "actions": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "$ref": "#/components/schemas/ProjectRoadmapAction"
+            }
+          }
         }
       },
       "ProjectRoadmapAction": {
-        "type": "object", "additionalProperties": false,
-        "required": ["id", "status", "dependencies"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "dependencies"
+        ],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
-          "status": {"enum": ["READY", "ACTIVE", "WAITING_FOR_RESULT", "COMPLETE", "BLOCKED", "FAILED"]},
-          "dependencies": {"type": "array", "items": {"type": "string", "minLength": 1}}
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "READY",
+              "ACTIVE",
+              "WAITING_FOR_RESULT",
+              "COMPLETE",
+              "BLOCKED",
+              "FAILED"
+            ]
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       },
       "JsonObject": {
@@ -765,50 +1623,156 @@
       "StandaloneReadiness": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["api_version", "contract_version", "ready", "service_ready", "execution_ready", "mode", "provider", "scheduler", "execution_host_peer", "instance_id"],
+        "required": [
+          "api_version",
+          "contract_version",
+          "ready",
+          "service_ready",
+          "execution_ready",
+          "mode",
+          "provider",
+          "scheduler",
+          "execution_host_peer",
+          "instance_id"
+        ],
         "properties": {
-          "api_version": {"const": "1"},
-          "contract_version": {"const": "forge-server-standalone-readiness/v1"},
-          "ready": {"type": "boolean"},
-          "service_ready": {"type": "boolean"},
-          "execution_ready": {"const": false},
-          "mode": {"enum": ["STANDALONE", "PEER_REQUIRED"]},
-          "provider": {"type": "object"},
-          "scheduler": {"type": "object"},
-          "execution_host_peer": {"type": "object"},
-          "instance_id": {"type": "string"}
+          "api_version": {
+            "const": "1"
+          },
+          "contract_version": {
+            "const": "forge-server-standalone-readiness/v1"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "service_ready": {
+            "type": "boolean"
+          },
+          "execution_ready": {
+            "const": false
+          },
+          "mode": {
+            "enum": [
+              "STANDALONE",
+              "PEER_REQUIRED"
+            ]
+          },
+          "provider": {
+            "type": "object"
+          },
+          "scheduler": {
+            "type": "object"
+          },
+          "execution_host_peer": {
+            "type": "object"
+          },
+          "instance_id": {
+            "type": "string"
+          }
         }
       },
       "PeerDetachRequest": {
-        "type": "object", "additionalProperties": false,
-        "required": ["operation_id", "instance_id", "expected_binding_id", "expected_revision", "expected_digest", "operator_id"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operation_id",
+          "instance_id",
+          "expected_binding_id",
+          "expected_revision",
+          "expected_digest",
+          "operator_id"
+        ],
         "properties": {
-          "operation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
-          "instance_id": {"type": "string", "minLength": 1},
-          "expected_binding_id": {"type": "string", "minLength": 1},
-          "expected_revision": {"type": "integer", "minimum": 1},
-          "expected_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-          "operator_id": {"type": "string", "minLength": 1}
+          "operation_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "instance_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_binding_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expected_digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "operator_id": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "PeerDetachReceipt": {
-        "type": "object", "additionalProperties": false,
-        "required": ["contract", "operation_id", "instance_id", "expected_binding_id", "expected_revision", "expected_digest", "operator_reference", "request_digest", "state", "local_peer_state", "remote_consumer_revoke", "next_configuration_revision", "completed_at", "receipt_digest"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contract",
+          "operation_id",
+          "instance_id",
+          "expected_binding_id",
+          "expected_revision",
+          "expected_digest",
+          "operator_reference",
+          "request_digest",
+          "state",
+          "local_peer_state",
+          "remote_consumer_revoke",
+          "next_configuration_revision",
+          "completed_at",
+          "receipt_digest"
+        ],
         "properties": {
-          "contract": {"const": "forge-ep-peer-detach/v1"},
-          "operation_id": {"type": "string"},
-          "instance_id": {"type": "string"},
-          "expected_binding_id": {"type": "string"},
-          "expected_revision": {"type": "integer", "minimum": 1},
-          "expected_digest": {"type": "string"},
-          "operator_reference": {"type": "string"},
-          "request_digest": {"type": "string"},
-          "state": {"const": "COMPLETE"},
-          "local_peer_state": {"const": "DETACHED"},
-          "remote_consumer_revoke": {"const": "NOT_ASSERTED"},
-          "next_configuration_revision": {"type": "integer", "minimum": 2},
-          "completed_at": {"type": "string"},
-          "receipt_digest": {"type": "string"}
+          "contract": {
+            "const": "forge-ep-peer-detach/v1"
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "instance_id": {
+            "type": "string"
+          },
+          "expected_binding_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expected_digest": {
+            "type": "string"
+          },
+          "operator_reference": {
+            "type": "string"
+          },
+          "request_digest": {
+            "type": "string"
+          },
+          "state": {
+            "const": "COMPLETE"
+          },
+          "local_peer_state": {
+            "const": "DETACHED"
+          },
+          "remote_consumer_revoke": {
+            "const": "NOT_ASSERTED"
+          },
+          "next_configuration_revision": {
+            "type": "integer",
+            "minimum": 2
+          },
+          "completed_at": {
+            "type": "string"
+          },
+          "receipt_digest": {
+            "type": "string"
+          }
         }
       }
     }

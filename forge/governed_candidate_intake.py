@@ -105,8 +105,8 @@ class GovernedCandidateIntake:
                                          planning.digest, planning.mission_spec_digest)
         return decision_id
 
-    def admit(self, candidate_id: str, mission_preview: ArchitectureMission,
-              planning: ArchitecturePlanningEvidence, *, occurred_at: str) -> MissionExecutionState:
+    def approved_envelope(self, candidate_id: str, mission_preview: ArchitectureMission,
+              planning: ArchitecturePlanningEvidence) -> MissionPlanningEvidenceEnvelope:
         candidate, revision = self._candidate(candidate_id)
         recommendation = self.lifecycle.get_recommendation(candidate.recommendation_id)
         if recommendation.status not in {RecommendationStatus.ARCHITECTURE_APPROVED,
@@ -128,6 +128,12 @@ class GovernedCandidateIntake:
         MissionIntake(self.runtime.states, self.runtime.clock).validate_canonical_mission_contract(
             mission_preview, envelope, self.runtime.repository,
         )
+        return envelope
+
+    def admit(self, candidate_id: str, mission_preview: ArchitectureMission,
+              planning: ArchitecturePlanningEvidence, *, occurred_at: str) -> MissionExecutionState:
+        candidate, revision = self._candidate(candidate_id)
+        envelope = self.approved_envelope(candidate_id, mission_preview, planning)
         allocation = self.lifecycle.allocation_for_recommendation(candidate.recommendation_id)
         if allocation is None:
             allocation = self.lifecycle.allocate(

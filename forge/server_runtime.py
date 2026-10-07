@@ -66,6 +66,8 @@ from .runtime.dynamic_mission import DynamicMissionRunResult, InstalledDynamicMi
 from .runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeServiceLock
 from .workspace_read_grant import WorkspaceReadGrant
 from .workspace_review_grant import ReviewPrincipal, WorkspaceReviewGrant
+from .workspace_worklist_grant import WorkspaceWorklistGrant
+from .approved_worklist import projection as worklist_projection
 from .workspace_review_inbox import (
     OPERATION_VERSION as REVIEW_OPERATION_CONTRACT,
     canonical_decision_request, scoped_item, scoped_list,
@@ -101,6 +103,15 @@ SERVER_ROUTE_INVENTORY = (
     ("POST", "/v1/missions/{mission_id}/controller/start"),
     ("POST", "/v1/missions/{mission_id}/controller/reopen"),
     ("POST", "/v1/missions/{mission_id}/lifecycle/archive-no-dispatch"),
+    ("GET", "/v1/worksets"),
+    ("GET", "/v1/worksets/{workset_id}"),
+    ("POST", "/v1/worksets/{workset_id}/propose"),
+    ("POST", "/v1/worksets/{workset_id}/decide"),
+    ("POST", "/v1/worksets/{workset_id}/arm"),
+    ("POST", "/v1/worksets/{workset_id}/disarm"),
+    ("POST", "/v1/worksets/{workset_id}/hold"),
+    ("POST", "/v1/worksets/{workset_id}/unhold"),
+    ("POST", "/v1/worksets/{workset_id}/revoke"),
     ("GET", "/v1/reviews"),
     ("GET", "/v1/reviews/missions/{mission_id}"),
     ("POST", "/v1/reviews/missions/{mission_id}/decisions"),
@@ -558,6 +569,21 @@ class ForgeServerApplicationServices:
                 )
                 return _result_document(result), recording_status == "RECORDED"
 
+    def workset_command(self, workset_id, operation, document):
+        from .approved_worklist import ApprovedWorklistService
+        from .lifecycle import RecommendationLifecycleStore
+        with InstalledDynamicMissionRuntime.open(str(self.root),provider_id=self.provider_id) as runtime:
+            with RecommendationLifecycleStore(self.root/'governance'/'candidates.sqlite') as lifecycle:
+                service=ApprovedWorklistService(runtime,lifecycle)
+                if operation=='propose':
+                    if document.get('workset_id')!=workset_id:raise ValueError('workset identity mismatch')
+                    return service.propose(dict(document))
+                if operation=='decide':
+                    if set(document)!={'expected_revision','role','actor'}:raise ValueError('invalid workset decision')
+                    return service.decide(workset_id,**document)
+                if set(document)!={'expected_revision'}:raise ValueError('invalid workset control')
+                return service.control(workset_id,operation=operation,**document)
+
     def workspace_review_list(self, principal: ReviewPrincipal) -> dict[str, Any]:
         with InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as runtime:
             return scoped_list(runtime, principal)
@@ -630,7 +656,8 @@ class ForgeServerAPI:
     def __init__(self, services: ForgeServerApplicationServices, bearer_credential: str,
                  *, root_identity: RootIdentity | None = None,
                  read_grant: WorkspaceReadGrant | None = None,
-                 review_grant: WorkspaceReviewGrant | None = None) -> None:
+                 review_grant: WorkspaceReviewGrant | None = None,
+                 worklist_grant: WorkspaceWorklistGrant | None = None) -> None:
         if not bearer_credential:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
@@ -640,6 +667,7 @@ class ForgeServerAPI:
         self.root_identity = root_identity or RootIdentity(services.root)
         self.read_grant = read_grant
         self.review_grant = review_grant
+        self.worklist_grant = worklist_grant
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
 
     @staticmethod
@@ -665,6 +693,8 @@ class ForgeServerAPI:
             return "WORKSPACE_READ"
         if self.review_grant is not None and self.review_grant.authenticate(authorization):
             return "WORKSPACE_REVIEW"
+        if self.worklist_grant is not None and self.worklist_grant.authenticate(authorization):
+            return "WORKSPACE_WORKLIST"
         return None
 
     def _admin_principal_reference(self, authorization: str | None) -> str:
@@ -677,6 +707,24 @@ class ForgeServerAPI:
         return APIResponse(403, {"api_version": SERVER_API_VERSION, "error": {
             "code": "READ_SCOPE_DENIED", "message": "Read grant does not authorize this route",
         }}, ForgeServerAPI._headers())
+
+    def _workspace_worklist(self, method, path, authorization):
+        principal = self.worklist_grant.authenticate(authorization) if self.worklist_grant else None
+        if principal is None: return self._authentication_required()
+        if method=='GET' and path=='/v1/worksets':
+            return APIResponse(200,{'contract_version':'forge-workspace-worklist-scopes/v1',
+                'instance_id':principal.instance_id,'principal_id':principal.principal_id,
+                'workset_ids':list(principal.workset_ids),'read_only':True},self._headers())
+        parts = path.split('/')
+        if method != 'GET' or len(parts) != 4 or parts[:3] != ['', 'v1', 'worksets'] or parts[3] not in principal.workset_ids:
+            return APIResponse(403, {'error':{'code':'WORKLIST_SCOPE_DENIED'}}, self._headers())
+        try:
+            value=worklist_projection(self.services.root,principal.instance_id,parts[3],principal.principal_id)
+            return APIResponse(200,value,self._headers())
+        except PermissionError:
+            return APIResponse(403,{'error':{'code':'WORKLIST_SCOPE_DENIED'}},self._headers())
+        except (ValueError,OSError,sqlite3.Error,RuntimeError):
+            return APIResponse(503,{'error':{'code':'WORKLIST_SOURCE_UNAVAILABLE'}},self._headers())
 
     def _workspace_read(self, method: str, path: str) -> APIResponse:
         if method != "GET" or path not in {"/v1/instance", "/v1/status"}:
@@ -782,10 +830,14 @@ class ForgeServerAPI:
             return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
             }}, headers)
+        if kind == "WORKSPACE_WORKLIST":
+            return self._workspace_worklist(method,path,authorization)
         if kind == "WORKSPACE_READ":
             return self._workspace_read(method, path)
         if kind == "WORKSPACE_REVIEW":
             return self._workspace_review(method, path, authorization, body)
+        if method=="GET" and (path=="/v1/worksets" or path.startswith("/v1/worksets/")):
+            return APIResponse(403,{"error":{"code":"WORKLIST_SCOPE_DENIED"}},headers)
         if path == "/v1/reviews" or path.startswith("/v1/reviews/"):
             return self._review_scope_denied()
         if path == "/v1/projects" or path.startswith("/v1/projects/"):
@@ -857,6 +909,10 @@ class ForgeServerAPI:
         self, path: str, body: Mapping[str, Any], headers: dict[str, str], *,
         authenticated_principal_reference: str,
     ) -> APIResponse | None:
+        if path.startswith('/v1/worksets/'):
+            parts=path.split('/')
+            if len(parts)==5:
+                return APIResponse(200,self.services.workset_command(parts[3],parts[4],body),headers)
         if path == "/v1/provider-context":
             return APIResponse(200, self.services.configure_provider_context(body), headers)
         if path == "/v1/execution-host/configure":
@@ -1047,7 +1103,8 @@ class ForgeServerRuntime:
         read_grant = WorkspaceReadGrant(self.root, self.instance.instance_id, grant_path)
         review_grant = WorkspaceReviewGrant(self.root, self.instance.instance_id)
         self.api = ForgeServerAPI(self.services, self._credential, root_identity=self.root_identity,
-                                  read_grant=read_grant, review_grant=review_grant)
+                                  read_grant=read_grant, review_grant=review_grant,
+                                  worklist_grant=WorkspaceWorklistGrant(self.root,self.instance.instance_id))
         self.server = make_server(host, port, self.api)
         address, actual_port = self.server.server_address
         self.state.update(listener={"host": address, "port": actual_port}, lifecycle="STARTING")
