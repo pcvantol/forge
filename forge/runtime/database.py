@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 43
+RUNTIME_SCHEMA_VERSION = 44
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -30,7 +30,7 @@ _REQUIRED_METADATA = frozenset((
     "database_location", "last_access_at", "status", "instance_version", "initialization_version",
 ))
 _TABLES = frozenset((
-    "mission_state", "mission_action_slot_snapshots", "mission_action_execution_slots", "mission_action_intent_revisions", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
+    "approved_worksets", "mission_state", "mission_action_slot_snapshots", "mission_action_execution_slots", "mission_action_intent_revisions", "mission_runtime_projections", "execution_context_snapshots", "architecture_reviews", "mission_recommendations",
     "decision_evidence", "execution_receipts", "planning_state", "bootstrap_portfolio_state", "mission_lifecycle_events",
     "dispatcher_state", "runtime_metadata",
     "delegation_requests", "integration_evidence", "mission_id_allocations", "mission_intake_evidence",
@@ -53,6 +53,8 @@ def _tables_for_schema() -> frozenset[str]:
         tables = tables - {"mission_action_execution_slots"}
     if RUNTIME_SCHEMA_VERSION < 43:
         tables = tables - {"mission_action_intent_revisions"}
+    if RUNTIME_SCHEMA_VERSION < 44:
+        tables = tables - {"approved_worksets"}
     return tables
 _OPERATIONAL_RESET_TABLES = frozenset((
     "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
@@ -2075,6 +2077,19 @@ class RuntimeDatabase:
             except Exception:
                 self._connection.rollback()
                 raise
+        elif version == 43:
+            active = self._connection.execute("SELECT active_operation_id FROM operational_reset_state WHERE singleton=1").fetchone()
+            if active is not None and active[0] is not None:
+                raise RuntimeMaintenanceActive("cannot migrate during operational reset maintenance")
+            with self._connection:
+                self._connection.execute("CREATE TABLE IF NOT EXISTS approved_worksets (workset_id TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(revision>0), document TEXT NOT NULL)")
+                columns = self._connection.execute("PRAGMA table_info(approved_worksets)").fetchall()
+                if tuple(row[1] for row in columns) != ("workset_id", "revision", "document") or columns[0][5] != 1:
+                    raise RuntimeIntegrityError("approved workset storage shape is invalid")
+                for operation in ("INSERT", "UPDATE", "DELETE"):
+                    self._connection.execute(f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_approved_worksets_{operation.lower()} BEFORE {operation} ON approved_worksets WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END")
+                self._set_metadata({"schema_version":"44", "migration_version":"44", "last_migration":"44", "forge_version":forge_version})
+                self._connection.execute("PRAGMA user_version=44")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 

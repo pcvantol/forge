@@ -58,6 +58,7 @@ TABLE_CLASSIFICATION: Mapping[str, str] = {
     "governance_authority": "SECURITY_AND_AUTHORITY_LEDGER",
     "governance_capability_grants": "SECURITY_AND_AUTHORITY_LEDGER",
     "governance_decisions": "SECURITY_AND_AUTHORITY_LEDGER",
+    "approved_worksets": "SECURITY_AND_AUTHORITY_LEDGER",
     "planning_provider_security_audit": "SECURITY_AND_AUTHORITY_LEDGER",
     "planning_provider_external_session_audit": "SECURITY_AND_AUTHORITY_LEDGER",
     "planning_provider_generation_permits": "SECURITY_AND_AUTHORITY_LEDGER",
@@ -152,6 +153,8 @@ PURGE_ORDER = (
 
 EXTERNAL_CLASSIFICATION: Mapping[str, str] = {
     "instance": "INSTALLATION_AND_CONFIGURATION",
+    "governance": "INSTALLATION_AND_CONFIGURATION",
+    "credentials": "INSTALLATION_AND_CONFIGURATION",
     "artifacts": "OPERATIONAL_HISTORY",
     "journals": "OPERATIONAL_HISTORY",
     "logs": "OPERATIONAL_HISTORY",

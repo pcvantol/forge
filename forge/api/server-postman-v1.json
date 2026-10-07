@@ -39,8 +39,14 @@
         "header": [],
         "url": {
           "raw": "{{baseUrl}}/v1/project-dag/capability",
-          "host": ["{{baseUrl}}"],
-          "path": ["v1", "project-dag", "capability"]
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "project-dag",
+            "capability"
+          ]
         }
       }
     },
@@ -551,8 +557,13 @@
         "header": [],
         "url": {
           "raw": "{{baseUrl}}/v1/projects",
-          "host": ["{{baseUrl}}"],
-          "path": ["v1", "projects"]
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "projects"
+          ]
         }
       }
     },
@@ -563,38 +574,361 @@
         "header": [],
         "url": {
           "raw": "{{baseUrl}}/v1/projects/{{projectId}}/roadmap",
-          "host": ["{{baseUrl}}"],
-          "path": ["v1", "projects", "{{projectId}}", "roadmap"]
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "projects",
+            "{{projectId}}",
+            "roadmap"
+          ]
         }
       }
     },
     {
       "name": "Read Mission progression fence",
-      "request": {"method": "GET", "header": [], "url": {"raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression", "host": ["{{baseUrl}}"], "path": ["v1", "missions", "{{missionId}}", "progression"]}}
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "missions",
+            "{{missionId}}",
+            "progression"
+          ]
+        }
+      }
     },
     {
       "name": "Assign Mission progression policy",
-      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression-policy", "host": ["{{baseUrl}}"], "path": ["v1", "missions", "{{missionId}}", "progression-policy"]}, "body": {"mode": "raw", "raw": "{}", "options": {"raw": {"language": "json"}}}}
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression-policy",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "missions",
+            "{{missionId}}",
+            "progression-policy"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
     },
     {
       "name": "Record Mission progression decision",
-      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression-decisions", "host": ["{{baseUrl}}"], "path": ["v1", "missions", "{{missionId}}", "progression-decisions"]}, "body": {"mode": "raw", "raw": "{}", "options": {"raw": {"language": "json"}}}}
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/missions/{{missionId}}/progression-decisions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "missions",
+            "{{missionId}}",
+            "progression-decisions"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
     },
     {
       "name": "Read scoped Workspace review inbox",
-      "request": {"method": "GET", "header": [], "url": {"raw": "{{baseUrl}}/v1/reviews", "host": ["{{baseUrl}}"], "path": ["v1", "reviews"]}}
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/reviews",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "reviews"
+          ]
+        }
+      }
     },
     {
       "name": "Read scoped Workspace Mission review",
-      "request": {"method": "GET", "header": [], "url": {"raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}", "host": ["{{baseUrl}}"], "path": ["v1", "reviews", "missions", "{{missionId}}"]}}
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "reviews",
+            "missions",
+            "{{missionId}}"
+          ]
+        }
+      }
     },
     {
       "name": "Record exact Workspace Mission review decision",
-      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}/decisions", "host": ["{{baseUrl}}"], "path": ["v1", "reviews", "missions", "{{missionId}}", "decisions"]}, "body": {"mode": "raw", "raw": "{}", "options": {"raw": {"language": "json"}}}}
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}/decisions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "reviews",
+            "missions",
+            "{{missionId}}",
+            "decisions"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
     },
     {
       "name": "Recover exact Workspace Mission review operation",
-      "request": {"method": "GET", "header": [], "url": {"raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}/decisions/{operation_id}", "host": ["{{baseUrl}}"], "path": ["v1", "reviews", "missions", "{{missionId}}", "decisions", "{operation_id}"]}}
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/reviews/missions/{{missionId}}/decisions/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "reviews",
+            "missions",
+            "{{missionId}}",
+            "decisions",
+            "{operation_id}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /v1/worksets",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /v1/worksets/{workset_id}",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets/{workset_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets",
+            "{workset_id}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/worksets/{workset_id}/propose",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets/{workset_id}/propose",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets",
+            "{workset_id}",
+            "propose"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/worksets/{workset_id}/decide",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets/{workset_id}/decide",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets",
+            "{workset_id}",
+            "decide"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/worksets/{workset_id}/arm",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets/{workset_id}/arm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets",
+            "{workset_id}",
+            "arm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/worksets/{workset_id}/disarm",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets/{workset_id}/disarm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets",
+            "{workset_id}",
+            "disarm"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/worksets/{workset_id}/hold",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets/{workset_id}/hold",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets",
+            "{workset_id}",
+            "hold"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/worksets/{workset_id}/unhold",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets/{workset_id}/unhold",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets",
+            "{workset_id}",
+            "unhold"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/worksets/{workset_id}/revoke",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/worksets/{workset_id}/revoke",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "worksets",
+            "{workset_id}",
+            "revoke"
+          ]
+        }
+      }
     }
   ]
 }

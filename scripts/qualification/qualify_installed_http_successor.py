@@ -893,7 +893,7 @@ def _prepare(root: Path, scenario: str, endpoint: str, *, start: bool = True,
         fixture._write(root / "effect-scenario.private.json", {"scenario": scenario})
     with ExitStack() as stack:
         runtime = _open(root, stack, effect_scenario=(scenario if scenario in _EFFECT_SCENARIOS else ""))
-        with RecommendationLifecycleStore(root / "governance" / "lifecycle.sqlite") as lifecycle:
+        with RecommendationLifecycleStore(root / "runtime" / "governance" / "candidates.sqlite") as lifecycle:
             candidate, bridge, mission_preview, planning = _candidate_fixture(
                 lifecycle, runtime, maximum_actions=1 if scenario == "budget-exhausted" else 3,
                 effect_scenario=(scenario if scenario in _EFFECT_SCENARIOS else ""),
@@ -1088,7 +1088,7 @@ def _governance_phase(root: Path, case: str, phase: str, endpoint: str) -> None:
         _configure(root, endpoint)
     with ExitStack() as stack:
         runtime = _open(root, stack)
-        with RecommendationLifecycleStore(root / "governance" / "lifecycle.sqlite") as lifecycle:
+        with RecommendationLifecycleStore(root / "runtime" / "governance" / "candidates.sqlite") as lifecycle:
             if phase == "governance-first":
                 candidate, bridge, preview, planning = _candidate_fixture(lifecycle, runtime)
                 preview, prior_denial = _stage_governance_case(
@@ -1125,7 +1125,7 @@ def _scope_transition_phase(root: Path, runtime: InstalledDynamicMissionRuntime,
         raise RuntimeError("the previously completed Mission or allowances changed")
     _, new_effect = _EFFECT_SCOPE_CASES[scenario]
     if phase in {"scope-denied", "new-scope-prepare"}:
-        with RecommendationLifecycleStore(root / "governance" / "lifecycle.sqlite") as lifecycle:
+        with RecommendationLifecycleStore(root / "runtime" / "governance" / "candidates.sqlite") as lifecycle:
             bridge = GovernedCandidateIntake(
                 lifecycle, runtime, resolve_governance_profile(GOVERNANCE_PROFILE))
             proposed = replace(ArchitectureMission.from_dict(original["mission"]),
@@ -2171,7 +2171,7 @@ def _effect_scenario(root: Path, scenario: str, wheel: Path) -> dict:
             "original_allowances_preserved": scope_transition}
 
 
-def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
+def _scenario(root: Path, scenario: str, wheel: Path, *, observer=None) -> dict:
     if scenario in _EFFECT_SCENARIOS:
         return _effect_scenario(root, scenario, wheel)
     root.mkdir()
@@ -2439,6 +2439,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
                         "delayed", "pre-send-reopen",
                         "host-recovery", "failed-recovery", "ambiguous-recovered"}:
             fixture._write(root / "final-before-accept.state.private.json", final)
+            if observer is not None:observer(root,"final-pending",final)
             accepted = _run_phase(root, scenario, "accept", server.base_url, wheel)
             replayed = _run_phase(root, scenario, "accept-replay", server.base_url, wheel)
             assert accepted == replayed
@@ -2446,6 +2447,7 @@ def _scenario(root: Path, scenario: str, wheel: Path) -> dict:
             assert accepted["revision"] == final["revision"] + 1
             assert accepted["approval_record"]["decision_reference"] == final["pause_reason"]["requirement_id"]
             final = accepted
+            if observer is not None:observer(root,"accepted",final)
         readback = _run_phase(root, scenario, "readback", server.base_url, wheel)
         assert readback == final
         if scenario in {"partial", "post-assessment-reopen", "single", "effect-declaration-legacy",

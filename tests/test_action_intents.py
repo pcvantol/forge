@@ -47,7 +47,7 @@ class ActionIntentTests(unittest.TestCase):
 
     def test_materialize_bind_independently_replay_and_restart(self) -> None:
         initial = self.database.materialize_action_intents(MISSION_ID)
-        self.assertEqual(RUNTIME_SCHEMA_VERSION, 43)
+        self.assertEqual(RUNTIME_SCHEMA_VERSION, 44)
         self.assertEqual([item["action_id"] for item in initial["actions"]],
                          ["ACTION-A", "ACTION-B", "ACTION-Q"])
         self.assertEqual([item["target"]["repository_id"] for item in initial["actions"]],
@@ -176,7 +176,7 @@ class ActionIntentTests(unittest.TestCase):
             connection.execute("PRAGMA user_version=42")
         self.database = RuntimeBootstrap(data_root=self.root, forge_version="test").open()
         self.assertEqual(self.database.get_document("mission_state", MISSION_ID), before)
-        self.assertEqual(self.database.metadata["schema_version"], "43")
+        self.assertEqual(self.database.metadata["schema_version"], "44")
         self.assertEqual(self.database.read_action_intents(MISSION_ID)["actions"], [])
         self.assertEqual(len(self.database.materialize_action_intents(MISSION_ID)["actions"]), 3)
 

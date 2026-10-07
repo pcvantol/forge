@@ -61,6 +61,33 @@ jobs:
             ${{ runner.temp }}/forge-http-successor/installed-http-successor.public.json
             ${{ runner.temp }}/forge-fci-failure-gate/installed-fci-failure-gate.public.json
           if-no-files-found: ignore
+      - name: Approved worklist read producer (isolated)
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          wheel=("$RUNNER_TEMP"/forge-wheel/forge_autonomy-*.whl)
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/forge-installed/bin/python" -I \
+            "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_worklist_read.py" \
+            --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
+            --output-dir "$RUNNER_TEMP/forge-worklist-read"
+          set +e
+          "$RUNNER_TEMP/forge-installed/bin/python" -I \
+            "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_worklist_read.py" \
+            --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
+            --output-dir "$RUNNER_TEMP/forge-worklist-read-failure" --failure-control
+          failure_exit=$?
+          set -e
+          test "$failure_exit" -eq 1
+          "$RUNNER_TEMP/forge-installed/bin/python" -I -c 'import json,pathlib; d=json.loads(pathlib.Path("forge-worklist-read-failure/installed-worklist-read.public.json").read_text()); assert d["result"] == "FAIL" and d["failure_type"] == "AssertionError" and d["failure_stage"] == "positive-read" and d["observed_read_status"] == 401 and d["external_fault"] == "revoked-positive-read-credential"'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: forge-installed-worklist-read-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/forge-worklist-read/installed-worklist-read.public.json
+            ${{ runner.temp }}/forge-worklist-read-failure/installed-worklist-read.public.json
+          if-no-files-found: ignore
       - name: Qualify installed Action authority boundary
         run: |
           set -euo pipefail
