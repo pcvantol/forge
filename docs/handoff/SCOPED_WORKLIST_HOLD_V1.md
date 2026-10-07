@@ -118,3 +118,15 @@ paid provider/operational activation/signing/reset/Mission3/target GitHub writes
 public release/full PRM/IAM family claim or automatic next assignment.
 TDE observe workflow success and actual policy assessment remain separate.
 Existing ordinary repair/run limits and prior consumed budgets remain intact.
+
+### Receipt-integrity review correction
+
+Independent Quality/Security at8bf0241 both identified rehashed inconsistent
+original effects as one P2. The same assignment repairs it before delivery:
+closed intent/receipt/effect structure, original intent/effect revision joins,
+constant outcome/boundary, exact hold/unhold target/provenance, original
+canonical admission bindings and typed observation are checked on GET/replay.
+Fourteen coherent corrupted-proof variants exercise real HTTP/store503 with
+no command mutation and exact disposable document restoration. Valid historical
+receipts remain immutable and separate from current state. Earlier FAIL reviews
+are retained; corrected exact-head reviews and delivery gates remain required.

@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 import json
 import sqlite3
-from .approved_worklist import ApprovedWorklistService, candidate_source, identifier, projection
+from .approved_worklist import ApprovedWorklistService, candidate_source, identifier, projection, timestamp
 from .models.criterion_observation import canonical_digest
 from .operations_read_api import InstalledOperationsReadService
 from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
@@ -89,32 +89,80 @@ def finish_operation(value, operation):
              'request':request,'request_digest':canonical_digest(request),'outcome':'APPLIED',
              'effect':state,'only_target_hold_removed':request['hold_operation_id'] if request['intent']=='unhold' else None}
     stored=value['control_operations'][request['operation_id']]
-    stored['state']='APPLIED';stored['receipt']=receipt;stored['receipt_digest']=canonical_digest(receipt)
+    stored['state']='APPLIED';stored['admission_bindings']=operation['admission_bindings']
+    stored['receipt']=receipt;stored['receipt_digest']=canonical_digest(receipt)
+
+def _validated_receipt(value, stored, request, principal):
+    receipt=stored['receipt'];effect=receipt['effect']
+    fields={'contract_version','operation_id','principal_id','grant_id','request','request_digest','outcome','effect','only_target_hold_removed'}
+    effect_fields={'instance_id','workset_id','definition_revision','workset_revision','control_revision','held','hold',
+                   'hold_provenance','admitted_mission_ids','boundary','ongoing_work_cancelled','observed_at'}
+    if (not isinstance(receipt,dict) or set(receipt)!=fields or receipt['contract_version']!=RECEIPT
+            or receipt['outcome']!='APPLIED' or not isinstance(effect,dict) or set(effect)!=effect_fields
+            or receipt['request']!=request or receipt['request_digest']!=stored['request_digest']
+            or receipt['operation_id']!=request['operation_id'] or receipt['grant_id']!=principal.grant_id
+            or receipt['principal_id']!=principal.principal_id or effect['instance_id']!=principal.instance_id
+            or effect['workset_id']!=request['workset_id'] or effect['definition_revision']!=request['definition_revision']):
+        raise RuntimeError('receipt shape or authority binding failed')
+    if (type(effect['workset_revision']) is not int or effect['workset_revision']!=stored['intent_revision']+1
+            or type(effect['control_revision']) is not int or effect['control_revision']!=stored['control_revision_before']+1
+            or effect['held'] is not (request['intent']=='hold') or effect['boundary']!='FUTURE_ADMISSION_ONLY'
+            or effect['ongoing_work_cancelled'] is not False):
+        raise RuntimeError('receipt original effect or revision failed')
+    expected_hold=({'operation_id':request['operation_id'],'control_revision':effect['control_revision'],
+                    'reason_code':request['reason_code'],'owned_by_principal':True} if request['intent']=='hold' else None)
+    if (effect['hold']!=expected_hold or (expected_hold is not None
+            and (type(effect['hold'].get('owned_by_principal')) is not bool
+                 or type(effect['hold'].get('control_revision')) is not int))
+            or effect['hold_provenance']!=('RECORDED' if expected_hold else 'NONE')
+            or receipt['only_target_hold_removed']!=request['hold_operation_id']):
+        raise RuntimeError('receipt hold provenance failed')
+    if not isinstance(effect['observed_at'],str) or len(effect['observed_at'])>64:raise RuntimeError('invalid effect observation')
+    timestamp(effect['observed_at'])
+    references=stored['admission_bindings'];members={m['candidate_id']:m for m in value['definition']['members']}
+    if not isinstance(references,list) or len(references)>len(members):raise RuntimeError('invalid original admission bindings')
+    ids=[];seen=set()
+    for ref in references:
+        if (not isinstance(ref,dict) or set(ref)!={'kind','candidate_id','subject_revision','mission_id','installation_id','envelope_digest'}
+                or ref['kind']!='CANONICAL_CANDIDATE_INTAKE' or ref['candidate_id'] not in members
+                or ref['candidate_id'] in seen or ref['subject_revision']!=members[ref['candidate_id']]['subject_revision']
+                or ref['installation_id']!=value['installation_id']):raise RuntimeError('foreign original admission binding')
+        identifier(ref['mission_id']);canonical_request({**request,'definition_revision':ref['envelope_digest']})
+        ids.append(ref['mission_id']);seen.add(ref['candidate_id'])
+    if (not isinstance(effect['admitted_mission_ids'],list) or effect['admitted_mission_ids']!=sorted(ids)
+            or len(set(ids))!=len(ids)):raise RuntimeError('receipt original admission set failed')
+
 
 def _operation(value, operation_id, principal):
     stored=value.get('control_operations',{}).get(operation_id)
     if stored is None:return None
     if stored['principal_reference']!=principal.reference:
         raise PermissionError('command belongs to another grant principal')
-    try:request=canonical_request(stored['request'])
-    except ValueError as error:raise RuntimeError('invalid persisted intent') from error
-    if (stored['request_digest']!=canonical_digest(request) or request['operation_id']!=operation_id
-            or request['instance_id']!=principal.instance_id
-            or request['workset_id']!=value['definition']['workset_id']
-            or request['definition_revision']!=value['definition_digest']):
-        raise RuntimeError('intent integrity failed')
-    if stored['state'] not in {'PENDING','APPLIED'}:raise RuntimeError('invalid intent state')
-    if stored['state']=='APPLIED' and stored['receipt_digest']!=canonical_digest(stored['receipt']):
-        raise RuntimeError('receipt integrity failed')
-    if stored['state']=='APPLIED':
-        receipt=stored['receipt']
-        if (receipt['request']!=request or receipt['request_digest']!=stored['request_digest']
-                or receipt['operation_id']!=operation_id or receipt['grant_id']!=principal.grant_id
-                or receipt['principal_id']!=principal.principal_id
-                or receipt['effect']['instance_id']!=principal.instance_id
-                or receipt['effect']['workset_id']!=request['workset_id']
-                or receipt['effect']['definition_revision']!=request['definition_revision']):
-            raise RuntimeError('receipt binding failed')
+    try:
+        request=canonical_request(stored['request'])
+        required={'request','request_digest','principal_reference','state','intent_revision','control_revision_before','hold_before'}
+        if stored['state']=='APPLIED':required|={'receipt','receipt_digest','admission_bindings'}
+        if (set(stored)!=required or stored['state'] not in {'PENDING','APPLIED'}
+                or stored['request_digest']!=canonical_digest(request) or request['operation_id']!=operation_id
+                or request['instance_id']!=principal.instance_id or request['workset_id']!=value['definition']['workset_id']
+                or request['definition_revision']!=value['definition_digest']
+                or type(stored['intent_revision']) is not int or stored['intent_revision']!=request['expected_revision']+1
+                or type(stored['control_revision_before']) is not int or stored['control_revision_before']<0):
+            raise RuntimeError('intent integrity or original revision failed')
+        before=stored['hold_before']
+        if request['intent']=='hold':
+            if before is not None:raise RuntimeError('hold intent has another prior hold')
+        elif (not isinstance(before,dict) or set(before)!={'principal_reference','operation_id','reason_code','control_revision'}
+                or before['principal_reference']!=principal.reference or before['operation_id']!=request['hold_operation_id']
+                or type(before['control_revision']) is not int or before['control_revision']!=request['expected_hold_revision']
+                or before['control_revision']!=stored['control_revision_before']
+                or before['reason_code'] not in {'USER_REQUEST','TEMPORARY_WAIT'}):
+            raise RuntimeError('unhold intent original target failed')
+        if stored['state']=='APPLIED':
+            if stored['receipt_digest']!=canonical_digest(stored['receipt']):raise RuntimeError('receipt integrity failed')
+            _validated_receipt(value,stored,request,principal)
+    except (ValueError,KeyError,TypeError,AttributeError) as error:
+        raise RuntimeError('invalid persisted command proof') from error
     return stored
 
 def _validate_effect(value, request, principal, expected):
@@ -182,7 +230,8 @@ class WorklistControlService:
                         if len(value.get('control_operations',{}))>=64:raise ControlConflict('command history capacity exhausted')
                         stored={'request':request,'request_digest':canonical_digest(request),
                                 'principal_reference':principal.reference,'state':'PENDING',
-                                'intent_revision':value['revision']+1}
+                                'intent_revision':value['revision']+1,'control_revision_before':value.get('control_revision',0),
+                                'hold_before':value.get('operator_hold')}
                         value.setdefault('control_operations',{})[request['operation_id']]=stored
                         value=service._save(value,value['revision']);expected=value['revision']
                     # Recheck all live authority and exact provenance immediately before effect.
@@ -193,7 +242,8 @@ class WorklistControlService:
                     snapshot=projection(self.root,principal.instance_id,key,principal.principal_id)
                     value=service._control_locked(key,expected_revision=expected,operation=request['intent'],
                         hold_provenance=provenance,command_operation={'principal':principal,'request':request,
-                            'admitted_mission_ids':[i['mission_id'] for i in snapshot['items'] if i['allocation_binding']]})
+                            'admitted_mission_ids':[i['mission_id'] for i in snapshot['items'] if i['allocation_binding']],
+                            'admission_bindings':[i['allocation_binding'] for i in snapshot['items'] if i['allocation_binding']]})
                     return value['control_operations'][request['operation_id']]['receipt'],True
 
     def handle(self, method, path, authorization, body):

@@ -317,25 +317,45 @@ def source_denials(root):
                 status,value=request(port,token,'POST',path+'/commands',payload);assert status==401
             finally:store.write_bytes(original)
             outcomes.append({'case':'uncertain-grant-store-denied-restored','status':401})
-            # Disposable canonical command-store corruption: even a rehashed
-            # receipt must retain its exact original principal/request binding.
-            with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
-                original_document=db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0]
-                corrupted=json.loads(original_document);entry=corrupted['control_operations']['own-hold']
-                replay_payload=entry['request'];entry['receipt']['principal_id']='foreign-principal'
-                entry['receipt_digest']=utils.canonical_digest(entry['receipt'])
-                with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(json.dumps(corrupted,sort_keys=True),'serial-set'))
-            try:
-                status,_=request(port,token,'GET',path+'/commands/own-hold');assert status==503
-                status,_=request(port,token,'POST',path+'/commands',replay_payload);assert status==503
+            # Declared disposable coherent corruption over an actual persisted
+            # command: recompute receipt hash, then check semantic joins via HTTP.
+            from copy import deepcopy
+            variants=('principal','contradictory-held','cancelled','missing-effect-field','outcome','schema',
+                      'workset-revision','control-revision','hold-provenance','target','admitted-set','intent-revision',
+                      'hold-control-bool','effect-observation')
+            statuses=[]
+            for fault in variants:
                 with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
-                    assert json.loads(db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0])==corrupted
-            finally:
-                with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
-                    with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(original_document,'serial-set'))
-                    assert db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0]==original_document
-            outcomes.append({'case':'uncertain-rehashed-command-receipt-binding-denied-restored','status':503})
-
+                    original_document=db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0]
+                    corrupted=json.loads(original_document);entry=corrupted['control_operations']['own-hold']
+                    replay_payload=deepcopy(entry['request']);receipt=entry['receipt'];effect=receipt['effect']
+                    if fault=='principal':receipt['principal_id']='foreign-principal'
+                    elif fault=='contradictory-held':effect.update(held=False,hold=None,hold_provenance='NONE')
+                    elif fault=='cancelled':effect['ongoing_work_cancelled']=True
+                    elif fault=='missing-effect-field':effect.pop('boundary')
+                    elif fault=='outcome':receipt['outcome']='FAILED'
+                    elif fault=='schema':receipt['contract_version']='invented/v999'
+                    elif fault=='workset-revision':effect['workset_revision']=999
+                    elif fault=='control-revision':effect['control_revision']=999
+                    elif fault=='hold-provenance':effect['hold']['operation_id']='other-hold'
+                    elif fault=='target':receipt['only_target_hold_removed']='other-hold'
+                    elif fault=='admitted-set':effect['admitted_mission_ids']=['foreign-mission']
+                    elif fault=='intent-revision':entry['intent_revision']=999
+                    elif fault=='hold-control-bool':effect['hold']['control_revision']=True
+                    elif fault=='effect-observation':effect['observed_at']='not-a-timestamp'
+                    entry['receipt_digest']=utils.canonical_digest(receipt)
+                    with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(json.dumps(corrupted,sort_keys=True),'serial-set'))
+                try:
+                    status,_=request(port,token,'GET',path+'/commands/own-hold');assert status==503,fault
+                    status,_=request(port,token,'POST',path+'/commands',replay_payload);assert status==503,fault
+                    statuses.append({'fault':fault,'get':503,'replay':503})
+                    with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                        assert json.loads(db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0])==corrupted
+                finally:
+                    with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                        with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(original_document,'serial-set'))
+                        assert db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('serial-set',)).fetchone()[0]==original_document
+            outcomes.append({'case':'uncertain-rehashed-command-receipt-binding-denied-restored','variants':statuses,'canonical_mutation':False})
             # Owner CLI is exercised without printing any bearer.
             from contextlib import redirect_stdout
             from io import StringIO
