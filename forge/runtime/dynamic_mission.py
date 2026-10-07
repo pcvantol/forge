@@ -613,7 +613,7 @@ class InstalledDynamicMissionRuntime:
                 "revision": vector_digest, "locator": f"runtime://mission/{mission_id}/repository-truth-vector",
                 "content_digest": vector_digest, "target_truths": per_target}
 
-    def start(self, mission_id: str, initial_repository_truth: RepositoryTruthSnapshot) -> DynamicMissionRunResult:
+    def start(self, mission_id: str, initial_repository_truth: RepositoryTruthSnapshot, *, activation_check=None) -> DynamicMissionRunResult:
         """Start exactly one admitted zero-Action Mission after read-only preflight."""
         self._assert_single_resumable(mission_id)
         state = self.states.get(mission_id)
@@ -625,6 +625,8 @@ class InstalledDynamicMissionRuntime:
         self.preflight(expected_origin=self._approved_origin(state))
         if not self._keep_running():
             return self._result(state)
+        if activation_check is not None:
+            activation_check()
         self._initial_truth[mission_id] = truth
         self.states.transition(
             mission_id, MissionExecutionStatus.CREATED, occurred_at=self.clock(),
@@ -1085,7 +1087,7 @@ class InstalledDynamicMissionRuntime:
 
     def _tick(self, mission_id: str) -> DynamicMissionRunResult:
         loop = self._loop(mission_id)
-        ForgeRuntimeService(loop, self.states, runtime_database=self.database).tick()
+        ForgeRuntimeService(loop, self.states, runtime_database=self.database).tick(reuse_current=True)
         return self._result(self.states.get(mission_id))
 
     def _approved_origin(self, state: MissionExecutionState) -> str:

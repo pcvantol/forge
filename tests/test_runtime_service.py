@@ -56,6 +56,33 @@ class RuntimeServiceTests(unittest.TestCase):
                     with RuntimeServiceLock(path).acquire():
                         pass
 
+    def test_explicit_same_thread_reuse_retains_outer_lease_and_default_denial(self):
+        with TemporaryDirectory() as root:
+            lock=RuntimeServiceLock(Path(root)/'runtime.db')
+            errors=[]
+            with lock.acquire():
+                with RuntimeServiceLock(Path(root)/'runtime.db').acquire(reuse_current=True):
+                    with self.assertRaises(RuntimeServiceBusy):
+                        with lock.acquire():pass
+                def other_thread():
+                    try:
+                        with lock.acquire(reuse_current=True):pass
+                    except RuntimeServiceBusy:errors.append('busy')
+                thread=Thread(target=other_thread);thread.start();thread.join(2)
+                self.assertEqual(errors,['busy'])
+                with self.assertRaises(RuntimeServiceBusy):
+                    with lock.acquire():pass
+            with lock.acquire():pass
+
+    def test_reused_lease_rejects_replaced_inode(self):
+        with TemporaryDirectory() as root:
+            lock=RuntimeServiceLock(Path(root)/'runtime.db')
+            with lock.acquire():
+                lock.path.rename(lock.path.with_suffix('.old'))
+                lock.path.touch()
+                with self.assertRaises(RuntimeServiceBusy):
+                    with lock.acquire(reuse_current=True):pass
+
     def test_stop_wakes_default_backoff_without_waiting_for_its_cap(self) -> None:
         with TemporaryDirectory() as root:
             state = _State("mission", MissionExecutionStatus.WAITING_FOR_EVIDENCE, 4)

@@ -198,8 +198,8 @@ def main(argv=None):
             Draft202012Validator(schema,format_checker=FormatChecker()).validate(snapshot)
             assert snapshot['scope']['principal_id']=='alice' and snapshot['scope']['project_id'] is None
             assert snapshot['items'][0]['mission_id'] is None and snapshot['items'][0]['approved'] is True
-            assert snapshot['activation_support']=='NOT_YET_QUALIFIED'
-            assert snapshot['items'][0]['blocking_reasons']==['ACTIVATION_NOT_YET_QUALIFIED']
+            assert snapshot['activation_support']=='QUALIFIED_SERIAL_APPROVED_WORKLIST'
+            assert snapshot['items'][0]['blocking_reasons']==['ACTIVATION_INPUTS_UNAVAILABLE']
             checks.append('scoped-complete-schema-bound-read')
             assert request('/v1/worksets')[1]['workset_ids']==['alice-set']
             assert request('/v1/worksets/bob-set')[0]==403
@@ -249,7 +249,7 @@ def main(argv=None):
         'request_trace':observed_requests if 'observed_requests' in locals() else [],
         'forge_processes':1,'environment':'ISOLATED_CHILD_HOME_CONFIG_SCRATCH','external_fault':'revoked-positive-read-credential' if args.failure_control else None,
         'expected_failure_control':bool(args.failure_control),'cleanup':{'owned_runtime_home_credentials_scratch_removed':not root.exists()},
-        'limitations':['Read producer foundation; serial activation not yet qualified.','Synthetic separate canonical approvals are not independent live people.','No live EP/provider/operational activation or publication.']}
+        'limitations':['Read proof alone does not qualify serial activation; use the separate installed serial receipt.','Synthetic separate canonical approvals are not independent live people.','No live EP/provider/operational activation or publication.']}
     (output/'installed-worklist-read.public.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
     print(json.dumps(receipt,sort_keys=True));return 0 if result=='WORKLIST_READ_PASS' else 1
 

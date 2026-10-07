@@ -63,6 +63,7 @@ from .secure_store import SecretReference
 from .runtime.data_root import DataRootResolver
 from .root_identity import RootIdentity
 from .runtime.dynamic_mission import DynamicMissionRunResult, InstalledDynamicMissionRuntime
+from .state import MissionExecutionStatus
 from .runtime.service import ForgeRuntimeService, RuntimeServiceBusy, RuntimeServiceLock
 from .workspace_read_grant import WorkspaceReadGrant
 from .workspace_review_grant import ReviewPrincipal, WorkspaceReviewGrant
@@ -256,9 +257,13 @@ class _ResumeOnlyLoop:
         self.runtime = runtime
 
     def run(self):
-        # A Server does not invent/select an approved Mission.  A Mission enters
-        # execution only through its explicit governed controller start.
-        return None
+        # Resume an interrupted start through the same dynamic runtime before
+        # selecting any separately approved and released next Candidate.
+        for state in self.runtime.states.resumable():
+            if state.status in {MissionExecutionStatus.CREATED,MissionExecutionStatus.READY_TO_CONTINUE}:
+                return self.runtime.resume(state.mission_id)
+        from .worklist_activation import activate_selected
+        return activate_selected(self.runtime)
 
     def resume(self, mission_id: str):
         return self.runtime.resume(mission_id)
