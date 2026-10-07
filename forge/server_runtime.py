@@ -716,6 +716,7 @@ class ForgeServerAPI:
                 'instance_id':principal.instance_id,'principal_id':principal.principal_id,
                 'workset_ids':list(principal.workset_ids),'read_only':True},self._headers())
         parts = path.split('/')
+        if len(parts)==4:parts[3]=unquote(parts[3])
         if method != 'GET' or len(parts) != 4 or parts[:3] != ['', 'v1', 'worksets'] or parts[3] not in principal.workset_ids:
             return APIResponse(403, {'error':{'code':'WORKLIST_SCOPE_DENIED'}}, self._headers())
         try:
@@ -723,7 +724,7 @@ class ForgeServerAPI:
             return APIResponse(200,value,self._headers())
         except PermissionError:
             return APIResponse(403,{'error':{'code':'WORKLIST_SCOPE_DENIED'}},self._headers())
-        except (ValueError,OSError,sqlite3.Error,RuntimeError):
+        except (ValueError,OSError,sqlite3.Error,RuntimeError,TypeError,KeyError,AttributeError):
             return APIResponse(503,{'error':{'code':'WORKLIST_SOURCE_UNAVAILABLE'}},self._headers())
 
     def _workspace_read(self, method: str, path: str) -> APIResponse:

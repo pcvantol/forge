@@ -19,13 +19,20 @@ Contract: `forge-workspace-worklist/v1`.
   A workset-read token grants no status, reviews, decisions, provider or mutation.
 - Membership/selector revisions bind exact definition/order. Snapshot revision
   binds workset control revision and observed item facts. No pagination or mixed
-  snapshot merging. Refresh replaces the complete selected snapshot.
+  snapshot merging. Membership/selector revisions are SHA256 exact definition digests.
+  Snapshot is SHA256 UTF8 compact JSON with sorted keys, ensure_ascii=false, over
+  contract_version,instance_id,installation_id,scope,membership_revision,
+  selector_revision,workset_revision,activation_support,completeness,items,continuation. Refresh replaces the complete selected snapshot.
 - Scope is explicitly `EXPLICIT_WORKSET`; `project_id` is null. No inferred
   project attribution, synthesized edges, or phantom Mission ID before Intake.
 - Candidate IDs/revisions, committed order and dependency refs are exact.
   Execution/review/final acceptance/completion are separate facts. Unknown is
   not false or successful. Detail ref is typed `MISSION_REVIEW` only after real
   canonical allocation; existing review authorization remains separate.
+- Producer-owned continuation supplies READY/BLOCKED/IDLE/UNKNOWN and exact next
+  Candidate/Mission/order or null at idle. The consumer never derives it from counts.
+  Canonical allocation_binding ties exact Candidate/revision/Mission/installation/
+  envelope; safe typed evidence_references preserve completion/final Business proof.
 - The foundation reports `activation_support=NOT_YET_QUALIFIED` and
   `ACTIVATION_NOT_YET_QUALIFIED`. Read proof must never imply scheduler proof.
   Full serial qualification will publish `QUALIFIED_SERIAL_APPROVED_WORKLIST`

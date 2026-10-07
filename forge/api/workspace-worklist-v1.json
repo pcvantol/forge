@@ -59,13 +59,16 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
-          }
+          },
+          "maxItems": 64,
+          "uniqueItems": true
         },
         "active": {
           "type": "boolean"
         },
         "execution_state": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
         },
         "engineering_result": {
           "enum": [
@@ -107,7 +110,9 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-          }
+          },
+          "maxItems": 64,
+          "uniqueItems": true
         },
         "detail_reference": {
           "anyOf": [
@@ -132,6 +137,79 @@
               }
             }
           ]
+        },
+        "allocation_binding": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "candidate_id",
+                "subject_revision",
+                "mission_id",
+                "installation_id",
+                "envelope_digest"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "CANONICAL_CANDIDATE_INTAKE"
+                },
+                "candidate_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "subject_revision": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "mission_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "installation_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "envelope_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          ]
+        },
+        "evidence_references": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "subject_id",
+              "digest"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "MISSION_COMPLETION",
+                  "FINAL_BUSINESS_ACCEPTANCE"
+                ]
+              },
+              "subject_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
         }
       },
       "required": [
@@ -153,7 +231,9 @@
         "completed",
         "effect_mode",
         "dependencies",
-        "detail_reference"
+        "detail_reference",
+        "allocation_binding",
+        "evidence_references"
       ]
     },
     "projection": {
@@ -194,10 +274,12 @@
           }
         },
         "membership_revision": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "selector_revision": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "workset_revision": {
           "type": "integer",
@@ -215,7 +297,10 @@
           "const": "CURRENT_READBACK"
         },
         "completeness": {
-          "const": "COMPLETE_WITHIN_SCOPE"
+          "enum": [
+            "COMPLETE_WITHIN_SCOPE",
+            "PARTIAL"
+          ]
         },
         "activation_support": {
           "enum": [
@@ -225,7 +310,7 @@
         },
         "items": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 0,
           "maxItems": 64,
           "items": {
             "$ref": "#/$defs/item"
@@ -233,6 +318,70 @@
         },
         "read_only": {
           "const": true
+        },
+        "installation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "continuation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "candidate_id",
+            "mission_id",
+            "committed_order",
+            "reason_codes"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "READY",
+                "BLOCKED",
+                "IDLE",
+                "UNKNOWN"
+              ]
+            },
+            "candidate_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "mission_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "committed_order": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 63
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              },
+              "maxItems": 64,
+              "uniqueItems": true
+            }
+          }
         }
       },
       "required": [
@@ -248,7 +397,9 @@
         "completeness",
         "activation_support",
         "items",
-        "read_only"
+        "read_only",
+        "installation_id",
+        "continuation"
       ]
     },
     "scopes": {

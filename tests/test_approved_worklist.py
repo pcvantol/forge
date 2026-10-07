@@ -146,6 +146,15 @@ class ApprovedWorklistTests(unittest.TestCase):
         self.assertEqual(before,sha256((self.root/'forge.db').read_bytes()).hexdigest())
         grant.revoke(record['grant_id']);self.assertEqual(request('/v1/worksets/approved-set')[0],401)
 
+    def test_explicit_empty_scope_is_idle_without_phantom_allocation(self):
+        definition={**self.definition,'workset_id':'empty','members':[],'maximum_activations':0}
+        self.service.propose(definition)
+        result=projection(self.root,existing_instance(self.root).instance_id,'empty','actor')
+        self.assertEqual(result['items'],[])
+        self.assertEqual(result['continuation']['state'],'IDLE')
+        self.assertIsNone(result['continuation']['candidate_id'])
+        self.assertEqual(self.fixture.database._connection.execute('SELECT COUNT(*) FROM mission_id_allocations').fetchone()[0],0)
+
     def test_identity_and_time_fail_closed(self):
         for value in ['../secret','',None,'x'*129]:
             with self.assertRaises(ValueError):identifier(value)

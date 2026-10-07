@@ -4,6 +4,7 @@ Only external Codex/OS/credential adapters reuse the qualified FCI fixtures.
 """
 from contextlib import ExitStack,contextmanager
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC,datetime,timedelta
 from hashlib import sha256
 from importlib.util import module_from_spec,spec_from_file_location
@@ -23,6 +24,11 @@ from jsonschema import Draft202012Validator,FormatChecker
 import forge
 from forge.approved_worklist import ApprovedWorklistService,CONTRACT,projection
 from forge.lifecycle import RecommendationLifecycleStore
+from forge.models.architecture_mission import ArchitectureMission
+from forge.governance_authority import ArchitecturePlanningEvidence
+from forge.governed_candidate_intake import GovernedCandidateIntake
+from forge.governance import resolve_governance_profile
+from forge.worklist_conditions import snapshot_revision
 from forge.server_runtime import ForgeServerRuntime,existing_instance
 from forge.workspace_worklist_grant import WorkspaceWorklistGrant
 from unittest.mock import patch
@@ -55,6 +61,79 @@ def main(argv=None):
         if done.returncode not in (0,1):raise RuntimeError('isolated read qualification process failed')
         receipt=json.loads((output/'installed-worklist-read.public.json').read_text())
         assert receipt['artifact']==artifact and receipt['source_revision']==args.source_revision
+        if done.returncode==0:
+            transitions=[]
+            case=output/'canonical-flow'
+            def observe(case_root,phase,state):
+                with ExitStack() as read_stack:
+                    runtime=utils._open(case_root,read_stack)
+                    data=Path(runtime.data_root)
+                    lifecycle=read_stack.enter_context(RecommendationLifecycleStore(data/'governance'/'candidates.sqlite'))
+                    if phase=='final-pending':
+                        candidate=lifecycle.get_candidate(state['admission_contract']['candidate_id'])
+                        mission=replace(ArchitectureMission.from_dict(state['mission']),id='MISSION-PREVIEW')
+                        planning=ArchitecturePlanningEvidence.from_dict(state['admission_contract']['planning'])
+                        b,bridge,mb,pb=utils._candidate_fixture(lifecycle,runtime,suffix='-followup')
+                        bridge.approve_business(b.id,actor=utils.GOVERNANCE_ACTOR,occurred_at='2026-10-07T00:00:00Z',rationale='Synthetic next subject.',human_gates=pb.human_gates)
+                        bridge.approve_architecture(b.id,mb,pb,actor=utils.GOVERNANCE_ACTOR,occurred_at='2026-10-07T00:00:01Z',rationale='Synthetic exact next scope.')
+                        definition={'contract_version':CONTRACT,'workset_id':'transition-set','profile_id':utils.GOVERNANCE_PROFILE,
+                          'expires_at':(datetime.now(UTC)+timedelta(hours=1)).isoformat(),'maximum_activations':2,
+                          'members':[{'candidate_id':c.id,'subject_revision':utils.canonical_digest(c.to_dict()),'mission':m.to_dict(),
+                            'planning':p.to_dict(),'dependencies':deps,'truth':{},'progression_policy':{}}
+                            for c,m,p,deps in [(candidate,mission,planning,[]),(b,mb,pb,[candidate.id])]]}
+                        service=ApprovedWorklistService(runtime,lifecycle);value=service.propose(definition)
+                        for role in ['business','architecture']:value=service.decide('transition-set',expected_revision=value['revision'],role=role,actor=utils.GOVERNANCE_ACTOR)
+                        service.control('transition-set',expected_revision=value['revision'],operation='arm')
+                    instance=existing_instance(data);grant=WorkspaceWorklistGrant(data,instance.instance_id)
+                    token=case_root/('transition-token-'+phase)
+                    grant.issue(principal_id='transition-'+phase,workset_ids=('transition-set',),
+                        expires_at=(datetime.now(UTC)+timedelta(hours=1)).isoformat(),token_path=token)
+                    admin=case_root/('transition-admin-'+phase);admin.write_text('a'*48);admin.chmod(0o600)
+                    server=ForgeServerRuntime(data_root=data,credential_file=admin,host='127.0.0.1',port=0)
+                    thread=Thread(target=server.server.serve_forever,daemon=True);thread.start()
+                    read_stack.callback(server.server.server_close);read_stack.callback(thread.join,3);read_stack.callback(server.server.shutdown)
+                    port=server.server.server_address[1]
+                    original=socket.socket.connect
+                    def only_read(sock,address):
+                        assert address==('127.0.0.1',port),'transition read attempted non-test transport'
+                        return original(sock,address)
+                    read_stack.enter_context(patch('socket.socket.connect',only_read))
+                    read_stack.enter_context(patch('subprocess.run',side_effect=AssertionError('transition read invoked process')))
+                    before=sha256((data/'forge.db').read_bytes()).hexdigest()
+                    with urlopen(Request(f'http://127.0.0.1:{port}/v1/worksets/transition-set',headers={'Authorization':'Bearer '+token.read_text().strip()}),timeout=4) as response:
+                        assert response.status==200;doc=json.load(response)
+                    assert sha256((data/'forge.db').read_bytes()).hexdigest()==before
+                    assert doc['snapshot_revision']==snapshot_revision(doc)
+                    schema=json.loads((Path(forge.__file__).parent/'api/workspace-worklist-v1.json').read_text())
+                    Draft202012Validator(schema,format_checker=FormatChecker()).validate(doc)
+                    assert doc['items'][0]['allocation_binding']['mission_id']==state['mission_id']
+                    assert doc['items'][0]['detail_reference']['mission_id']==state['mission_id']
+                    assert doc['items'][1]['approved'] and doc['items'][1]['released'] and doc['items'][1]['mission_id'] is None
+                    if phase=='final-pending':
+                        assert doc['items'][0]['final_acceptance']=='WAITING' and not doc['items'][0]['completed']
+                        assert 'FINAL_ACCEPTANCE_REQUIRED' in doc['items'][0]['blocking_reasons']
+                        assert 'DEPENDENCY_NOT_PROVEN' in doc['items'][1]['blocking_reasons']
+                        assert doc['continuation']['candidate_id']==doc['items'][0]['candidate_id']
+                    else:
+                        assert doc['items'][0]['final_acceptance']=='ACCEPTED' and doc['items'][0]['completed']
+                        assert doc['items'][0]['evidence_references'][-1]['kind']=='FINAL_BUSINESS_ACCEPTANCE'
+                        assert 'DEPENDENCY_NOT_PROVEN' not in doc['items'][1]['blocking_reasons']
+                        assert doc['continuation']['candidate_id']==doc['items'][1]['candidate_id']
+                    transitions.append({'phase':phase,'read_only':True,'snapshot':doc})
+            try:
+                flow=utils._scenario(case,'single',args.wheel,observer=observe)
+                assert len(transitions)==2
+                receipt['canonical_transition_readbacks']=transitions
+                receipt['explicit_setup_mission_flow']={k:flow.get(k) for k in ['scenario','submissions','submission_posts','planner_invocations','forge_processes']}
+                receipt['checks'].append('real-completion-dependency-and-final-acceptance-readbacks')
+                (output/'installed-worklist-read.public.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
+            except (AssertionError,ValueError,RuntimeError,OSError) as exc:
+                receipt['result']='FAIL';receipt['failure_type']=type(exc).__name__;receipt['failure_stage']='canonical-transition'
+                done=subprocess.CompletedProcess([],1)
+            finally:
+                if case.exists():shutil.rmtree(case)
+                receipt['cleanup']['owned_canonical_transition_runtime_removed']=not case.exists()
+                (output/'installed-worklist-read.public.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
         print(json.dumps(receipt,sort_keys=True));return done.returncode
     artifact=json.loads((output/'artifact.parent.private.json').read_text())
     root=output/'isolated';root.mkdir(exist_ok=True)

@@ -19,6 +19,8 @@ from .models.criterion_observation import canonical_digest
 from .governance_authority import _digest as governance_digest
 from .lifecycle import RecommendationLifecycleStore
 from .runtime.service import RuntimeServiceLock
+from .worklist_conditions import completion_facts,continuation,snapshot_revision
+from .governed_continuation import FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT
 
 CONTRACT = 'forge-approved-worklist/v1'
 READ_CONTRACT = 'forge-workspace-worklist/v1'
@@ -50,7 +52,7 @@ class ApprovedWorklistService:
             raise ValueError('worklist requires the canonical instance Candidate aggregate')
         self.runtime, self.lifecycle = runtime, lifecycle
         self.db = runtime.database._connection
-        self.instance_id = runtime.repository.operators.installation_id()
+        self.installation_id = runtime.repository.operators.installation_id()
 
     def _get(self, workset_id: str) -> dict[str, Any]:
         row = self.db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',
@@ -80,9 +82,9 @@ class ApprovedWorklistService:
         if timestamp(definition['expires_at']) <= datetime.now(UTC):
             raise ValueError('workset is expired')
         members = definition['members']
-        if (not isinstance(members,list) or not 1 <= len(members) <= 64
+        if (not isinstance(members,list) or not 0 <= len(members) <= 64
                 or type(definition['maximum_activations']) is not int
-                or not 1 <= definition['maximum_activations'] <= len(members)):
+                or not (1 <= definition['maximum_activations'] <= len(members) if members else definition['maximum_activations']==0)):
             raise ValueError('workset must have finite bounded membership/allowance')
         ids = []
         for member in members:
@@ -104,8 +106,8 @@ class ApprovedWorklistService:
         if len(set(ids)) != len(ids):
             raise ValueError('duplicate Candidate membership')
         generation=self.db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]
-        value = {'runtime_generation':generation,'authority_digest':canonical_digest((canonical_digest(definition),self.instance_id,generation)), 'definition':definition,'definition_digest':canonical_digest(definition),
-                 'installation_id':self.instance_id,'revision':1,'decisions':{},'release':'DISARMED',
+        value = {'runtime_generation':generation,'authority_digest':canonical_digest((canonical_digest(definition),self.installation_id,generation)), 'definition':definition,'definition_digest':canonical_digest(definition),
+                 'installation_id':self.installation_id,'revision':1,'decisions':{},'release':'DISARMED',
                  'held':False,'revoked':False,'consumed_activations':0,'claims':{}}
         with RuntimeServiceLock(self.runtime.database.path).acquire(), self.db:
             current = self.db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',(key,)).fetchone()
@@ -156,7 +158,7 @@ class ApprovedWorklistService:
                     raise ValueError('two exact workset decisions required')
                 for role,decision_id in value['decisions'].items():
                     d=self.runtime.repository.decision(decision_id)
-                    if d['subject_revision'] != value['authority_digest'] or d['installation_id'] != self.instance_id:
+                    if d['subject_revision'] != value['authority_digest'] or d['installation_id'] != self.installation_id or d['decision']!='approved':
                         raise ValueError('workset decision lineage mismatch')
                 for member in value['definition']['members']:
                     GovernedCandidateIntake(self.lifecycle,self.runtime,resolve_governance_profile(value['definition']['profile_id'])).approved_envelope(
@@ -195,6 +197,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             if (governance_digest(decision)!=found[1] or decision['subject_id']!=workset_id
                     or decision['subject_revision']!=value['authority_digest']
                     or decision['installation_id']!=value['installation_id']
+                    or decision['decision']!='approved'
                     or decision['capability']!= {'business':'BUSINESS_APPROVAL','architecture':'ARCHITECTURE_APPROVAL'}.get(role)):
                 raise ValueError('workset approval mismatch')
         items=[]
@@ -210,7 +213,19 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             if claim and claim.get('mission_id'):
                 found=db.execute('SELECT document FROM mission_state WHERE mission_id=?',(claim['mission_id'],)).fetchone()
                 if found:state=json.loads(found[0])
-            lifecycle=state['status'] if state else 'PENDING_INTAKE'
+            lifecycle=state['status'] if state else 'UNAVAILABLE' if claim else 'PENDING_INTAKE'
+            binding=None
+            if state:
+                contract=state.get('admission_contract') or {}
+                if (contract.get('candidate_id')!=member['candidate_id'] or contract.get('subject_revision')!=member['subject_revision']
+                        or contract.get('installation_id')!=value['installation_id'] or state.get('mission_id')!=claim['mission_id']):raise ValueError('canonical allocation binding mismatch')
+                binding={'kind':'CANONICAL_CANDIDATE_INTAKE','candidate_id':member['candidate_id'],
+                    'subject_revision':member['subject_revision'],'mission_id':state['mission_id'],
+                    'installation_id':value['installation_id'],'envelope_digest':contract['envelope_digest']}
+            completed,final,evidence_refs=completion_facts(db,state)
+            pause=state.get('pause_reason') or {} if state else {}
+            final_wait=pause.get('schema_version')==FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT
+
             reasons=[]
             current=db.execute('SELECT document FROM candidates.candidates WHERE candidate_id=?',(member['candidate_id'],)).fetchone()
             candidate_approved=False
@@ -218,6 +233,9 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             elif canonical_digest(json.loads(current[0]))!=member['subject_revision']:reasons.append('SUBJECT_STALE')
             else:
                 candidate_approved=True
+                c=json.loads(current[0])
+                latest=db.execute('SELECT to_status FROM candidates.transitions WHERE recommendation_id=? ORDER BY sequence DESC LIMIT 1',(c['recommendation_id'],)).fetchone()
+                if latest is None or latest[0] not in {'ARCHITECTURE_APPROVED','MISSION_ALLOCATED'}:candidate_approved=False
                 for role,cap in (('business','BUSINESS_APPROVAL'),('architecture','ARCHITECTURE_APPROVAL')):
                     key=GovernedCandidateIntake._decision_id(role,member['candidate_id'],member['subject_revision'])
                     approval=db.execute('SELECT document,digest FROM governance_decisions WHERE decision_id=?',(key,)).fetchone()
@@ -234,25 +252,37 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             if value['held']:reasons.append('WORKSET_HELD')
             if value['release']!='AUTO_WHEN_ELIGIBLE':reasons.append('NOT_RELEASED')
             if set(value['decisions'])!={'business','architecture'}:reasons.append('WORKSET_UNAPPROVED')
-            reasons.append('ACTIVATION_NOT_YET_QUALIFIED')
+            if claim and state is None:reasons.append('MISSION_STATE_UNAVAILABLE')
+            if final_wait:reasons.append('FINAL_ACCEPTANCE_REQUIRED')
+            elif lifecycle=='AWAITING_APPROVAL':reasons.append('PROGRESSION_REVIEW_REQUIRED')
+            if lifecycle in {'FAILED','BLOCKED','ARCHIVED','CANCELLED'}:reasons.append('MISSION_NOT_SUCCESSFUL')
+            if lifecycle=='COMPLETED' and not completed:reasons.append('COMPLETION_EVIDENCE_UNPROVEN')
+            for dependency in member['dependencies']:
+                preceding=next(item for item in items if item['candidate_id']==dependency)
+                if not preceding['completed']:reasons.append('DEPENDENCY_NOT_PROVEN')
+            if value['consumed_activations']>=definition['maximum_activations'] and not claim and definition['members']:
+                reasons.append('ACTIVATION_LIMIT_EXHAUSTED')
+            if not completed:reasons.append('ACTIVATION_NOT_YET_QUALIFIED')
+            reasons=list(dict.fromkeys(reasons))
             items.append({'candidate_id':member['candidate_id'],'subject_revision':member['subject_revision'],
                 'committed_order':order,'title':_redact(member['mission']['title'])[:160],
                 'mission_id':claim.get('mission_id') if claim else None,
                 'mission_state_revision':state['revision'] if state else None,
                 'approved':candidate_approved,
                 'released':value['release']=='AUTO_WHEN_ELIGIBLE' and not value['revoked'],
-                'eligibility':'BLOCKED' if len(reasons)>1 else 'UNKNOWN','blocking_reasons':reasons,
+                'eligibility':'BLOCKED' if reasons and reasons!=['ACTIVATION_NOT_YET_QUALIFIED'] else 'UNKNOWN','blocking_reasons':reasons,
                 'active':bool(state and lifecycle in {'ACTIVE','READY','WAITING_FOR_EXECUTION','WAITING_FOR_EVIDENCE'}),
                 'execution_state':lifecycle,'engineering_result': 'PROVEN' if state and (state.get('completion') or {}).get('all_required_criteria_proven') is True else 'UNKNOWN',
-                'review_state':'WAITING' if lifecycle=='AWAITING_APPROVAL' else 'NONE',
-                'final_acceptance':'WAITING' if lifecycle=='AWAITING_FINAL_ACCEPTANCE' else 'UNKNOWN',
-                'completed':lifecycle=='COMPLETED','effect_mode':(member['mission'].get('effect_policy') or {}).get('mode','UNKNOWN'),
-                'dependencies':list(member['dependencies']),
-                'detail_reference':{'kind':'MISSION_REVIEW','mission_id':claim['mission_id']} if claim and claim.get('mission_id') else None})
-        revision=canonical_digest({'workset_revision':value['revision'],'items':items})
-        return {'contract_version':READ_CONTRACT,'instance_id':instance_id,
+                'review_state':'WAITING' if lifecycle=='AWAITING_APPROVAL' and not final_wait else 'NONE',
+                'final_acceptance':final, 'completed':completed,'effect_mode':(member['mission'].get('effect_policy') or {}).get('mode','UNKNOWN'),
+                'dependencies':list(member['dependencies']),'allocation_binding':binding,'evidence_references':evidence_refs,
+                'detail_reference':{'kind':'MISSION_REVIEW','mission_id':state['mission_id']} if binding else None})
+        document= {'contract_version':READ_CONTRACT,'instance_id':instance_id,'installation_id':value['installation_id'],
             'scope':{'kind':'EXPLICIT_WORKSET','principal_id':principal_id,'workset_id':workset_id,'project_id':None},
             'membership_revision':value['definition_digest'],'selector_revision':value['definition_digest'],
-            'workset_revision':value['revision'],'snapshot_revision':revision,'observed_at':datetime.now(UTC).isoformat(),
+            'workset_revision':value['revision'],'observed_at':datetime.now(UTC).isoformat(),
             'freshness':'CURRENT_READBACK','completeness':'COMPLETE_WITHIN_SCOPE','activation_support':'NOT_YET_QUALIFIED',
-            'items':items,'read_only':True}
+            'items':items,'continuation':continuation(items),'read_only':True}
+        if any(item['execution_state']=='UNAVAILABLE' for item in items):document['completeness']='PARTIAL'
+        document['snapshot_revision']=snapshot_revision(document)
+        return document
