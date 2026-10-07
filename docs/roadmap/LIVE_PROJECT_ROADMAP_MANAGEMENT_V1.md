@@ -162,7 +162,9 @@ The selected r37 hold/unhold HTTP producer is tracked in
 [SCOPED_WORKLIST_HOLD_V1](../handoff/SCOPED_WORKLIST_HOLD_V1.md): bounded
 PRM-F-CONTRACT/PROJECTION/ACTIVATION producer compatibility for later PRM-W-MANAGE.
 It is not full delegation/IAM/project management, approval or runtime authority.
-Its current source/evidence state is candidate pending installed qualification,
-independent reviews, protected delivery and finalization; no completed family
-gate or live operation is inferred. L4's separate read-only graph selection
+Its protected implementation at ec072205/2.7.69 has independent Quality/Security
+PASS and actual installed43-case/control/read proof. The separate nonempty
+source finalization and its exact-final-main gates remain explicitly pending in
+the immutable selected evidence; no completed family gate or live operation is
+inferred. L4's separate read-only graph selection
 retains47c9f406/2.7.68 and is not switched or expanded by this producer assignment.
