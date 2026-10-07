@@ -1,0 +1,413 @@
+{
+  "$defs": {
+    "current": {
+      "additionalProperties": false,
+      "properties": {
+        "admitted_mission_ids": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "boundary": {
+          "const": "FUTURE_ADMISSION_ONLY"
+        },
+        "control_revision": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "definition_revision": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "held": {
+          "type": "boolean"
+        },
+        "hold": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "control_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "operation_id": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                  "type": "string"
+                },
+                "owned_by_principal": {
+                  "type": "boolean"
+                },
+                "reason_code": {
+                  "enum": [
+                    "USER_REQUEST",
+                    "TEMPORARY_WAIT",
+                    "OWNER_REQUEST"
+                  ]
+                }
+              },
+              "required": [
+                "operation_id",
+                "control_revision",
+                "reason_code",
+                "owned_by_principal"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hold_provenance": {
+          "enum": [
+            "RECORDED",
+            "LEGACY_UNKNOWN",
+            "NONE"
+          ]
+        },
+        "instance_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "ongoing_work_cancelled": {
+          "const": false
+        },
+        "workset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "workset_revision": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "instance_id",
+        "workset_id",
+        "definition_revision",
+        "workset_revision",
+        "control_revision",
+        "held",
+        "hold",
+        "hold_provenance",
+        "admitted_mission_ids",
+        "boundary",
+        "ongoing_work_cancelled",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "error": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-worklist-control-error/v1"
+        },
+        "error": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "CONTROL_SCOPE_DENIED",
+                "CONTROL_AUTHORITY_DENIED",
+                "CONTROL_CONFLICT",
+                "CONTROL_REQUEST_INVALID",
+                "CONTROL_SOURCE_UNAVAILABLE"
+              ]
+            }
+          },
+          "required": [
+            "code"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "contract_version",
+        "error"
+      ],
+      "type": "object"
+    },
+    "readback": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-worklist-control-readback/v1"
+        },
+        "current": {
+          "$ref": "#/$defs/current"
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "execution_known": {
+                  "type": "boolean"
+                },
+                "operation_id": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                  "type": "string"
+                },
+                "original_receipt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/receipt"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state": {
+                  "enum": [
+                    "PENDING",
+                    "APPLIED"
+                  ]
+                }
+              },
+              "required": [
+                "state",
+                "original_receipt",
+                "operation_id",
+                "execution_known"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "principal_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "read_only": {
+          "const": true
+        },
+        "worklist": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "contract_version",
+        "principal_id",
+        "read_only",
+        "operation",
+        "current",
+        "worklist"
+      ],
+      "type": "object"
+    },
+    "receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-worklist-control-receipt/v1"
+        },
+        "effect": {
+          "$ref": "#/$defs/current"
+        },
+        "grant_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "only_target_hold_removed": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "outcome": {
+          "const": "APPLIED"
+        },
+        "principal_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/request"
+        },
+        "request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "operation_id",
+        "principal_id",
+        "grant_id",
+        "request",
+        "request_digest",
+        "outcome",
+        "effect",
+        "only_target_hold_removed"
+      ],
+      "type": "object"
+    },
+    "request": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "expected_hold_revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "hold_operation_id": {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                "type": "string"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "intent": {
+                "const": "hold"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "expected_hold_revision": {
+                "type": "null"
+              },
+              "hold_operation_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-worklist-control-request/v1"
+        },
+        "definition_revision": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expected_hold_revision": {
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "hold_operation_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instance_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "intent": {
+          "enum": [
+            "hold",
+            "unhold"
+          ]
+        },
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "reason_code": {
+          "enum": [
+            "USER_REQUEST",
+            "TEMPORARY_WAIT"
+          ]
+        },
+        "workset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "operation_id",
+        "intent",
+        "instance_id",
+        "workset_id",
+        "definition_revision",
+        "expected_revision",
+        "hold_operation_id",
+        "expected_hold_revision",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "result": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-worklist-control-readback/v1"
+        },
+        "current_readback": {
+          "$ref": "#/$defs/readback"
+        },
+        "original_receipt": {
+          "$ref": "#/$defs/receipt"
+        },
+        "recorded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contract_version",
+        "original_receipt",
+        "recorded",
+        "current_readback"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "forge-workspace-worklist-control/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/readback"
+    },
+    {
+      "$ref": "#/$defs/result"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ]
+}
