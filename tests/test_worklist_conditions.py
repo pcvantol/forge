@@ -21,7 +21,7 @@ class WorklistConditionTests(unittest.TestCase):
         repository={'mission_id':'MISSION-1','action_id':'action','report_id':'report','content_digest':'sha256:'+'a'*64}
         from forge.models.criterion_observation import canonical_digest
         state={'mission_id':'MISSION-1','status':'AWAITING_APPROVAL',
-            'completion':{'all_required_criteria_proven':True,'criteria':[{'status':'PROVEN','observations':['fixture'],'execution_evidence':[{'receipt_id':'receipt','action_id':'action','repository_evidence_digest':canonical_digest(repository)}]}]},
+            'completion':{'all_required_criteria_proven':True,'criteria':[{'status':'PROVEN','observations':['fixture'],'execution_evidence':[{'receipt_id':'receipt','action_id':'action','repository_evidence_digest':repository['content_digest']}]}]},
             'execution_evidence':{'outcome':'complete','receipt_id':'receipt','repository_evidence':repository},
             'pause_reason':{'schema_version':'forge-final-acceptance-requirement/v1'}}
         state['execution_history']=[deepcopy(state['execution_evidence'])]

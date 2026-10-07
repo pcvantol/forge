@@ -30,7 +30,7 @@ def completion_facts(db, state: dict[str,Any] | None) -> tuple[bool,str,list[dic
                            and ref.get('action_id')==(evidence.get('repository_evidence') or {}).get('action_id')
                            and (evidence.get('repository_evidence') or {}).get('mission_id')==state['mission_id']
                            and evidence.get('outcome')=='complete'
-                           and ref.get('repository_evidence_digest')==canonical_digest(evidence.get('repository_evidence'))
+                           and ref.get('repository_evidence_digest')==(evidence.get('repository_evidence') or {}).get('content_digest')
                            for ref in references for evidence in state['execution_history'])):
             return False,'UNKNOWN',[]
     refs=[{'kind':'MISSION_COMPLETION','subject_id':state['mission_id'],'digest':canonical_digest(completion)}]
