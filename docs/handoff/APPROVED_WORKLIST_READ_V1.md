@@ -65,8 +65,9 @@ assignment. No live EP, signing or L2 prerequisite is introduced.
 
 ## Serial implementation qualification candidate
 
-The activation delta keeps NOT_YET_QUALIFIED until its separate installed
-serial suite passes. Claims persist exact eligibility/release revisions, expiry,
+The serial implementation promotes only the declared qualified enum after
+its separate installed serial suite passes; read evidence alone never qualifies
+execution. See APPROVED_WORKLIST_SERIAL_V1.md and the exact installed receipt. Claims persist exact eligibility/release revisions, expiry,
 generation and predecessor evidence before canonical intake. Missing typed
 truth/effect/progression inputs report ACTIVATION_INPUTS_UNAVAILABLE; revoked
 operator binding reports OPERATOR_AUTHORITY_UNAVAILABLE. The schema shape,

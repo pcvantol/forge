@@ -279,7 +279,6 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
                 except ValueError:reasons.append('ACTIVATION_INPUTS_UNAVAILABLE')
                 binding_row=db.execute('SELECT status FROM installation_operator_binding WHERE installation_id=?',(value['installation_id'],)).fetchone()
                 if binding_row is None or binding_row[0]!='ACTIVE':reasons.append('OPERATOR_AUTHORITY_UNAVAILABLE')
-                reasons.append('ACTIVATION_NOT_YET_QUALIFIED')
             reasons=list(dict.fromkeys(reasons))
             items.append({'candidate_id':member['candidate_id'],'subject_revision':member['subject_revision'],
                 'committed_order':order,'title':_redact(member['mission']['title'])[:160],
@@ -287,8 +286,8 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
                 'mission_state_revision':state['revision'] if state else None,
                 'approved':candidate_approved,
                 'released':value['release']=='AUTO_WHEN_ELIGIBLE' and not value['revoked'],
-                'eligibility':'BLOCKED' if reasons and reasons!=['ACTIVATION_NOT_YET_QUALIFIED'] else 'UNKNOWN','blocking_reasons':reasons,
-                'active':bool(state and lifecycle in {'ACTIVE','READY','WAITING_FOR_EXECUTION','WAITING_FOR_EVIDENCE'}),
+                'eligibility':'BLOCKED' if reasons else 'UNKNOWN' if completed else 'ELIGIBLE','blocking_reasons':reasons,
+                'active':bool(state and lifecycle in {'CREATED','READY_TO_CONTINUE','ACTIVE','READY','WAITING_FOR_EXECUTION','WAITING_FOR_EVIDENCE'}),
                 'execution_state':lifecycle,'engineering_result': 'PROVEN' if state and (state.get('completion') or {}).get('all_required_criteria_proven') is True else 'UNKNOWN',
                 'review_state':'WAITING' if lifecycle=='AWAITING_APPROVAL' and not final_wait else 'NONE',
                 'final_acceptance':final, 'completed':completed,'effect_mode':(member['mission'].get('effect_policy') or {}).get('mode','UNKNOWN'),
@@ -298,7 +297,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             'scope':{'kind':'EXPLICIT_WORKSET','principal_id':principal_id,'workset_id':workset_id,'project_id':None},
             'membership_revision':value['definition_digest'],'selector_revision':value['definition_digest'],
             'workset_revision':value['revision'],'observed_at':datetime.now(UTC).isoformat(),
-            'freshness':'CURRENT_READBACK','completeness':'COMPLETE_WITHIN_SCOPE','activation_support':'NOT_YET_QUALIFIED',
+            'freshness':'CURRENT_READBACK','completeness':'COMPLETE_WITHIN_SCOPE','activation_support':'QUALIFIED_SERIAL_APPROVED_WORKLIST',
             'items':items,'continuation':continuation(items),'read_only':True}
         if any(item['execution_state']=='UNAVAILABLE' for item in items):document['completeness']='PARTIAL'
         document['snapshot_revision']=snapshot_revision(document)
