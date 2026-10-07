@@ -199,7 +199,7 @@ def main(argv=None):
             assert snapshot['scope']['principal_id']=='alice' and snapshot['scope']['project_id'] is None
             assert snapshot['items'][0]['mission_id'] is None and snapshot['items'][0]['approved'] is True
             assert snapshot['activation_support']=='NOT_YET_QUALIFIED'
-            assert snapshot['items'][0]['blocking_reasons']==['ACTIVATION_NOT_YET_QUALIFIED']
+            assert snapshot['items'][0]['blocking_reasons']==['ACTIVATION_INPUTS_UNAVAILABLE','ACTIVATION_NOT_YET_QUALIFIED']
             checks.append('scoped-complete-schema-bound-read')
             assert request('/v1/worksets')[1]['workset_ids']==['alice-set']
             assert request('/v1/worksets/bob-set')[0]==403

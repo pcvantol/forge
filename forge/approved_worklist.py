@@ -273,7 +273,13 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
                 if not preceding['completed']:reasons.append('DEPENDENCY_NOT_PROVEN')
             if value['consumed_activations']>=definition['maximum_activations'] and not claim and definition['members']:
                 reasons.append('ACTIVATION_LIMIT_EXHAUSTED')
-            if not completed:reasons.append('ACTIVATION_NOT_YET_QUALIFIED')
+            if not completed:
+                from .worklist_activation import validate_activation_inputs
+                try:validate_activation_inputs(value,member)
+                except ValueError:reasons.append('ACTIVATION_INPUTS_UNAVAILABLE')
+                binding_row=db.execute('SELECT status FROM installation_operator_binding WHERE installation_id=?',(value['installation_id'],)).fetchone()
+                if binding_row is None or binding_row[0]!='ACTIVE':reasons.append('OPERATOR_AUTHORITY_UNAVAILABLE')
+                reasons.append('ACTIVATION_NOT_YET_QUALIFIED')
             reasons=list(dict.fromkeys(reasons))
             items.append({'candidate_id':member['candidate_id'],'subject_revision':member['subject_revision'],
                 'committed_order':order,'title':_redact(member['mission']['title'])[:160],

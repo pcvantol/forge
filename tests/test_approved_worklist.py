@@ -59,7 +59,7 @@ class ApprovedWorklistTests(unittest.TestCase):
         read=projection(self.root,instance.instance_id,'approved-set','workspace-actor')
         self.assertEqual(read['activation_support'],'NOT_YET_QUALIFIED')
         self.assertTrue(read['items'][0]['approved']);self.assertIsNone(read['items'][0]['mission_id'])
-        self.assertEqual(read['items'][0]['blocking_reasons'],['ACTIVATION_NOT_YET_QUALIFIED'])
+        self.assertEqual(read['items'][0]['blocking_reasons'],['ACTIVATION_INPUTS_UNAVAILABLE','ACTIVATION_NOT_YET_QUALIFIED'])
         self.assertEqual(before,sha256((self.root/'forge.db').read_bytes()).hexdigest())
         repeated=projection(self.root,instance.instance_id,'approved-set','workspace-actor')
         self.assertEqual(read['snapshot_revision'],repeated['snapshot_revision'])

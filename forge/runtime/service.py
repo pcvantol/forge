@@ -4,6 +4,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+import os
+from threading import local
 from threading import Event
 from typing import Callable, Iterator, Protocol
 
@@ -24,6 +26,9 @@ class RuntimeServiceBusy(RuntimeError):
     """Another service or mutating CLI call owns this runtime instance."""
 
 
+_held_leases = local()
+
+
 class RuntimeServiceLock:
     """A process-wide lease shared by service and mutating CLI composition.
 
@@ -36,18 +41,32 @@ class RuntimeServiceLock:
         self.path = Path(runtime_database_path).with_name("forge-runtime-mutation.lock")
 
     @contextmanager
-    def acquire(self) -> Iterator[None]:
+    def acquire(self, *, reuse_current: bool = False) -> Iterator[None]:
         if fcntl is None:
             raise RuntimeServiceBusy("runtime instance locking is unavailable")
+        key=(os.getpid(),str(self.path.resolve()))
+        held=getattr(_held_leases,'values',{})
+        if key in held:
+            if not reuse_current:
+                raise RuntimeServiceBusy("canonical runtime is busy")
+            current=self.path.stat()
+            if held[key]!=(current.st_dev,current.st_ino):
+                raise RuntimeServiceBusy("canonical runtime lease identity changed")
+            yield
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a+", encoding="utf-8") as handle:
             try:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise RuntimeServiceBusy("canonical runtime is busy") from error
+            details=os.fstat(handle.fileno())
+            held[key]=(details.st_dev,details.st_ino)
+            _held_leases.values=held
             try:
                 yield
             finally:
+                held.pop(key,None)
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
@@ -92,8 +111,8 @@ class ForgeRuntimeService:
         self._stopped.set()
         self.wake()
 
-    def tick(self) -> RuntimeServiceTick:
-        with self._lock.acquire():
+    def tick(self, *, reuse_current: bool = False) -> RuntimeServiceTick:
+        with self._lock.acquire(reuse_current=reuse_current):
             resumable = {MissionExecutionStatus.READY, MissionExecutionStatus.ACTIVE,
                          MissionExecutionStatus.WAITING_FOR_EXECUTION, MissionExecutionStatus.WAITING_FOR_EVIDENCE}
             for state in self._states.resumable():

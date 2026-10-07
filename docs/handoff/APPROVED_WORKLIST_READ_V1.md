@@ -62,3 +62,12 @@ exact wheel digest and installed HTTP/read-zero-mutation receipt are posted in
 claim integrated acceptance from this document or source-only fixtures.
 The full approved-worklist execution matrix remains in the same serial Forge
 assignment. No live EP, signing or L2 prerequisite is introduced.
+
+## Serial implementation qualification candidate
+
+The activation delta keeps NOT_YET_QUALIFIED until its separate installed
+serial suite passes. Claims persist exact eligibility/release revisions, expiry,
+generation and predecessor evidence before canonical intake. Missing typed
+truth/effect/progression inputs report ACTIVATION_INPUTS_UNAVAILABLE; revoked
+operator binding reports OPERATOR_AUTHORITY_UNAVAILABLE. The schema shape,
+snapshot algorithm and independent read grants remain unchanged.
