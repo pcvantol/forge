@@ -87,3 +87,17 @@ mutation, live EP/provider login/cost, signing, operational activation, public
 release or GitHub target write is implied. L2 remains independent. Full delivery
 requires exact-head independent Quality/Security, required CI with tested
 failure-control, protected merge and exact-final-main installed receipts.
+
+## Protected implementation and scoped source finalization
+
+Implementation PR250 is protected at7ffa98d6fa70d44c52e9274bd3b2d4365dab3857,
+Forge2.7.68. Exact implementation-main noneditable installed24/24 serial and
+independent HTTP read/zero-mutation receipts are retained in
+[the selected completion record](../qualification/approved-worklist-selected-completion-2026-10-07.json).
+Quality/Security PASS bind reviewed1beac4b; required PRCI37653041020 is SUCCESS.
+Normal NO_BUMP finalization retains2.7.68 and changes no production behavior.
+The final protected source/required CI/exact-main installed receipt are written
+to#207/#208 after finalization; this immutable record binds implementation
+evidence and does not invent its own containing final commit. TDE observe
+workflow SUCCESS remains distinct from actual policy FAIL/exits2;43rules are
+reported without suppression or a broad legacy-complexity remediation claim.

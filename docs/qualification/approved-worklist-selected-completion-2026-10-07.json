@@ -1,0 +1,4022 @@
+{
+  "assignment_id": "L3-FORGE-APPROVED-WORKLIST-V1-20261007",
+  "boundaries": [
+    "No full PMT/PRM/FCO family claim.",
+    "No live EP/provider/operational activation, signing, public product release or GitHub target writes.",
+    "FCI/GP predecessors remain closed; old state/locks/budget consumption preserved."
+  ],
+  "final_main_gate": "Final source commit and its required CI/read/serial installed readback are recorded in the lane completion register after protected finalization merge.",
+  "full_family_completion": false,
+  "implementation": {
+    "changed_production_coverage_percent": {
+      "forge/approved_worklist.py": 94.12,
+      "forge/runtime/dynamic_mission.py": 86.68,
+      "forge/runtime/service.py": 92.63,
+      "forge/server_runtime.py": 82.84,
+      "forge/worklist_activation.py": 93.22
+    },
+    "existing_unrelated_skips": 1,
+    "independent_quality": "PASS",
+    "independent_security": "PASS",
+    "protected_commit": "7ffa98d6fa70d44c52e9274bd3b2d4365dab3857",
+    "protected_tree": "4eaaa0eb8180c40107637017b7429a79ae0675fc",
+    "pull_request": 250,
+    "required_main_ci": 37655036340,
+    "required_main_ci_outcome": "SUCCESS",
+    "required_pr_ci": 37653041020,
+    "required_pr_ci_outcome": "SUCCESS",
+    "reviewed_candidate": "1beac4b5069988f1a7e6a6bb56bdc23b099499ad",
+    "source_tests": 1253,
+    "version": "2.7.68"
+  },
+  "join": {
+    "consumer_owner": "LANE_4_WORK",
+    "grant_scope": "INDEPENDENT_GET_ONLY_EXPLICIT_WORKSETS",
+    "id": "L3-L4-APPROVED-WORKLIST-READ-V1-20261007",
+    "project_id": null,
+    "schema_sha256": "7674be1cd915b2976be5ace74a9f06deaf973f386b3ce8dfa4679120761f3b19"
+  },
+  "plan_revision": "r36",
+  "qualification_status": "INSTALLED_SELECTED_SUBSET_PASS",
+  "read_receipt": {
+    "artifact": {
+      "installed_product_files_verified": 227,
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a"
+      },
+      "source_product_files_verified": 227,
+      "source_tree_revision": "4eaaa0eb8180c40107637017b7429a79ae0675fc",
+      "version": "2.7.68",
+      "wheel_sha256": "sha256:f5eed947d2844568e11ebfd610998dff76067ed3f4ba8b966a43e8ef3fc5a6c1"
+    },
+    "canonical_transition_readbacks": [
+      {
+        "phase": "final-pending",
+        "read_only": true,
+        "snapshot": {
+          "activation_support": "QUALIFIED_SERIAL_APPROVED_WORKLIST",
+          "completeness": "COMPLETE_WITHIN_SCOPE",
+          "continuation": {
+            "candidate_id": "synthetic-candidate",
+            "committed_order": 0,
+            "mission_id": "MISSION-0001",
+            "reason_codes": [
+              "FINAL_ACCEPTANCE_REQUIRED",
+              "ACTIVATION_INPUTS_UNAVAILABLE"
+            ],
+            "state": "BLOCKED"
+          },
+          "contract_version": "forge-workspace-worklist/v1",
+          "freshness": "CURRENT_READBACK",
+          "installation_id": "693891ea-31bd-45e8-8416-55f3f8cef733",
+          "instance_id": "forge-runtime-da5fb301-9710-4094-b73e-eb82bea9feda",
+          "items": [
+            {
+              "active": false,
+              "allocation_binding": {
+                "candidate_id": "synthetic-candidate",
+                "envelope_digest": "sha256:c792af0e888e764dfd39ee93f020e418be99dddb54974d6e2430515b6191f545",
+                "installation_id": "693891ea-31bd-45e8-8416-55f3f8cef733",
+                "kind": "CANONICAL_CANDIDATE_INTAKE",
+                "mission_id": "MISSION-0001",
+                "subject_revision": "sha256:227fee48ad1f0c23459a4c63642a0310efcc96b1193d47cc9a1986be50592d4a"
+              },
+              "approved": true,
+              "blocking_reasons": [
+                "FINAL_ACCEPTANCE_REQUIRED",
+                "ACTIVATION_INPUTS_UNAVAILABLE"
+              ],
+              "candidate_id": "synthetic-candidate",
+              "committed_order": 0,
+              "completed": false,
+              "dependencies": [],
+              "detail_reference": {
+                "kind": "MISSION_REVIEW",
+                "mission_id": "MISSION-0001"
+              },
+              "effect_mode": "UNKNOWN",
+              "eligibility": "BLOCKED",
+              "engineering_result": "PROVEN",
+              "evidence_references": [
+                {
+                  "digest": "sha256:b3fc8f8ecc843e8d087909307b13af5c8c4ea19c80a6deb68297098198fb22d5",
+                  "kind": "MISSION_COMPLETION",
+                  "subject_id": "MISSION-0001"
+                }
+              ],
+              "execution_state": "AWAITING_APPROVAL",
+              "final_acceptance": "WAITING",
+              "mission_id": "MISSION-0001",
+              "mission_state_revision": 10,
+              "released": true,
+              "review_state": "NONE",
+              "subject_revision": "sha256:227fee48ad1f0c23459a4c63642a0310efcc96b1193d47cc9a1986be50592d4a",
+              "title": "Synthetic export contract"
+            },
+            {
+              "active": false,
+              "allocation_binding": null,
+              "approved": true,
+              "blocking_reasons": [
+                "DEPENDENCY_NOT_PROVEN",
+                "ACTIVATION_INPUTS_UNAVAILABLE"
+              ],
+              "candidate_id": "synthetic-candidate-followup",
+              "committed_order": 1,
+              "completed": false,
+              "dependencies": [
+                "synthetic-candidate"
+              ],
+              "detail_reference": null,
+              "effect_mode": "UNKNOWN",
+              "eligibility": "BLOCKED",
+              "engineering_result": "UNKNOWN",
+              "evidence_references": [],
+              "execution_state": "PENDING_INTAKE",
+              "final_acceptance": "UNKNOWN",
+              "mission_id": null,
+              "mission_state_revision": null,
+              "released": true,
+              "review_state": "NONE",
+              "subject_revision": "sha256:de1697018f0ecea401944abbb5b5977104c83f454746f4ae7feb88fdcc5e73c2",
+              "title": "Synthetic export contract"
+            }
+          ],
+          "membership_revision": "sha256:04ac6658679e5411b427f844c82dab38aaf5f30f18efefaa9c943ca1ce39ebfc",
+          "observed_at": "2026-10-07T16:59:33.590021+00:00",
+          "read_only": true,
+          "scope": {
+            "kind": "EXPLICIT_WORKSET",
+            "principal_id": "transition-final-pending",
+            "project_id": null,
+            "workset_id": "transition-set"
+          },
+          "selector_revision": "sha256:04ac6658679e5411b427f844c82dab38aaf5f30f18efefaa9c943ca1ce39ebfc",
+          "snapshot_revision": "sha256:291001e6117704f9d3f24290e2cadb6034e58d987385bec2caf80edd93573c20",
+          "workset_revision": 4
+        }
+      },
+      {
+        "phase": "accepted",
+        "read_only": true,
+        "snapshot": {
+          "activation_support": "QUALIFIED_SERIAL_APPROVED_WORKLIST",
+          "completeness": "COMPLETE_WITHIN_SCOPE",
+          "continuation": {
+            "candidate_id": "synthetic-candidate-followup",
+            "committed_order": 1,
+            "mission_id": null,
+            "reason_codes": [
+              "ACTIVATION_INPUTS_UNAVAILABLE"
+            ],
+            "state": "BLOCKED"
+          },
+          "contract_version": "forge-workspace-worklist/v1",
+          "freshness": "CURRENT_READBACK",
+          "installation_id": "693891ea-31bd-45e8-8416-55f3f8cef733",
+          "instance_id": "forge-runtime-da5fb301-9710-4094-b73e-eb82bea9feda",
+          "items": [
+            {
+              "active": false,
+              "allocation_binding": {
+                "candidate_id": "synthetic-candidate",
+                "envelope_digest": "sha256:c792af0e888e764dfd39ee93f020e418be99dddb54974d6e2430515b6191f545",
+                "installation_id": "693891ea-31bd-45e8-8416-55f3f8cef733",
+                "kind": "CANONICAL_CANDIDATE_INTAKE",
+                "mission_id": "MISSION-0001",
+                "subject_revision": "sha256:227fee48ad1f0c23459a4c63642a0310efcc96b1193d47cc9a1986be50592d4a"
+              },
+              "approved": true,
+              "blocking_reasons": [],
+              "candidate_id": "synthetic-candidate",
+              "committed_order": 0,
+              "completed": true,
+              "dependencies": [],
+              "detail_reference": {
+                "kind": "MISSION_REVIEW",
+                "mission_id": "MISSION-0001"
+              },
+              "effect_mode": "UNKNOWN",
+              "eligibility": "UNKNOWN",
+              "engineering_result": "PROVEN",
+              "evidence_references": [
+                {
+                  "digest": "sha256:b3fc8f8ecc843e8d087909307b13af5c8c4ea19c80a6deb68297098198fb22d5",
+                  "kind": "MISSION_COMPLETION",
+                  "subject_id": "MISSION-0001"
+                },
+                {
+                  "digest": "sha256:505e9810d3110796be20579327f9d85471867dece6745ec39c74332a46ca1bb6",
+                  "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                  "subject_id": "installed-business-acceptance-single"
+                }
+              ],
+              "execution_state": "COMPLETED",
+              "final_acceptance": "ACCEPTED",
+              "mission_id": "MISSION-0001",
+              "mission_state_revision": 11,
+              "released": true,
+              "review_state": "NONE",
+              "subject_revision": "sha256:227fee48ad1f0c23459a4c63642a0310efcc96b1193d47cc9a1986be50592d4a",
+              "title": "Synthetic export contract"
+            },
+            {
+              "active": false,
+              "allocation_binding": null,
+              "approved": true,
+              "blocking_reasons": [
+                "ACTIVATION_INPUTS_UNAVAILABLE"
+              ],
+              "candidate_id": "synthetic-candidate-followup",
+              "committed_order": 1,
+              "completed": false,
+              "dependencies": [
+                "synthetic-candidate"
+              ],
+              "detail_reference": null,
+              "effect_mode": "UNKNOWN",
+              "eligibility": "BLOCKED",
+              "engineering_result": "UNKNOWN",
+              "evidence_references": [],
+              "execution_state": "PENDING_INTAKE",
+              "final_acceptance": "UNKNOWN",
+              "mission_id": null,
+              "mission_state_revision": null,
+              "released": true,
+              "review_state": "NONE",
+              "subject_revision": "sha256:de1697018f0ecea401944abbb5b5977104c83f454746f4ae7feb88fdcc5e73c2",
+              "title": "Synthetic export contract"
+            }
+          ],
+          "membership_revision": "sha256:04ac6658679e5411b427f844c82dab38aaf5f30f18efefaa9c943ca1ce39ebfc",
+          "observed_at": "2026-10-07T16:59:34.509929+00:00",
+          "read_only": true,
+          "scope": {
+            "kind": "EXPLICIT_WORKSET",
+            "principal_id": "transition-accepted",
+            "project_id": null,
+            "workset_id": "transition-set"
+          },
+          "selector_revision": "sha256:04ac6658679e5411b427f844c82dab38aaf5f30f18efefaa9c943ca1ce39ebfc",
+          "snapshot_revision": "sha256:680b147a898932f077eb424520fbf6168d1c84ac539b04424bba4e75c7f2bdf2",
+          "workset_revision": 4
+        }
+      }
+    ],
+    "checks": [
+      "scoped-complete-schema-bound-read",
+      "two-actor-scope-isolation",
+      "mutation-and-unrelated-route-denial",
+      "stable-snapshot-zero-storage-mutation",
+      "real-control-transition-readback",
+      "source-outage-denial",
+      "current-revocation-denial",
+      "real-expiry-denial",
+      "zero-allocation-planning-provider-and-ep-effects",
+      "real-completion-dependency-and-final-acceptance-readbacks"
+    ],
+    "cleanup": {
+      "owned_canonical_transition_runtime_removed": true,
+      "owned_runtime_home_credentials_scratch_removed": true
+    },
+    "environment": "ISOLATED_CHILD_HOME_CONFIG_SCRATCH",
+    "expected_failure_control": false,
+    "explicit_setup_mission_flow": {
+      "forge_processes": 6,
+      "planner_invocations": 1,
+      "scenario": "single",
+      "submission_posts": 1,
+      "submissions": 1
+    },
+    "external_fault": null,
+    "failure_stage": null,
+    "failure_type": null,
+    "forge_processes": 1,
+    "limitations": [
+      "Read proof alone does not qualify serial activation; use the separate installed serial receipt.",
+      "Synthetic separate canonical approvals are not independent live people.",
+      "No live EP/provider/operational activation or publication."
+    ],
+    "mutation_counts": {
+      "ep_submit": 0,
+      "intake": 0,
+      "mission_allocation": 0,
+      "planning": 0,
+      "provider": 0
+    },
+    "observed_read_status": 200,
+    "qualification": "INSTALLED_SCOPED_WORKLIST_READ_V1",
+    "qualifier_sha256": "sha256:16d9bd3cc006169a6f3f34763ed4b69174ff73551363d81e6bcce0a5b73c3b47",
+    "request_trace": [
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/bob-set",
+        "status": 403
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 403
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/bob-set",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/v1/status",
+        "status": 403
+      },
+      {
+        "method": "GET",
+        "path": "/v1/reviews",
+        "status": 403
+      },
+      {
+        "method": "GET",
+        "path": "/v1/missions",
+        "status": 403
+      },
+      {
+        "method": "POST",
+        "path": "/v1/worksets/alice-set/hold",
+        "status": 403
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 401
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 503
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 401
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/v1/worksets/alice-set",
+        "status": 401
+      }
+    ],
+    "result": "WORKLIST_READ_PASS",
+    "source_revision": "7ffa98d6fa70d44c52e9274bd3b2d4365dab3857"
+  },
+  "read_receipt_sha256": "cf5ac7e74b12c2a4c913c36efa1f3ff5477dcc6bc04c91ac9468eb7f2054464e",
+  "schema_version": "forge-approved-worklist-selected-completion/v1",
+  "scope": "SERIAL_PREAPPROVED_WORKLIST_SUBSET",
+  "serial_receipt": {
+    "artifact": {
+      "installed_product_files_verified": 227,
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a"
+      },
+      "source_product_files_verified": 227,
+      "source_tree_revision": "4eaaa0eb8180c40107637017b7429a79ae0675fc",
+      "version": "2.7.68",
+      "wheel_sha256": "sha256:f5eed947d2844568e11ebfd610998dff76067ed3f4ba8b966a43e8ef3fc5a6c1"
+    },
+    "case_count": 24,
+    "cases": [
+      {
+        "candidate_count": 3,
+        "case": "effect-read-only",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:58:44.616138+00:00",
+            "eligibility_revision": "sha256:538614abe25b9f2098783e05750c8ff76fb0b671a98871e210dd1218fbfa1d07",
+            "expires_at": "2026-10-07T17:58:44.427469+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:87983d6df582d263127a03b7b330fa45a4617a743d6878c1595861ac74694103",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:4d6d7025eb0c2d806faa10719bedbdc493b0049a32d46a5de917c67d0f5f0d01"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:58:45.493863+00:00",
+            "eligibility_revision": "sha256:82a402c889c068e50fde86ac4619c5ace3253eacb487356c65c690d81b641e62",
+            "expires_at": "2026-10-07T17:58:44.427469+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:d4107c6f7d8cf0af5335722e4cce8afa75d6c88e7d29bc26b6434d3eb26759fc",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:b9f0547f671b4436ff74967b815043f54c44690a2c755c5efad424e86184e566",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:f1973f14e31b69b386dc12da671dbeb0ed252a4fdd0afa58c3b61b814140d9a1"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 93590,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93599,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93608,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93624,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 93629,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93631,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:849a3717c38069bafa1215d98d74f08c86c2d76555fe70c6a5ed9c71e713ad16",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93646,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:849a3717c38069bafa1215d98d74f08c86c2d76555fe70c6a5ed9c71e713ad16",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93654,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:849a3717c38069bafa1215d98d74f08c86c2d76555fe70c6a5ed9c71e713ad16",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 93657,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ac165d0246b77efc4798c68d9812af4f5fd5ecdfdec9524b151c04a609f1b91c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:849a3717c38069bafa1215d98d74f08c86c2d76555fe70c6a5ed9c71e713ad16",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93664,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-f8e7ec5c-0293-457c-b2e0-eed6dea70ef0"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-documentation",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:58:47.347038+00:00",
+            "eligibility_revision": "sha256:45acd1599a947d8e11b2c81996a480e7936b00f84574437835dd791fd25947ef",
+            "expires_at": "2026-10-07T17:58:47.155121+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:74c2de6c43f7f4c599e1ebc827248c844242547929434bac6710e27818ab834e",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:24af4a84fe92a503c2edaabae5fd02c81536319d43c2a1a3120ad37c60d6e741"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:58:48.228933+00:00",
+            "eligibility_revision": "sha256:16f255ede2a4bc78c2744eddcf748141d05e1bf2f0214e55198f4214a7035e08",
+            "expires_at": "2026-10-07T17:58:47.155121+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:c0d9bf4f8a36c202aff092374ecda560ce3415a1821fab2b8bcedd103bf5a62e",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:a449e66c7a026524bf991b0b214838dee3d86f9e48997e243cdcb2be8e521d74",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:b6e9d7d75712621e96989e99631fdd71d0c934ceae8a5af4d1b22f21f07cbeab"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 93680,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93685,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93705,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93707,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 93711,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93718,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:60f24ac193fd454acac591e29332b0f2b563f9df7ce198ed9f27328de30d6065",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93732,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:60f24ac193fd454acac591e29332b0f2b563f9df7ce198ed9f27328de30d6065",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93739,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:60f24ac193fd454acac591e29332b0f2b563f9df7ce198ed9f27328de30d6065",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 93742,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:91b73a065a4bb4f79edd88172e79c9dafbc45229d817ec8d926214732bc756ff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:60f24ac193fd454acac591e29332b0f2b563f9df7ce198ed9f27328de30d6065",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93744,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-5580c3e5-99fd-4dd1-b491-8aec8b79d28f"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-design-report",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:58:50.109072+00:00",
+            "eligibility_revision": "sha256:6feff09415b61b588743541eeb93cc9c5267489b5ca3cc2509bb149f45b3cc42",
+            "expires_at": "2026-10-07T17:58:49.918851+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:c52acf7117904ee757d5b220109192e97f635c9fd34494bd7778a33bdfce328a",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:d792f443ea1a241eb9854a7aa65759eec423c262c90c74f62d9a3812b66caf15"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:58:50.958367+00:00",
+            "eligibility_revision": "sha256:864f7a3c3bf197515e6ba93179d889022e4a9f6aaf0f8ccfc02ee24d16cce637",
+            "expires_at": "2026-10-07T17:58:49.918851+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:227ca47b83d5dd4096e37204d30b0e78cd17e9ef7e54cc85efa291a91353615f",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:5d75f109e7b128b9aaf7f95f3fa24fb98c34bff42bb511bca6bbed8961da83b1",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:0dfbf07ca8b855ffcb4cbfddd08afd355da15e7a9e69d9a2c0e39c84c029abe9"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 93764,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93773,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93782,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93791,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 93793,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93796,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:3236e1b28275120eb5f0a64072f96b3e470e28c6f754656adc0f680c20377dff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93810,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:3236e1b28275120eb5f0a64072f96b3e470e28c6f754656adc0f680c20377dff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93812,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:3236e1b28275120eb5f0a64072f96b3e470e28c6f754656adc0f680c20377dff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 93817,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:46ebedadab942014e863cb5e5a31d3e1eb7994dc589eac0e2ddd2bd17707f5ef",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:3236e1b28275120eb5f0a64072f96b3e470e28c6f754656adc0f680c20377dff",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93822,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-d8f4d9b9-528c-408d-a074-24910b8c860e"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-design-git",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:58:52.835427+00:00",
+            "eligibility_revision": "sha256:452107021e229595474cc537b1cacb9fb9195efa8ae09d6948ff5aafdf4ab56b",
+            "expires_at": "2026-10-07T17:58:52.641353+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:fc430a2aeade2c97f97138a8d15dbcd8e324839836abb9e7a0ced47e0189825d",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:b7e58b384cdf07ae8e10264d37d827b4014a47dbee7ba748220c9237af9a4dee"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:58:53.715786+00:00",
+            "eligibility_revision": "sha256:474d0819e8085cb664efedb882d33e88d81837e5d42ca5a7368bda92dab3e75e",
+            "expires_at": "2026-10-07T17:58:52.641353+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:8dbdcc4a64e331c8960e44ddba4840e5b3740f7509f3614bc4f1fe44038dd3e1",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:c4443e1cf3dac189ff154ec97f725bb44becd38ac865dea277ee4ef1134ebe19",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:74767242265867f1c560b6e69e4a60d55c8b846bc8da505d2af27f9052a7dc61"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 93838,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93847,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93865,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93867,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 93874,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93877,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f77e0564d3d23b0df9bb46797db2e9f4fb1067c7bbd1311bd8f8c5e69025b9c1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93894,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f77e0564d3d23b0df9bb46797db2e9f4fb1067c7bbd1311bd8f8c5e69025b9c1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93899,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f77e0564d3d23b0df9bb46797db2e9f4fb1067c7bbd1311bd8f8c5e69025b9c1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 93901,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2233a536dfc5d147844ef11d634a38a0c3d62cbac52ec0cce88b06fae92e0732",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f77e0564d3d23b0df9bb46797db2e9f4fb1067c7bbd1311bd8f8c5e69025b9c1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93908,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-74b57d45-9796-4fdd-8bd3-33c42f6d3910"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-repository-change",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:58:55.619427+00:00",
+            "eligibility_revision": "sha256:35b0f5bda6f25cce2d5e1a78dfc259c0538dbf9f5cb55d4681bbb530a01919c2",
+            "expires_at": "2026-10-07T17:58:55.429349+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:bbd8c766df75baffbc0186a24618d3868806e8efa41782b7c19be7465078483a",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:a72147531b0ff792df162b0a1b1b5e2bfa71aa148c53fcb3a5004375ed5ea19b"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:58:56.503605+00:00",
+            "eligibility_revision": "sha256:b28e556ed2f0142a4aa70b545fe78f39ecc29fa0dae71508f24d05387af4cb4f",
+            "expires_at": "2026-10-07T17:58:55.429349+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:453632b001c7c67e8e0d0546f6c9c4ab85820f867e9efd1cba0866512a8f6621",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:3edecccc7b4525e8635582634dde42586e6c7de69b1966519a4b09659bb2871e",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:8829400031a3675bf28a72f8268c64aef7d4f4ac2ec772f568d5d3aa64990ad3"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 93925,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93930,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93950,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93952,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 93954,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93961,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:8542ed454386d158c02dd7c0d955e8f575545b1fd1f22d477c1517d526f94924",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93976,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:8542ed454386d158c02dd7c0d955e8f575545b1fd1f22d477c1517d526f94924",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93979,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:8542ed454386d158c02dd7c0d955e8f575545b1fd1f22d477c1517d526f94924",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 93986,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:f316142883ca8439a773d0202ccd5f84795a7a717718205435100fd7e8800ed7",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:8542ed454386d158c02dd7c0d955e8f575545b1fd1f22d477c1517d526f94924",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 93988,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6bc6ae55-ea54-46d3-9bea-dcff0cd56089"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-read-only-lost-ack",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:58:58.410747+00:00",
+            "eligibility_revision": "sha256:a31f07c2ea11279619f4eff63ffa7b06f7f76aa980c028b9b230ecafe4f94ae4",
+            "expires_at": "2026-10-07T17:58:58.219800+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:fadd5e7b8fe290a9d899ce53663a6dfc9b68a400146e8ade6fb7ac25a829b136",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:4d6d7025eb0c2d806faa10719bedbdc493b0049a32d46a5de917c67d0f5f0d01"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:58:59.262860+00:00",
+            "eligibility_revision": "sha256:492b1bce3217f9045577c1307771c9bd0fffb504b057ebf061377180087e1563",
+            "expires_at": "2026-10-07T17:58:58.219800+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:17648da8ca1b772c6ce720c0dd9057a2932e31b960e9a3696906574024fd490d",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:3486cda7f8bcdf44f7d9e38c149bbcc291460939640e8fc9b2962ea87cf65b2e",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:f1973f14e31b69b386dc12da671dbeb0ed252a4fdd0afa58c3b61b814140d9a1"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 94004,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94016,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94025,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94029,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 94035,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94037,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:0430e191f0d60c893652f56ae734c35e6f680965aecf9ca315c040249061630c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94056,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:0430e191f0d60c893652f56ae734c35e6f680965aecf9ca315c040249061630c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94063,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:0430e191f0d60c893652f56ae734c35e6f680965aecf9ca315c040249061630c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 94065,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:7ebde2e28def390944085e299da984c5f9422fb6658ed6cde4438a297590b72d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:0430e191f0d60c893652f56ae734c35e6f680965aecf9ca315c040249061630c",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94070,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-550e73cf-65a5-4b59-9571-c2a9a6483fd5"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-documentation-lost-ack",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:59:01.146034+00:00",
+            "eligibility_revision": "sha256:c4c56c0e0b35e12b7e31ca7bebf1e009c921d5644af1865e03c62dbb9c2b2c88",
+            "expires_at": "2026-10-07T17:59:00.955383+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:c1513416536d3aa3c61870bd76ece5d4c0e749ef6e4ba4e9f59027ab06340164",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:24af4a84fe92a503c2edaabae5fd02c81536319d43c2a1a3120ad37c60d6e741"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:59:02.032124+00:00",
+            "eligibility_revision": "sha256:f297215230f900a37310e75de3ab52e2d0a41a31023078d0ffabeb09f3085b3b",
+            "expires_at": "2026-10-07T17:59:00.955383+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:2261a34cc3b0367269fb5691cbdde31c2307fab0ceb60d2441c21db5482ae9ac",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:e45531b658e90acd80bc54fe4ffbd5401091b1a2e06d7127860bfb4fc9d593c3",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:b6e9d7d75712621e96989e99631fdd71d0c934ceae8a5af4d1b22f21f07cbeab"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 94091,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94096,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94114,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94118,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 94120,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94128,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ca099e7254ba7df0caf148c713e3301f222674ae2cd950fba20cae7c1da818dc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94144,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ca099e7254ba7df0caf148c713e3301f222674ae2cd950fba20cae7c1da818dc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94148,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ca099e7254ba7df0caf148c713e3301f222674ae2cd950fba20cae7c1da818dc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 94156,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:28d9e0e98c598fcea4a517445a5b7c1f5a980689f28e21be04cc3a4b397cf4b1",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:ca099e7254ba7df0caf148c713e3301f222674ae2cd950fba20cae7c1da818dc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94158,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-0996934b-f204-4168-895f-55619e42ee51"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-design-report-lost-ack",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:59:03.923933+00:00",
+            "eligibility_revision": "sha256:0fb11b8d3d6f16981cec1f102538a7b362538773f76299d2a1bc3913d29dad1d",
+            "expires_at": "2026-10-07T17:59:03.732076+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:3b256a4094a2cfc74fe74c5325461486bcf043323cd85a763e150858bfe8a29b",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:d792f443ea1a241eb9854a7aa65759eec423c262c90c74f62d9a3812b66caf15"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:59:04.782934+00:00",
+            "eligibility_revision": "sha256:8ca5183d54620c58127b19ad13eb0a6861f007cb2e358b3741277fc3d294611a",
+            "expires_at": "2026-10-07T17:59:03.732076+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:b672356fe4bf1922eccdaafe7d30ceb26e5469ebd9fa2e7baec4b25c9d6230d5",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:935e9697ecd75955f7b67810dee4d32769757d2a047af11816c585216cbcce4f",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:0dfbf07ca8b855ffcb4cbfddd08afd355da15e7a9e69d9a2c0e39c84c029abe9"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 94174,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94185,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94198,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94203,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 94208,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94210,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:b4ddd167e705b5cfa2fcc5a13bcd1b0d8f06a0b49882b2f85bb88f9145afb32e",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94225,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:b4ddd167e705b5cfa2fcc5a13bcd1b0d8f06a0b49882b2f85bb88f9145afb32e",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94227,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:b4ddd167e705b5cfa2fcc5a13bcd1b0d8f06a0b49882b2f85bb88f9145afb32e",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 94229,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2cfc07e86a193f64c233cf35d359bd37e1231639aa4b73ae91149a37ca61d18b",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:b4ddd167e705b5cfa2fcc5a13bcd1b0d8f06a0b49882b2f85bb88f9145afb32e",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94235,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-7d2b8010-ec68-4195-af97-aff059c8e327"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-design-git-lost-ack",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:59:06.654745+00:00",
+            "eligibility_revision": "sha256:f4ee7fe0e39fb68821b1d2bf291d5ac1a435a4ff3afbebbdff671f84562d97dd",
+            "expires_at": "2026-10-07T17:59:06.460931+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:740f9db62a048faa9ae3fa39fb49547854e2dd188c030fc4583c923ddeea1f54",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:b7e58b384cdf07ae8e10264d37d827b4014a47dbee7ba748220c9237af9a4dee"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:59:07.538349+00:00",
+            "eligibility_revision": "sha256:d6eaac8bbc0a7773ba8c2f8c643f94c47793b2e74bfbd2ce27edd1430bcec38d",
+            "expires_at": "2026-10-07T17:59:06.460931+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:b95796c928484be35f1291aca77dc4e3e12258e74d44a66e687581b88b10c665",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:39f536c0ad8a8a7afb99c203e47c9dd98e3f2e8e91310d4f88e92cf5420201c9",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:74767242265867f1c560b6e69e4a60d55c8b846bc8da505d2af27f9052a7dc61"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 94253,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94259,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94278,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94280,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 94285,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94290,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2c79329b6ac9ee2370e3151377e008ddd4b29b8d7e93c5766efd552a42d52e70",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94304,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2c79329b6ac9ee2370e3151377e008ddd4b29b8d7e93c5766efd552a42d52e70",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94312,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2c79329b6ac9ee2370e3151377e008ddd4b29b8d7e93c5766efd552a42d52e70",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 94314,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:4331d2f9516ab696919acf970d780fc9fbafb5204fdf793c107f47f6ed32eb2a",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2c79329b6ac9ee2370e3151377e008ddd4b29b8d7e93c5766efd552a42d52e70",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94317,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-3e7bcd21-0803-4f0b-ad6d-933e43a3755c"
+          }
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "effect-repository-change-lost-ack",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:59:09.425243+00:00",
+            "eligibility_revision": "sha256:5b22b3ffe3b578933f33305649370d466eb78ff511cbb93187df44b4c9d9e011",
+            "expires_at": "2026-10-07T17:59:09.234334+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:b40098b40cbfc60a5936807abab1d1dff73898e60b64b1cff94a57e628945f08",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:a72147531b0ff792df162b0a1b1b5e2bfa71aa148c53fcb3a5004375ed5ea19b"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:59:10.325879+00:00",
+            "eligibility_revision": "sha256:a4dd38050f3929b53ba06cfaf127a884959d1fbe1b0b24ee54c658515d0de284",
+            "expires_at": "2026-10-07T17:59:09.234334+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:789c312e72f2742367fe3b8358a609138178d99a827b3eba00f8295e331bf24d",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:bd5764d241cd860038485bd6f762b162dd53e0fef8c2705a3e4a13ccc119bcfd",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:8829400031a3675bf28a72f8268c64aef7d4f4ac2ec772f568d5d3aa64990ad3"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "positive",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 94335,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94344,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94358,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94368,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 94370,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94373,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:b6a17f552df14249d863a72f246b283935722954ccf0fc83ceb32e08abe85a62",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94392,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:b6a17f552df14249d863a72f246b283935722954ccf0fc83ceb32e08abe85a62",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94394,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:b6a17f552df14249d863a72f246b283935722954ccf0fc83ceb32e08abe85a62",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 94399,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:82b7ca24bbb5102ba11ac9ec21d552b757d15f36021c7d358232a728669ff3cc",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:b6a17f552df14249d863a72f246b283935722954ccf0fc83ceb32e08abe85a62",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94405,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6118ad3b-c3ba-480b-87eb-e3b7e1c2826b"
+          }
+        ]
+      },
+      {
+        "allocations": 0,
+        "blocking_reasons": [
+          [
+            "NOT_RELEASED"
+          ],
+          [
+            "SUBJECT_UNAPPROVED",
+            "NOT_RELEASED",
+            "DEPENDENCY_NOT_PROVEN"
+          ]
+        ],
+        "case": "unapproved",
+        "claims": {},
+        "kind": "negative",
+        "observed_denial": null,
+        "provider_invocations": 0,
+        "status": "EXPECTED_DENIAL"
+      },
+      {
+        "allocations": 0,
+        "blocking_reasons": [
+          [
+            "RELEASE_EXPIRED"
+          ],
+          [
+            "RELEASE_EXPIRED",
+            "DEPENDENCY_NOT_PROVEN"
+          ]
+        ],
+        "case": "expired",
+        "claims": {},
+        "kind": "negative",
+        "observed_denial": null,
+        "provider_invocations": 0,
+        "status": "EXPECTED_DENIAL"
+      },
+      {
+        "allocations": 0,
+        "blocking_reasons": [
+          [
+            "WORKSET_HELD"
+          ],
+          [
+            "WORKSET_HELD",
+            "DEPENDENCY_NOT_PROVEN"
+          ]
+        ],
+        "case": "hold",
+        "claims": {},
+        "kind": "negative",
+        "observed_denial": null,
+        "provider_invocations": 0,
+        "status": "EXPECTED_DENIAL"
+      },
+      {
+        "allocations": 0,
+        "blocking_reasons": [
+          [
+            "RELEASE_REVOKED",
+            "NOT_RELEASED"
+          ],
+          [
+            "RELEASE_REVOKED",
+            "NOT_RELEASED",
+            "DEPENDENCY_NOT_PROVEN"
+          ]
+        ],
+        "case": "revoke",
+        "claims": {},
+        "kind": "negative",
+        "observed_denial": null,
+        "provider_invocations": 0,
+        "status": "EXPECTED_DENIAL"
+      },
+      {
+        "allocations": 0,
+        "blocking_reasons": [
+          [
+            "NOT_RELEASED"
+          ],
+          [
+            "NOT_RELEASED",
+            "DEPENDENCY_NOT_PROVEN"
+          ]
+        ],
+        "case": "disarm",
+        "claims": {},
+        "kind": "negative",
+        "observed_denial": null,
+        "provider_invocations": 0,
+        "status": "EXPECTED_DENIAL"
+      },
+      {
+        "allocations": 0,
+        "blocking_reasons": [
+          [
+            "SUBJECT_STALE",
+            "SUBJECT_UNAPPROVED"
+          ],
+          [
+            "DEPENDENCY_NOT_PROVEN"
+          ]
+        ],
+        "case": "stale",
+        "claims": {},
+        "kind": "negative",
+        "observed_denial": null,
+        "provider_invocations": 0,
+        "status": "EXPECTED_DENIAL"
+      },
+      {
+        "allocations": 0,
+        "blocking_reasons": [],
+        "case": "operator-revoked",
+        "claims": {},
+        "kind": "negative",
+        "observed_denial": "PermissionError",
+        "provider_invocations": 0,
+        "status": "EXPECTED_DENIAL"
+      },
+      {
+        "allocations": 0,
+        "case": "empty-idle",
+        "provider_invocations": 0,
+        "status": "PASS",
+        "submissions": 0,
+        "waits": [
+          0.25
+        ]
+      },
+      {
+        "candidate_count": 3,
+        "case": "finite-budget",
+        "consumed_activations": 1,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:59:18.483657+00:00",
+            "eligibility_revision": "sha256:d201714651a73ff78f05101f38dbce873b051a256abdcfa0e3081dee75817b58",
+            "expires_at": "2026-10-07T17:59:18.287152+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:a7e13b865415a5e6aac3b63f2b705968527cfb4e276ab1eda8a7c148a7725d65",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:4d6d7025eb0c2d806faa10719bedbdc493b0049a32d46a5de917c67d0f5f0d01"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": "synthetic-candidate-b",
+          "committed_order": 1,
+          "mission_id": null,
+          "reason_codes": [
+            "ACTIVATION_LIMIT_EXHAUSTED"
+          ],
+          "state": "BLOCKED"
+        },
+        "kind": "budget",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "provider_invocations": 1,
+        "release_before_first_intake": true,
+        "status": "EXPECTED_BUDGET_DENIAL",
+        "submission_posts": 1,
+        "submissions": 1,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 94814,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-9353c435-11ea-408e-bcf9-0ba8724678fb"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94823,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-9353c435-11ea-408e-bcf9-0ba8724678fb"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:9662c6318b3a7521d116334e5f18857acdefd23cf547cc6ace599223283ebdb5",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94835,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-9353c435-11ea-408e-bcf9-0ba8724678fb"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:9662c6318b3a7521d116334e5f18857acdefd23cf547cc6ace599223283ebdb5",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94838,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-9353c435-11ea-408e-bcf9-0ba8724678fb"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:9662c6318b3a7521d116334e5f18857acdefd23cf547cc6ace599223283ebdb5",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 94845,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-9353c435-11ea-408e-bcf9-0ba8724678fb"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:9662c6318b3a7521d116334e5f18857acdefd23cf547cc6ace599223283ebdb5",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94847,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-9353c435-11ea-408e-bcf9-0ba8724678fb"
+          }
+        ]
+      },
+      {
+        "allocations": 1,
+        "blocking_reasons": [
+          "DEPENDENCY_NOT_PROVEN"
+        ],
+        "case": "failed-evidence",
+        "mission_state": "FAILED",
+        "provider_invocations": 1,
+        "status": "EXPECTED_DENIAL",
+        "submissions": 1
+      },
+      {
+        "allocations": 1,
+        "blocking_reasons": [
+          "DEPENDENCY_NOT_PROVEN"
+        ],
+        "case": "tampered-evidence",
+        "mission_state": "FAILED",
+        "provider_invocations": 1,
+        "status": "EXPECTED_DENIAL",
+        "submissions": 1
+      },
+      {
+        "candidate_count": 3,
+        "case": "crash-before-start",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:59:23.044579+00:00",
+            "eligibility_revision": "sha256:4d1be3a2d005574b43f1114bd29b0cc0ca4b81127fd496abdc7de215de7a9a54",
+            "expires_at": "2026-10-07T17:59:22.835636+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:1941fdc300059f7b9298b0f11fd15a0e52ca808a828d9408b1f2a36e48d23118",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:4d6d7025eb0c2d806faa10719bedbdc493b0049a32d46a5de917c67d0f5f0d01"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:59:24.252536+00:00",
+            "eligibility_revision": "sha256:d71283719f20222a4f333f271ac8f943fb2ab6b1f196f5ab203f1dab445b5e71",
+            "expires_at": "2026-10-07T17:59:22.835636+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:5776d4b3d00d3cd103660bc89a98a5de680a294fb53538bc71aa1cf2bd20062c",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:fa3df12687f59547d1974f369f0e3eb26fa16640d750a6e92772a039a0ccac85",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:f1973f14e31b69b386dc12da671dbeb0ed252a4fdd0afa58c3b61b814140d9a1"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "crash",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "process_faults": [
+          {
+            "allocations": 1,
+            "boundary": "github-before-start",
+            "claims": 1,
+            "killed_pid": 94954,
+            "mission_id": "MISSION-0001",
+            "provider_invocations_before_recovery": 0,
+            "recovered_pid": 94962
+          }
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 94944,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94964,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94974,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94981,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 94983,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 94985,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:a5f8d77a73dda48d340d81ef375c54c78d0085fb65a16d0d17818a13609e0696",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95000,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:a5f8d77a73dda48d340d81ef375c54c78d0085fb65a16d0d17818a13609e0696",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95002,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:a5f8d77a73dda48d340d81ef375c54c78d0085fb65a16d0d17818a13609e0696",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 95007,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:daf749fd4f494952940072655b60caa9d033a67c3c40c47033277d1d15d32d4d",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:a5f8d77a73dda48d340d81ef375c54c78d0085fb65a16d0d17818a13609e0696",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95012,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-fcb3a7e0-9b95-483c-b05e-0a32ee8dfd62"
+          }
+        ]
+      },
+      {
+        "allocations": 1,
+        "blocking_reasons": [
+          "MISSION_NOT_SUCCESSFUL"
+        ],
+        "case": "crash-created",
+        "claims": 1,
+        "mission_id": "MISSION-0001",
+        "process_faults": [
+          {
+            "allocations": 1,
+            "boundary": "created-readiness",
+            "claims": 1,
+            "killed_pid": 95035,
+            "mission_id": "MISSION-0001",
+            "provider_invocations_before_recovery": 0,
+            "recovered_pid": 95042
+          }
+        ],
+        "provider_invocations": 0,
+        "status": "EXPECTED_AMBIGUITY_HOLD",
+        "submissions": 0
+      },
+      {
+        "candidate_count": 3,
+        "case": "concurrent-ticks",
+        "consumed_activations": 2,
+        "final_claims": {
+          "synthetic-candidate-a": {
+            "claimed_at": "2026-10-07T16:59:27.591107+00:00",
+            "eligibility_revision": "sha256:f9e4ef2556507c2658a069fb10c0c9df011a292aa1c07da5276f1372dea4352d",
+            "expires_at": "2026-10-07T17:59:27.378241+00:00",
+            "mission_id": "MISSION-0001",
+            "operation_id": "sha256:4e378fbfd069169eeb2692b7db1bce2f916b60d6264f4080090019594982e1f1",
+            "predecessor_evidence": [],
+            "release_revision": 4,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:4d6d7025eb0c2d806faa10719bedbdc493b0049a32d46a5de917c67d0f5f0d01"
+          },
+          "synthetic-candidate-b": {
+            "claimed_at": "2026-10-07T16:59:28.635765+00:00",
+            "eligibility_revision": "sha256:7f03bfeb52733df0fb836f63d61b451f18e3e92a7481f6595692a6c1997e8bfc",
+            "expires_at": "2026-10-07T17:59:27.378241+00:00",
+            "mission_id": "MISSION-0002",
+            "operation_id": "sha256:6d6a7c469783ca7644553f8e31ed6c8325549ff1b47184275ea33e571fed1a40",
+            "predecessor_evidence": [
+              {
+                "digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "kind": "MISSION_COMPLETION",
+                "subject_id": "MISSION-0001"
+              },
+              {
+                "digest": "sha256:40449e84ed413f7edbf6e939024d32cbb0c040e15481cb6f7413000e81932dea",
+                "kind": "FINAL_BUSINESS_ACCEPTANCE",
+                "subject_id": "worklist-final-1"
+              }
+            ],
+            "release_revision": 6,
+            "runtime_generation": 0,
+            "subject_revision": "sha256:f1973f14e31b69b386dc12da671dbeb0ed252a4fdd0afa58c3b61b814140d9a1"
+          }
+        },
+        "final_continuation": {
+          "candidate_id": null,
+          "committed_order": null,
+          "mission_id": null,
+          "reason_codes": [
+            "NO_REMAINING_APPROVED_WORK"
+          ],
+          "state": "IDLE"
+        },
+        "kind": "concurrent",
+        "preapproved_members": [
+          "synthetic-candidate-a",
+          "synthetic-candidate-b"
+        ],
+        "process_faults": [
+          {
+            "allocations": 1,
+            "boundary": "two-concurrent-process-ticks",
+            "claims": 1,
+            "observations": [
+              "RuntimeResolutionError",
+              "PROGRESSED_OR_RESUMED"
+            ],
+            "pids": [
+              95073,
+              95074
+            ],
+            "provider_invocations": 1
+          }
+        ],
+        "provider_invocations": 2,
+        "release_before_first_intake": true,
+        "status": "PASS",
+        "submission_posts": 2,
+        "submissions": 2,
+        "trace": [
+          {
+            "allocations": 0,
+            "missions": [],
+            "phase": "setup",
+            "pid": 95062,
+            "provider_invocations": 0,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0001",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "read",
+            "pid": 95077,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95090,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95093,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 1,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-1",
+            "pid": 95095,
+            "provider_invocations": 1,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+                "execution_receipts": 0,
+                "mission_id": "MISSION-0002",
+                "state_revision": 6,
+                "status": "WAITING_FOR_EXECUTION"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95101,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:06098dd04afafefe9d654b9a4fae5b04a0993ec2e0b0bfbef413a1a99f8607d8",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95113,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:06098dd04afafefe9d654b9a4fae5b04a0993ec2e0b0bfbef413a1a99f8607d8",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 10,
+                "status": "AWAITING_APPROVAL"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95123,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:06098dd04afafefe9d654b9a4fae5b04a0993ec2e0b0bfbef413a1a99f8607d8",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "accept-2",
+            "pid": 95131,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          },
+          {
+            "allocations": 2,
+            "missions": [
+              {
+                "actions": 1,
+                "completion_digest": "sha256:2b977dd160b504392ba46e2b6ff5a8886bcdf9667b1762e665d7277739b6fb7f",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0001",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              },
+              {
+                "actions": 1,
+                "completion_digest": "sha256:06098dd04afafefe9d654b9a4fae5b04a0993ec2e0b0bfbef413a1a99f8607d8",
+                "execution_receipts": 1,
+                "mission_id": "MISSION-0002",
+                "state_revision": 11,
+                "status": "COMPLETED"
+              }
+            ],
+            "phase": "tick",
+            "pid": 95133,
+            "provider_invocations": 2,
+            "runtime_id": "forge-runtime-6a5b2d34-a4d3-4859-8818-d81f0be4441d"
+          }
+        ]
+      }
+    ],
+    "cleanup": [
+      {
+        "case": "effect-read-only",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-documentation",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-design-report",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-design-git",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-repository-change",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-read-only-lost-ack",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-documentation-lost-ack",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-design-report-lost-ack",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-design-git-lost-ack",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "effect-repository-change-lost-ack",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "unapproved",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "expired",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "hold",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "revoke",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "disarm",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "stale",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "operator-revoked",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "empty-idle",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "finite-budget",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "failed-evidence",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "tampered-evidence",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "crash-before-start",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "crash-created",
+        "owned_runtime_target_home_config_scratch_removed": true
+      },
+      {
+        "case": "concurrent-ticks",
+        "owned_runtime_target_home_config_scratch_removed": true
+      }
+    ],
+    "expected_case_count": 24,
+    "external_fault": null,
+    "failure_stage": null,
+    "failure_type": null,
+    "limitations": [
+      "Synthetic canonical decisions are not independent live people.",
+      "EP HTTP simulator and declared external LLM/OS/GitHub/local-Git fixtures; no live EP/provider/target writes.",
+      "No full PRM/FCO family claim; projection qualification label remains separately gated."
+    ],
+    "observed_allocations": null,
+    "observed_provider_invocations": null,
+    "qualification": "INSTALLED_SERIAL_APPROVED_WORKLIST_V1",
+    "qualifier_sha256": "sha256:2e93eb9ffe12879ee540fb9a9bbb760aa586e08b433db8590cce13f5b9972f6b",
+    "result": "SERIAL_APPROVED_WORKLIST_PASS",
+    "scope": "SERIAL_PREAPPROVED_WORKLIST_SUBSET",
+    "source_revision": "7ffa98d6fa70d44c52e9274bd3b2d4365dab3857"
+  },
+  "serial_receipt_sha256": "46fbbf9f7acaebe01789da04dcf0ab31b281136445fcbb99aaf6d44cb2b2dfb8",
+  "tde_observe": {
+    "actual_policy": "FAIL",
+    "assessment_exit": 2,
+    "disposition": "Reported separately; no suppressions, policy PASS or existing protection/gate weakening.",
+    "qualification_exit": 2,
+    "triggered_rules": 43,
+    "workflow": 37653041141,
+    "workflow_outcome": "SUCCESS"
+  }
+}
