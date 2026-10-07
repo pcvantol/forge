@@ -184,6 +184,32 @@ def source_flow(root,*,phase_runner=None,failure_control=False):
             status,bob=request(port,root/'bob.private','GET','/v1/workset-controls/bob-set');assert status==200
             status,_=request(port,root/'bob.private','POST','/v1/workset-controls/bob-set/commands',body(bob['current'],op='bob-hold'));assert status==200
             status,bob_held=request(port,root/'bob.private','GET','/v1/workset-controls/bob-set');assert status==200
+            with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                original=db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('bob-set',)).fetchone()[0]
+            for fault in ('repeated-request-bool','current-hold-revision-bool','current-hold-reason-malformed'):
+                value=json.loads(original);entry=value['control_operations']['bob-hold']
+                if fault=='repeated-request-bool':
+                    assert entry['request']['expected_revision']==1
+                    entry['receipt']['request']['expected_revision']=True
+                    entry['receipt_digest']=utils.canonical_digest(entry['receipt'])
+                elif fault=='current-hold-revision-bool':
+                    assert value['control_revision']==1;value['operator_hold']['control_revision']=True
+                else:value['operator_hold']['reason_code']=[]
+                with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                    with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(json.dumps(value,sort_keys=True),'bob-set'))
+                try:
+                    if fault=='repeated-request-bool':
+                        status,_=request(port,root/'bob.private','GET','/v1/workset-controls/bob-set/commands/bob-hold');assert status==503
+                        status,_=request(port,root/'bob.private','POST','/v1/workset-controls/bob-set/commands',entry['request']);assert status==503
+                    else:
+                        status,_=request(port,root/'bob.private','GET','/v1/workset-controls/bob-set');assert status==503
+                        status,_=request(port,root/'bob.private','POST','/v1/workset-controls/bob-set/commands',body(bob_held['current'],op='malformed-current-unhold',intent='unhold',hold=bob_held['current']['hold']));assert status==503
+                    with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                        assert json.loads(db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',('bob-set',)).fetchone()[0])==value
+                finally:
+                    with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
+                        with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(original,'bob-set'))
+            records.append({'case':'repeated-request-and-current-hold-strict-types','variants':3,'get_and_command':503,'canonical_mutation':False})
             status,bob_unheld=request(port,root/'bob.private','POST','/v1/workset-controls/bob-set/commands',body(bob_held['current'],op='bob-unhold',intent='unhold',hold=bob_held['current']['hold']))
             assert status==200 and not bob_unheld['original_receipt']['effect']['held']
             assert all(not i['released'] for i in bob_unheld['current_readback']['worklist']['items'])
@@ -322,7 +348,7 @@ def source_denials(root):
             from copy import deepcopy
             variants=('principal','contradictory-held','cancelled','missing-effect-field','outcome','schema',
                       'workset-revision','control-revision','hold-provenance','target','admitted-set','intent-revision',
-                      'hold-control-bool','effect-observation')
+                      'hold-control-bool','effect-observation','fabricated-canonical-admission')
             statuses=[]
             for fault in variants:
                 with closing(sqlite3.connect(root/'runtime'/'forge.db')) as db:
@@ -343,6 +369,12 @@ def source_denials(root):
                     elif fault=='intent-revision':entry['intent_revision']=999
                     elif fault=='hold-control-bool':effect['hold']['control_revision']=True
                     elif fault=='effect-observation':effect['observed_at']='not-a-timestamp'
+                    elif fault=='fabricated-canonical-admission':
+                        member=corrupted['definition']['members'][0]
+                        entry['admission_bindings']=[{'kind':'CANONICAL_CANDIDATE_INTAKE','candidate_id':member['candidate_id'],
+                            'subject_revision':member['subject_revision'],'mission_id':'MISSION-NONEXISTENT',
+                            'installation_id':corrupted['installation_id'],'envelope_digest':'sha256:'+'0'*64}]
+                        effect['admitted_mission_ids']=['MISSION-NONEXISTENT']
                     entry['receipt_digest']=utils.canonical_digest(receipt)
                     with db:db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?',(json.dumps(corrupted,sort_keys=True),'serial-set'))
                 try:

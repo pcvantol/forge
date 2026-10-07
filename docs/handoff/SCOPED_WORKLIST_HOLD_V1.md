@@ -130,3 +130,13 @@ Fourteen coherent corrupted-proof variants exercise real HTTP/store503 with
 no command mutation and exact disposable document restoration. Valid historical
 receipts remain immutable and separate from current state. Earlier FAIL reviews
 are retained; corrected exact-head reviews and delivery gates remain required.
+
+The exact497 re-review found residual strict-scalar/repeated-request byte
+binding and self-consistent admission-reference gaps. The same assignment
+corrects these: canonical validation/digest of the repeated request, strict
+current hold provenance before any intent/effect, and historical admission
+references joined against the actual canonical Candidate/Mission intake
+readback. Fresh valid late replay remains separate from current hold state;
+unavailable canonical proof denies read/replay instead of optimistic success.
+Real revision1 Bob commands and no-mutation coherent store negatives cover
+the Boolean/int alias and fabricated admission; all FAIL receipts are retained.

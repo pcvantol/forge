@@ -64,9 +64,16 @@ def control_state(value, principal, admitted_mission_ids=None):
         raise RuntimeError('invalid current control state')
     if hold is not None and (not isinstance(hold,dict)
             or set(hold)!={'principal_reference','operation_id','reason_code','control_revision'}
-            or not isinstance(hold['principal_reference'],str) or not value['held']
-            or hold['control_revision']!=value.get('control_revision',0)):
+            or not isinstance(hold['principal_reference'],str) or not hold['principal_reference']
+            or len(hold['principal_reference'])>400 or not value['held']
+            or type(hold['control_revision']) is not int or hold['control_revision']<1
+            or hold['control_revision']!=value.get('control_revision',0)
+            or not isinstance(hold['reason_code'],str)
+            or hold['reason_code'] not in {'USER_REQUEST','TEMPORARY_WAIT','OWNER_REQUEST'}):
         raise RuntimeError('invalid hold provenance')
+    if hold is not None:
+        try:identifier(hold['operation_id'])
+        except ValueError as error:raise RuntimeError('invalid current hold identity') from error
     return {'instance_id':principal.instance_id,'workset_id':value['definition']['workset_id'],
             'definition_revision':value['definition_digest'],'workset_revision':value['revision'],
             'control_revision':value.get('control_revision',0),'held':value['held'],
@@ -92,8 +99,10 @@ def finish_operation(value, operation):
     stored['state']='APPLIED';stored['admission_bindings']=operation['admission_bindings']
     stored['receipt']=receipt;stored['receipt_digest']=canonical_digest(receipt)
 
-def _validated_receipt(value, stored, request, principal):
+def _validated_receipt(value, stored, request, principal, canonical_bindings):
     receipt=stored['receipt'];effect=receipt['effect']
+    repeated=canonical_request(receipt['request'])
+    if canonical_digest(repeated)!=stored['request_digest']:raise RuntimeError('receipt repeated request bytes failed')
     fields={'contract_version','operation_id','principal_id','grant_id','request','request_digest','outcome','effect','only_target_hold_removed'}
     effect_fields={'instance_id','workset_id','definition_revision','workset_revision','control_revision','held','hold',
                    'hold_provenance','admitted_mission_ids','boundary','ongoing_work_cancelled','observed_at'}
@@ -126,14 +135,15 @@ def _validated_receipt(value, stored, request, principal):
         if (not isinstance(ref,dict) or set(ref)!={'kind','candidate_id','subject_revision','mission_id','installation_id','envelope_digest'}
                 or ref['kind']!='CANONICAL_CANDIDATE_INTAKE' or ref['candidate_id'] not in members
                 or ref['candidate_id'] in seen or ref['subject_revision']!=members[ref['candidate_id']]['subject_revision']
-                or ref['installation_id']!=value['installation_id']):raise RuntimeError('foreign original admission binding')
+                or ref['installation_id']!=value['installation_id']
+                or ref not in canonical_bindings):raise RuntimeError('unproven original canonical admission binding')
         identifier(ref['mission_id']);canonical_request({**request,'definition_revision':ref['envelope_digest']})
         ids.append(ref['mission_id']);seen.add(ref['candidate_id'])
     if (not isinstance(effect['admitted_mission_ids'],list) or effect['admitted_mission_ids']!=sorted(ids)
             or len(set(ids))!=len(ids)):raise RuntimeError('receipt original admission set failed')
 
 
-def _operation(value, operation_id, principal):
+def _operation(value, operation_id, principal, canonical_bindings=()):
     stored=value.get('control_operations',{}).get(operation_id)
     if stored is None:return None
     if stored['principal_reference']!=principal.reference:
@@ -160,7 +170,7 @@ def _operation(value, operation_id, principal):
             raise RuntimeError('unhold intent original target failed')
         if stored['state']=='APPLIED':
             if stored['receipt_digest']!=canonical_digest(stored['receipt']):raise RuntimeError('receipt integrity failed')
-            _validated_receipt(value,stored,request,principal)
+            _validated_receipt(value,stored,request,principal,canonical_bindings)
     except (ValueError,KeyError,TypeError,AttributeError) as error:
         raise RuntimeError('invalid persisted command proof') from error
     return stored
@@ -200,7 +210,7 @@ class WorklistControlService:
                 value=json.loads(row[0])
             if value['revision']!=snapshot['workset_revision']:
                 raise RuntimeError('readback changed during observation')
-            stored=_operation(value,operation_id,principal) if operation_id else None
+            stored=_operation(value,operation_id,principal,[i['allocation_binding'] for i in snapshot['items'] if i['allocation_binding']]) if operation_id else None
             return {'contract_version':READBACK,'principal_id':principal.principal_id,'read_only':True,
                     'operation':({'state':stored['state'],'original_receipt':stored.get('receipt'),
                                   'operation_id':operation_id,'execution_known':stored['state']=='APPLIED'} if stored else None),
@@ -220,7 +230,8 @@ class WorklistControlService:
                     service=ApprovedWorklistService(runtime,lifecycle);value=service._get(key)
                     if value['runtime_generation']!=runtime.database._connection.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:
                         raise ControlConflict('workset generation changed')
-                    stored=_operation(value,request['operation_id'],principal)
+                    current_snapshot=projection(self.root,principal.instance_id,key,principal.principal_id)
+                    stored=_operation(value,request['operation_id'],principal,[i['allocation_binding'] for i in current_snapshot['items'] if i['allocation_binding']])
                     if stored is not None:
                         if stored['request']!=request:raise ControlConflict('operation payload conflict')
                         if stored['state']=='APPLIED':return stored['receipt'],False
