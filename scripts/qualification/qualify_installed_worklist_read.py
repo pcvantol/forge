@@ -42,7 +42,7 @@ def main(argv=None):
     utils=module_from_spec(spec);spec.loader.exec_module(utils)
     output=args.output_dir.resolve()
     if not args.child:
-        artifact=utils._installed_wheel(args.wheel,source_revision=args.source_revision)
+        artifact=utils._installed_wheel(args.wheel,source_revision=args.source_revision,verify_source=True)
         if output.exists():raise ValueError('qualification output must be fresh')
         output.mkdir(parents=True)
         (output/'artifact.parent.private.json').write_text(json.dumps(artifact))
@@ -97,13 +97,16 @@ def main(argv=None):
                 return original(sock,address)
             stack.enter_context(patch('socket.socket.connect',connect))
             stack.enter_context(patch('subprocess.run',side_effect=AssertionError('readproducer invoked external process')))
+            observed_requests=[]
             auth='Bearer '+alice.read_text().strip();auth_b='Bearer '+bob.read_text().strip()
             def request(path,method='GET',credential=auth):
                 req=Request(endpoint+path,headers={'Authorization':credential},method=method)
                 try:
-                    with urlopen(req,timeout=4) as response:return response.status,json.load(response)
+                    with urlopen(req,timeout=4) as response:
+                        observed_requests.append({'method':method,'path':path,'status':response.status});return response.status,json.load(response)
                 except HTTPError as exc:
-                    with exc:return exc.code,json.load(exc)
+                    with exc:
+                        observed_requests.append({'method':method,'path':path,'status':exc.code});return exc.code,json.load(exc)
             schema=json.loads((Path(forge.__file__).parent/'api/workspace-worklist-v1.json').read_text())
             before=sha256((data/'forge.db').read_bytes()).hexdigest()
             if args.failure_control:grant.revoke(alice_record['grant_id'])
@@ -138,6 +141,14 @@ def main(argv=None):
             checks.append('source-outage-denial')
             grant.revoke(alice_record['grant_id']);assert request('/v1/worksets/alice-set')[0]==401
             checks.append('current-revocation-denial')
+            short=root/'short-token'
+            grant.issue(principal_id='short-lived',workset_ids=('alice-set',),
+                expires_at=(datetime.now(UTC)+timedelta(seconds=2)).isoformat(),token_path=short)
+            short_auth='Bearer '+short.read_text().strip()
+            assert request('/v1/worksets/alice-set',credential=short_auth)[0]==200
+            time.sleep(2.1)
+            assert request('/v1/worksets/alice-set',credential=short_auth)[0]==401
+            checks.append('real-expiry-denial')
             assert not attempted
             for table in ['mission_state','mission_id_allocations','scheduler_submissions','action_derivations','execution_receipts']:
                 assert runtime.database._connection.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0]==0
@@ -151,6 +162,9 @@ def main(argv=None):
     receipt={'result':result,'qualification':'INSTALLED_SCOPED_WORKLIST_READ_V1',
         'source_revision':args.source_revision,'artifact':artifact,'checks':checks,
         'failure_type':error,'failure_stage':stage if error else None,'observed_read_status':observed_read_status,
+        'qualifier_sha256':'sha256:'+sha256(Path(__file__).read_bytes()).hexdigest(),
+        'mutation_counts':{'intake':0,'mission_allocation':0,'planning':0,'provider':0,'ep_submit':0} if result=='WORKLIST_READ_PASS' else None,
+        'request_trace':observed_requests if 'observed_requests' in locals() else [],
         'forge_processes':1,'environment':'ISOLATED_CHILD_HOME_CONFIG_SCRATCH','external_fault':'revoked-positive-read-credential' if args.failure_control else None,
         'expected_failure_control':bool(args.failure_control),'cleanup':{'owned_runtime_home_credentials_scratch_removed':not root.exists()},
         'limitations':['Read producer foundation; serial activation not yet qualified.','Synthetic separate canonical approvals are not independent live people.','No live EP/provider/operational activation or publication.']}
