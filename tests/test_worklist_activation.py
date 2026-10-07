@@ -29,3 +29,17 @@ class WorklistActivationTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             with self.assertRaises(AssertionError):
                 qual.source_flow(Path(tmp)/'controlled-failure','effect-read-only',failure_control=True)
+
+    def test_explicit_empty_workset_is_bounded_idle_with_only_advisory_candidates(self):
+        with TemporaryDirectory() as tmp:
+            self.assertEqual(qual.empty_flow(Path(tmp)/'empty')['allocations'],0)
+
+    def test_finite_allowance_does_not_unlock_b_or_refresh_consumed_claims(self):
+        with TemporaryDirectory() as tmp:
+            records=qual.source_flow(Path(tmp)/'budget','effect-read-only',budget=True)
+            self.assertEqual(records[-1]['workset']['consumed_activations'],1)
+
+    def test_failed_or_tampered_evidence_cannot_unlock_preapproved_b(self):
+        for case in ('failed-evidence','tampered-evidence'):
+            with self.subTest(case=case),TemporaryDirectory() as tmp:
+                self.assertEqual(qual.evidence_denial(Path(tmp)/case,case)['allocations'],1)
