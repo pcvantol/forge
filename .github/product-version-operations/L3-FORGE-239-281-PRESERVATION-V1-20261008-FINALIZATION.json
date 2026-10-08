@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.10.0",
+  "classification_rationale": "L3-FORGE-239-281-PRESERVATION-V1-20261008",
+  "component": "product",
+  "event_lineage": "L3-FORGE-239-281-PRESERVATION-V1-20261008",
+  "expected_head": "5c96ca7adec4bdc20370b4e13b2ee365d49c5e5c",
+  "operation_id": "L3-FORGE-239-281-PRESERVATION-V1-20261008-FINALIZATION",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "NO_BUMP",
+  "requested_bump": "none",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.10.0"
+}

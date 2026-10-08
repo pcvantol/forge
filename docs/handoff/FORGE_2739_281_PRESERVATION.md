@@ -80,3 +80,14 @@ safe cleanup remain delivery gates until actual receipts exist. Producer deliver
 does not qualify L1's later real installer continuation. No real user installation,
 live EP, project registration, provider login, signing, public artifact replacement,
 Mission allocation/start or reset is authorized by this handoff.
+
+## Protected implementation and source finalization
+
+[Implementation PR263](https://github.com/pcvantol/forge/pull/263) merged at `5c96ca7adec4bdc20370b4e13b2ee365d49c5e5c`.
+[Immutable selected proof](../qualification/forge-2739-281-preservation-selected-completion-2026-10-08.json)
+records actual full-owning and exact-head independent reviews, protected implementation
+and fresh implementation-main real-published-wheel producer qualification.
+Normal nonempty NO_BUMP2.10.0 source finalization shares the same assignment/event
+lineage. Its exact-head reviews/required CI/protected merge and fresh final-main
+producer/main-CI/current readbacks/cleanup remain subsequent gates. No future PASS
+or L1 actual installation qualification is asserted. Published2.8.1 stays immutable.
