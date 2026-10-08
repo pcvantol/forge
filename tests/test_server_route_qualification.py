@@ -21,6 +21,12 @@ TOKEN = "route-qualification-bearer"
 # Versioned V1 acceptance inventory, independent of the production tuple and
 # contract files. A removed or silently omitted case must fail this gate.
 EXPECTED_ROUTES = frozenset({
+    ('GET', '/v1/candidate-decisions/capability'),
+    ('GET', '/v1/candidate-decisions/{candidate_id}'),
+    ('POST', '/v1/candidate-decisions/{candidate_id}/business'),
+    ('POST', '/v1/candidate-decisions/{candidate_id}/architecture'),
+    ('GET', '/v1/candidate-decisions/{candidate_id}/operations/{operation_id}'),
+
     ("GET", "/v1/project-dag/capability"),
     ('GET', '/v1/advisory-candidates/capability'),
     ('GET', '/v1/advisory-candidates/{conversation_id}/source/{turn_id}'),
@@ -158,7 +164,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 57)
+        self.assertEqual(len(EXPECTED_ROUTES), 62)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -229,6 +235,11 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path.startswith('/v1/candidate-decisions/'):
+                                self.assertEqual(status,403)
+                                self.assertEqual(body['error']['code'],'DECISION_SCOPE_DENIED')
+                                observed.add((method,path))
+                                continue
                             if path.startswith('/v1/advisory-candidates/'):
                                 self.assertEqual(status,403)
                                 self.assertEqual(body['error']['code'],'CANDIDATE_SCOPE_DENIED')

@@ -165,6 +165,20 @@
       "implementation_version": "2.9.0",
       "immutable_proof": "docs/qualification/advisory-candidate-selected-completion-2026-10-08.json",
       "selected_installed_groups": 11
+    },
+    {
+      "assignment_id": "L3-FORGE-CANDIDATE-DECISIONS-HTTP-V1-20261008",
+      "plan_revision": "r40",
+      "state": "SOURCE_IMPLEMENTED_QUALIFICATION_PENDING",
+      "scope": "SEPARATE_CANDIDATE_BUSINESS_ARCHITECTURE_DECISIONS_HTTP_CLI",
+      "node_subsets": [
+        "RC-FP_DECISION_ROUTING_SUBSET",
+        "NECESSARY_CANDIDATE_DECISION_CONSUMER_AUTHORITY"
+      ],
+      "handoff": "docs/handoff/CANDIDATE_DECISIONS_HTTP_V1.md",
+      "full_node_completion": false,
+      "consumer_assignment_changed": false,
+      "previous_qualified_registration_source": "8923be501c4b83fb102d88420eda36160f759a5a"
     }
   ]
 }

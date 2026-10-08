@@ -96,3 +96,19 @@ finalization and exact-final-main installed/main CI remain separate gates.
 Full RC-FP/FQ/F2/node/family closure and native Candidate UI are unselected;
 existing DAG edges/statuses remain unchanged. L4 native chat independently
 consumes the already qualified2.8.0/88f7560 advice contract.
+
+
+## Selected separate Candidate decisions r40
+
+L3-FORGE-CANDIDATE-DECISIONS-HTTP-V1-20261008 selects the RC-FP
+separate Business/Architecture decision-routing and necessary consumer-authority
+subset over the qualified r39 registered Candidate population.
+[Owning handoff](../handoff/CANDIDATE_DECISIONS_HTTP_V1.md) binds exact subject,
+actual existing G001 operator/profile roles, separate read/decision grants,
+canonical evidence, durable intents and cross-store publication recovery.
+Source targets normal MINOR2.10.0; full owning/coverage, independent exact-head
+reviews, protected delivery, normal finalization and exact-final-main installed
+gates remain separate qualification requirements. Previous r39 remains closed.
+Existing nodes/statuses/DAG edges and full-node flags remain unchanged.
+L4 native Candidate registration independently consumes already qualified
+Forge2.9.0/8923be50; no approval UI or consumer pin change is selected here.

@@ -31,6 +31,10 @@
     {
       "key": "advisoryCandidateToken",
       "value": ""
+    },
+    {
+      "key": "candidateDecisionToken",
+      "value": ""
     }
   ],
   "auth": {
@@ -1494,6 +1498,198 @@
         }
       },
       "description": "Closed advisory-candidate-v1 contract; explicit owner-provisioned Candidate authority."
+    },
+    {
+      "name": "GET /v1/candidate-decisions/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{candidateDecisionToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/candidate-decisions/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "candidate-decisions",
+            "capability"
+          ]
+        }
+      },
+      "description": "Closed candidate-decisions-v1 contract. Separate explicit owner-granted permissions; no admin token or Mission Intake."
+    },
+    {
+      "name": "GET /v1/candidate-decisions/{candidate_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{candidateDecisionToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/candidate-decisions/{candidate_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "candidate-decisions",
+            "{candidate_id}"
+          ]
+        }
+      },
+      "description": "Closed candidate-decisions-v1 contract. Separate explicit owner-granted permissions; no admin token or Mission Intake."
+    },
+    {
+      "name": "POST /v1/candidate-decisions/{candidate_id}/business",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{candidateDecisionToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/candidate-decisions/{candidate_id}/business",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "candidate-decisions",
+            "{candidate_id}",
+            "business"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "description": "Closed candidate-decisions-v1 contract. Separate explicit owner-granted permissions; no admin token or Mission Intake."
+    },
+    {
+      "name": "POST /v1/candidate-decisions/{candidate_id}/architecture",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{candidateDecisionToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/candidate-decisions/{candidate_id}/architecture",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "candidate-decisions",
+            "{candidate_id}",
+            "architecture"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "description": "Closed candidate-decisions-v1 contract. Separate explicit owner-granted permissions; no admin token or Mission Intake."
+    },
+    {
+      "name": "GET /v1/candidate-decisions/{candidate_id}/operations/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{candidateDecisionToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/candidate-decisions/{candidate_id}/operations/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "candidate-decisions",
+            "{candidate_id}",
+            "operations",
+            "{operation_id}"
+          ]
+        }
+      },
+      "description": "Closed candidate-decisions-v1 contract. Separate explicit owner-granted permissions; no admin token or Mission Intake."
     }
   ]
 }

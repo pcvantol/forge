@@ -208,9 +208,13 @@ class ArchitecturePlanningEvidence:
 
     def __post_init__(self) -> None:
         if not all((self.scope, self.non_goals, self.risk_inputs, self.human_gates,
-                    self.dependencies, self.provenance_revision, self.context_input_bound > 0,
+                    self.provenance_revision, self.context_input_bound > 0,
                     self.context_output_bound > 0)):
             raise ValueError("planning evidence requires complete typed bounds and provenance")
+        if (not isinstance(self.dependencies, tuple)
+                or any(not isinstance(item, str) or not item for item in self.dependencies)
+                or len(set(self.dependencies)) != len(self.dependencies)):
+            raise ValueError("planning dependencies require an explicit unique text tuple, which may be empty")
         if self.effect_policy is not None:
             if not isinstance(self.effect_policy, MissionEffectPolicy):
                 raise ValueError("planning effect policy is invalid")

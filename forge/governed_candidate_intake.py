@@ -40,7 +40,7 @@ class GovernedCandidateIntake:
                 self._decision_id("architecture", candidate_id, revision))
 
     def approve_business(self, candidate_id: str, *, actor: str, occurred_at: str,
-                         rationale: str, human_gates: tuple[str, ...]) -> str:
+                         rationale: str, human_gates: tuple[str, ...], effect_guard=None) -> str:
         self._require_role(actor, GovernanceRole.BUSINESS_OWNER)
         candidate, revision = self._candidate(candidate_id)
         recommendation = self.lifecycle.get_recommendation(candidate.recommendation_id)
@@ -57,8 +57,12 @@ class GovernedCandidateIntake:
         if recommendation.status is not RecommendationStatus.RECOMMENDED:
             self._require_lifecycle_decision(candidate.recommendation_id, "business_decision",
                                              candidate_id, revision, decision_id)
+        if effect_guard is not None:
+            effect_guard()
         self._record_business(decision_id, candidate, revision, human_gates)
         if recommendation.status is RecommendationStatus.RECOMMENDED:
+            if effect_guard is not None:
+                effect_guard()
             self.lifecycle.transition(candidate.recommendation_id, RecommendationStatus.BUSINESS_APPROVED,
                                       actor=actor, occurred_at=occurred_at, rationale=rationale,
                                       references=(candidate_id, revision, decision_id))
@@ -68,7 +72,7 @@ class GovernedCandidateIntake:
 
     def approve_architecture(self, candidate_id: str, mission_preview: ArchitectureMission,
                              planning: ArchitecturePlanningEvidence, *, actor: str,
-                             occurred_at: str, rationale: str) -> str:
+                             occurred_at: str, rationale: str, effect_guard=None) -> str:
         self._require_role(actor, GovernanceRole.PLATFORM_ARCHITECT)
         candidate, revision = self._candidate(candidate_id)
         recommendation = self.lifecycle.get_recommendation(candidate.recommendation_id)
@@ -94,8 +98,12 @@ class GovernedCandidateIntake:
             self._require_lifecycle_decision(candidate.recommendation_id, "architecture_decision",
                                              candidate_id, revision, decision_id,
                                              planning.digest, planning.mission_spec_digest)
+        if effect_guard is not None:
+            effect_guard()
         self._record_architecture(decision_id, candidate_id, revision, planning)
         if recommendation.status is RecommendationStatus.BUSINESS_APPROVED:
+            if effect_guard is not None:
+                effect_guard()
             self.lifecycle.transition(candidate.recommendation_id, RecommendationStatus.ARCHITECTURE_APPROVED,
                                       actor=actor, occurred_at=occurred_at, rationale=rationale,
                                       references=(candidate_id, revision, decision_id,
@@ -216,7 +224,11 @@ class GovernedCandidateIntake:
             "effect_policy": planning.effect_policy,
         }
         if (any(getattr(mission, field) != expected for field, expected in mission_fields.items())
-                or actual_planning != planning_fields):
+                or actual_planning != planning_fields
+                or any(getattr(mission, field) != getattr(planning, field) for field in (
+                    "criterion_assessment_contracts", "maximum_actions",
+                    "maximum_consecutive_no_progress_actions", "repository_evidence_source",
+                    "repository_evidence_sources"))):
             raise GovernedCandidateIntakeError("Mission preview or planning differs from exact Candidate")
 
     def _record_business(self, decision_id: str, candidate: MissionCandidate,

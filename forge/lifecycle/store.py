@@ -233,6 +233,12 @@ class RecommendationLifecycleStore:
             CREATE TABLE IF NOT EXISTS transitions (sequence INTEGER PRIMARY KEY AUTOINCREMENT, recommendation_id TEXT NOT NULL, from_status TEXT, to_status TEXT NOT NULL, evidence_id TEXT NOT NULL UNIQUE, FOREIGN KEY(recommendation_id) REFERENCES recommendations(recommendation_id), FOREIGN KEY(evidence_id) REFERENCES decision_evidence(evidence_id));
             CREATE TABLE IF NOT EXISTS advisory_candidate_intents (operation_id TEXT NOT NULL, principal TEXT NOT NULL, registration_key TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(principal,operation_id));
             CREATE TABLE IF NOT EXISTS advisory_candidate_registrations (registration_key TEXT PRIMARY KEY, principal TEXT NOT NULL, candidate_id TEXT UNIQUE NOT NULL, document TEXT NOT NULL, FOREIGN KEY(candidate_id) REFERENCES candidates(candidate_id));
+            CREATE TABLE IF NOT EXISTS candidate_decision_intents (principal TEXT NOT NULL, operation_id TEXT NOT NULL, decision_id TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(principal,operation_id));
+            CREATE TABLE IF NOT EXISTS candidate_decision_receipts (decision_id TEXT PRIMARY KEY, principal TEXT NOT NULL, document TEXT NOT NULL);
+            CREATE TRIGGER IF NOT EXISTS candidate_decision_intent_update BEFORE UPDATE ON candidate_decision_intents BEGIN SELECT RAISE(ABORT, 'decision intents are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS candidate_decision_intent_delete BEFORE DELETE ON candidate_decision_intents BEGIN SELECT RAISE(ABORT, 'decision intents are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS candidate_decision_receipt_update BEFORE UPDATE ON candidate_decision_receipts BEGIN SELECT RAISE(ABORT, 'decision receipts are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS candidate_decision_receipt_delete BEFORE DELETE ON candidate_decision_receipts BEGIN SELECT RAISE(ABORT, 'decision receipts are immutable'); END;
             CREATE TRIGGER IF NOT EXISTS advisory_intent_immutable_update BEFORE UPDATE ON advisory_candidate_intents BEGIN SELECT RAISE(ABORT, 'registration intents are immutable'); END;
             CREATE TRIGGER IF NOT EXISTS advisory_intent_immutable_delete BEFORE DELETE ON advisory_candidate_intents BEGIN SELECT RAISE(ABORT, 'registration intents are immutable'); END;
             CREATE TRIGGER IF NOT EXISTS advisory_registration_immutable_update BEFORE UPDATE ON advisory_candidate_registrations BEGIN SELECT RAISE(ABORT, 'registrations are immutable'); END;
@@ -251,6 +257,84 @@ class RecommendationLifecycleStore:
 
     def close(self) -> None:
         self._connection.close()
+
+    def registered_candidate_source(self, candidate_id):
+        row=self._connection.execute('SELECT principal,document FROM advisory_candidate_registrations WHERE candidate_id=?',(candidate_id,)).fetchone()
+        if row is None:
+            raise LifecycleError('Candidate has no admitted project-bound registration')
+        receipt=json.loads(row['document'])
+        intent=self.candidate_registration_intent(receipt['operation_id'],row['principal'])
+        if intent is None:
+            raise LifecycleError('Candidate registration provenance is incomplete')
+        return receipt,intent['proposal']
+
+    def decision_operation_intent(self, principal, operation_id):
+        row=self._connection.execute('SELECT decision_id,document FROM candidate_decision_intents WHERE principal=? AND operation_id=?',(principal,operation_id)).fetchone()
+        if row is None:
+            return None
+        value=json.loads(row['document'])
+        if value['principal_reference']!=principal or value['request']['operation_id']!=operation_id or value['decision_id']!=row['decision_id']:
+            raise LifecycleError('decision intent correlation differs')
+        return value
+
+    def decision_operation_receipt(self, decision_id):
+        row=self._connection.execute('SELECT principal,document FROM candidate_decision_receipts WHERE decision_id=?',(decision_id,)).fetchone()
+        if row is None:
+            return None
+        value=json.loads(row['document'])
+        if value['decision_id']!=decision_id or value['principal_reference']!=row['principal']:
+            raise LifecycleError('decision receipt correlation differs')
+        return value
+
+    def begin_decision_operation(self, principal, operation_id, decision_id, document, maximum):
+        from forge.candidate_decision_contract import decision_request
+        from forge.advisory_contract import digest
+        from forge.governed_candidate_intake import GovernedCandidateIntake
+        from forge.approved_worklist import timestamp
+        from forge.models.criterion_observation import canonical_digest
+        if set(document)!=set('request request_digest candidate decision_id principal_reference profile_id operator_id operator_binding_version installation_id source_digest admitted_at'.split()):
+            raise LifecycleError('closed decision intent required')
+        request=decision_request(document['request'])
+        timestamp(document['admitted_at'])
+        if document['principal_reference']!=principal or request['operation_id']!=operation_id or document['decision_id']!=decision_id or document['request_digest']!=digest(request) or type(maximum) is not int or not 1<=maximum<=8:
+            raise LifecycleError('decision intent binding invalid')
+        candidate=self.get_candidate(request['candidate_id'])
+        if canonical_digest(candidate.to_dict())!=request['subject_revision'] or canonical_digest(document['candidate'])!=request['subject_revision'] or decision_id!=GovernedCandidateIntake._decision_id(request['kind'].lower(),candidate.id,request['subject_revision']):
+            raise LifecycleError('exact canonical Candidate decision identity required')
+        with self.atomic():
+            old=self.decision_operation_intent(principal,operation_id)
+            if old is not None:
+                if old['request']!=request:
+                    raise LifecycleError('decision operation payload conflicts')
+                return old
+            receipt=self.decision_operation_receipt(decision_id)
+            pending=self._connection.execute('SELECT 1 FROM candidate_decision_intents WHERE decision_id=?',(decision_id,)).fetchone()
+            if pending and receipt is None:
+                raise LifecycleError('pending decision requires original operation')
+            if receipt is not None and (receipt['principal_reference']!=principal or receipt['request_digest']!=digest({**request,'operation_id':receipt['operation_id']})):
+                raise LifecycleError('decision differs from original confirmed operation')
+            if self._connection.execute('SELECT count(*) FROM candidate_decision_intents').fetchone()[0]>=64:
+                raise LifecycleError('retained decision operation capacity exhausted')
+            used=self._connection.execute('SELECT count(DISTINCT decision_id) FROM candidate_decision_intents WHERE principal=?',(principal,)).fetchone()[0]
+            if receipt is None and used>=maximum:
+                raise LifecycleError('retained decision allowance exhausted')
+            self._connection.execute('INSERT INTO candidate_decision_intents VALUES (?,?,?,?)',(principal,operation_id,decision_id,_dump(document)))
+        return document
+
+    def finish_decision_operation(self, principal, operation_id, decision_id, receipt):
+        intent=self.decision_operation_intent(principal,operation_id)
+        if intent is None or receipt['principal_reference']!=principal or receipt['operation_id']!=operation_id or receipt['decision_id']!=decision_id or receipt['request_digest']!=intent['request_digest']:
+            raise LifecycleError('durable decision intent is required')
+        from forge.candidate_decision_service import decision_receipt
+        expected=decision_receipt(intent,receipt['canonical_decision'],self.decision_evidence(receipt['lifecycle_evidence']['id']))
+        if _dump(receipt)!=_dump(expected):
+            raise LifecycleError('original decision receipt must derive from canonical intent/evidence')
+        with self.atomic():
+            old=self.decision_operation_receipt(decision_id)
+            if old is not None:
+                return old,False
+            self._connection.execute('INSERT INTO candidate_decision_receipts VALUES (?,?,?)',(decision_id,principal,_dump(receipt)))
+        return receipt,True
 
     def __enter__(self) -> "RecommendationLifecycleStore":
         return self

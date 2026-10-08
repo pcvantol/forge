@@ -1,0 +1,1585 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/api/candidate-decisions-v1.json",
+  "title": "Separate canonical Candidate decisions without Mission Intake",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/business_request"
+    },
+    {
+      "$ref": "#/$defs/architecture_request"
+    },
+    {
+      "$ref": "#/$defs/capability"
+    },
+    {
+      "$ref": "#/$defs/detail"
+    },
+    {
+      "$ref": "#/$defs/operation"
+    },
+    {
+      "$ref": "#/$defs/command_result"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "effect_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "mode",
+        "delivery",
+        "read_paths",
+        "write_paths"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "1.0"
+        },
+        "mode": {
+          "enum": [
+            "READ_ONLY_ASSESSMENT",
+            "DOCUMENTATION_ONLY",
+            "ARCHITECTURE_DESIGN_ONLY",
+            "BOUNDED_REPOSITORY_CHANGE"
+          ]
+        },
+        "delivery": {
+          "enum": [
+            "EVIDENCE_ONLY",
+            "GIT"
+          ]
+        },
+        "read_paths": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "write_paths": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "recommendation_id",
+        "title",
+        "objective",
+        "scope",
+        "acceptance_criteria",
+        "architecture_constraints",
+        "dependencies",
+        "effect_policy"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "recommendation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "scope": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "architecture_constraints": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "effect_policy": {
+          "$ref": "#/$defs/effect_policy"
+        }
+      }
+    },
+    "evidence_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requirement_id": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "control_identity": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "command": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "kind": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "artifact_path": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "json_pointer": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "expected_json": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "validation_id": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "validation_profile_version": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "profile_reference": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "control_category": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "control_definition_digest": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "minimum_test_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "requirement_id",
+        "control_identity",
+        "command",
+        "kind",
+        "artifact_path",
+        "json_pointer",
+        "expected_json",
+        "validation_id",
+        "validation_profile_version",
+        "profile_reference",
+        "control_category",
+        "control_definition_digest",
+        "minimum_test_count"
+      ]
+    },
+    "criterion_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "criterion": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "requirements": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/evidence_requirement"
+          },
+          "uniqueItems": true
+        },
+        "validity_policy": {
+          "enum": [
+            "current_revision",
+            "historical_delivery"
+          ]
+        },
+        "schema_version": {
+          "const": "1.0"
+        }
+      },
+      "required": [
+        "criterion",
+        "requirements",
+        "validity_policy",
+        "schema_version"
+      ]
+    },
+    "repository_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "github_repository": {
+          "type": "string",
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "repository_id",
+        "github_repository"
+      ]
+    },
+    "mission_preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "candidate_id": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "business_objective": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "business_value": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "architecture_review_reference": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "mission_recommendation_reference": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "scope": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "engineering_constraints": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "technical_assumptions": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "required_capabilities": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "risks": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "required_disciplines": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "enum": [
+              "platform_architecture",
+              "engineering",
+              "business",
+              "ux",
+              "security",
+              "privacy",
+              "legal",
+              "commercial",
+              "market_research",
+              "compliance"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "status": {
+          "const": "approved_for_engineering"
+        },
+        "schema_version": {
+          "const": "1.0"
+        },
+        "criterion_assessment_contracts": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/criterion_contract"
+          },
+          "uniqueItems": true
+        },
+        "maximum_actions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "maximum_consecutive_no_progress_actions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "repository_evidence_source": {
+          "$ref": "#/$defs/repository_source"
+        },
+        "repository_evidence_sources": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/repository_source"
+          },
+          "uniqueItems": true
+        },
+        "effect_policy": {
+          "$ref": "#/$defs/effect_policy"
+        }
+      },
+      "required": [
+        "id",
+        "candidate_id",
+        "title",
+        "summary",
+        "business_objective",
+        "business_value",
+        "architecture_review_reference",
+        "mission_recommendation_reference",
+        "scope",
+        "engineering_constraints",
+        "acceptance_criteria",
+        "technical_assumptions",
+        "dependencies",
+        "required_capabilities",
+        "risks",
+        "required_disciplines",
+        "status",
+        "schema_version"
+      ]
+    },
+    "planning": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "write_scopes": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "non_goals": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "risk_inputs": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "human_gates": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "context_input_bound": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "context_output_bound": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "provenance_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "mission_spec_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "effect_policy": {
+          "$ref": "#/$defs/effect_policy"
+        },
+        "criterion_assessment_contracts": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/criterion_contract"
+          },
+          "uniqueItems": true
+        },
+        "maximum_actions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "maximum_consecutive_no_progress_actions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "repository_evidence_source": {
+          "$ref": "#/$defs/repository_source"
+        },
+        "repository_evidence_sources": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/repository_source"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "scope",
+        "write_scopes",
+        "non_goals",
+        "risk_inputs",
+        "human_gates",
+        "dependencies",
+        "context_input_bound",
+        "context_output_bound",
+        "provenance_revision",
+        "mission_spec_digest",
+        "effect_policy"
+      ]
+    },
+    "business_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-candidate-decisions/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "rationale": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "confirm": {
+          "const": true
+        },
+        "kind": {
+          "const": "BUSINESS"
+        },
+        "human_gates": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "contract_version",
+        "operation_id",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "candidate_id",
+        "subject_revision",
+        "rationale",
+        "confirm",
+        "kind",
+        "human_gates"
+      ]
+    },
+    "architecture_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-candidate-decisions/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "rationale": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "confirm": {
+          "const": true
+        },
+        "kind": {
+          "const": "ARCHITECTURE"
+        },
+        "business_decision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "business_decision_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "mission_preview": {
+          "$ref": "#/$defs/mission_preview"
+        },
+        "planning": {
+          "$ref": "#/$defs/planning"
+        }
+      },
+      "required": [
+        "contract_version",
+        "operation_id",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "candidate_id",
+        "subject_revision",
+        "rationale",
+        "confirm",
+        "kind",
+        "business_decision_id",
+        "business_decision_digest",
+        "mission_preview",
+        "planning"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "instance_id",
+        "project_id",
+        "repository_id"
+      ]
+    },
+    "candidate_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "subject_revision"
+      ]
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-candidate-decisions/v1"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "principal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "profile_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "permissions": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "enum": [
+              "READ",
+              "BUSINESS",
+              "ARCHITECTURE"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "candidates": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/candidate_binding"
+          },
+          "uniqueItems": true
+        },
+        "supported_population": {
+          "const": "REGISTERED_R39_EXACT_SOURCE_CANDIDATES"
+        },
+        "signer_binding": {
+          "const": "EXACT_CURRENT_G001_PRIMARY_OPERATOR"
+        },
+        "mission_intake": {
+          "const": false
+        },
+        "read_only": {
+          "const": true
+        }
+      },
+      "required": [
+        "contract_version",
+        "scope",
+        "principal_id",
+        "profile_id",
+        "permissions",
+        "candidates",
+        "supported_population",
+        "signer_binding",
+        "mission_intake",
+        "read_only"
+      ]
+    },
+    "canonical_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "installation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "capability": {
+          "enum": [
+            "BUSINESS_APPROVAL",
+            "ARCHITECTURE_APPROVAL"
+          ]
+        },
+        "decision": {
+          "const": "approved"
+        },
+        "scope": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "gates": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "predecessor_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "planning_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          },
+          "required": []
+        },
+        "occurred_at": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "decision_id",
+        "subject_id",
+        "installation_id",
+        "operator_id",
+        "subject_revision",
+        "capability",
+        "decision",
+        "scope",
+        "gates",
+        "predecessor_digest",
+        "evidence",
+        "occurred_at"
+      ]
+    },
+    "lifecycle_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "recommendation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "business_decision",
+            "architecture_decision"
+          ]
+        },
+        "occurred_at": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "rationale": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "references": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "uniqueItems": true
+        },
+        "decision_type": {
+          "const": "LIFECYCLE"
+        },
+        "selected_recommendation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ranked_alternatives": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "uniqueItems": true
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "recommendation_id",
+        "actor",
+        "kind",
+        "occurred_at",
+        "rationale",
+        "references",
+        "decision_type",
+        "selected_recommendation_id",
+        "ranked_alternatives",
+        "confidence"
+      ]
+    },
+    "decision_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "canonical_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/canonical_decision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lifecycle_evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/lifecycle_evidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "publication_complete": {
+          "type": "boolean"
+        },
+        "applicable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "decision_id",
+        "canonical_decision",
+        "decision_digest",
+        "lifecycle_evidence",
+        "publication_complete",
+        "applicable"
+      ]
+    },
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/candidate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "subject_within_grant": {
+          "type": "boolean"
+        },
+        "recommendation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "recommendation_status": {
+          "enum": [
+            "PROPOSED",
+            "RECOMMENDED",
+            "BUSINESS_REJECTED",
+            "BUSINESS_APPROVED",
+            "ARCHITECTURE_REJECTED",
+            "ARCHITECTURE_APPROVED",
+            "MISSION_ALLOCATED",
+            "SUPERSEDED",
+            "ARCHIVED"
+          ]
+        },
+        "source_fresh": {
+          "type": "boolean"
+        },
+        "source_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "decisions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "BUSINESS": {
+              "$ref": "#/$defs/decision_state"
+            },
+            "ARCHITECTURE": {
+              "$ref": "#/$defs/decision_state"
+            }
+          },
+          "required": [
+            "BUSINESS",
+            "ARCHITECTURE"
+          ]
+        },
+        "allowed_operations": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "enum": [
+              "BUSINESS",
+              "ARCHITECTURE"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "missing_conditions": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "uniqueItems": true
+        },
+        "mission_allocation": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidate",
+        "candidate_id",
+        "subject_revision",
+        "subject_within_grant",
+        "recommendation_id",
+        "recommendation_status",
+        "source_fresh",
+        "source_digest",
+        "decisions",
+        "allowed_operations",
+        "missing_conditions",
+        "mission_allocation"
+      ]
+    },
+    "preparation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source_registration_subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "architecture_review_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "mission_preview_id": {
+          "const": "MISSION-PREVIEW"
+        },
+        "expected_mission_fields": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "schema_version": {
+                  "const": "1.0"
+                },
+                "status": {
+                  "const": "approved_for_engineering"
+                },
+                "candidate_id": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "summary": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "business_objective": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "business_value": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "architecture_review_reference": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "mission_recommendation_reference": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "scope": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "uniqueItems": true
+                },
+                "acceptance_criteria": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "uniqueItems": true
+                },
+                "engineering_constraints": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "uniqueItems": true
+                },
+                "dependencies": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "uniqueItems": true
+                },
+                "effect_policy": {
+                  "$ref": "#/$defs/effect_policy"
+                }
+              },
+              "required": [
+                "id",
+                "schema_version",
+                "status",
+                "candidate_id",
+                "title",
+                "summary",
+                "business_objective",
+                "business_value",
+                "architecture_review_reference",
+                "mission_recommendation_reference",
+                "scope",
+                "acceptance_criteria",
+                "engineering_constraints",
+                "dependencies",
+                "effect_policy"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "required_user_inputs": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "uniqueItems": true
+        },
+        "planning_generated": {
+          "const": false
+        },
+        "approval_granted": {
+          "const": false
+        }
+      },
+      "required": [
+        "candidate_id",
+        "subject_revision",
+        "source_registration_subject_revision",
+        "architecture_review_reference",
+        "mission_preview_id",
+        "expected_mission_fields",
+        "required_user_inputs",
+        "planning_generated",
+        "approval_granted"
+      ]
+    },
+    "detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-candidate-decisions/v1"
+        },
+        "current": {
+          "$ref": "#/$defs/current"
+        },
+        "preparation": {
+          "$ref": "#/$defs/preparation"
+        },
+        "read_only": {
+          "const": true
+        }
+      },
+      "required": [
+        "contract_version",
+        "current",
+        "preparation",
+        "read_only"
+      ]
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-candidate-decisions/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "principal_reference": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "decision_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "candidate_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "profile_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "operator_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "installation_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "enum": [
+            "BUSINESS",
+            "ARCHITECTURE"
+          ]
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "request_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "operator_binding_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "source_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "rationale": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "admitted_at": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "canonical_decision": {
+          "$ref": "#/$defs/canonical_decision"
+        },
+        "canonical_decision_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "lifecycle_evidence": {
+          "$ref": "#/$defs/lifecycle_evidence"
+        },
+        "lifecycle_evidence_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "contract_version",
+        "operation_id",
+        "principal_reference",
+        "decision_id",
+        "candidate_id",
+        "profile_id",
+        "operator_id",
+        "installation_id",
+        "kind",
+        "subject_revision",
+        "request_digest",
+        "operator_binding_version",
+        "source_digest",
+        "rationale",
+        "admitted_at",
+        "canonical_decision",
+        "canonical_decision_digest",
+        "lifecycle_evidence",
+        "lifecycle_evidence_digest"
+      ]
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-candidate-decisions/v1"
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "COMPLETE"
+          ]
+        },
+        "original_receipt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/receipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current": {
+          "$ref": "#/$defs/current"
+        },
+        "read_only": {
+          "const": true
+        },
+        "recorded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contract_version",
+        "state",
+        "original_receipt",
+        "current",
+        "read_only"
+      ]
+    },
+    "command_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-candidate-decisions/v1"
+        },
+        "state": {
+          "const": "COMPLETE"
+        },
+        "original_receipt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/receipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current": {
+          "$ref": "#/$defs/current"
+        },
+        "read_only": {
+          "const": false
+        },
+        "recorded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contract_version",
+        "state",
+        "original_receipt",
+        "current",
+        "read_only",
+        "recorded"
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-candidate-decisions/v1"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "code"
+          ]
+        }
+      },
+      "required": [
+        "contract_version",
+        "error"
+      ]
+    }
+  }
+}
