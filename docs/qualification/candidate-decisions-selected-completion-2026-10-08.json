@@ -1,0 +1,359 @@
+{
+  "assignment_id": "L3-FORGE-CANDIDATE-DECISIONS-HTTP-V1-20261008",
+  "plan_revision": "r40",
+  "version": "2.10.0",
+  "candidate_revision": "7514ec5e3c74b9aa0afd27170a66def4244baf28",
+  "candidate_tree": "f96ff1e3d59820ba997ac4498d46a233609008eb",
+  "protected_base": "8923be501c4b83fb102d88420eda36160f759a5a",
+  "owning_validation": {
+    "tests_run": 1308,
+    "failures": 0,
+    "existing_skips": 1,
+    "version_check": "PASS",
+    "projection_check": "PASS",
+    "log_sha256": "7b798342be440af7295fca5c38dee3c2ecd02880d832f50a1b1fcb1a03092725",
+    "production_coverage": {
+      "forge/candidate_decision_cli.py": {
+        "covered_lines": 30,
+        "num_statements": 32,
+        "percent_covered": 93.75,
+        "percent_covered_display": "94",
+        "missing_lines": 2,
+        "excluded_lines": 0,
+        "percent_statements_covered": 93.75,
+        "percent_statements_covered_display": "94"
+      },
+      "forge/candidate_decision_contract.py": {
+        "covered_lines": 67,
+        "num_statements": 72,
+        "percent_covered": 93.05555555555556,
+        "percent_covered_display": "93",
+        "missing_lines": 5,
+        "excluded_lines": 0,
+        "percent_statements_covered": 93.05555555555556,
+        "percent_statements_covered_display": "93"
+      },
+      "forge/candidate_decision_grant.py": {
+        "covered_lines": 145,
+        "num_statements": 161,
+        "percent_covered": 90.06211180124224,
+        "percent_covered_display": "90",
+        "missing_lines": 16,
+        "excluded_lines": 0,
+        "percent_statements_covered": 90.06211180124224,
+        "percent_statements_covered_display": "90"
+      },
+      "forge/candidate_decision_service.py": {
+        "covered_lines": 199,
+        "num_statements": 220,
+        "percent_covered": 90.45454545454545,
+        "percent_covered_display": "90",
+        "missing_lines": 21,
+        "excluded_lines": 0,
+        "percent_statements_covered": 90.45454545454545,
+        "percent_statements_covered_display": "90"
+      },
+      "forge/governance_authority.py": {
+        "covered_lines": 212,
+        "num_statements": 230,
+        "percent_covered": 92.17391304347827,
+        "percent_covered_display": "92",
+        "missing_lines": 18,
+        "excluded_lines": 0,
+        "percent_statements_covered": 92.17391304347827,
+        "percent_statements_covered_display": "92"
+      },
+      "forge/governed_candidate_intake.py": {
+        "covered_lines": 147,
+        "num_statements": 160,
+        "percent_covered": 91.875,
+        "percent_covered_display": "92",
+        "missing_lines": 13,
+        "excluded_lines": 0,
+        "percent_statements_covered": 91.875,
+        "percent_statements_covered_display": "92"
+      },
+      "forge/lifecycle/store.py": {
+        "covered_lines": 450,
+        "num_statements": 513,
+        "percent_covered": 87.71929824561404,
+        "percent_covered_display": "88",
+        "missing_lines": 63,
+        "excluded_lines": 0,
+        "percent_statements_covered": 87.71929824561404,
+        "percent_statements_covered_display": "88"
+      },
+      "forge/models/architecture_mission.py": {
+        "covered_lines": 81,
+        "num_statements": 86,
+        "percent_covered": 94.18604651162791,
+        "percent_covered_display": "94",
+        "missing_lines": 5,
+        "excluded_lines": 0,
+        "percent_statements_covered": 94.18604651162791,
+        "percent_statements_covered_display": "94"
+      },
+      "forge/server_runtime.py": {
+        "covered_lines": 636,
+        "num_statements": 776,
+        "percent_covered": 81.95876288659794,
+        "percent_covered_display": "82",
+        "missing_lines": 140,
+        "excluded_lines": 2,
+        "percent_statements_covered": 81.95876288659794,
+        "percent_statements_covered_display": "82"
+      }
+    }
+  },
+  "candidate_wheel_sha256": "e32866bae16c09f5a9a49118950a5ec07cd6ae3244e20a37196a0465f9f779dd",
+  "qualification_state": "OWNER_AND_INSTALLED_CONVERGED_INDEPENDENT_ASSURANCE_PENDING",
+  "supported_actor_boundary": "Exact current G001 signer/assigned Solo role; distinct actual operators in separate isolated instances; explicit independent READ principals. No multi-human Duo impersonation/IAM.",
+  "candidate_installed": {
+    "qualification": "INSTALLED_CANDIDATE_DECISIONS_V1",
+    "source_revision": "7514ec5e3c74b9aa0afd27170a66def4244baf28",
+    "artifact": {
+      "version": "2.10.0",
+      "wheel_sha256": "sha256:e32866bae16c09f5a9a49118950a5ec07cd6ae3244e20a37196a0465f9f779dd",
+      "source_tree_revision": "f96ff1e3d59820ba997ac4498d46a233609008eb",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 248,
+      "source_product_files_verified": 248
+    },
+    "result": "CANDIDATE_DECISIONS_PASS",
+    "case_count": 11,
+    "cases": [
+      {
+        "case": "test_actual_separate_business_architecture_receipts_and_intake_validation_without_admit",
+        "result": "PASS"
+      },
+      {
+        "case": "test_architecture_requires_real_business_exact_gates_complete_matching_planning",
+        "result": "PASS"
+      },
+      {
+        "case": "test_cli_parity_owner_provision_no_credential_export_and_pure_reads",
+        "result": "PASS"
+      },
+      {
+        "case": "test_expired_revoked_grant_and_actual_operator_revocation_no_effect",
+        "result": "PASS"
+      },
+      {
+        "case": "test_genuine_positive_revoke_failure_detector_preserves_original_canonical_evidence",
+        "result": "PASS"
+      },
+      {
+        "case": "test_namespaces_wrong_scope_actor_and_no_implicit_decisions",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_concurrent_http_decision_rejects_second_operation_promptly",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_process_crashes_before_between_after_both_decisions_and_lost_http_body",
+        "result": "PASS"
+      },
+      {
+        "case": "test_retained_allowance_alias_capacity_immutable_intents_and_current_subject_drift",
+        "result": "PASS"
+      },
+      {
+        "case": "test_source_acl_and_candidate_subject_drift_deny_fresh_effects",
+        "result": "PASS"
+      },
+      {
+        "case": "test_two_actual_operator_principals_in_isolated_instances_and_foreign_read_denial",
+        "result": "PASS"
+      }
+    ],
+    "failure": null,
+    "expected_failure_control": false,
+    "external_fault": null,
+    "limitations": [
+      "Real HTTP/CLI/auth/G001/profile/advice/Candidate/canonical Business+Architecture decisions/lifecycle/intents/readback; only external model executable, OS identity and public repository transport doubles.",
+      "Only isolated explicitly authorized test approvals; no Mission/Action/EP/workset/provider/target effect, live model quality, native consumer, operational users instance, public release or full family claim."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "candidate_genuine_failure_control": {
+    "qualification": "INSTALLED_CANDIDATE_DECISIONS_V1",
+    "source_revision": "7514ec5e3c74b9aa0afd27170a66def4244baf28",
+    "artifact": {
+      "version": "2.10.0",
+      "wheel_sha256": "sha256:e32866bae16c09f5a9a49118950a5ec07cd6ae3244e20a37196a0465f9f779dd",
+      "source_tree_revision": "f96ff1e3d59820ba997ac4498d46a233609008eb",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 248,
+      "source_product_files_verified": 248
+    },
+    "result": "FAIL",
+    "case_count": 0,
+    "cases": [],
+    "failure": {
+      "type": "AssertionError",
+      "stage": "positive-decision-replay",
+      "detail": "Declared Candidate gate failed"
+    },
+    "expected_failure_control": true,
+    "external_fault": "REVOKED_POSITIVE_DECISION_GRANT",
+    "limitations": [
+      "Real HTTP/CLI/auth/G001/profile/advice/Candidate/canonical Business+Architecture decisions/lifecycle/intents/readback; only external model executable, OS identity and public repository transport doubles.",
+      "Only isolated explicitly authorized test approvals; no Mission/Action/EP/workset/provider/target effect, live model quality, native consumer, operational users instance, public release or full family claim."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "independent_reviews": {
+    "quality": {
+      "result": "PASS",
+      "source_revision": "7514ec5e3c74b9aa0afd27170a66def4244baf28",
+      "receipt_sha256": "9c92b7b1b56ebc649b504f89336a3d7f392aa98d5ec8c27ffef5832657356dd8"
+    },
+    "security": {
+      "result": "PASS",
+      "source_revision": "7514ec5e3c74b9aa0afd27170a66def4244baf28",
+      "receipt_sha256": "cbc3a7cfa90cebd23cc432a673e272738518d87ac2a0dce1f0fd5db834de94c9"
+    }
+  },
+  "schema_version": 1,
+  "event_lineage": "L3-FORGE-CANDIDATE-DECISIONS-HTTP-V1-20261008",
+  "scope": "SEPARATE_CANDIDATE_BUSINESS_ARCHITECTURE_DECISIONS_HTTP_CLI",
+  "protected_implementation": {
+    "pull_request": "https://github.com/pcvantol/forge/pull/261",
+    "reviewed_head": "7514ec5e3c74b9aa0afd27170a66def4244baf28",
+    "source_revision": "f2e5dc04be07dcaea56773bcd0c89340c44df8f2",
+    "tree_revision": "f96ff1e3d59820ba997ac4498d46a233609008eb",
+    "required_candidate_ci": {
+      "run_id": 37795811086,
+      "result": "SUCCESS",
+      "strict_protected_merge": true
+    }
+  },
+  "implementation_installed": {
+    "qualification": "INSTALLED_CANDIDATE_DECISIONS_V1",
+    "source_revision": "f2e5dc04be07dcaea56773bcd0c89340c44df8f2",
+    "artifact": {
+      "version": "2.10.0",
+      "wheel_sha256": "sha256:556b5a34a2cae810924a14194facb48ea00d3de611fb89133dc26b73d62d5477",
+      "source_tree_revision": "f96ff1e3d59820ba997ac4498d46a233609008eb",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 248,
+      "source_product_files_verified": 248
+    },
+    "result": "CANDIDATE_DECISIONS_PASS",
+    "case_count": 11,
+    "cases": [
+      {
+        "case": "test_actual_separate_business_architecture_receipts_and_intake_validation_without_admit",
+        "result": "PASS"
+      },
+      {
+        "case": "test_architecture_requires_real_business_exact_gates_complete_matching_planning",
+        "result": "PASS"
+      },
+      {
+        "case": "test_cli_parity_owner_provision_no_credential_export_and_pure_reads",
+        "result": "PASS"
+      },
+      {
+        "case": "test_expired_revoked_grant_and_actual_operator_revocation_no_effect",
+        "result": "PASS"
+      },
+      {
+        "case": "test_genuine_positive_revoke_failure_detector_preserves_original_canonical_evidence",
+        "result": "PASS"
+      },
+      {
+        "case": "test_namespaces_wrong_scope_actor_and_no_implicit_decisions",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_concurrent_http_decision_rejects_second_operation_promptly",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_process_crashes_before_between_after_both_decisions_and_lost_http_body",
+        "result": "PASS"
+      },
+      {
+        "case": "test_retained_allowance_alias_capacity_immutable_intents_and_current_subject_drift",
+        "result": "PASS"
+      },
+      {
+        "case": "test_source_acl_and_candidate_subject_drift_deny_fresh_effects",
+        "result": "PASS"
+      },
+      {
+        "case": "test_two_actual_operator_principals_in_isolated_instances_and_foreign_read_denial",
+        "result": "PASS"
+      }
+    ],
+    "failure": null,
+    "expected_failure_control": false,
+    "external_fault": null,
+    "limitations": [
+      "Real HTTP/CLI/auth/G001/profile/advice/Candidate/canonical Business+Architecture decisions/lifecycle/intents/readback; only external model executable, OS identity and public repository transport doubles.",
+      "Only isolated explicitly authorized test approvals; no Mission/Action/EP/workset/provider/target effect, live model quality, native consumer, operational users instance, public release or full family claim."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "implementation_genuine_failure_control": {
+    "qualification": "INSTALLED_CANDIDATE_DECISIONS_V1",
+    "source_revision": "f2e5dc04be07dcaea56773bcd0c89340c44df8f2",
+    "artifact": {
+      "version": "2.10.0",
+      "wheel_sha256": "sha256:556b5a34a2cae810924a14194facb48ea00d3de611fb89133dc26b73d62d5477",
+      "source_tree_revision": "f96ff1e3d59820ba997ac4498d46a233609008eb",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 248,
+      "source_product_files_verified": 248
+    },
+    "result": "FAIL",
+    "case_count": 0,
+    "cases": [],
+    "failure": {
+      "type": "AssertionError",
+      "stage": "positive-decision-replay",
+      "detail": "Declared Candidate gate failed"
+    },
+    "expected_failure_control": true,
+    "external_fault": "REVOKED_POSITIVE_DECISION_GRANT",
+    "limitations": [
+      "Real HTTP/CLI/auth/G001/profile/advice/Candidate/canonical Business+Architecture decisions/lifecycle/intents/readback; only external model executable, OS identity and public repository transport doubles.",
+      "Only isolated explicitly authorized test approvals; no Mission/Action/EP/workset/provider/target effect, live model quality, native consumer, operational users instance, public release or full family claim."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "state": "PROTECTED_IMPLEMENTATION_INSTALLED_QUALIFIED_FINALIZATION_PENDING",
+  "finalization_gates": "Exact finalization review/required CI/protected merge and exact-final-main installed/main CI/terminal register remain subsequent gates; no future PASS is asserted.",
+  "full_node_completion": false,
+  "consumer_assignment_changed": false
+}

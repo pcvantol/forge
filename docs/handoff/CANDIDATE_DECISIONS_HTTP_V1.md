@@ -154,3 +154,24 @@ and later the actual qualified producer handoff. L4's selected native registrati
 remains independently pinned Forge2.9.0/8923be50, with no approval buttons, wait or
 automatic upgrade. Previous histories, consumer pins, primary checkouts, published
 2.8.1 operation and consumed budgets remain intact. No automatic next assignment.
+
+
+## Protected implementation and normal source finalization
+
+[PR261](https://github.com/pcvantol/forge/pull/261) merged at `f2e5dc04be07dcaea56773bcd0c89340c44df8f2` /2.10.0.
+[Immutable selected producer proof](../qualification/candidate-decisions-selected-completion-2026-10-08.json)
+records independent exact-candidate Quality/Security, full1308-test validation,
+per-file coverage and exact implementation-main tracked-source noneditable
+installed11-group decisions matrix plus genuine revoked-positive control and owned cleanup.
+Normal NO_BUMP2.10.0 finalization shares the original assignment/event lineage.
+Finalization review/required CI/protected merge and exact-final-main installed,
+main CI, current readback and terminal register are subsequent gates.
+L4 native Candidate registration remains pinned2.9.0/8923be50; this does not qualify a native Candidate decision
+consumer or full RC-FP/FQ/F2 family. No public release or operational install.
+
+The candidate TDE observation timed out before assessment because it ran the full
+1308-test suite twice. Finalization uses the existing standard validate entrypoint
+once with coverage, retaining compilation, every test, version, projection, JSON
+and whitespace checks, then emits XML for the unchanged published TDE runtime.
+The 15-minute limit, observe mode, TDE policy and protected checks stay unchanged.
+Cancellation is not an assessment policy decision.
