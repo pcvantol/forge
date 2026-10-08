@@ -303,7 +303,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
-          path: release-input
+          path: ${{ runner.temp }}/forge-registry-readback/release-input
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with: { python-version: '3.14' }
       - name: Read back, hash, and reinstall both published distributions
@@ -313,8 +313,9 @@ jobs:
           SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
         run: |
           set -euo pipefail
+          cd "$RUNNER_TEMP/forge-registry-readback"
           wheel="forge_autonomy-$VERSION-py3-none-any.whl"; sdist="forge_autonomy-$VERSION.tar.gz"
-          python3 scripts/pypi_distribution_readback.py \
+          python3 "$GITHUB_WORKSPACE/scripts/pypi_distribution_readback.py" \
             --version "$VERSION" \
             --hashes release-input/dist/SHA256SUMS \
             --output pypi.json \
@@ -338,6 +339,8 @@ jobs:
           from pathlib import Path
           import sys
 
+          import os
+          sys.path.insert(0, os.environ["GITHUB_WORKSPACE"])
           from scripts.pypi_distribution_readback import (
               distribution_filenames,
               expected_digests_from_sha256sums,
@@ -377,25 +380,25 @@ jobs:
           cd "$RUNNER_TEMP"
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-pypi/bin/python" -I -c 'import forge, pathlib; from importlib.metadata import version; from forge.qualification.installed_smoke import run; assert version("forge-autonomy") == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run()'
           "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-published"
-          cp "$RUNNER_TEMP/forge-criterion-published/criterion-completion.public.json" "$GITHUB_WORKSPACE/release-input/dist/criterion-completion-published.json"
+          cp "$RUNNER_TEMP/forge-criterion-published/criterion-completion.public.json" "$RUNNER_TEMP/forge-registry-readback/release-input/dist/criterion-completion-published.json"
           "$RUNNER_TEMP/forge-pypi/bin/python" -I \
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_http_successor.py" \
-            --wheel "$GITHUB_WORKSPACE/registry-readback/$wheel" \
+            --wheel "$RUNNER_TEMP/forge-registry-readback/registry-readback/$wheel" \
             --source-revision "$SOURCE_SHA" \
             --output-dir "$RUNNER_TEMP/forge-http-successor-published"
           cp "$RUNNER_TEMP/forge-http-successor-published/installed-http-successor.public.json" \
-            "$GITHUB_WORKSPACE/release-input/dist/installed-http-successor-published.json"
+            "$RUNNER_TEMP/forge-registry-readback/release-input/dist/installed-http-successor-published.json"
           "$RUNNER_TEMP/forge-pypi/bin/python" -I \
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_fci_failure_gate.py" \
-            --wheel "$GITHUB_WORKSPACE/registry-readback/$wheel" \
+            --wheel "$RUNNER_TEMP/forge-registry-readback/registry-readback/$wheel" \
             --source-revision "$SOURCE_SHA" --output-dir "$RUNNER_TEMP/forge-fci-failure-gate-published"
           cp "$RUNNER_TEMP/forge-fci-failure-gate-published/installed-fci-failure-gate.public.json" \
-            "$GITHUB_WORKSPACE/release-input/dist/installed-fci-failure-gate-published.json"
+            "$RUNNER_TEMP/forge-registry-readback/release-input/dist/installed-fci-failure-gate-published.json"
           "$RUNNER_TEMP/forge-pypi/bin/python" -I -m forge.qualification.server_runtime \
             --output-dir "$RUNNER_TEMP/forge-server-published" \
-            --candidate-wheel "$GITHUB_WORKSPACE/registry-readback/$wheel" \
+            --candidate-wheel "$RUNNER_TEMP/forge-registry-readback/registry-readback/$wheel" \
             --source-revision "$SOURCE_SHA"
-          cp "$RUNNER_TEMP/forge-server-published/forge-server-runtime-v1.public.json" "$GITHUB_WORKSPACE/release-input/dist/server-runtime-v1-published.json"
+          cp "$RUNNER_TEMP/forge-server-published/forge-server-runtime-v1.public.json" "$RUNNER_TEMP/forge-registry-readback/release-input/dist/server-runtime-v1-published.json"
           test "$("$RUNNER_TEMP/forge-pypi/bin/forge" --version)" = "$VERSION"
       - name: Persist immutable PyPI readback as PUBLISHED evidence
         env:
@@ -405,6 +408,7 @@ jobs:
           SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
         run: |
           set -euo pipefail
+          cd "$RUNNER_TEMP/forge-registry-readback"
           TAG="forge-v$VERSION"
           RECEIPT="forge-release-published-$VERSION-$SOURCE_SHA.json"
           python3 - registry-readback-digests.json > publication.json <<'PY'
@@ -420,7 +424,7 @@ jobs:
               evidence["server_runtime"] = json.loads(server.read_text())
           print(json.dumps(evidence, sort_keys=True))
           PY
-          python3 scripts/release_operation.py \
+          python3 "$GITHUB_WORKSPACE/scripts/release_operation.py" \
             --mark-published \
             --evidence-root release-input/release-evidence \
             --operation-id "$OPERATION_ID" \
@@ -443,8 +447,8 @@ jobs:
         with:
           name: forge-published-evidence-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
           path: |
-            release-input/dist/
-            release-input/release-evidence/
+            ${{ runner.temp }}/forge-registry-readback/release-input/dist/
+            ${{ runner.temp }}/forge-registry-readback/release-input/release-evidence/
           if-no-files-found: error
 
   record-release-complete:

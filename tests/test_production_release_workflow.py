@@ -65,7 +65,7 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('for artifact in "$wheel" "$sdist"; do', workflow)
         self.assertIn("registry-readback-digests.json", workflow)
         registry_job = workflow[published_job:complete_job]
-        self.assertIn("python3 scripts/pypi_distribution_readback.py", registry_job)
+        self.assertIn('python3 "$GITHUB_WORKSPACE/scripts/pypi_distribution_readback.py"', registry_job)
         self.assertIn('READBACK_CACHE_TOKEN: ${{ github.run_id }}-${{ github.run_attempt }}', registry_job)
         self.assertIn('--cache-token "$READBACK_CACHE_TOKEN"', registry_job)
         self.assertIn("--attempts 24", registry_job)
@@ -76,7 +76,7 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
             registry_job,
         )
         self.assertLess(
-            registry_job.index("python3 scripts/pypi_distribution_readback.py"),
+            registry_job.index('python3 "$GITHUB_WORKSPACE/scripts/pypi_distribution_readback.py"'),
             registry_job.index('for artifact in "$wheel" "$sdist"; do'),
         )
         verifier = 'python3 - "$VERSION" release-input/dist/SHA256SUMS registry-readback'
@@ -89,7 +89,7 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
             registry_job.index(verifier),
         )
         self.assertLess(
-            workflow.index("python3 scripts/pypi_distribution_readback.py"),
+            workflow.index('python3 "$GITHUB_WORKSPACE/scripts/pypi_distribution_readback.py"'),
             workflow.index("--mark-published"),
         )
         self.assertNotIn("gh-action-pypi-publish", registry_job)
@@ -108,6 +108,17 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('test -e "$1" || test -L "$1"', workflow)
         self.assertIn('! rm -rf -- "$target" || target_exists "$target"', workflow)
         self.assertIn('if test "$pending_receipt_present" = 1; then', workflow)
+
+    def test_registry_readback_keeps_inputs_and_outputs_outside_qualification_source(self) -> None:
+        workflow = Path(".github/workflows/forge-production-release.yml").read_text()
+        block = workflow.split("  registry-readback-and-published-evidence:", 1)[1].split(
+            "  record-release-complete:", 1)[0]
+        self.assertIn("path: ${{ runner.temp }}/forge-registry-readback/release-input", block)
+        self.assertEqual(block.count('cd "$RUNNER_TEMP/forge-registry-readback"'), 2)
+        self.assertNotIn("$GITHUB_WORKSPACE/registry-readback/", block)
+        self.assertNotIn("$GITHUB_WORKSPACE/release-input/", block)
+        self.assertIn('$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_http_successor.py', block)
+        self.assertIn('${{ runner.temp }}/forge-registry-readback/release-input/release-evidence/', block)
 
     @staticmethod
     def _cleanup_step() -> str:
@@ -205,12 +216,16 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
 
             verified = subprocess.run(
                 command, input=script, check=False, capture_output=True, text=True,
+                cwd=root, env={"GITHUB_WORKSPACE": str(RELEASE_OPERATION.parent.parent.resolve()),
+                               "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
             )
             self.assertEqual(0, verified.returncode, verified.stderr)
 
             (downloads / wheel).write_bytes(b"different wheel bytes")
             conflict = subprocess.run(
                 command, input=script, check=False, capture_output=True, text=True,
+                cwd=root, env={"GITHUB_WORKSPACE": str(RELEASE_OPERATION.parent.parent.resolve()),
+                               "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
             )
             self.assertNotEqual(0, conflict.returncode)
             self.assertIn("conflicts with qualified bytes", conflict.stderr)
