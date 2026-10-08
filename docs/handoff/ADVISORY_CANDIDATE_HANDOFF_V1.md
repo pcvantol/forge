@@ -152,3 +152,17 @@ No live EP, paid model probe, personal Keychain, production CENTRAL/historical
 instances, signing, real GitHub-target writes, public product release or user
 instance installation. L1's immutable released bytes and L4's selected chat
 scope/pin remain preserved. Future native Candidate UI needs separate selection.
+
+
+## Protected implementation and normal source finalization
+
+[PR259](https://github.com/pcvantol/forge/pull/259) merged at `170c035d295be55dd1d6439db02fe75c446e7f3b` /2.9.0.
+[Immutable selected producer proof](../qualification/advisory-candidate-selected-completion-2026-10-08.json)
+records independent exact-candidate Quality/Security, full1296-test validation,
+per-file coverage and exact implementation-main tracked-source noneditable
+installed11-group matrix plus genuine revoked-positive control and owned cleanup.
+Normal NO_BUMP2.9.0 finalization shares the original assignment/event lineage.
+Finalization review/required CI/protected merge and exact-final-main installed,
+main CI, current readback and terminal register are subsequent gates.
+L4 native chat remains pinned2.8.0/88f7560; this does not qualify a native Candidate
+consumer or full RC-FP/FQ/F2 family. No public release or operational install.

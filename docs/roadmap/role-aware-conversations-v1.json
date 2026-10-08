@@ -151,7 +151,7 @@
     {
       "assignment_id": "L3-FORGE-ADVISORY-CANDIDATE-HANDOFF-V1-20261008",
       "plan_revision": "r39",
-      "state": "SOURCE_IMPLEMENTED_QUALIFICATION_PENDING",
+      "state": "PROTECTED_IMPLEMENTATION_INSTALLED_QUALIFIED_FINALIZATION_PENDING",
       "scope": "ADVICE_TO_EXPLICIT_UNAPPROVED_CANDIDATE",
       "node_subsets": [
         "RC-FP_CANDIDATE_REGISTRATION_SUBSET",
@@ -160,7 +160,11 @@
       "handoff": "docs/handoff/ADVISORY_CANDIDATE_HANDOFF_V1.md",
       "full_node_completion": false,
       "consumer_assignment_changed": false,
-      "source_slot_join": "L1-L3-FORGE-RELEASE-SOURCE-HANDOFF-20261008"
+      "source_slot_join": "L1-L3-FORGE-RELEASE-SOURCE-HANDOFF-20261008",
+      "protected_implementation": "170c035d295be55dd1d6439db02fe75c446e7f3b",
+      "implementation_version": "2.9.0",
+      "immutable_proof": "docs/qualification/advisory-candidate-selected-completion-2026-10-08.json",
+      "selected_installed_groups": 11
     }
   ]
 }

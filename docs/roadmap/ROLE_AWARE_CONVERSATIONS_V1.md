@@ -88,8 +88,11 @@ text proposal→explicit unapproved Candidate→canonical readback subset.
 [Owning handoff](../handoff/ADVISORY_CANDIDATE_HANDOFF_V1.md) records separate
 authority, current source versions, durable intent/atomic registration and
 recovery. L1 source release207/6055910178 and L3 ACK207/6058332838 admit the
-same sole writer from815932c/2.8.1. Source implementation targets normalMINOR2.9.0;
-qualification/protected/finalization/exact-main installed gates remain pending.
+same sole writer from815932c/2.8.1. Protected implementation [PR259](https://github.com/pcvantol/forge/pull/259)
+merged at `170c035d295be55dd1d6439db02fe75c446e7f3b` /2.9.0. [Immutable selected proof](../qualification/advisory-candidate-selected-completion-2026-10-08.json)
+records exact-source installed11 groups, genuine revoked-grant control, cleanup,
+full owning validation and independent exact-head Quality/Security. Nonempty normal
+finalization and exact-final-main installed/main CI remain separate gates.
 Full RC-FP/FQ/F2/node/family closure and native Candidate UI are unselected;
 existing DAG edges/statuses remain unchanged. L4 native chat independently
 consumes the already qualified2.8.0/88f7560 advice contract.
