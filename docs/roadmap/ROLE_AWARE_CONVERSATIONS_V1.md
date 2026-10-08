@@ -66,3 +66,13 @@ formal read-only EP execution support, and general model-routing optimization.
 These are not implicit obligations of this design or the first live canary.
 No existing canary, grant, retry/repair allowance, execution DAG, installed process,
 Console programme or EP PR is changed.
+
+## Selected textual HTTP producer r38
+
+L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008 selects the bounded
+Business/Architecture text HTTP outcome described in
+[the owning handoff](../handoff/ADVISORY_CONVERSATION_HTTP_V1.md).
+Current state is candidate qualification pending; protected/installed delivery
+requires actual exact-source receipts. It does not close full RC-FC/FS/FA/FQ/F2
+families, RC-FP/apply or native chat. Existing DAG edges remain unchanged.
+L4 native hold independently retains Forge2.7.69/e64302f.

@@ -1484,6 +1484,463 @@
           }
         }
       ]
+    },
+    "/v1/advisory/capability": {
+      "get": {
+        "summary": "Scoped textual advice capability",
+        "security": [
+          {
+            "advisoryBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable original turn or bounded read-only projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/capability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing Forge authentication envelope; revoked/expired/missing capability"
+          }
+        }
+      }
+    },
+    "/v1/advisory/{conversation_id}/turns": {
+      "post": {
+        "summary": "Scoped textual advice submit",
+        "security": [
+          {
+            "advisoryBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable original turn or bounded read-only projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/submit"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing Forge authentication envelope; revoked/expired/missing capability"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "advisory-conversation-v1.json#/$defs/request"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "conversation_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      ]
+    },
+    "/v1/advisory/{conversation_id}": {
+      "get": {
+        "summary": "Scoped textual advice history",
+        "security": [
+          {
+            "advisoryBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable original turn or bounded read-only projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/history"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing Forge authentication envelope; revoked/expired/missing capability"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "conversation_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      ]
+    },
+    "/v1/advisory/{conversation_id}/turns/{turn_id}": {
+      "get": {
+        "summary": "Scoped textual advice turn",
+        "security": [
+          {
+            "advisoryBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable original turn or bounded read-only projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/turn"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing Forge authentication envelope; revoked/expired/missing capability"
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "conversation_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        {
+          "name": "turn_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      ]
+    },
+    "/v1/advisory/{conversation_id}/turns/{turn_id}/cancel": {
+      "post": {
+        "summary": "Scoped textual advice cancel",
+        "security": [
+          {
+            "advisoryBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable original turn or bounded read-only projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/cancel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Bounded failure with no unauthorized generation or governance effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "advisory-conversation-v1.json#/$defs/error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing Forge authentication envelope; revoked/expired/missing capability"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "advisory-conversation-v1.json#/$defs/cancel_request"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "conversation_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        {
+          "name": "turn_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      ]
     }
   },
   "components": {
@@ -1511,6 +1968,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate owner-issued instance/principal/exact-workset expiring hold/unhold command capability. Scoped current/operation readback only; no administrator, status/review/read grant upgrade."
+      },
+      "advisoryBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate owner-issued exact instance/principal/project/repository/conversation capability. No approval/admin authority."
       }
     },
     "schemas": {

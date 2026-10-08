@@ -474,7 +474,7 @@ class CodexCliChatGPTSessionPlanningProvider:
 
     def _run_read_only(self, policy: PlanningProviderInvocationPolicy,
                        request: ProviderDerivationRequest, schema: dict[str, object],
-                       instructions: str) -> _CodexCliRunResult:
+                       instructions: str, *, prompt_document: dict[str, object] | None = None) -> _CodexCliRunResult:
         """Run once and reduce all local output to bounded, non-secret evidence."""
         began = time.monotonic()
         try:
@@ -514,7 +514,7 @@ class CodexCliChatGPTSessionPlanningProvider:
                     command.extend(("--model", policy.model))
                 command.append("-")
                 try:
-                    result = self._runner(command, input=json.dumps(_prompt(request), separators=(",", ":")),
+                    result = self._runner(command, input=json.dumps(_prompt(request) if prompt_document is None else prompt_document, separators=(",", ":")),
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                           text=True, timeout=policy.timeout_seconds, check=False, cwd=str(root),
                                           env=_safe_environment(policy))
