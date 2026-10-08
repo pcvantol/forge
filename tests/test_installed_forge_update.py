@@ -1239,7 +1239,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             **controller.request.__dict__, "controller_sha256": "sha256:" + "a" * 64,
             "existing_interpreter": str(stale_python),
         })
-        state = {**state, "request": mistaken.__dict__, "request_digest": mistaken.digest}
+        state = {**state, "request": mistaken.payload, "request_digest": mistaken.digest}
         evidence = {"wheel_manifest_digest": "sha256:" + "1" * 64,
                     "installed_file_count": 7}
         candidate_identity = {"version": controller.request.version,
@@ -1305,7 +1305,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
         mistaken = update.UpdateRequest(**{
             **controller.request.__dict__, "controller_sha256": "sha256:" + "a" * 64,
         })
-        state = {**state, "request": mistaken.__dict__, "request_digest": mistaken.digest}
+        state = {**state, "request": mistaken.payload, "request_digest": mistaken.digest}
         controller._advance(state, "STAGED")
         replacement = update.UpdateRequest(**{
             **mistaken.__dict__,
@@ -1346,7 +1346,7 @@ class InstalledForgeUpdateTests(unittest.TestCase):
             **controller.request.__dict__, "resolver": str(controller.stable_resolver),
         })
         state = {
-            **state, "request": mistaken.__dict__, "request_digest": mistaken.digest,
+            **state, "request": mistaken.payload, "request_digest": mistaken.digest,
             "last_error": "external Forge resolver has an unrecognized managed target",
         }
         evidence = {"wheel_manifest_digest": "sha256:" + "1" * 64}

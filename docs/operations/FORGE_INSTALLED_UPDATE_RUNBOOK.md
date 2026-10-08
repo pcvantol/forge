@@ -38,6 +38,15 @@ request with `--assess-only`, retain the returned
 recomputes the assessment before any operation state, slot or resolver effect
 and under the shared writer fences. Only `UPDATE_AVAILABLE` admits mutation.
 
+## Exact immutable 2.7.39 to 2.8.1 maintenance
+
+The separately selected [preservation route](../handoff/FORGE_2739_281_PRESERVATION.md)
+uses the same external controller with exact pinned original/target wheels,
+original release-complete receipt and explicit original installed footprint.
+It requires its own fresh controller assessment, supports only schema40→45,
+and does not change the immutable packaged lifecycle inventory or select a
+newer product version. L1 owns later real installation qualification.
+
 ## Supported operation
 
 The controller accepts only one explicitly bound existing installation and an

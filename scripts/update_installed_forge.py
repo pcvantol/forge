@@ -18,7 +18,7 @@ import argparse
 import base64
 from contextlib import closing, contextmanager
 import csv
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from email.parser import BytesParser
 from hashlib import sha256
@@ -69,6 +69,17 @@ SUPPORTED_TRANSITIONS = {
     ("2.7.37", "2.7.38"): (39, 39),
     ("2.7.38", "2.7.39"): (39, 40),
 }
+# Separate protected maintenance delivery for already-published immutable wheels.
+# This does not change either historical wheel's packaged lifecycle inventory.
+PRESERVATION_TRANSITION = ("2.7.39", "2.8.1")
+EXTERNAL_MAINTENANCE_TRANSITIONS = {PRESERVATION_TRANSITION: (40, 45)}
+PRESERVATION_ARTIFACT_BINDING = {
+    "installed_source": "ebc43dc12da27353f85c991a26da9852aa790f05",
+    "installed_artifact_digest": "sha256:b62bf5f7a1d937f5224ef941a3dea3e961d28b67d9206fd89b644153aea502f1",
+    "product_source": "c8833ffa4754800de451cce94b109ef1ad07123f",
+    "wheel_sha256": "sha256:7e4b6cf2bd4544865ca980ff9c5c0f7e4b104cd9a47f11dc6d1e3e944e1942c0",
+    "qualification_receipt_sha256": "sha256:51017bb17faa3d2568e457360d54b873deddbf59eeedb86310b4cb56e1345a76",
+}
 SAME_SCHEMA_39_TRANSITIONS = frozenset(
     transition for transition, schemas in SUPPORTED_TRANSITIONS.items() if schemas == (39, 39)
 )
@@ -81,6 +92,7 @@ ASSESSMENT_REQUIRED_TRANSITIONS = frozenset({
     ("2.7.36", "2.7.38"),
     ("2.7.37", "2.7.38"),
     ("2.7.38", "2.7.39"),
+    PRESERVATION_TRANSITION,
 })
 PHASE_ORDER = {
     phase: index for index, phase in enumerate((
@@ -98,6 +110,11 @@ NEW_SCHEMA_38_TABLES = frozenset({
 NEW_SCHEMA_40_TABLES = frozenset({
     "execution_host_peer_generation", "execution_host_peer_detach_operations",
 })
+NEW_SCHEMA_45_PRESERVATION_TABLES = frozenset({
+    "mission_action_slot_snapshots", "mission_action_execution_slots",
+    "mission_action_intent_revisions", "approved_worksets",
+    "installation_peer_configuration",
+})
 VOLATILE_METADATA_KEYS = frozenset({
     "schema_version", "migration_version", "last_migration", "forge_version",
     "database_version", "last_access_at", "integrity_status",
@@ -114,8 +131,11 @@ class InstalledForgeUpdateError(RuntimeError):
 
 
 def transition_schemas(request: "UpdateRequest") -> tuple[int, int]:
+    transition = (request.existing_version, request.version)
+    if transition in EXTERNAL_MAINTENANCE_TRANSITIONS:
+        return EXTERNAL_MAINTENANCE_TRANSITIONS[transition]
     try:
-        return SUPPORTED_TRANSITIONS[(request.existing_version, request.version)]
+        return SUPPORTED_TRANSITIONS[transition]
     except KeyError as error:
         raise InstalledForgeUpdateError(
             "this bounded controller does not support the selected Forge version transition"
@@ -362,6 +382,7 @@ class UpdateRequest:
     installed_source: str = ""
     installed_artifact_digest: str = ""
     assessment_digest: str = ""
+    installed_wheel: str = ""
 
     def validate_structure(self) -> None:
         identifiers = (self.operation_id, self.runtime_id, self.installation_id)
@@ -386,6 +407,16 @@ class UpdateRequest:
         )
         if any(not Path(value).is_absolute() for value in paths):
             raise InstalledForgeUpdateError("all installation paths must be absolute")
+        if self.version == PRESERVATION_TRANSITION[1]:
+            if ((self.existing_version, self.version) != PRESERVATION_TRANSITION
+                    or any(getattr(self, key) != value
+                           for key, value in PRESERVATION_ARTIFACT_BINDING.items())):
+                raise InstalledForgeUpdateError("historical preservation requires the exact published artifact binding")
+            if not Path(self.installed_wheel).is_absolute():
+                raise InstalledForgeUpdateError("historical preservation requires the original published wheel")
+            if (re.fullmatch(r"[0-9a-f]{40}", self.controller_source) is None
+                    or file_digest(Path(__file__).resolve()) != self.controller_sha256):
+                raise InstalledForgeUpdateError("historical preservation controller binding changed")
         if self.version in {"2.7.38", "2.7.39"}:
             if re.fullmatch(r"[0-9a-f]{40}", self.installed_source) is None:
                 raise InstalledForgeUpdateError("installed source revision must be exact")
@@ -400,8 +431,15 @@ class UpdateRequest:
                 raise InstalledForgeUpdateError("exact fresh assessment digest is required")
 
     @property
+    def payload(self) -> dict[str, Any]:
+        value = asdict(self)
+        if not self.installed_wheel:
+            value.pop("installed_wheel")
+        return value
+
+    @property
     def assessment_binding(self) -> dict[str, object]:
-        binding = asdict(self)
+        binding = self.payload
         binding.pop("assessment_digest")
         return binding
 
@@ -411,7 +449,7 @@ class UpdateRequest:
 
     @property
     def digest(self) -> str:
-        return _digest_bytes(_json_bytes(asdict(self)))
+        return _digest_bytes(_json_bytes(self.payload))
 
 
 def _validated_wheel(request: UpdateRequest) -> tuple[bytes, dict[str, str]]:
@@ -550,14 +588,14 @@ def _validate_server_runtime_qualification(report: object, request: UpdateReques
         "headless_foreground", "clean_sigterm", "ep_simulator_real_http_boundary",
         "ep_simulator_submissions", "production_ep_contacted", "production_provider_contacted",
     }
-    if request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38", "2.7.39"}:
+    if request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38", "2.7.39", "2.8.1"}:
         expected_keys |= {
             "lifecycle_update_assessment", "lifecycle_uninstall_dispatcher",
             "lifecycle_uninstall_replay",
         }
-    if request.version in {"2.7.36", "2.7.37", "2.7.38", "2.7.39"}:
+    if request.version in {"2.7.36", "2.7.37", "2.7.38", "2.7.39", "2.8.1"}:
         expected_keys |= {"lifecycle_preserve", "lifecycle_restore", "lifecycle_purge"}
-    if request.version in {"2.7.37", "2.7.38", "2.7.39"}:
+    if request.version in {"2.7.37", "2.7.38", "2.7.39", "2.8.1"}:
         expected_keys.add("lifecycle_filesystem_security")
     if (
         not isinstance(report, Mapping)
@@ -572,17 +610,17 @@ def _validate_server_runtime_qualification(report: object, request: UpdateReques
         or report.get("ep_simulator_submissions") != 1
         or report.get("production_ep_contacted") is not False
         or report.get("production_provider_contacted") is not False
-        or request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38", "2.7.39"} and (
+        or request.version in {"2.7.35", "2.7.36", "2.7.37", "2.7.38", "2.7.39", "2.8.1"} and (
             report.get("lifecycle_update_assessment") != "PASS"
             or report.get("lifecycle_uninstall_dispatcher") != "PASS"
             or report.get("lifecycle_uninstall_replay") != "PASS"
         )
-        or request.version in {"2.7.36", "2.7.37", "2.7.38", "2.7.39"} and (
+        or request.version in {"2.7.36", "2.7.37", "2.7.38", "2.7.39", "2.8.1"} and (
             report.get("lifecycle_preserve") != "PASS"
             or report.get("lifecycle_restore") != "PASS"
             or report.get("lifecycle_purge") != "PASS"
         )
-        or request.version in {"2.7.37", "2.7.38", "2.7.39"}
+        or request.version in {"2.7.37", "2.7.38", "2.7.39", "2.8.1"}
         and report.get("lifecycle_filesystem_security") != "PASS"
     ):
         raise InstalledForgeUpdateError("installed Server Runtime qualification is noncanonical")
@@ -674,6 +712,9 @@ def _normal_release_evidence(
 
 
 def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, dict[str, str]]:
+    preservation = (request.existing_version, request.version) == PRESERVATION_TRANSITION
+    if request.version == PRESERVATION_TRANSITION[1]:
+        request.validate_structure()
     wheel_bytes, manifest = _validated_wheel(request)
     expected_name = f"forge_autonomy-{request.version}-py3-none-any.whl"
     sdist_name = f"forge_autonomy-{request.version}.tar.gz"
@@ -735,9 +776,10 @@ def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, 
         or not isinstance(artifacts, dict) or set(artifacts) != {"wheel", "sdist"}
         or artifacts != exact_artifacts or not isinstance(sdist_digest, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", sdist_digest) is None
-        or not isinstance(qualification, dict) or set(qualification) != {
-            "artifact_digests", "exact_main_sha", "qualification"
-        }
+        or not isinstance(qualification, dict) or set(qualification) != (
+            {"artifact_digests", "exact_main_sha", "qualification"}
+            | ({"criterion_completion", "server_runtime"} if preservation else set())
+        )
         or qualification.get("exact_main_sha") != request.product_source
         or qualification.get("qualification") != "forge-production-distribution"
         or qualification.get("artifact_digests") != exact_qualified
@@ -771,6 +813,9 @@ def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, 
         or cleanup_release.get("tag_commit") != request.product_source
     ):
         raise InstalledForgeUpdateError("release-complete publication, policy, or cleanup lineage is noncanonical")
+    if preservation:
+        _validate_criterion_qualification(qualification["criterion_completion"], request)
+        _validate_server_runtime_qualification(qualification["server_runtime"], request)
     evidence = {
         "wheel": str(Path(request.wheel)), "wheel_sha256": request.wheel_sha256,
         "wheel_manifest_digest": _digest_bytes(_json_bytes(manifest)),
@@ -780,6 +825,32 @@ def _qualified_artifact(request: UpdateRequest) -> tuple[dict[str, Any], bytes, 
         "original_release_run_id": original_run, "reconciliation_run_id": reconciliation_run,
     }
     return evidence, wheel_bytes, manifest
+
+
+def verify_preservation_predecessor(request: UpdateRequest) -> dict[str, Any]:
+    """Read the actual old package against the pinned wheel before executing it."""
+    original = replace(request, version=request.existing_version,
+                       wheel=request.installed_wheel,
+                       wheel_sha256=request.installed_artifact_digest)
+    _, manifest = _validated_wheel(original)
+    interpreter = Path(request.existing_interpreter)
+    slot = interpreter.parent.parent
+    site_packages = _candidate_site_packages(slot)
+    expected = {name: digest for name, digest in manifest.items() if name.startswith("forge/")}
+    observed = {}
+    product_root = site_packages / "forge"
+    _assert_no_symlink_components(product_root)
+    for path in product_root.rglob("*"):
+        if path.is_symlink():
+            raise InstalledForgeUpdateError("historical product contains a symbolic link")
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
+            observed[path.relative_to(site_packages).as_posix()] = file_digest(path)
+    metadata_name = f"forge_autonomy-{request.existing_version}.dist-info/METADATA"
+    if observed != expected or file_digest(site_packages / metadata_name) != manifest[metadata_name]:
+        raise InstalledForgeUpdateError("historical installed product differs from the exact published wheel")
+    return {"version": request.existing_version, "source_revision": request.installed_source,
+            "wheel_sha256": request.installed_artifact_digest,
+            "product_files_verified": len(expected)}
 
 
 def validate_qualified_artifact(request: UpdateRequest) -> dict[str, Any]:
@@ -1023,6 +1094,8 @@ def assess_update(request: UpdateRequest, *, snapshot: Mapping[str, Any] | None 
     try:
         request.validate_structure()
         artifact = validate_qualified_artifact(request)
+        predecessor = (verify_preservation_predecessor(request)
+                       if (request.existing_version, request.version) == PRESERVATION_TRANSITION else None)
         _assert_private_owned_tree(Path(request.data_root))
         observed = (
             dict(snapshot) if snapshot is not None
@@ -1037,8 +1110,8 @@ def assess_update(request: UpdateRequest, *, snapshot: Mapping[str, Any] | None 
         transition = (request.existing_version, request.version)
         if exact_current:
             state, reasons = "UP_TO_DATE", ["EXACT_ARTIFACT_ALREADY_SELECTED"]
-        elif transition in SUPPORTED_TRANSITIONS:
-            before_schema, _after_schema = SUPPORTED_TRANSITIONS[transition]
+        elif transition in SUPPORTED_TRANSITIONS or transition in EXTERNAL_MAINTENANCE_TRANSITIONS:
+            before_schema, _after_schema = transition_schemas(request)
             if observed.get("user_version") != before_schema:
                 state, reasons = "INCOMPATIBLE", ["RUNTIME_SCHEMA_OUTSIDE_BOUNDED_TRANSITION"]
             else:
@@ -1049,6 +1122,8 @@ def assess_update(request: UpdateRequest, *, snapshot: Mapping[str, Any] | None 
             "runtime_snapshot_digest": observed["snapshot_digest"],
             "candidate_admission": artifact,
         }
+        if predecessor is not None:
+            evidence["installed_artifact_admission"] = predecessor
     except (InstalledForgeUpdateError, OSError, UnicodeError, ValueError) as error:
         state, reasons = "UNKNOWN", ["ASSESSMENT_FAILED_CLOSED"]
         evidence = {"error": str(error)}
@@ -1334,6 +1409,7 @@ def assert_completed_schema(
         or not isinstance(tables, Mapping)
         or not NEW_SCHEMA_38_TABLES.issubset(tables)
         or (schema_after == 40 and not NEW_SCHEMA_40_TABLES.issubset(tables))
+        or (schema_after == 45 and not (NEW_SCHEMA_40_TABLES | NEW_SCHEMA_45_PRESERVATION_TABLES).issubset(tables))
         or not isinstance(expected_digest, str)
         or snapshot.get("schema_digest") != expected_digest
     ):
@@ -1377,10 +1453,15 @@ def verify_preservation(before: Mapping[str, Any], after: Mapping[str, Any], req
     new_tables = set(after_tables) - set(before_tables)
     expected_new_tables = (
         set(NEW_SCHEMA_38_TABLES) if schema_before == 37 else
-        set(NEW_SCHEMA_40_TABLES) if schema_before == 39 and schema_after == 40 else set()
+        set(NEW_SCHEMA_40_TABLES) if schema_before == 39 and schema_after == 40 else
+        set(NEW_SCHEMA_45_PRESERVATION_TABLES) if (schema_before, schema_after) == (40, 45) else set()
     )
     if new_tables != expected_new_tables:
         raise InstalledForgeUpdateError("migration produced an unexpected target-schema table set")
+    if (schema_before, schema_after) == (40, 45) and any(
+        after_tables[table]["count"] != 0 for table in NEW_SCHEMA_45_PRESERVATION_TABLES
+    ):
+        raise InstalledForgeUpdateError("preservation migration created unexpected planning or installation data")
     reset = after.get("writer_state", {}).get("operational_reset", [])
     if schema_before == 37:
         expected_counts = {table: 0 for table in NEW_SCHEMA_38_TABLES}
@@ -1606,7 +1687,8 @@ class InstalledForgeUpdateController:
         self.receipt_path = self.operation_root / "receipt.json"
         self.backup_root = self.data_root / "backups" / "installation" / request.operation_id
         self.backup_path = self.backup_root / (
-            "forge-schema39.sqlite3" if (request.existing_version, request.version) in SAME_SCHEMA_39_TRANSITIONS
+            "forge-schema40.sqlite3" if (request.existing_version, request.version) == PRESERVATION_TRANSITION
+            else "forge-schema39.sqlite3" if (request.existing_version, request.version) in SAME_SCHEMA_39_TRANSITIONS
             else "forge-schema38.sqlite3" if (request.existing_version, request.version) == ("2.7.24", "2.7.25")
             else "forge-schema37.sqlite3"
         )
@@ -1628,12 +1710,12 @@ class InstalledForgeUpdateController:
             state = _read_json(self.state_path)
             if state.get("contract_version") != CONTRACT_VERSION:
                 raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
-            if state.get("request") != asdict(self.request) and not allow_request_mismatch:
+            if state.get("request") != self.request.payload and not allow_request_mismatch:
                 raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
             return state
         state = {
             "contract_version": CONTRACT_VERSION, "operation_id": self.request.operation_id,
-            "request": asdict(self.request), "request_digest": self.request.digest,
+            "request": self.request.payload, "request_digest": self.request.digest,
             "phase": "PREPARED", "created_at": _now(), "updated_at": _now(),
             "history": [{"phase": "PREPARED", "at": _now()}],
         }
@@ -1676,7 +1758,7 @@ class InstalledForgeUpdateController:
     ) -> dict[str, Any]:
         """Rebind a protected controller or selected interpreter before any live effect."""
         previous = state.get("request")
-        requested = asdict(self.request)
+        requested = self.request.payload
         if not isinstance(previous, Mapping) or set(previous) != set(requested):
             raise InstalledForgeUpdateError("durable update operation conflicts with the requested target")
         changed = {key for key in requested if previous.get(key) != requested[key]}
@@ -2568,6 +2650,8 @@ class InstalledForgeUpdateController:
     def run(self) -> dict[str, Any]:
         _safe_directory(self.data_root)
         _safe_directory(self.runtime_root)
+        if (self.request.existing_version, self.request.version) == PRESERVATION_TRANSITION:
+            verify_preservation_predecessor(self.request)
         if not self.state_path.exists():
             _assert_private_owned_tree(self.data_root)
             self._validate_initial_assessment(readonly_database_snapshot(self.database))
@@ -2585,6 +2669,8 @@ class InstalledForgeUpdateController:
         ):
             self._assert_no_runtime_process()
             _assert_private_owned_tree(self.data_root)
+            if (self.request.existing_version, self.request.version) == PRESERVATION_TRANSITION:
+                verify_preservation_predecessor(self.request)
             if self.state_path.exists():
                 state = self._state(allow_request_mismatch=self.reconcile_staged_controller)
                 if state.get("phase") == "COMPLETE":
@@ -2598,7 +2684,7 @@ class InstalledForgeUpdateController:
             _safe_directory(self.operation_root, create=True)
             os.chmod(self.operation_root, 0o700)
             state = self._state(allow_request_mismatch=self.reconcile_staged_controller)
-            if state.get("request") != asdict(self.request):
+            if state.get("request") != self.request.payload:
                 state = self._reconcile_staged_controller(state, live)
             state = self._stage(state)
             self._interrupt("stage")
@@ -2684,6 +2770,7 @@ def _request_from_args(args: argparse.Namespace) -> UpdateRequest:
         installed_source=args.installed_source,
         installed_artifact_digest=args.installed_artifact_digest,
         assessment_digest=args.assessment_digest,
+        installed_wheel=args.installed_wheel,
     )
 
 
@@ -2711,6 +2798,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--installed-source", default="")
     parser.add_argument("--installed-artifact-digest", default="")
     parser.add_argument("--assessment-digest", default="")
+    parser.add_argument("--installed-wheel", default="",
+                        help="original pinned published wheel for historical preservation admission")
     parser.add_argument(
         "--assess-only", action="store_true",
         help="validate and assess the exact request without creating operation state or runtime bytes",
