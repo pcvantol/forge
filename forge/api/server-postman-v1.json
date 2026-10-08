@@ -27,6 +27,10 @@
     {
       "key": "advisoryToken",
       "value": ""
+    },
+    {
+      "key": "advisoryCandidateToken",
+      "value": ""
     }
   ],
   "auth": {
@@ -1256,6 +1260,240 @@
           ]
         }
       }
+    },
+    {
+      "name": "GET /v1/advisory-candidates/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryCandidateToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory-candidates/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory-candidates",
+            "capability"
+          ]
+        }
+      },
+      "description": "Closed advisory-candidate-v1 contract; explicit owner-provisioned Candidate authority."
+    },
+    {
+      "name": "GET /v1/advisory-candidates/{conversation_id}/source/{turn_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryCandidateToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory-candidates/{conversation_id}/source/{turn_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory-candidates",
+            "{conversation_id}",
+            "source",
+            "{turn_id}"
+          ]
+        }
+      },
+      "description": "Closed advisory-candidate-v1 contract; explicit owner-provisioned Candidate authority."
+    },
+    {
+      "name": "POST /v1/advisory-candidates/{conversation_id}/proposals",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryCandidateToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory-candidates/{conversation_id}/proposals",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory-candidates",
+            "{conversation_id}",
+            "proposals"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "description": "Closed advisory-candidate-v1 contract; explicit owner-provisioned Candidate authority."
+    },
+    {
+      "name": "GET /v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryCandidateToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory-candidates",
+            "{conversation_id}",
+            "proposals",
+            "{proposal_id}"
+          ]
+        }
+      },
+      "description": "Closed advisory-candidate-v1 contract; explicit owner-provisioned Candidate authority."
+    },
+    {
+      "name": "POST /v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryCandidateToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory-candidates",
+            "{conversation_id}",
+            "proposals",
+            "{proposal_id}",
+            "registrations"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "description": "Closed advisory-candidate-v1 contract; explicit owner-provisioned Candidate authority."
+    },
+    {
+      "name": "GET /v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryCandidateToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory-candidates",
+            "{conversation_id}",
+            "proposals",
+            "{proposal_id}",
+            "registrations",
+            "{operation_id}"
+          ]
+        }
+      },
+      "description": "Closed advisory-candidate-v1 contract; explicit owner-provisioned Candidate authority."
     }
   ]
 }

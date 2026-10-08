@@ -1,0 +1,939 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/api/advisory-candidate-v1.json",
+  "title": "Explicit advice to unapproved Candidate registration",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/proposal_request"
+    },
+    {
+      "$ref": "#/$defs/registration_request"
+    },
+    {
+      "$ref": "#/$defs/capability"
+    },
+    {
+      "$ref": "#/$defs/source_read"
+    },
+    {
+      "$ref": "#/$defs/saved"
+    },
+    {
+      "$ref": "#/$defs/preview"
+    },
+    {
+      "$ref": "#/$defs/registration"
+    },
+    {
+      "$ref": "#/$defs/pending"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "effect_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "mode",
+        "delivery",
+        "read_paths",
+        "write_paths"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "1.0"
+        },
+        "mode": {
+          "enum": [
+            "READ_ONLY_ASSESSMENT",
+            "DOCUMENTATION_ONLY",
+            "ARCHITECTURE_DESIGN_ONLY",
+            "BOUNDED_REPOSITORY_CHANGE"
+          ]
+        },
+        "delivery": {
+          "enum": [
+            "EVIDENCE_ONLY",
+            "GIT"
+          ]
+        },
+        "read_paths": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "write_paths": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        }
+      }
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "objective",
+        "business_value",
+        "engineering_value",
+        "architectural_value",
+        "rationale",
+        "confidence",
+        "scope",
+        "exclusions",
+        "acceptance_criteria",
+        "architecture_constraints",
+        "dependencies",
+        "effect_policy"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "business_value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "engineering_value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "architectural_value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "confidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "scope": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "exclusions": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "architecture_constraints": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "effect_policy": {
+          "$ref": "#/$defs/effect_policy"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "turn_id",
+        "session_id",
+        "invocation_id",
+        "request_digest",
+        "result_digest",
+        "context_revision",
+        "advisor_kind",
+        "conversation_revision",
+        "selected_sources",
+        "evidence_references",
+        "advice_summary"
+      ],
+      "properties": {
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "invocation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "request_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "result_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "context_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "advisor_kind": {
+          "enum": [
+            "BUSINESS",
+            "ARCHITECTURE"
+          ]
+        },
+        "conversation_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "selected_sources": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source_id",
+              "version"
+            ],
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "evidence_references": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "advice_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "principal_reference",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "conversation_id",
+        "proposal_id",
+        "proposal_revision",
+        "source",
+        "fields",
+        "field_origins",
+        "proposal_digest"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "principal_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "proposal_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        },
+        "field_origins": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fields",
+            "source.advice_summary"
+          ],
+          "properties": {
+            "fields": {
+              "const": "EXPLICIT_USER"
+            },
+            "source.advice_summary": {
+              "const": "VALIDATED_ADVICE"
+            }
+          }
+        },
+        "proposal_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "recommendation_id",
+        "title",
+        "objective",
+        "scope",
+        "acceptance_criteria",
+        "architecture_constraints",
+        "dependencies",
+        "effect_policy"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "recommendation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "scope": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "architecture_constraints": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "effect_policy": {
+          "$ref": "#/$defs/effect_policy"
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "operation_id",
+        "principal_reference",
+        "registration_key",
+        "proposal_digest",
+        "proposal_revision",
+        "source",
+        "candidate",
+        "recommendation_id",
+        "candidate_digest",
+        "recommendation_digest",
+        "registered_at",
+        "status_at_registration",
+        "rationale"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "principal_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "registration_key": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "proposal_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "proposal_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidate"
+        },
+        "recommendation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "candidate_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "recommendation_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "registered_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "status_at_registration": {
+          "const": "RECOMMENDED"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      }
+    },
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate",
+        "candidate_digest",
+        "recommendation_status",
+        "conversation_revision",
+        "source_fresh",
+        "mission_allocation"
+      ],
+      "properties": {
+        "candidate": {
+          "$ref": "#/$defs/candidate"
+        },
+        "candidate_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "recommendation_status": {
+          "enum": [
+            "PROPOSED",
+            "RECOMMENDED",
+            "BUSINESS_REJECTED",
+            "BUSINESS_APPROVED",
+            "ARCHITECTURE_REJECTED",
+            "ARCHITECTURE_APPROVED",
+            "MISSION_ALLOCATED",
+            "SUPERSEDED",
+            "ARCHIVED"
+          ]
+        },
+        "conversation_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_fresh": {
+          "type": "boolean"
+        },
+        "mission_allocation": {
+          "type": "boolean"
+        }
+      }
+    },
+    "registration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "recorded",
+        "original_receipt",
+        "current"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "recorded": {
+          "type": "boolean"
+        },
+        "original_receipt": {
+          "$ref": "#/$defs/receipt"
+        },
+        "current": {
+          "$ref": "#/$defs/current"
+        }
+      }
+    },
+    "proposal_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "conversation_id",
+        "proposal_id",
+        "turn_id",
+        "expected_revision",
+        "expected_conversation_revision",
+        "context_revision",
+        "fields"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_conversation_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "context_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "fields": {
+          "$ref": "#/$defs/fields"
+        }
+      }
+    },
+    "registration_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "conversation_id",
+        "operation_id",
+        "proposal_id",
+        "proposal_revision",
+        "proposal_digest",
+        "expected_conversation_revision",
+        "context_revision",
+        "confirm"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "proposal_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "proposal_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "expected_conversation_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "context_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "confirm": {
+          "const": true
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "conversation_id",
+        "proposal_ids",
+        "maximum_registrations",
+        "registration_authority",
+        "additional_model_calls",
+        "maximum_proposals_per_instance",
+        "maximum_revisions_per_proposal",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "proposal_ids": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "maximum_registrations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "registration_authority": {
+          "const": "CANDIDATE_ONLY_NO_APPROVAL_OR_EXECUTION"
+        },
+        "additional_model_calls": {
+          "const": 0
+        },
+        "maximum_proposals_per_instance": {
+          "const": 64
+        },
+        "maximum_revisions_per_proposal": {
+          "const": 8
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "source_read": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "source",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "saved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "proposal",
+        "registered",
+        "additional_model_calls"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "proposal": {
+          "$ref": "#/$defs/proposal"
+        },
+        "registered": {
+          "const": false
+        },
+        "additional_model_calls": {
+          "const": 0
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "proposal",
+        "latest_revision",
+        "candidate_preview",
+        "registration",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "proposal": {
+          "$ref": "#/$defs/proposal"
+        },
+        "latest_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "candidate_preview": {
+          "$ref": "#/$defs/candidate"
+        },
+        "registration": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/registration"
+            }
+          ]
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "pending": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "state",
+        "operation_id",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "state": {
+          "const": "PENDING"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "error"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-candidate/v1"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -79,3 +79,17 @@ records exact-main237-file noneditable wheel,11 groups/genuine control/cleanup,
 independent reviews and unchanged historical CI gates. It does not close full RC-FC/FS/FA/FQ/F2
 families, RC-FP/apply or native chat. Existing DAG edges remain unchanged.
 L4 native hold independently retains Forge2.7.69/e64302f.
+
+
+## Selected explicit Candidate handoff r39
+
+L3-FORGE-ADVISORY-CANDIDATE-HANDOFF-V1-20261008 selects only the RC-FP
+text proposal→explicit unapproved Candidate→canonical readback subset.
+[Owning handoff](../handoff/ADVISORY_CANDIDATE_HANDOFF_V1.md) records separate
+authority, current source versions, durable intent/atomic registration and
+recovery. L1 source release207/6055910178 and L3 ACK207/6058332838 admit the
+same sole writer from815932c/2.8.1. Source implementation targets normalMINOR2.9.0;
+qualification/protected/finalization/exact-main installed gates remain pending.
+Full RC-FP/FQ/F2/node/family closure and native Candidate UI are unselected;
+existing DAG edges/statuses remain unchanged. L4 native chat independently
+consumes the already qualified2.8.0/88f7560 advice contract.

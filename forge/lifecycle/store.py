@@ -6,6 +6,7 @@ unallocated candidates are governance artefacts, not operational Runtime state.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from hashlib import sha256
@@ -230,6 +231,12 @@ class RecommendationLifecycleStore:
             CREATE TABLE IF NOT EXISTS candidates (candidate_id TEXT PRIMARY KEY, recommendation_id TEXT UNIQUE NOT NULL, frozen INTEGER NOT NULL DEFAULT 0, document TEXT NOT NULL, FOREIGN KEY(recommendation_id) REFERENCES recommendations(recommendation_id));
             CREATE TABLE IF NOT EXISTS decision_evidence (evidence_id TEXT PRIMARY KEY, recommendation_id TEXT NOT NULL, kind TEXT NOT NULL, content_digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL, FOREIGN KEY(recommendation_id) REFERENCES recommendations(recommendation_id));
             CREATE TABLE IF NOT EXISTS transitions (sequence INTEGER PRIMARY KEY AUTOINCREMENT, recommendation_id TEXT NOT NULL, from_status TEXT, to_status TEXT NOT NULL, evidence_id TEXT NOT NULL UNIQUE, FOREIGN KEY(recommendation_id) REFERENCES recommendations(recommendation_id), FOREIGN KEY(evidence_id) REFERENCES decision_evidence(evidence_id));
+            CREATE TABLE IF NOT EXISTS advisory_candidate_intents (operation_id TEXT NOT NULL, principal TEXT NOT NULL, registration_key TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(principal,operation_id));
+            CREATE TABLE IF NOT EXISTS advisory_candidate_registrations (registration_key TEXT PRIMARY KEY, principal TEXT NOT NULL, candidate_id TEXT UNIQUE NOT NULL, document TEXT NOT NULL, FOREIGN KEY(candidate_id) REFERENCES candidates(candidate_id));
+            CREATE TRIGGER IF NOT EXISTS advisory_intent_immutable_update BEFORE UPDATE ON advisory_candidate_intents BEGIN SELECT RAISE(ABORT, 'registration intents are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS advisory_intent_immutable_delete BEFORE DELETE ON advisory_candidate_intents BEGIN SELECT RAISE(ABORT, 'registration intents are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS advisory_registration_immutable_update BEFORE UPDATE ON advisory_candidate_registrations BEGIN SELECT RAISE(ABORT, 'registrations are immutable'); END;
+            CREATE TRIGGER IF NOT EXISTS advisory_registration_immutable_delete BEFORE DELETE ON advisory_candidate_registrations BEGIN SELECT RAISE(ABORT, 'registrations are immutable'); END;
             CREATE TABLE IF NOT EXISTS allocations (recommendation_id TEXT PRIMARY KEY, candidate_id TEXT UNIQUE NOT NULL, mission_id TEXT UNIQUE NOT NULL, document TEXT NOT NULL, FOREIGN KEY(recommendation_id) REFERENCES recommendations(recommendation_id), FOREIGN KEY(candidate_id) REFERENCES candidates(candidate_id));
             CREATE TRIGGER IF NOT EXISTS recommendations_immutable_update BEFORE UPDATE ON recommendations BEGIN SELECT RAISE(ABORT, 'recommendations are immutable'); END;
             CREATE TRIGGER IF NOT EXISTS recommendations_immutable_delete BEFORE DELETE ON recommendations BEGIN SELECT RAISE(ABORT, 'recommendations are immutable'); END;
@@ -251,11 +258,119 @@ class RecommendationLifecycleStore:
     def __exit__(self, *_: object) -> None:
         self.close()
 
+    @contextmanager
+    def atomic(self):
+        """Join one supported aggregate transaction without committing a nested service."""
+        outer = not self._connection.in_transaction
+        if outer:
+            self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            if outer:
+                self._connection.rollback()
+            raise
+        else:
+            if outer:
+                self._connection.commit()
+
+    @classmethod
+    def read_only(cls, path):
+        """Open existing canonical readback without schema creation or writable SQL."""
+        value = cls.__new__(cls)
+        value._connection = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
+        value._connection.row_factory = sqlite3.Row
+        value._connection.execute("PRAGMA query_only=ON")
+        value._connection.execute("BEGIN")
+        return value
+
+    def candidate_registration_intent(self, operation_id, principal):
+        row = self._connection.execute("SELECT principal,registration_key,document FROM advisory_candidate_intents WHERE operation_id=? AND principal=?", (operation_id,principal)).fetchone()
+        if row is None:
+            return None
+        if row['principal'] != principal:
+            raise LifecycleError("foreign registration operation")
+        value=json.loads(row['document'])
+        from forge.advisory_candidate_contract import registration_key
+        if value['proposal']['principal_reference']!=principal or value['request']['operation_id']!=operation_id or registration_key(principal,value['proposal'])!=row['registration_key']:
+            raise LifecycleError('stored intent correlation differs')
+        return value
+
+    def candidate_registration(self, registration_key, principal):
+        row = self._connection.execute("SELECT principal,document FROM advisory_candidate_registrations WHERE registration_key=?", (registration_key,)).fetchone()
+        if row is None:
+            return None
+        if row['principal'] != principal:
+            raise LifecycleError("foreign Candidate registration")
+        return json.loads(row['document'])
+
+    def begin_candidate_registration(self, operation_id, principal, registration_key, document, maximum):
+        """Durable intent precedes Candidate effects; retained unique keys consume budget."""
+        if type(maximum) is not int or not 1 <= maximum <= 8:
+            raise LifecycleError("invalid registration allowance")
+        from forge.advisory_candidate_contract import registration_request, digest
+        try:
+            if not isinstance(document, dict) or set(document) != {'request','proposal','registered_at'}:
+                raise ValueError('invalid intent shape')
+            request = registration_request(document['request']); proposal = document['proposal']
+            expected_key = digest([principal,proposal['project_id'],proposal['repository_id'],proposal['conversation_id'],proposal['proposal_id'],proposal['proposal_revision']])
+            if (request['operation_id'] != operation_id or proposal['principal_reference'] != principal
+                    or expected_key != registration_key
+                    or proposal['proposal_digest'] != digest({k:v for k,v in proposal.items() if k!='proposal_digest'})
+                    or any(request[k] != proposal[k] for k in ['instance_id','project_id','repository_id','conversation_id','proposal_id','proposal_revision','proposal_digest'])
+                    or request['context_revision'] != proposal['source']['context_revision']
+                    or request['expected_conversation_revision'] != proposal['source']['conversation_revision']):
+                raise ValueError('intent binding differs')
+        except (ValueError,KeyError,TypeError):
+            raise LifecycleError('registration intent binding invalid') from None
+        with self.atomic():
+            old = self.candidate_registration_intent(operation_id, principal)
+            if old is not None:
+                if old != document:
+                    raise LifecycleError("registration operation payload conflict")
+                return old
+            count = self._connection.execute("SELECT count(*) FROM advisory_candidate_intents").fetchone()[0]
+            if count >= 64:
+                raise LifecycleError("registration intent capacity exhausted")
+            used = self._connection.execute("SELECT count(DISTINCT registration_key) FROM advisory_candidate_intents WHERE principal=?", (principal,)).fetchone()[0]
+            known = self._connection.execute("SELECT 1 FROM advisory_candidate_intents WHERE registration_key=?", (registration_key,)).fetchone()
+            if known is not None and self.candidate_registration(registration_key, principal) is None:
+                raise LifecycleError("pending registration requires original operation")
+            if known is None and used >= maximum:
+                raise LifecycleError("registration allowance exhausted")
+            self._connection.execute("INSERT INTO advisory_candidate_intents VALUES (?,?,?,?)", (operation_id, principal, registration_key, _dump(document)))
+        return document
+
+    def finish_candidate_registration(self, operation_id, principal, registration_key, recommendation, candidate, receipt):
+        """Canonical advisory ancestors, Candidate and immutable correlation commit together."""
+        intent = self.candidate_registration_intent(operation_id, principal)
+        if intent is None:
+            raise LifecycleError("registration requires durable intent")
+        from forge.advisory_candidate_contract import candidate_objects,registration_receipt
+        expected_receipt=registration_receipt(principal,operation_id,registration_key,intent['proposal'],intent['registered_at'])
+        if json.loads(_dump(receipt)) != json.loads(_dump(expected_receipt)):
+            raise LifecycleError("receipt differs from admitted registration")
+        expected_recommendation, expected_candidate = candidate_objects(intent['proposal'],registration_key,intent['registered_at'])
+        if recommendation != expected_recommendation or candidate != expected_candidate:
+            raise LifecycleError("Candidate differs from admitted intent")
+        with self.atomic():
+            old = self.candidate_registration(registration_key, principal)
+            if old is not None:
+                return old, False
+            if candidate.recommendation_id != recommendation.id or recommendation.status is not RecommendationStatus.PROPOSED:
+                raise LifecycleError("unapproved Candidate ancestry required")
+            self.create_recommendation(recommendation, actor=principal, rationale=receipt['rationale'])
+            self.transition(recommendation.id, RecommendationStatus.RECOMMENDED, actor=principal,
+                            occurred_at=recommendation.recommendation_timestamp, rationale=receipt['rationale'])
+            self.create_candidate(candidate)
+            self._connection.execute("INSERT INTO advisory_candidate_registrations VALUES (?,?,?,?)", (registration_key, principal, candidate.id, _dump(receipt)))
+        return json.loads(_dump(receipt)), True
+
     def create_recommendation(self, recommendation: MissionRecommendation, *, actor: str, rationale: str) -> MissionRecommendation:
         if recommendation.status is not RecommendationStatus.PROPOSED:
             raise LifecycleError("new recommendations must be proposed")
         evidence = self._evidence("recommendation", recommendation.id, recommendation.recommendation_timestamp, actor, rationale, recommendation.repository_evidence + (recommendation.decision_evidence_reference,))
-        with self._connection:
+        with self.atomic():
             self._connection.execute("INSERT INTO recommendations VALUES (?, ?)", (recommendation.id, _dump(recommendation.to_dict())))
             self._append_evidence(evidence)
             self._connection.execute("INSERT INTO transitions(recommendation_id, from_status, to_status, evidence_id) VALUES (?, ?, ?, ?)", (recommendation.id, None, recommendation.status.value, evidence.id))
@@ -290,7 +405,7 @@ class RecommendationLifecycleStore:
         if target is RecommendationStatus.MISSION_ALLOCATED:
             raise LifecycleError("mission allocation must use allocate")
         evidence = self._evidence(self._decision_kind(target), recommendation_id, occurred_at, actor, rationale, references or (recommendation_id,))
-        with self._connection:
+        with self.atomic():
             self._append_evidence(evidence)
             self._connection.execute("INSERT INTO transitions(recommendation_id, from_status, to_status, evidence_id) VALUES (?, ?, ?, ?)", (recommendation_id, current.status.value, target.value, evidence.id))
         return self.get_recommendation(recommendation_id)
@@ -299,7 +414,7 @@ class RecommendationLifecycleStore:
         recommendation = self.get_recommendation(candidate.recommendation_id)
         if recommendation.status not in {RecommendationStatus.RECOMMENDED, RecommendationStatus.ARCHITECTURE_APPROVED}:
             raise LifecycleError("a candidate requires a current recommendation or architecture approval")
-        with self._connection:
+        with self.atomic():
             self._connection.execute("INSERT INTO candidates VALUES (?, ?, 0, ?)", (candidate.id, candidate.recommendation_id, _dump(candidate.to_dict())))
         return candidate
 

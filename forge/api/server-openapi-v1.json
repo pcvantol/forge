@@ -2080,6 +2080,224 @@
         },
         "operationId": "configureInstallationPeer"
       }
+    },
+    "/v1/advisory-candidates/capability": {
+      "get": {
+        "summary": "Explicit advisory Candidate proposal/source operation",
+        "security": [
+          {
+            "AdvisoryCandidateGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned Candidate contract; original receipt and current readback separated."
+          },
+          "400": {
+            "description": "Malformed closed request"
+          },
+          "401": {
+            "description": "Missing, expired or revoked dedicated grant"
+          },
+          "403": {
+            "description": "Denied scoped authority or source ACL"
+          },
+          "404": {
+            "description": "Unknown scoped subject"
+          },
+          "409": {
+            "description": "Stale/conflict/pending/budget/capacity"
+          },
+          "503": {
+            "description": "Canonical source unavailable"
+          }
+        }
+      }
+    },
+    "/v1/advisory-candidates/{conversation_id}/source/{turn_id}": {
+      "get": {
+        "summary": "Explicit advisory Candidate proposal/source operation",
+        "security": [
+          {
+            "AdvisoryCandidateGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned Candidate contract; original receipt and current readback separated."
+          },
+          "400": {
+            "description": "Malformed closed request"
+          },
+          "401": {
+            "description": "Missing, expired or revoked dedicated grant"
+          },
+          "403": {
+            "description": "Denied scoped authority or source ACL"
+          },
+          "404": {
+            "description": "Unknown scoped subject"
+          },
+          "409": {
+            "description": "Stale/conflict/pending/budget/capacity"
+          },
+          "503": {
+            "description": "Canonical source unavailable"
+          }
+        }
+      }
+    },
+    "/v1/advisory-candidates/{conversation_id}/proposals": {
+      "post": {
+        "summary": "Explicit advisory Candidate proposal/source operation",
+        "security": [
+          {
+            "AdvisoryCandidateGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned Candidate contract; original receipt and current readback separated."
+          },
+          "400": {
+            "description": "Malformed closed request"
+          },
+          "401": {
+            "description": "Missing, expired or revoked dedicated grant"
+          },
+          "403": {
+            "description": "Denied scoped authority or source ACL"
+          },
+          "404": {
+            "description": "Unknown scoped subject"
+          },
+          "409": {
+            "description": "Stale/conflict/pending/budget/capacity"
+          },
+          "503": {
+            "description": "Canonical source unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "advisory-candidate-v1.json#/$defs/proposal_request"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}": {
+      "get": {
+        "summary": "Explicit advisory Candidate proposal/source operation",
+        "security": [
+          {
+            "AdvisoryCandidateGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned Candidate contract; original receipt and current readback separated."
+          },
+          "400": {
+            "description": "Malformed closed request"
+          },
+          "401": {
+            "description": "Missing, expired or revoked dedicated grant"
+          },
+          "403": {
+            "description": "Denied scoped authority or source ACL"
+          },
+          "404": {
+            "description": "Unknown scoped subject"
+          },
+          "409": {
+            "description": "Stale/conflict/pending/budget/capacity"
+          },
+          "503": {
+            "description": "Canonical source unavailable"
+          }
+        }
+      }
+    },
+    "/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations": {
+      "post": {
+        "summary": "Explicit advisory Candidate registration",
+        "security": [
+          {
+            "AdvisoryCandidateGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned Candidate contract; original receipt and current readback separated."
+          },
+          "400": {
+            "description": "Malformed closed request"
+          },
+          "401": {
+            "description": "Missing, expired or revoked dedicated grant"
+          },
+          "403": {
+            "description": "Denied scoped authority or source ACL"
+          },
+          "404": {
+            "description": "Unknown scoped subject"
+          },
+          "409": {
+            "description": "Stale/conflict/pending/budget/capacity"
+          },
+          "503": {
+            "description": "Canonical source unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "advisory-candidate-v1.json#/$defs/registration_request"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations/{operation_id}": {
+      "get": {
+        "summary": "Explicit advisory Candidate proposal/source operation",
+        "security": [
+          {
+            "AdvisoryCandidateGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned Candidate contract; original receipt and current readback separated."
+          },
+          "400": {
+            "description": "Malformed closed request"
+          },
+          "401": {
+            "description": "Missing, expired or revoked dedicated grant"
+          },
+          "403": {
+            "description": "Denied scoped authority or source ACL"
+          },
+          "404": {
+            "description": "Unknown scoped subject"
+          },
+          "409": {
+            "description": "Stale/conflict/pending/budget/capacity"
+          },
+          "503": {
+            "description": "Canonical source unavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2112,6 +2330,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate owner-issued exact instance/principal/project/repository/conversation capability. No approval/admin authority."
+      },
+      "AdvisoryCandidateGrant": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate owner-issued conversation/proposal Candidate-only grant; no approval or execution."
       }
     },
     "schemas": {

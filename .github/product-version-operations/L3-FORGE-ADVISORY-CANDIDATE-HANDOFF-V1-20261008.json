@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.8.1",
+  "classification_rationale": "L3-FORGE-ADVISORY-CANDIDATE-HANDOFF-V1-20261008",
+  "component": "product",
+  "event_lineage": "L3-FORGE-ADVISORY-CANDIDATE-HANDOFF-V1-20261008",
+  "expected_head": "815932ceeaf4235a4971f5e1055b44082fa4dc9a",
+  "operation_id": "L3-FORGE-ADVISORY-CANDIDATE-HANDOFF-V1-20261008",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.9.0"
+}
