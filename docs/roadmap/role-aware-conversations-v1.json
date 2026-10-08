@@ -132,7 +132,7 @@
     {
       "assignment_id": "L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008",
       "plan_revision": "r38",
-      "state": "CANDIDATE_QUALIFICATION_PENDING",
+      "state": "PROTECTED_IMPLEMENTATION_INSTALLED_QUALIFIED_FINALIZATION_PENDING",
       "scope": "BUSINESS_ARCHITECTURE_TEXT_HTTP_PRODUCER",
       "node_subsets": [
         "RC-FC",
@@ -142,7 +142,11 @@
       ],
       "handoff": "docs/handoff/ADVISORY_CONVERSATION_HTTP_V1.md",
       "full_node_completion": false,
-      "consumer_assignment_changed": false
+      "consumer_assignment_changed": false,
+      "protected_implementation": "6e40f18b3048442437e8311c8cefb62509409495",
+      "implementation_version": "2.8.0",
+      "immutable_proof": "docs/qualification/advisory-conversation-selected-completion-2026-10-08.json",
+      "selected_installed_groups": 11
     }
   ]
 }

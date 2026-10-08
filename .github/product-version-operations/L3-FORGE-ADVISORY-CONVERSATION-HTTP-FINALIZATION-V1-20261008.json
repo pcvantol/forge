@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.8.0",
+  "classification_rationale": "L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008",
+  "component": "product",
+  "event_lineage": "L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008",
+  "expected_head": "6e40f18b3048442437e8311c8cefb62509409495",
+  "operation_id": "L3-FORGE-ADVISORY-CONVERSATION-HTTP-FINALIZATION-V1-20261008",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "NO_BUMP",
+  "requested_bump": "none",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.8.0"
+}

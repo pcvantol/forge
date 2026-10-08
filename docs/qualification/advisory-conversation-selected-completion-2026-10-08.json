@@ -1,0 +1,276 @@
+{
+  "schema_version": 1,
+  "assignment_id": "L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008",
+  "plan_revision": "r38",
+  "event_lineage": "L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008",
+  "version": "2.8.0",
+  "scope": "BUSINESS_ARCHITECTURE_TEXT_HTTP_PRODUCER",
+  "protected_implementation": {
+    "pull_request": "https://github.com/pcvantol/forge/pull/254",
+    "reviewed_head": "8b0799f289394d65894e68ab9bba0b3dc38dba72",
+    "source_revision": "6e40f18b3048442437e8311c8cefb62509409495",
+    "tree_revision": "e7c549dd9df6f0d4c7bac1658770fbb033657cc5",
+    "required_candidate_ci": {
+      "run_id": 37718972591,
+      "result": "SUCCESS",
+      "strict_protected_merge": true
+    },
+    "main_ci_run_id": 37719931865,
+    "main_ci_at_finalization_entry": "RUNNING_SEPARATE_GATE"
+  },
+  "owning_validation": {
+    "tests_run": 1267,
+    "failures": 0,
+    "existing_skips": 1,
+    "version_check": "PASS",
+    "projection_check": "PASS",
+    "log_sha256": "6e4c644d96acfab577fa08cc91b1c74129303924b332dbf41fd36ee2b76482a8",
+    "production_coverage": {
+      "forge/advisory_cli.py": {
+        "covered_lines": 29,
+        "num_statements": 31,
+        "percent_covered": 93.54838709677419,
+        "percent_covered_display": "94",
+        "missing_lines": 2,
+        "excluded_lines": 0,
+        "percent_statements_covered": 93.54838709677419,
+        "percent_statements_covered_display": "94"
+      },
+      "forge/advisory_context.py": {
+        "covered_lines": 80,
+        "num_statements": 84,
+        "percent_covered": 95.23809523809524,
+        "percent_covered_display": "95",
+        "missing_lines": 4,
+        "excluded_lines": 0,
+        "percent_statements_covered": 95.23809523809524,
+        "percent_statements_covered_display": "95"
+      },
+      "forge/advisory_contract.py": {
+        "covered_lines": 48,
+        "num_statements": 48,
+        "percent_covered": 100.0,
+        "percent_covered_display": "100",
+        "missing_lines": 0,
+        "excluded_lines": 0,
+        "percent_statements_covered": 100.0,
+        "percent_statements_covered_display": "100"
+      },
+      "forge/advisory_grant.py": {
+        "covered_lines": 114,
+        "num_statements": 122,
+        "percent_covered": 93.44262295081967,
+        "percent_covered_display": "93",
+        "missing_lines": 8,
+        "excluded_lines": 0,
+        "percent_statements_covered": 93.44262295081967,
+        "percent_statements_covered_display": "93"
+      },
+      "forge/advisory_provider.py": {
+        "covered_lines": 53,
+        "num_statements": 59,
+        "percent_covered": 89.83050847457628,
+        "percent_covered_display": "90",
+        "missing_lines": 6,
+        "excluded_lines": 0,
+        "percent_statements_covered": 89.83050847457628,
+        "percent_statements_covered_display": "90"
+      },
+      "forge/advisory_service.py": {
+        "covered_lines": 195,
+        "num_statements": 212,
+        "percent_covered": 91.98113207547169,
+        "percent_covered_display": "92",
+        "missing_lines": 17,
+        "excluded_lines": 0,
+        "percent_statements_covered": 91.98113207547169,
+        "percent_statements_covered_display": "92"
+      },
+      "forge/planner/codex_cli_session.py": {
+        "covered_lines": 370,
+        "num_statements": 415,
+        "percent_covered": 89.1566265060241,
+        "percent_covered_display": "89",
+        "missing_lines": 45,
+        "excluded_lines": 0,
+        "percent_statements_covered": 89.1566265060241,
+        "percent_statements_covered_display": "89"
+      },
+      "forge/server_runtime.py": {
+        "covered_lines": 604,
+        "num_statements": 725,
+        "percent_covered": 83.3103448275862,
+        "percent_covered_display": "83",
+        "missing_lines": 121,
+        "excluded_lines": 2,
+        "percent_statements_covered": 83.3103448275862,
+        "percent_statements_covered_display": "83"
+      }
+    }
+  },
+  "independent_implementation_reviews": {
+    "quality": {
+      "result": "PASS",
+      "reviewed_revision": "8b0799f289394d65894e68ab9bba0b3dc38dba72",
+      "receipt_sha256": "e6511e375a3b1bd01d116413c04957388d005b88304c163cd7e813a51785a68c"
+    },
+    "security": {
+      "result": "PASS",
+      "reviewed_revision": "8b0799f289394d65894e68ab9bba0b3dc38dba72",
+      "receipt_sha256": "4bf370e3a44fd916f46322bf0bee76fcbea3acdab8782a1c6450af4914470a4a"
+    }
+  },
+  "prior_review_findings": [
+    {
+      "candidate": "7ccb343a41f62c9d95a93d03a291800754ee943c",
+      "quality": "FAIL",
+      "security": "FAIL",
+      "severity": "P2",
+      "finding": "Fresh64-to65 transcript admission",
+      "same_lineage_repair": "Fresh admission denied at64 before storage/provider; retained read/replay/continuation preserved"
+    }
+  ],
+  "implementation_main_installed": {
+    "qualification": "INSTALLED_ADVISORY_HTTP_V1",
+    "source_revision": "6e40f18b3048442437e8311c8cefb62509409495",
+    "artifact": {
+      "version": "2.8.0",
+      "wheel_sha256": "sha256:712de9954eccf55d27af8382b812d9abd3505cfca31f153643dcbbb671643559",
+      "source_tree_revision": "e7c549dd9df6f0d4c7bac1658770fbb033657cc5",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 237,
+      "source_product_files_verified": 237
+    },
+    "result": "ADVISORY_HTTP_PASS",
+    "case_count": 11,
+    "cases": [
+      {
+        "case": "test_actual_business_architecture_provider_and_replay_history",
+        "result": "PASS"
+      },
+      {
+        "case": "test_injecting_malformed_unknown_usage_outputs_never_authoritative",
+        "result": "PASS"
+      },
+      {
+        "case": "test_owner_cli_parity_expiry_corrupted_store_and_no_budget_reset",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_concurrent_send_is_bounded_without_second_invocation",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_process_crash_before_after_result_and_lost_http_body",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_provider_timeout_cancel_and_cross_conversation_budget_do_not_regenerate",
+        "result": "PASS"
+      },
+      {
+        "case": "test_retention_capacity_denies_fresh_admission_preserves_real_replay_and_continuation",
+        "result": "PASS"
+      },
+      {
+        "case": "test_scoped_denials_current_revoke_stale_malformed_reads_and_no_governance_mutation",
+        "result": "PASS"
+      },
+      {
+        "case": "test_selected_source_stale_foreign_and_revocation_protect_saved_history",
+        "result": "PASS"
+      },
+      {
+        "case": "test_two_existing_configured_projects_and_principals_are_isolated",
+        "result": "PASS"
+      },
+      {
+        "case": "test_unavailable_binary_retains_known_not_started_and_budget",
+        "result": "PASS"
+      }
+    ],
+    "failure": null,
+    "expected_failure_control": false,
+    "external_fault": null,
+    "limitations": [
+      "Real product HTTP/auth/context/session/validator/recovery; external deterministic model executable, OS identity and public repository transport only.",
+      "No live model quality, EP environment, paid provider, native chat consumer, Candidate/refinement proposal/apply or full family qualification.",
+      "Declared disposable grant-expiry/bool-storage faults test live failclosed parsing, never synthesize successful advice or approvals."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "genuine_failure_control": {
+    "qualification": "INSTALLED_ADVISORY_HTTP_V1",
+    "source_revision": "6e40f18b3048442437e8311c8cefb62509409495",
+    "artifact": {
+      "version": "2.8.0",
+      "wheel_sha256": "sha256:712de9954eccf55d27af8382b812d9abd3505cfca31f153643dcbbb671643559",
+      "source_tree_revision": "e7c549dd9df6f0d4c7bac1658770fbb033657cc5",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 237,
+      "source_product_files_verified": 237
+    },
+    "result": "FAIL",
+    "case_count": 0,
+    "cases": [],
+    "failure": {
+      "type": "AssertionError",
+      "stage": "positive-replay",
+      "detail": "Declared advisory qualification gate failed"
+    },
+    "expected_failure_control": true,
+    "external_fault": "REVOKED_POSITIVE_ADVISORY_GRANT",
+    "limitations": [
+      "Real product HTTP/auth/context/session/validator/recovery; external deterministic model executable, OS identity and public repository transport only.",
+      "No live model quality, EP environment, paid provider, native chat consumer, Candidate/refinement proposal/apply or full family qualification.",
+      "Declared disposable grant-expiry/bool-storage faults test live failclosed parsing, never synthesize successful advice or approvals."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "tde_candidate": {
+    "run_id": 37718972572,
+    "workflow": "SUCCESS",
+    "assessment_exit": 2,
+    "qualification_exit": 2,
+    "policy_fail_count": 47,
+    "repository_qualification": "FAILED",
+    "suppression": false
+  },
+  "delivery_state": "PROTECTED_IMPLEMENTATION_INSTALLED_QUALIFIED_FINALIZATION_PENDING",
+  "remaining_final_gates": [
+    "independent exact-finalization Quality and Security",
+    "required finalization PR CI and protected merge",
+    "required implementation-main CI",
+    "exact-final-main tracked-source noneditable wheel and full selected installed matrix/genuine control",
+    "required final-main CI and actual TDE policy/readback",
+    "terminal register and future JOIN receipt"
+  ],
+  "claim_boundaries": {
+    "full_node_completion": false,
+    "consumer_assignment_changed": false,
+    "l4_hold_pin": "2.7.69/e64302f",
+    "live_model_quality": "NOT_QUALIFIED",
+    "only_external_test_doubles": [
+      "model executable",
+      "OS identity",
+      "public repository transport"
+    ],
+    "declared_budget_fault": "63 disposable metadata-only budget inputs; successful retained advice and continuation are generated through real HTTP/provider",
+    "no_new_ep_environment": true,
+    "no_governance_or_target_effects": true
+  }
+}

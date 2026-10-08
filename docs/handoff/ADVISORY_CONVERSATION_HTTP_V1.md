@@ -4,8 +4,8 @@ Assignment `L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008`, plan r38,
 JOIN `L3-L4-ADVISORY-CONVERSATION-HTTP-V1-20261008`.
 Base protected `e64302ffd2385926c1d5fad3e1417778798309aa` / Forge 2.7.69.
 Selected new capability boundary: normal MINOR **2.8.0**, one event lineage.
-State: source candidate; not PRODUCER_QUALIFIED until protected exact-main
-installed delivery. Prior r37/GP/FCI/serial assignments remain closed.
+State: protected implementation installed-qualified; normal finalization and
+exact-final-main delivery gates remain. Prior r37/GP/FCI/serial assignments remain closed.
 
 ## Outcome and authority
 
@@ -139,3 +139,36 @@ Keychain/historical runtime, signing, public release or operational activation.
 TDE observe workflow and actual policy assessment remain separately recorded.
 L4's independent native hold assignment remains pinned Forge2.7.69/e64302f.
 Native chat requires a later separately selected consumer; no Workspace writer.
+
+
+## Protected implementation and normal source finalization
+
+[PR254](https://github.com/pcvantol/forge/pull/254) protected-merged at
+`6e40f18b3048442437e8311c8cefb62509409495`, tree
+`e7c549dd9df6f0d4c7bac1658770fbb033657cc5`, Forge **2.8.0**.
+Exact implementation candidate `8b0799f289394d65894e68ab9bba0b3dc38dba72`
+passed independent whole-slice Quality and Security, 1267 owning tests
+(one existing skip), version/projection and all eight changed production files
+83.31–100% executable coverage. Required CI37718972591 SUCCESS retains all
+FCI102/read/serial24/hold43/controls/Action-authority gates plus advisory11/control.
+Earlier7ccb343 FAIL/P2 capacity receipts remain historical. Fresh admission at64
+now denies before storage/provider; existing read/replay/continuation is preserved.
+Full multiline source text and credential denial beyond500 are qualified.
+
+The [immutable selected implementation proof](../qualification/advisory-conversation-selected-completion-2026-10-08.json)
+binds the exact committed implementation-main wheel SHA256
+`712de9954eccf55d27af8382b812d9abd3505cfca31f153643dcbbb671643559`
+to237 source/wheel/installed product files outside checkout, noneditable.
+All11 selected installed service groups PASS; genuine positive-replay grant
+revocation returns FAIL/AssertionError and owned cleanup is true. The declared
+63 metadata-only retention inputs are negative budget faults, never seeded advice.
+
+This nonempty normal NO_BUMP2.8.0 finalization preserves one event lineage.
+Its own exact-head Quality/Security, required PR CI, protected merge, required
+implementation-main CI37719931865, exact-final-main tracked-source installed11/
+revoke-control/cleanup and required final-main CI are separate remaining gates.
+The terminal register will bind their actual readbacks; no future SHA is asserted.
+Candidate TDE37718972572 workflowSUCCESS remains separate from47 policyFAILs,
+repository qualificationFAILED and exits2; no policy suppression or broad debt
+cleanup. Live commercial advice quality remains NOT_QUALIFIED. L4 native hold
+remains independently pinned2.7.69/e64302f; no native chat/family completion.
