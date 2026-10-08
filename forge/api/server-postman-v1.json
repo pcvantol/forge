@@ -1171,6 +1171,91 @@
           ]
         }
       }
+    },
+    {
+      "name": "/v1/readiness/installation",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/readiness/installation",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "readiness",
+            "installation"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/v1/installation-peer",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/installation-peer",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "installation-peer"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/v1/installation-peer/preflight",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/installation-peer/preflight",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "installation-peer",
+            "preflight"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/v1/installation-peer/configure",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"operation_id\": \"installation-configure\",\n  \"binding_id\": \"installation-binding\",\n  \"endpoint\": \"{{ep_base_url}}\",\n  \"ep_instance_id\": \"{{ep_instance_id}}\",\n  \"consumer_id\": \"forge\",\n  \"credential_reference\": \"keychain://installation-pairing/credential\",\n  \"allow_loopback_http\": false,\n  \"timeout_seconds\": 10\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/installation-peer/configure",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "installation-peer",
+            "configure"
+          ]
+        }
+      }
     }
   ]
 }

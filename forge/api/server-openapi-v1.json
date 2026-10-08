@@ -1941,6 +1941,145 @@
           }
         }
       ]
+    },
+    "/v1/readiness/installation": {
+      "get": {
+        "summary": "Read project-independent installation readiness",
+        "responses": {
+          "200": {
+            "description": "Standalone service is ready for its declared non-EP scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandaloneReadiness"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          },
+          "503": {
+            "description": "Standalone service is not ready or the peer is required"
+          }
+        },
+        "description": "Installation-only connectivity. Does not grant project access or execution readiness.",
+        "operationId": "readInstallationInstallation"
+      }
+    },
+    "/v1/installation-peer": {
+      "get": {
+        "summary": "Read project-independent installation peer state",
+        "description": "Installation-only connectivity. Does not grant project access or execution readiness.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "workspaceReadBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Workspace read bearer is outside its route scope"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "operationId": "readInstallationInstallationpeer"
+      }
+    },
+    "/v1/installation-peer/preflight": {
+      "get": {
+        "summary": "Read project-independent installation peer state",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "description": "Installation-only connectivity. Does not grant project access or execution readiness.",
+        "operationId": "readInstallationPreflight"
+      }
+    },
+    "/v1/installation-peer/configure": {
+      "post": {
+        "summary": "Configure project-independent installation connectivity",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "operation_id",
+                  "binding_id",
+                  "endpoint",
+                  "ep_instance_id",
+                  "consumer_id",
+                  "credential_reference",
+                  "allow_loopback_http",
+                  "timeout_seconds"
+                ],
+                "properties": {
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "binding_id": {
+                    "type": "string"
+                  },
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "ep_instance_id": {
+                    "type": "string"
+                  },
+                  "consumer_id": {
+                    "type": "string"
+                  },
+                  "credential_reference": {
+                    "type": "string"
+                  },
+                  "allow_loopback_http": {
+                    "type": "boolean"
+                  },
+                  "timeout_seconds": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "configureInstallationPeer"
+      }
     }
   },
   "components": {

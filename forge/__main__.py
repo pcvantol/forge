@@ -234,6 +234,15 @@ def main(argv: list[str] | None = None) -> int:
         "accept-final-completion", help="record Business acceptance of proven Mission completion")
     final_acceptance.add_argument("--mission-id", required=True)
     final_acceptance.add_argument("--input", required=True)
+    installation = subparsers.add_parser("installation-peer", help="manage project-independent EP installation connectivity")
+    installation_commands = installation.add_subparsers(dest="installation_peer_command", required=True)
+    configure_installation = installation_commands.add_parser("configure")
+    for flag in ("operation-id", "binding-id", "endpoint", "expected-instance-id", "consumer-id", "credential-reference"):
+        configure_installation.add_argument("--"+flag, required=True)
+    configure_installation.add_argument("--allow-loopback-http",action="store_true")
+    configure_installation.add_argument("--timeout-seconds",type=float,default=10.0)
+    installation_commands.add_parser("show")
+    installation_commands.add_parser("preflight")
     execution_host = subparsers.add_parser("execution-host", help="manage the selected Execution Host peer")
     execution_host_commands = execution_host.add_subparsers(dest="execution_host_command", required=True)
     configure = execution_host_commands.add_parser("configure", help="persist one explicit EP peer binding")
@@ -542,6 +551,20 @@ def main(argv: list[str] | None = None) -> int:
                 }
             print(json.dumps(envelope, sort_keys=True))
             return 1
+    elif args.command == "installation-peer":
+        from .installation_pairing import InstallationPairingService, InstallationPairingError
+        try:
+            service = InstallationPairingService(args.data_root)
+            if args.installation_peer_command == "configure":
+                result = service.configure(operation_id=args.operation_id,binding_id=args.binding_id,
+                    endpoint=args.endpoint,ep_instance_id=args.expected_instance_id,consumer_id=args.consumer_id,
+                    credential_reference=args.credential_reference,allow_loopback_http=args.allow_loopback_http,
+                    timeout_seconds=args.timeout_seconds)
+            elif args.installation_peer_command == "show": result = service.show()
+            else: result = service.preflight()
+            print(json.dumps(result,sort_keys=True))
+        except (RuntimeError,PermissionError,ValueError,sqlite3.Error,OSError):
+            return _failure("installation-peer",InstallationPairingError("INSTALLATION_PAIRING_REJECTED"))
     elif args.command == "execution-host":
         try:
             if args.execution_host_command == "credential-access":
