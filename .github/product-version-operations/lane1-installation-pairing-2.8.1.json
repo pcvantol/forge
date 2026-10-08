@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.8.0",
+  "classification_rationale": "Project-independent installation pairing; separate project execution authority",
+  "component": "product",
+  "event_lineage": "Project-independent installation pairing; separate project execution authority",
+  "expected_head": "9f77c8bc9fb68b20bfb3ba0c7c6e6aebe8e9104f",
+  "operation_id": "lane1-installation-pairing-2.8.1",
+  "policy_revision": "canonical-product-versioning-policy-v1",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.8.1"
+}

@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 44
+RUNTIME_SCHEMA_VERSION = 45
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -39,7 +39,7 @@ _TABLES = frozenset((
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings", "execution_host_exchange_audit",
-    "execution_host_peer_configuration", "forge_operational_logs",
+    "execution_host_peer_configuration", "installation_peer_configuration", "forge_operational_logs",
     "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
     "operational_reset_tombstones", "operational_reset_artifact_steps",
 ))
@@ -55,6 +55,8 @@ def _tables_for_schema() -> frozenset[str]:
         tables = tables - {"mission_action_intent_revisions"}
     if RUNTIME_SCHEMA_VERSION < 44:
         tables = tables - {"approved_worksets"}
+    if RUNTIME_SCHEMA_VERSION < 45:
+        tables = tables - {"installation_peer_configuration"}
     return tables
 _OPERATIONAL_RESET_TABLES = frozenset((
     "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
@@ -425,6 +427,14 @@ class RuntimeDatabase:
         ("configuration_revision", "INTEGER", 1, 0),
         ("configuration_digest", "TEXT", 1, 0), ("document", "TEXT", 1, 0),
     )
+
+    def _require_installation_peer_configuration_structure(self) -> None:
+        columns = tuple((row["name"],row["type"].upper(),row["notnull"],row["pk"]) for row in self._connection.execute("PRAGMA table_info(installation_peer_configuration)"))
+        expected = (("singleton","INTEGER",0,1),("binding_id","TEXT",1,0),("operation_id","TEXT",1,0),("document_digest","TEXT",1,0),("document","TEXT",1,0))
+        unique = {tuple(row[0] for row in self._connection.execute("SELECT name FROM pragma_index_info(?) ORDER BY seqno",(index["name"],))) for index in self._connection.execute("PRAGMA index_list(installation_peer_configuration)") if index["unique"]}
+        sql = self._connection.execute("SELECT sql FROM sqlite_master WHERE name='installation_peer_configuration'").fetchone()
+        if columns != expected or not {("binding_id",),("operation_id",)} <= unique or sql is None or "check(singleton=1)" not in "".join(sql[0].lower().split()):
+            raise RuntimeIntegrityError("installation peer configuration structure is invalid")
 
     def _require_peer_configuration_structure(self) -> None:
         columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
@@ -2090,6 +2100,17 @@ class RuntimeDatabase:
                     self._connection.execute(f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_approved_worksets_{operation.lower()} BEFORE {operation} ON approved_worksets WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END")
                 self._set_metadata({"schema_version":"44", "migration_version":"44", "last_migration":"44", "forge_version":forge_version})
                 self._connection.execute("PRAGMA user_version=44")
+        elif version == 44:
+            active = self._connection.execute("SELECT active_operation_id FROM operational_reset_state WHERE singleton=1").fetchone()
+            if active is not None and active[0] is not None:
+                raise RuntimeMaintenanceActive("cannot migrate during operational reset maintenance")
+            with self._connection:
+                self._connection.execute("CREATE TABLE IF NOT EXISTS installation_peer_configuration (singleton INTEGER PRIMARY KEY CHECK(singleton=1),binding_id TEXT NOT NULL UNIQUE,operation_id TEXT NOT NULL UNIQUE,document_digest TEXT NOT NULL,document TEXT NOT NULL)")
+                for operation in ("INSERT", "UPDATE", "DELETE"):
+                    self._connection.execute(f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_installation_peer_configuration_{operation.lower()} BEFORE {operation} ON installation_peer_configuration WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END")
+                self._require_installation_peer_configuration_structure()
+                self._set_metadata({"schema_version":"45", "migration_version":"45", "last_migration":"45", "forge_version":forge_version})
+                self._connection.execute("PRAGMA user_version=45")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -2233,6 +2254,8 @@ class RuntimeDatabase:
         self._require_peer_configuration_structure()
         self._require_execution_host_exchange_audit_structure()
         self._require_operational_log_structure()
+        if RUNTIME_SCHEMA_VERSION >= 45:
+            self._require_installation_peer_configuration_structure()
         if RUNTIME_SCHEMA_VERSION >= 41:
             self._require_action_slot_structure()
         if RUNTIME_SCHEMA_VERSION >= 42:

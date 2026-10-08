@@ -92,6 +92,10 @@ SERVER_ROUTE_INVENTORY = (
     ("GET", "/v1/health"),
     ("GET", "/v1/readiness"),
     ("GET", "/v1/readiness/standalone"),
+    ("GET", "/v1/readiness/installation"),
+    ("GET", "/v1/installation-peer"),
+    ("GET", "/v1/installation-peer/preflight"),
+    ("POST", "/v1/installation-peer/configure"),
     ("GET", "/v1/instance"),
     ("GET", "/v1/version"),
     ("GET", "/v1/provider-context"),
@@ -469,6 +473,42 @@ class ForgeServerApplicationServices:
             "execution_ready": False,
             "mode": "STANDALONE" if standalone else "PEER_REQUIRED",
         }
+
+    def installation_readiness(self) -> dict[str, Any]:
+        """Separate component/service qualification; never project execution."""
+        from .installation_pairing import InstallationPairingService
+        provider = self.provider_readiness()
+        scheduler = self.state.document()["scheduler"]
+        service_ready = bool(provider.get("ready")) and scheduler.get("state") in {"READY", "IDLE"}
+        try:
+            pairing = InstallationPairingService(self.root).preflight()
+            connected = pairing.get("status") == "CONNECTED"
+        except (RuntimeError, OSError, ValueError, sqlite3.Error):
+            pairing, connected = {"status": "NOT_READY"}, False
+        return {
+            "api_version": SERVER_API_VERSION,
+            "contract_version": "forge-server-installation-readiness/v1",
+            "ready": service_ready and connected, "service_ready": service_ready,
+            "component_connected": connected, "project_authorized": False,
+            "execution_ready": False, "provider": provider, "scheduler": scheduler,
+            "installation_peer": pairing, "instance_id": existing_instance(self.root).instance_id,
+        }
+
+    def installation_peer(self) -> dict[str, Any]:
+        from .installation_pairing import InstallationPairingService
+        return InstallationPairingService(self.root).show()
+
+    def installation_peer_preflight(self) -> dict[str, Any]:
+        from .installation_pairing import InstallationPairingService
+        return InstallationPairingService(self.root).preflight()
+
+    def configure_installation_peer(self, document: Mapping[str, Any]) -> dict[str, Any]:
+        from .installation_pairing import InstallationPairingService
+        required = {"operation_id", "binding_id", "endpoint", "ep_instance_id", "consumer_id",
+                    "credential_reference", "allow_loopback_http", "timeout_seconds"}
+        if set(document) != required:
+            raise ValueError("installation-peer request shape is invalid")
+        return InstallationPairingService(self.root).configure(**document)
 
     def execution_host_preflight(self) -> dict[str, Any]:
         return EngineeringPlatformPeerConfigurationService(self.root).preflight()
@@ -921,6 +961,12 @@ class ForgeServerAPI:
         if path == "/v1/readiness/standalone":
             value = self.services.standalone_readiness()
             return APIResponse(200 if value["ready"] else 503, value, headers)
+        if path == "/v1/readiness/installation":
+            value = self.services.installation_readiness()
+            return APIResponse(200 if value["ready"] else 503, value, headers)
+        if path in {"/v1/installation-peer", "/v1/installation-peer/preflight"}:
+            value = self.services.installation_peer() if path == "/v1/installation-peer" else self.services.installation_peer_preflight()
+            return APIResponse(200, value, headers)
         if path == "/v1/version":
             instance = existing_instance(self.services.root)
             return APIResponse(200, {
@@ -953,6 +999,8 @@ class ForgeServerAPI:
                 return APIResponse(200,self.services.workset_command(parts[3],parts[4],body),headers)
         if path == "/v1/provider-context":
             return APIResponse(200, self.services.configure_provider_context(body), headers)
+        if path == "/v1/installation-peer/configure":
+            return APIResponse(200, self.services.configure_installation_peer(body), headers)
         if path == "/v1/execution-host/configure":
             return APIResponse(200, self.services.configure_execution_host(body), headers)
         if path == "/v1/execution-host/detach":
