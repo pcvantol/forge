@@ -40,6 +40,7 @@ forge-candidate-decision-grant = "forge.candidate_decision_grant:main"
 forge-advisory = "forge.advisory_cli:main"
 forge-advisory-context = "forge.advisory_context:main"
 forge-advisory-grant = "forge.advisory_grant:main"
+forge-mission-concept-setup = "forge.mission_concept_setup:main"
 forge-workspace-worklist-control-grant = "forge.workspace_worklist_control_grant:main"
 
 [tool.setuptools]

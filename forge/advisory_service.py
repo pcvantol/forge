@@ -34,6 +34,17 @@ def conversation_lock(path):
     finally:os.close(fd)
 
 class AdvisoryService:
+    contract = CONTRACT
+    provider_type = AdvisoryProvider
+
+    @staticmethod
+    def parse_request(document):
+        return request(document)
+
+    @staticmethod
+    def validate_result(document, admitted, references):
+        return result(document, admitted, references)
+
     def __init__(self, root, grant, provider_id):
         self.root=Path(root);self.grant=grant;self.provider_id=provider_id
 
@@ -56,14 +67,14 @@ class AdvisoryService:
 
     def _read(self,path,p,conversation_id,context,create=False):
         if create and not path.exists() and not path.is_symlink():
-            return {'contract_version':CONTRACT,'principal_reference':p.reference,'conversation_id':conversation_id,
+            return {'contract_version':self.contract,'principal_reference':p.reference,'conversation_id':conversation_id,
                     'scope':{k:getattr(p,k) for k in ['instance_id','project_id','repository_id']},
                     'dataset_generation':context['dataset_generation'],'maximum_turns':p.maximum_turns,'revision':0,'turns':[]}
         try:value=json.loads(_private_bytes(path))
         except (OSError,ValueError):raise RuntimeError('private transcript unavailable') from None
         if isinstance(value,dict) and value.get('principal_reference')!=p.reference:raise PermissionError('foreign conversation owner')
         fields={'contract_version','principal_reference','conversation_id','scope','dataset_generation','maximum_turns','revision','turns'}
-        if (not isinstance(value,dict) or set(value)!=fields or value['contract_version']!=CONTRACT
+        if (not isinstance(value,dict) or set(value)!=fields or value['contract_version']!=self.contract
                 or value['principal_reference']!=p.reference or value['conversation_id']!=conversation_id
                 or value['scope']!={k:getattr(p,k) for k in ['instance_id','project_id','repository_id']}
                 or type(value['dataset_generation']) is not int or value['dataset_generation']!=context['dataset_generation']
@@ -75,7 +86,7 @@ class AdvisoryService:
         for t in value['turns']:
             if not isinstance(t,dict) or set(t)!={'request','request_digest','session_id','invocation_id','context','provider','status','lifecycle','execution','outcome','admitted_at','grant_id','consumption'}:
                 raise RuntimeError('private turn shape unavailable')
-            try:r,h=request(t['request'])
+            try:r,h=self.parse_request(t['request'])
             except (ValueError,TypeError):raise RuntimeError('stored request unavailable') from None
             if (h!=t['request_digest'] or r['conversation_id']!=conversation_id or r['turn_id'] in seen
                     or any(r[k]!=value['scope'][k] for k in value['scope']) or t['consumption']!=1 or type(t['consumption']) is not int
@@ -97,7 +108,7 @@ class AdvisoryService:
                 if not isinstance(o,dict) or set(o)!={'execution','diagnostic','usage','usage_status','observed_model','observed_effort','output','result_digest','error_code'} or o['execution']!=t['execution']:
                     raise RuntimeError('stored result unavailable')
                 if o['output'] is not None:
-                    try:output=result(o['output'],t,t['context']['evidence_references'])
+                    try:output=self.validate_result(o['output'],t,t['context']['evidence_references'])
                     except (ValueError,TypeError,KeyError):raise RuntimeError('stored advice invalid') from None
                     if digest(output)!=o['result_digest'] or t['execution']!='CONFIRMED' or o['error_code'] is not None:raise RuntimeError('result provenance unavailable')
                     usage=o['usage']
@@ -122,7 +133,7 @@ class AdvisoryService:
                 for t in value['turns'] if t['status']=='COMPLETE']
 
     def submit(self, authorization, document):
-        r,h=request(document);p=self.grant.authorize(authorization,r['conversation_id'])
+        r,h=self.parse_request(document);p=self.grant.authorize(authorization,r['conversation_id'])
         if any(r[k]!=getattr(p,k) for k in ['instance_id','project_id','repository_id']):raise PermissionError('foreign scope')
         path=self._path(p,r['conversation_id'])
         with conversation_lock(path):
@@ -137,7 +148,7 @@ class AdvisoryService:
                         with control_runtime(self.root) as runtime:self._release_confirmed_permit(runtime,existing)
                     if existing['status']=='REVIEW' and existing['outcome']['output'] is not None:
                         existing['status']='COMPLETE';existing['lifecycle'].append('COMPLETE');self._save(path,value)
-                    return {'contract_version':CONTRACT,'recorded':False,'original_turn':existing,'current_revision':value['revision']}
+                    return {'contract_version':self.contract,'recorded':False,'original_turn':existing,'current_revision':value['revision']}
                 if r['expected_revision']!=value['revision'] or r['context_revision']!=context_revision:raise AdvisoryConflict('CONVERSATION_OR_CONTEXT_STALE')
                 if any(t['status'] in ('REASONING','REVIEW','CANCEL_REQUESTED') or t['execution']=='MAY_HAVE_HAPPENED' for t in value['turns']):raise AdvisoryConflict('INVOCATION_UNRESOLVED')
                 if len(value['turns'])>=min(value['maximum_turns'],p.maximum_turns):raise AdvisoryConflict('TURN_BUDGET_EXHAUSTED')
@@ -149,7 +160,7 @@ class AdvisoryService:
                     used,unresolved=self._root_budget(p,new_conversation=value['revision']==0)
                     if unresolved:raise AdvisoryConflict('INVOCATION_UNRESOLVED')
                     if used>=min(8,p.maximum_turns):raise AdvisoryConflict('TURN_BUDGET_EXHAUSTED')
-                    provider=AdvisoryProvider(runtime,self.provider_id);history=self._history(value)
+                    provider=self.provider_type(runtime,self.provider_id);history=self._history(value)
                     policy,_,generation_digest=provider.prepare(t,history)
                     from .planner.codex_cli_session import _policy_digest
                     t['provider']={'provider_id':policy.provider_id,'requested_model':policy.model,'requested_profile':policy.profile,
@@ -172,7 +183,7 @@ class AdvisoryService:
                         raise
                     if t['status']=='REVIEW':t['status']='COMPLETE';t['lifecycle'].append('COMPLETE');self._save(path,value)
                 self.grant.authorize(authorization,r['conversation_id'])
-                return {'contract_version':CONTRACT,'recorded':True,'original_turn':t,'current_revision':value['revision']}
+                return {'contract_version':self.contract,'recorded':True,'original_turn':t,'current_revision':value['revision']}
 
     def read(self, authorization, conversation_id, turn_id=None, cursor=0, limit=4):
         p=self.grant.authorize(authorization,conversation_id);context,_=self.context(p);path=self._path(p,conversation_id)
@@ -182,10 +193,10 @@ class AdvisoryService:
         if turn_id is not None:
             t=next((t for t in value['turns'] if t['request']['turn_id']==turn_id),None)
             if t is None:raise FileNotFoundError('unknown turn')
-            return {'contract_version':CONTRACT,'original_turn':t,'current_revision':value['revision'],'read_only':True}
+            return {'contract_version':self.contract,'original_turn':t,'current_revision':value['revision'],'read_only':True}
         if type(cursor) is not int or type(limit) is not int or cursor<0 or not 1<=limit<=4 or cursor>len(value['turns']):raise ValueError('invalid bounded cursor')
         selected=value['turns'][cursor:cursor+limit]
-        return {'contract_version':CONTRACT,'conversation_id':conversation_id,'scope':value['scope'],'revision':value['revision'],
+        return {'contract_version':self.contract,'conversation_id':conversation_id,'scope':value['scope'],'revision':value['revision'],
                 'turns':selected,'next_cursor':None if cursor+len(selected)>=len(value['turns']) else cursor+len(selected),
                 'consumed_turns':len(value['turns']),'maximum_turns':min(value['maximum_turns'],p.maximum_turns),
                 'retention':'PRIVATE_RETAINED_NO_AUTOMATIC_DELETE','read_only':True}
@@ -215,7 +226,7 @@ class AdvisoryService:
         return used,unresolved
 
     def cancel_request(self,authorization,conversation_id,turn_id,body):
-        if not isinstance(body,dict) or set(body)!={'contract_version','expected_revision','request_digest'} or body['contract_version']!=CONTRACT or type(body['expected_revision']) is not int:raise ValueError('invalid cancel intent')
+        if not isinstance(body,dict) or set(body)!={'contract_version','expected_revision','request_digest'} or body['contract_version']!=self.contract or type(body['expected_revision']) is not int:raise ValueError('invalid cancel intent')
         p=self.grant.authorize(authorization,conversation_id);context,_=self.context(p);path=self._path(p,conversation_id)
         with conversation_lock(path),_locked(self.grant.path):
             self.grant.authorize(authorization,conversation_id);value=self._read(path,p,conversation_id,context)
@@ -223,11 +234,11 @@ class AdvisoryService:
             if t is None:raise FileNotFoundError('unknown turn')
             if value['revision']!=body['expected_revision'] or t['request_digest']!=body['request_digest'] or t['status'] in ('COMPLETE','REVIEW'):raise AdvisoryConflict('CANCEL_PRECONDITION_CHANGED')
             t['status']='CANCEL_REQUESTED';self._save(path,value)
-            return {'contract_version':CONTRACT,'original_turn':t,'current_revision':value['revision'],'provider_stopped':False,'cancel_request_recorded':True}
+            return {'contract_version':self.contract,'original_turn':t,'current_revision':value['revision'],'provider_stopped':False,'cancel_request_recorded':True}
 
     def capability(self,authorization,selections=None):
         p=self.grant.authorize(authorization);context,revision=self.context(p,selections)
-        return {'contract_version':CONTRACT,'supported_modes':list(MODES),'unsupported':['UX','APPLY','ATTACHMENTS','EXPORT','STREAMING','PROVIDER_CANCEL'],
+        return {'contract_version':self.contract,'supported_modes':list(MODES),'unsupported':['UX','APPLY','ATTACHMENTS','EXPORT','STREAMING','PROVIDER_CANCEL'],
                 'project_id':p.project_id,'repository_id':p.repository_id,'instance_id':p.instance_id,'conversation_ids':list(p.conversation_ids),
                 'context':context,'context_revision':revision,'maximum_turns':p.maximum_turns,'available_sources':AdvisoryContext(self.root,p.instance_id).available(p),'max_concurrent_invocations_per_instance':1,
                 'cancel_request_supported':True,'provider_stop_supported':False,'retained_principal_consumed_turns':self._root_budget(p)[0],'live_model_quality':'NOT_QUALIFIED','unknown_usage':'NOT_REPORTED_AND_NOT_ACCEPTED_AS_BOUND_PROOF','read_only':True}
@@ -249,7 +260,7 @@ class AdvisoryService:
                 return 200,self.read(authorization,conversation_id,cursor=int(query.get('cursor',['0'])[0]),limit=int(query.get('limit',['4'])[0]))
             if method=='POST' and len(parts)==7 and parts[4]=='turns' and parts[6]=='cancel' and not query:return 200,self.cancel_request(authorization,conversation_id,identifier(parts[5]),body)
             if method=='GET' and len(parts)==6 and parts[4]=='turns' and not query:return 200,self.read(authorization,conversation_id,identifier(parts[5]))
-            return 404,{'contract_version':CONTRACT,'error':{'code':'ADVISORY_ROUTE_NOT_FOUND'}}
+            return 404,{'contract_version':self.contract,'error':{'code':'ADVISORY_ROUTE_NOT_FOUND'}}
         except AdvisoryProviderUnavailable:status,code=503,'ADVISORY_PROVIDER_UNAVAILABLE'
         except PermissionError:status,code=403,'ADVISORY_SCOPE_DENIED'
         except AdvisoryConflict as e:status,code=409,e.code
@@ -257,4 +268,4 @@ class AdvisoryService:
         except FileNotFoundError:status,code=404,'ADVISORY_NOT_FOUND'
         except (ValueError,TypeError,KeyError):status,code=400,'ADVISORY_REQUEST_INVALID'
         except (OSError,RuntimeError,sqlite3.Error):status,code=503,'ADVISORY_SOURCE_UNAVAILABLE'
-        return status,{'contract_version':CONTRACT,'error':{'code':code}}
+        return status,{'contract_version':self.contract,'error':{'code':code}}

@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.10.0",
+  "classification_rationale": "L3-r42-issue207-6066681753",
+  "component": "product",
+  "event_lineage": "L3-r42-issue207-6066681753",
+  "expected_head": "0ea8c1a263a8b71a09d1206387099b748789b04b",
+  "operation_id": "L3-CHAT-FIRST-MISSION-READY-V1-20261008",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.11.0"
+}
