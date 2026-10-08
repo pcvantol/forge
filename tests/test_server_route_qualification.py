@@ -22,6 +22,12 @@ TOKEN = "route-qualification-bearer"
 # contract files. A removed or silently omitted case must fail this gate.
 EXPECTED_ROUTES = frozenset({
     ("GET", "/v1/project-dag/capability"),
+    ('GET', '/v1/advisory-candidates/capability'),
+    ('GET', '/v1/advisory-candidates/{conversation_id}/source/{turn_id}'),
+    ('POST', '/v1/advisory-candidates/{conversation_id}/proposals'),
+    ('GET', '/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}'),
+    ('POST', '/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations'),
+    ('GET', '/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations/{operation_id}'),
     ('GET', '/v1/advisory/capability'),
     ('POST', '/v1/advisory/{conversation_id}/turns'),
     ('GET', '/v1/advisory/{conversation_id}'),
@@ -152,7 +158,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 51)
+        self.assertEqual(len(EXPECTED_ROUTES), 57)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -223,6 +229,11 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path.startswith('/v1/advisory-candidates/'):
+                                self.assertEqual(status,403)
+                                self.assertEqual(body['error']['code'],'CANDIDATE_SCOPE_DENIED')
+                                observed.add((method,path))
+                                continue
                             if path.startswith('/v1/advisory/'):
                                 self.assertEqual(status,403)
                                 self.assertEqual(body['error']['code'],'ADVISORY_SCOPE_DENIED')

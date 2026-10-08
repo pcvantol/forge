@@ -71,6 +71,8 @@ from .workspace_worklist_grant import WorkspaceWorklistGrant
 from .workspace_worklist_control_grant import WorkspaceWorklistControlGrant
 from .advisory_grant import AdvisoryGrant
 from .advisory_service import AdvisoryService
+from .advisory_candidate_grant import AdvisoryCandidateGrant
+from .advisory_candidate_service import AdvisoryCandidateService
 from .worklist_control import WorklistControlService
 from .approved_worklist import projection as worklist_projection
 from .workspace_review_inbox import (
@@ -83,6 +85,12 @@ SERVER_API_VERSION = "1"
 SERVER_RUNTIME_CONTRACT_VERSION = "1.0"
 SERVER_ROUTE_INVENTORY = (
     ("GET", "/v1/project-dag/capability"),
+    ('GET', '/v1/advisory-candidates/capability'),
+    ('GET', '/v1/advisory-candidates/{conversation_id}/source/{turn_id}'),
+    ('POST', '/v1/advisory-candidates/{conversation_id}/proposals'),
+    ('GET', '/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}'),
+    ('POST', '/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations'),
+    ('GET', '/v1/advisory-candidates/{conversation_id}/proposals/{proposal_id}/registrations/{operation_id}'),
     ('GET', '/v1/advisory/capability'),
     ('POST', '/v1/advisory/{conversation_id}/turns'),
     ('GET', '/v1/advisory/{conversation_id}'),
@@ -717,7 +725,8 @@ class ForgeServerAPI:
                  review_grant: WorkspaceReviewGrant | None = None,
                  worklist_grant: WorkspaceWorklistGrant | None = None,
                  worklist_control_grant: WorkspaceWorklistControlGrant | None = None,
-                 advisory_grant: AdvisoryGrant | None = None) -> None:
+                 advisory_grant: AdvisoryGrant | None = None,
+                 candidate_grant: AdvisoryCandidateGrant | None = None) -> None:
         if not bearer_credential:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
@@ -730,6 +739,7 @@ class ForgeServerAPI:
         self.worklist_grant = worklist_grant
         self.worklist_control_grant = worklist_control_grant
         self.advisory_grant = advisory_grant
+        self.candidate_grant = candidate_grant
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
 
     @staticmethod
@@ -759,6 +769,8 @@ class ForgeServerAPI:
             return "WORKSPACE_WORKLIST"
         if self.worklist_control_grant is not None and self.worklist_control_grant.authenticate(authorization):
             return "WORKSPACE_WORKLIST_CONTROL"
+        if self.candidate_grant is not None and self.candidate_grant.authenticate(authorization):
+            return "ADVISORY_CANDIDATE"
         if self.advisory_grant is not None and self.advisory_grant.authenticate(authorization):
             return "ADVISORY"
         return None
@@ -897,6 +909,11 @@ class ForgeServerAPI:
             return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
             }}, headers)
+        if kind == "ADVISORY_CANDIDATE":
+            status,document=AdvisoryCandidateService(self.services.root,self.candidate_grant).handle(method,target,authorization,body)
+            return APIResponse(status,document,headers)
+        if path=="/v1/advisory-candidates" or path.startswith("/v1/advisory-candidates/"):
+            return APIResponse(403,{"contract_version":"forge-advisory-candidate/v1","error":{"code":"CANDIDATE_SCOPE_DENIED"}},headers)
         if kind == "ADVISORY":
             status,document=AdvisoryService(self.services.root,self.advisory_grant,self.services.provider_id).handle(method,target,authorization,body)
             return APIResponse(status,document,headers)
@@ -1136,7 +1153,7 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                     review_mission = api._review_mission_for_decision(
                         self.command, path, authorization,
                     ) if kind == "WORKSPACE_REVIEW" else None
-                    body = self._body() if kind in {"ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY"} or review_mission is not None else None
+                    body = self._body() if kind in {"ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE"} or review_mission is not None else None
                     response = api.handle(self.command, target, authorization, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
@@ -1192,7 +1209,8 @@ class ForgeServerRuntime:
                                   read_grant=read_grant, review_grant=review_grant,
                                   worklist_grant=WorkspaceWorklistGrant(self.root,self.instance.instance_id),
                                   worklist_control_grant=WorkspaceWorklistControlGrant(self.root,self.instance.instance_id),
-                                  advisory_grant=AdvisoryGrant(self.root,self.instance.instance_id))
+                                  advisory_grant=AdvisoryGrant(self.root,self.instance.instance_id),
+                                  candidate_grant=AdvisoryCandidateGrant(self.root,self.instance.instance_id))
         self.server = make_server(host, port, self.api)
         address, actual_port = self.server.server_address
         self.state.update(listener={"host": address, "port": actual_port}, lifecycle="STARTING")
