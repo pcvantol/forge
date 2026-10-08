@@ -106,9 +106,12 @@ subset over the qualified r39 registered Candidate population.
 [Owning handoff](../handoff/CANDIDATE_DECISIONS_HTTP_V1.md) binds exact subject,
 actual existing G001 operator/profile roles, separate read/decision grants,
 canonical evidence, durable intents and cross-store publication recovery.
-Source targets normal MINOR2.10.0; full owning/coverage, independent exact-head
-reviews, protected delivery, normal finalization and exact-final-main installed
-gates remain separate qualification requirements. Previous r39 remains closed.
+Protected implementation [PR261](https://github.com/pcvantol/forge/pull/261)
+merged at f2e5dc04be07dcaea56773bcd0c89340c44df8f2 /2.10.0. [Immutable selected proof](../qualification/candidate-decisions-selected-completion-2026-10-08.json)
+records actual full owning1308/coverage, independent exact-head Quality/Security
+and exact implementation-main noneditable248 files/11 groups/genuine control.
+Normal nonempty finalization and exact-final-main installed/main CI remain
+separate delivery gates, with no future PASS asserted. Previous r39 remains closed.
 Existing nodes/statuses/DAG edges and full-node flags remain unchanged.
 L4 native Candidate registration independently consumes already qualified
 Forge2.9.0/8923be50; no approval UI or consumer pin change is selected here.
