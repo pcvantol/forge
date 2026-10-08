@@ -1,0 +1,355 @@
+{
+  "assignment_id": "L3-FORGE-ADVISORY-CANDIDATE-HANDOFF-V1-20261008",
+  "plan_revision": "r39",
+  "candidate_revision": "0204ce9347ab7cc9529ec1d819e16d3d05a15e6d",
+  "candidate_tree": "224ed263830f1cf0f157f443716b1f93194c0f1f",
+  "protected_base": "815932ceeaf4235a4971f5e1055b44082fa4dc9a",
+  "version": "2.9.0",
+  "source_transfer": {
+    "source_slot_join": "L1-L3-FORGE-RELEASE-SOURCE-HANDOFF-20261008",
+    "owner_release_comment": 6055910178,
+    "l3_ack_comment": 6058332838
+  },
+  "owning_validation": {
+    "tests_run": 1296,
+    "failures": 0,
+    "existing_skips": 1,
+    "version_check": "PASS",
+    "projection_check": "PASS",
+    "log_sha256": "5586740ca4126c5ea446ecb237d601c8b48b7d134c33bb939cd282ad7e56caeb",
+    "production_coverage": {
+      "forge/advisory_candidate_cli.py": {
+        "covered_lines": 25,
+        "num_statements": 26,
+        "percent_covered": 96.15384615384616,
+        "percent_covered_display": "96",
+        "missing_lines": 1,
+        "excluded_lines": 0,
+        "percent_statements_covered": 96.15384615384616,
+        "percent_statements_covered_display": "96"
+      },
+      "forge/advisory_candidate_contract.py": {
+        "covered_lines": 52,
+        "num_statements": 52,
+        "percent_covered": 100.0,
+        "percent_covered_display": "100",
+        "missing_lines": 0,
+        "excluded_lines": 0,
+        "percent_statements_covered": 100.0,
+        "percent_statements_covered_display": "100"
+      },
+      "forge/advisory_candidate_grant.py": {
+        "covered_lines": 92,
+        "num_statements": 94,
+        "percent_covered": 97.87234042553192,
+        "percent_covered_display": "98",
+        "missing_lines": 2,
+        "excluded_lines": 0,
+        "percent_statements_covered": 97.87234042553192,
+        "percent_statements_covered_display": "98"
+      },
+      "forge/advisory_candidate_service.py": {
+        "covered_lines": 188,
+        "num_statements": 190,
+        "percent_covered": 98.94736842105263,
+        "percent_covered_display": "99",
+        "missing_lines": 2,
+        "excluded_lines": 0,
+        "percent_statements_covered": 98.94736842105263,
+        "percent_statements_covered_display": "99"
+      },
+      "forge/lifecycle/store.py": {
+        "covered_lines": 389,
+        "num_statements": 440,
+        "percent_covered": 88.4090909090909,
+        "percent_covered_display": "88",
+        "missing_lines": 51,
+        "excluded_lines": 0,
+        "percent_statements_covered": 88.4090909090909,
+        "percent_statements_covered_display": "88"
+      },
+      "forge/server_runtime.py": {
+        "covered_lines": 626,
+        "num_statements": 766,
+        "percent_covered": 81.72323759791122,
+        "percent_covered_display": "82",
+        "missing_lines": 140,
+        "excluded_lines": 2,
+        "percent_statements_covered": 81.72323759791122,
+        "percent_statements_covered_display": "82"
+      }
+    }
+  },
+  "candidate_installed": {
+    "qualification": "INSTALLED_ADVISORY_CANDIDATE_V1",
+    "source_revision": "0204ce9347ab7cc9529ec1d819e16d3d05a15e6d",
+    "artifact": {
+      "version": "2.9.0",
+      "wheel_sha256": "sha256:1f89d3d54f00386ae0432a50190ca352751327b6690626840a20e5b6c2287bb1",
+      "source_tree_revision": "224ed263830f1cf0f157f443716b1f93194c0f1f",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 243,
+      "source_product_files_verified": 243
+    },
+    "result": "ADVISORY_CANDIDATE_PASS",
+    "case_count": 11,
+    "cases": [
+      {
+        "case": "test_amendment_old_receipt_current_candidate_and_source_stale",
+        "result": "PASS"
+      },
+      {
+        "case": "test_authority_denials_unsafe_fields_expiry_revoke_source_acl_no_effect",
+        "result": "PASS"
+      },
+      {
+        "case": "test_canonical_conflict_rolls_back_ancestors_and_never_adopts_foreign_candidate",
+        "result": "PASS"
+      },
+      {
+        "case": "test_failed_or_unknown_advice_cannot_be_proposal_source",
+        "result": "PASS"
+      },
+      {
+        "case": "test_isolated_instances_and_principals_cannot_read_or_register_foreign_proposals",
+        "result": "PASS"
+      },
+      {
+        "case": "test_proposal_retention_and_revision_bounds_preserve_existing_readbacks",
+        "result": "PASS"
+      },
+      {
+        "case": "test_read_preview_cli_parity_and_real_intake_requires_separate_approvals",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_advice_proposal_candidate_replay_and_no_approval_or_provider",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_process_crash_before_after_candidate_and_lost_body",
+        "result": "PASS"
+      },
+      {
+        "case": "test_retained_budget_and_corrupted_private_proposal_failclosed",
+        "result": "PASS"
+      },
+      {
+        "case": "test_true_concurrent_registration_rejects_overlap_without_duplicate",
+        "result": "PASS"
+      }
+    ],
+    "failure": null,
+    "expected_failure_control": false,
+    "external_fault": null,
+    "limitations": [
+      "Real HTTP/auth/advice/proposals/canonical lifecycle/intent/receipt/readback; external model executable, OS identity and public repository transport only.",
+      "No live model quality, approval/Mission/Action/EP/target effect, native consumer, operational users instance, release or full family claim."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "candidate_genuine_failure_control": {
+    "qualification": "INSTALLED_ADVISORY_CANDIDATE_V1",
+    "source_revision": "0204ce9347ab7cc9529ec1d819e16d3d05a15e6d",
+    "artifact": {
+      "version": "2.9.0",
+      "wheel_sha256": "sha256:1f89d3d54f00386ae0432a50190ca352751327b6690626840a20e5b6c2287bb1",
+      "source_tree_revision": "224ed263830f1cf0f157f443716b1f93194c0f1f",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 243,
+      "source_product_files_verified": 243
+    },
+    "result": "FAIL",
+    "case_count": 0,
+    "cases": [],
+    "failure": {
+      "type": "AssertionError",
+      "stage": "positive-candidate-replay",
+      "detail": "Declared Candidate gate failed"
+    },
+    "expected_failure_control": true,
+    "external_fault": "REVOKED_POSITIVE_CANDIDATE_GRANT",
+    "limitations": [
+      "Real HTTP/auth/advice/proposals/canonical lifecycle/intent/receipt/readback; external model executable, OS identity and public repository transport only.",
+      "No live model quality, approval/Mission/Action/EP/target effect, native consumer, operational users instance, release or full family claim."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "state": "PROTECTED_IMPLEMENTATION_INSTALLED_QUALIFIED_FINALIZATION_PENDING",
+  "independent_reviews": {
+    "quality": {
+      "result": "PASS",
+      "source_revision": "0204ce9347ab7cc9529ec1d819e16d3d05a15e6d",
+      "receipt_sha256": "0d19fe1e40e823d690422fd45b7b8652645fdccb1c1c8073ad1becf0939e8d34"
+    },
+    "security": {
+      "result": "PASS",
+      "source_revision": "0204ce9347ab7cc9529ec1d819e16d3d05a15e6d",
+      "receipt_sha256": "85aedb63e765008338d399bc439d60d595a82d0bffe882a2d91177dcb254dd70"
+    }
+  },
+  "tde": {
+    "run_id": 37773747797,
+    "workflow_result": "SUCCESS",
+    "assessment_exit": 2,
+    "qualification_exit": 2,
+    "assessment_sha256": "bd3641d688664c6254f53df1306edf358b771c9b7c17db08a6d24c46f8e5deed",
+    "qualification_sha256": "aef6368f5415084eb82e13c04c472099201b62eb30c3cfcf3f386f4410add86b",
+    "assessment_validation": {
+      "adapter": "VALID",
+      "analyzer": "VALID",
+      "candidateIdentity": "VALID",
+      "completeness": "COMPLETE",
+      "errors": [],
+      "integrity": "VALID",
+      "repositoryIdentity": "VALID",
+      "schema": "VALID",
+      "status": "VALID",
+      "warnings": []
+    },
+    "policy_decision": "FAIL",
+    "triggered_rule_count": 49,
+    "failed_rule_count": 48,
+    "repository_status": "FAILED"
+  },
+  "schema_version": 1,
+  "event_lineage": "L3-FORGE-ADVISORY-CANDIDATE-HANDOFF-V1-20261008",
+  "scope": "ADVICE_TO_EXPLICIT_UNAPPROVED_CANDIDATE",
+  "protected_implementation": {
+    "pull_request": "https://github.com/pcvantol/forge/pull/259",
+    "reviewed_head": "0204ce9347ab7cc9529ec1d819e16d3d05a15e6d",
+    "source_revision": "170c035d295be55dd1d6439db02fe75c446e7f3b",
+    "tree_revision": "224ed263830f1cf0f157f443716b1f93194c0f1f",
+    "required_candidate_ci": {
+      "run_id": 37773747975,
+      "result": "SUCCESS",
+      "strict_protected_merge": true
+    }
+  },
+  "implementation_installed": {
+    "qualification": "INSTALLED_ADVISORY_CANDIDATE_V1",
+    "source_revision": "170c035d295be55dd1d6439db02fe75c446e7f3b",
+    "artifact": {
+      "version": "2.9.0",
+      "wheel_sha256": "sha256:e7c7471715a8b8ba1e8ecdfe8b776882b8a9a50367b74dfec459d4806000de66",
+      "source_tree_revision": "224ed263830f1cf0f157f443716b1f93194c0f1f",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 243,
+      "source_product_files_verified": 243
+    },
+    "result": "ADVISORY_CANDIDATE_PASS",
+    "case_count": 11,
+    "cases": [
+      {
+        "case": "test_amendment_old_receipt_current_candidate_and_source_stale",
+        "result": "PASS"
+      },
+      {
+        "case": "test_authority_denials_unsafe_fields_expiry_revoke_source_acl_no_effect",
+        "result": "PASS"
+      },
+      {
+        "case": "test_canonical_conflict_rolls_back_ancestors_and_never_adopts_foreign_candidate",
+        "result": "PASS"
+      },
+      {
+        "case": "test_failed_or_unknown_advice_cannot_be_proposal_source",
+        "result": "PASS"
+      },
+      {
+        "case": "test_isolated_instances_and_principals_cannot_read_or_register_foreign_proposals",
+        "result": "PASS"
+      },
+      {
+        "case": "test_proposal_retention_and_revision_bounds_preserve_existing_readbacks",
+        "result": "PASS"
+      },
+      {
+        "case": "test_read_preview_cli_parity_and_real_intake_requires_separate_approvals",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_advice_proposal_candidate_replay_and_no_approval_or_provider",
+        "result": "PASS"
+      },
+      {
+        "case": "test_real_process_crash_before_after_candidate_and_lost_body",
+        "result": "PASS"
+      },
+      {
+        "case": "test_retained_budget_and_corrupted_private_proposal_failclosed",
+        "result": "PASS"
+      },
+      {
+        "case": "test_true_concurrent_registration_rejects_overlap_without_duplicate",
+        "result": "PASS"
+      }
+    ],
+    "failure": null,
+    "expected_failure_control": false,
+    "external_fault": null,
+    "limitations": [
+      "Real HTTP/auth/advice/proposals/canonical lifecycle/intent/receipt/readback; external model executable, OS identity and public repository transport only.",
+      "No live model quality, approval/Mission/Action/EP/target effect, native consumer, operational users instance, release or full family claim."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "implementation_genuine_failure_control": {
+    "qualification": "INSTALLED_ADVISORY_CANDIDATE_V1",
+    "source_revision": "170c035d295be55dd1d6439db02fe75c446e7f3b",
+    "artifact": {
+      "version": "2.9.0",
+      "wheel_sha256": "sha256:e7c7471715a8b8ba1e8ecdfe8b776882b8a9a50367b74dfec459d4806000de66",
+      "source_tree_revision": "224ed263830f1cf0f157f443716b1f93194c0f1f",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 243,
+      "source_product_files_verified": 243
+    },
+    "result": "FAIL",
+    "case_count": 0,
+    "cases": [],
+    "failure": {
+      "type": "AssertionError",
+      "stage": "positive-candidate-replay",
+      "detail": "Declared Candidate gate failed"
+    },
+    "expected_failure_control": true,
+    "external_fault": "REVOKED_POSITIVE_CANDIDATE_GRANT",
+    "limitations": [
+      "Real HTTP/auth/advice/proposals/canonical lifecycle/intent/receipt/readback; external model executable, OS identity and public repository transport only.",
+      "No live model quality, approval/Mission/Action/EP/target effect, native consumer, operational users instance, release or full family claim."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "finalization_gates": "Exact finalization review/required CI/protected merge and exact-final-main installed/main CI/terminal register remain subsequent gates; no future PASS is asserted.",
+  "full_node_completion": false,
+  "consumer_assignment_changed": false
+}
