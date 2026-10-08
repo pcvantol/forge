@@ -106,7 +106,7 @@ def configure(root):
             grant.issue(principal_id=name,project_id=scope,repository_id=repo,conversation_ids=('conversation-'+name,),
                 expires_at=(datetime.now(UTC)+timedelta(hours=1)).isoformat(),maximum_turns=8,token_path=root/(name+'.private'))
         # Only external repository transport is replaced, real source registration/ACL/digest stay product-owned.
-        with patch('forge.completion.repository_observer.GitHubRepositoryArtifactReader.read',return_value=b'Synthetic product context: value, constraints and technical acceptance.'):
+        with patch('forge.completion.repository_observer.GitHubRepositoryArtifactReader.read',return_value=('Synthetic product context:\nValue and constraints.\nTechnical acceptance.\n'+('Documentary source context. '*28)).encode()):
             context=AdvisoryContext(root/'runtime',instance.instance_id)
             context.publish(source_id='selected-context',revision='a'*40,path='docs/advice.md')
     return grant

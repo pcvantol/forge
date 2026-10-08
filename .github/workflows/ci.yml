@@ -157,7 +157,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_advisory.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-advisory-http"
-          python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-advisory-http/installed-advisory.public.json").read_text()); assert d["result"]=="ADVISORY_HTTP_PASS" and d["case_count"]==10 and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
+          python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-advisory-http/installed-advisory.public.json").read_text()); assert d["result"]=="ADVISORY_HTTP_PASS" and d["case_count"]==11 and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
           set +e
           "$RUNNER_TEMP/forge-installed/bin/python" -I \
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_advisory.py" \

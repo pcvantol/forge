@@ -15,7 +15,7 @@ qual=module_from_spec(spec);spec.loader.exec_module(qual)
 def request(cap,turn='first',mode='BUSINESS',revision=0):
     return {**{k:cap[k] for k in ['instance_id','project_id','repository_id','context_revision']},
             'contract_version':CONTRACT,'turn_id':turn,'conversation_id':'conversation-alice',
-            'advisor_kind':mode,'objective':'Assess constraints and alternatives without applying decisions.',
+            'advisor_kind':mode,'objective':'Assess constraints and alternatives.\nDo not apply decisions.',
             'expected_revision':revision,'selected_sources':[]}
 
 class AdvisoryHTTPTests(unittest.TestCase):
@@ -29,6 +29,10 @@ class AdvisoryHTTPTests(unittest.TestCase):
                 token=root/'alice.private';status,cap=qual.call(port,token,'GET','/v1/advisory/capability');self.assertEqual(status,200)
                 r=request(cap)
                 for payload in [{**r,'role':'admin'},{**r,'expected_revision':True},{**r,'advisor_kind':'UX'},{**r,'context_revision':'missing'}]:
+                    self.assertEqual(qual.call(port,token,'POST','/v1/advisory/conversation-alice/turns',payload)[0],400)
+                for secret in ['secret=private-value','Bearer abcdefghijklmnop','https://user:password@example.invalid','ghp_abcdefghijklmnop']:
+                    # Full text is checked, including credentials beyond the legacy 500-character summary bound.
+                    payload={**r,'objective':('Safe documentary text. '*25)+'\n'+secret}
                     self.assertEqual(qual.call(port,token,'POST','/v1/advisory/conversation-alice/turns',payload)[0],400)
                 for key in ['instance_id','project_id','repository_id']:
                     self.assertEqual(qual.call(port,token,'POST','/v1/advisory/conversation-alice/turns',{**r,key:'foreign'})[0],403)
@@ -143,6 +147,40 @@ class AdvisoryHTTPTests(unittest.TestCase):
                 self.assertEqual(qual.call(port,root/'alice.private','GET','/v1/advisory/capability')[0],401)
                 grant.path.write_bytes(original)
                 self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)
+
+    def test_retention_capacity_denies_fresh_admission_preserves_real_replay_and_continuation(self):
+        from forge.workspace_review_grant import _write_private
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp)/'advice';qual.configure(root)
+            with qual.http(root) as port:
+                token=root/'alice.private';_,cap=qual.call(port,token,'GET','/v1/advisory/capability');r=request(cap)
+                status,first=qual.call(port,token,'POST','/v1/advisory/conversation-alice/turns',r)
+                self.assertEqual(status,200)
+                transcripts=root/'runtime'/'advisory'/'transcripts'
+                # Declared disposable budget metadata input fault, never seeded advice/provider success.
+                # The retained Alice conversation above is the actual real HTTP/provider result.
+                for n in range(63):
+                    _write_private(transcripts/('budget-input-'+str(n)+'.json'),json.dumps({
+                        'principal_reference':'other-budget-input:'+str(n),
+                        'turns':[{'execution':'CONFIRMED'}]}).encode())
+                self.assertEqual(len(list(transcripts.glob('*.json'))),64)
+                self.assertEqual(qual.call(port,token,'GET','/v1/advisory/capability')[0],200)
+                self.assertEqual(qual.call(port,token,'GET','/v1/advisory/conversation-alice')[0],200)
+                self.assertFalse(qual.call(port,token,'POST','/v1/advisory/conversation-alice/turns',r)[1]['recorded'])
+                # Bob owns a separately granted fresh conversation, below its consumed-turn bound.
+                _,bobcap=qual.call(port,root/'bob.private','GET','/v1/advisory/capability')
+                fresh={**request(bobcap),'conversation_id':'conversation-bob'}
+                before={p.name:p.read_bytes() for p in transcripts.glob('*.json')}
+                status,denial=qual.call(port,root/'bob.private','POST','/v1/advisory/conversation-bob/turns',fresh)
+                self.assertEqual(status,409);self.assertEqual(denial['error']['code'],'CONVERSATION_CAPACITY_EXHAUSTED')
+                self.assertEqual({p.name:p.read_bytes() for p in transcripts.glob('*.json')},before)
+                self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)
+                continuation={**r,'turn_id':'second','expected_revision':first['current_revision']}
+                status,second=qual.call(port,token,'POST','/v1/advisory/conversation-alice/turns',continuation)
+                self.assertEqual(status,200);self.assertEqual(second['original_turn']['status'],'COMPLETE')
+                self.assertEqual(len(list(transcripts.glob('*.json'))),64)
+                self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),2)
+                self.assertEqual(qual.call(port,token,'GET','/v1/advisory/capability')[0],200)
 
     def test_real_concurrent_send_is_bounded_without_second_invocation(self):
         from threading import Thread

@@ -3,7 +3,7 @@ from hashlib import sha256
 import json
 import re
 from .approved_worklist import identifier
-from .models.producer import redact_action_summary
+from .models.producer import _URL_CREDENTIAL, _KNOWN_TOKEN, _BEARER_CREDENTIAL, _SECRET_ASSIGNMENT
 
 CONTRACT = 'forge-advisory-conversation/v1'
 MODES = ('BUSINESS', 'ARCHITECTURE')
@@ -21,7 +21,8 @@ def digest(value):
 def text(value, maximum):
     if (not isinstance(value, str) or not value.strip() or len(value) > maximum
             or any(ord(c) < 32 and c not in '\n\t' for c in value)
-            or '<' in value or '>' in value or redact_action_summary(value) != value):
+            or '<' in value or '>' in value
+            or any(pattern.search(value) for pattern in (_URL_CREDENTIAL,_KNOWN_TOKEN,_BEARER_CREDENTIAL,_SECRET_ASSIGNMENT))):
         raise ValueError('bounded safe plain text required')
     return value
 

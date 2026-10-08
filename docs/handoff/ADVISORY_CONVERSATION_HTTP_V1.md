@@ -80,6 +80,12 @@ context versions, selected G011 policy binding and consumption before generation
 One admitted reasoning turn per conversation; overlapping send is promptly409.
 Private transcript64KiB, max64 conversations and retained principal budget max8
 across conversation/grant changes; the first conversation bound cannot expand.
+At exactly64 retained conversations, fresh admission is denied before storage or
+provider consumption; existing read/replay/continuation remain supported. The
+installed matrix includes disposable declared budget-metadata input faults for
+this boundary, alongside a real retained/replayed/continued provider conversation.
+Plain multiline documentary text remains intact; credentials anywhere in the
+full bounded text are rejected, with no legacy500-character summary truncation.
 Capacity exhaustion is visible; no transcript deletion, grant replacement or new
 conversation erases consumed/uncertain attempts. Reads/reopen/cursor/capability
 cause no provider/planning/intake/decision/dispatch or canonical DB writes.

@@ -146,7 +146,7 @@ class AdvisoryService:
                    'context':context,'provider':None,'status':'REASONING','lifecycle':['CREATED','PREPARED','REASONING'],
                    'execution':'MAY_HAVE_HAPPENED','outcome':None,'admitted_at':datetime.now(UTC).isoformat(),'grant_id':p.grant_id,'consumption':1}
                 with control_runtime(self.root) as runtime:
-                    used,unresolved=self._root_budget(p)
+                    used,unresolved=self._root_budget(p,new_conversation=value['revision']==0)
                     if unresolved:raise AdvisoryConflict('INVOCATION_UNRESOLVED')
                     if used>=min(8,p.maximum_turns):raise AdvisoryConflict('TURN_BUDGET_EXHAUSTED')
                     provider=AdvisoryProvider(runtime,self.provider_id);history=self._history(value)
@@ -200,9 +200,9 @@ class AdvisoryService:
         service=PlanningProviderSecurityService(runtime.database,None,runtime.repository.operators)
         for row in rows:service._release_generation_permit(row[0])
 
-    def _root_budget(self,p):
+    def _root_budget(self,p,*,new_conversation=False):
         paths=list((self.root/'advisory'/'transcripts').glob('*.json'))
-        if len(paths)>64:raise AdvisoryConflict('CONVERSATION_CAPACITY_EXHAUSTED')
+        if len(paths)>64 or (new_conversation and len(paths)>=64):raise AdvisoryConflict('CONVERSATION_CAPACITY_EXHAUSTED')
         used=0;unresolved=False
         for path in paths:
             try:v=json.loads(_private_bytes(path))
