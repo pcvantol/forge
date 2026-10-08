@@ -213,7 +213,14 @@ def _prepare(root, scenario):
             'architecture', 'synthetic-recommendation', ('synthetic-contract',), ('no behavior claim',), (K1, K2),
             ('external fixtures',), ('synthetic-host',), ('contract',), (RequiredDiscipline.PLATFORM_ARCHITECTURE,),
             ('scope-drift',), ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING, **options)
-        runtime.admit(mission, envelope)
+        admitted = runtime.admit(mission, envelope)
+        runtime.assign_progression_policy(identifier, {
+            'assignment_id': 'synthetic-progression-' + identifier.lower(),
+            'profile_id': 'solo', 'profile_revision': '1', 'policy_revision': '1',
+            'mode': 'continuous', 'required_decision_role': 'platform_architect',
+            'higher_scope_obligations': ['protected-delivery'],
+            'expected_state_revision': admitted.revision,
+        })
         initial = RepositoryTruthSnapshot('initial', SOURCE.repository_id, '0' * 40, '2026-09-18T09:59:00Z',
             (RepositoryTruthEvidence('initial-revision', 'git_commit', '0' * 40, 'repository://synthetic/initial', _digest('initial')),))
         result = runtime.start(identifier, initial)
@@ -253,6 +260,32 @@ def _phase(root, scenario, phase):
         runtime = _open(root, ('a', 'b') if phase == 'after-b' else ('a',), stack)
         if phase != 'readback':
             runtime.resume(population['mission_id'])
+            if ((phase == 'after-b' and scenario in {'partial', 'misleading'})
+                    or (phase == 'after-a' and scenario == 'single')):
+                pending = runtime.states.get(population['mission_id'])
+                assert pending.status.value == 'AWAITING_APPROVAL'
+                assert pending.completion['all_required_criteria_proven']
+                requirement = runtime.progression_status(pending.mission_id)['final_acceptance_requirement']
+                assert requirement['reason'] == 'mission_end_acceptance_required'
+                before_inputs = _read(root / 'provider-inputs.private.json')
+                before_submissions = _read(root / 'submissions.private.json')
+                decision = {
+                    'schema_version': 'forge-final-acceptance-decision/v1',
+                    'decision_id': 'synthetic-business-final-' + pending.mission_id.lower(),
+                    **{key: requirement[key] for key in (
+                        'requirement_id', 'subject_digest', 'mission_state_revision',
+                        'completion_digest', 'terminal_evidence_digest', 'policy_revision')},
+                    'decision': 'accept',
+                    'reason': 'Synthetic approved JSON evidence satisfies the fixture criteria.',
+                }
+                context = runtime.repository.operators.context()
+                runtime.accept_final_completion(
+                    pending.mission_id, decision,
+                    authenticated_principal_reference=(
+                        'local-operator:v1:' + runtime.repository._operator_id(context)),
+                )
+                assert _read(root / 'provider-inputs.private.json') == before_inputs
+                assert _read(root / 'submissions.private.json') == before_submissions
         state = _capture(runtime, root, phase)
         criteria = {item['criterion']: item for item in state.completion['criteria']}
         if phase == 'readback':
@@ -260,7 +293,13 @@ def _phase(root, scenario, phase):
             prior_state = _read(root / (prior_phase + '.state.private.json'))
             assert runtime.states._as_document(state) == prior_state
             assert len(state.completion_history) == len(state.execution_history)
-            assert runtime.database._connection.execute('SELECT COUNT(*) FROM governance_decisions').fetchone()[0] == 2
+            decisions = runtime.database._connection.execute(
+                'SELECT decision_id FROM governance_decisions').fetchall()
+            expected_ids = {'business', 'architecture',
+                            'synthetic-progression-' + state.mission_id.lower()}
+            if scenario in {'partial', 'misleading', 'single'}:
+                expected_ids.add('synthetic-business-final-' + state.mission_id.lower())
+            assert {row['decision_id'] for row in decisions} == expected_ids
             if (root / 'after-a.state.private.json').exists():
                 assert state.completion_history[0] == _read(root / 'after-a.state.private.json')['completion']
         if phase == 'after-a' and scenario in {'partial', 'misleading', 'regression'}:
