@@ -1,0 +1,206 @@
+{
+  "assignment_id": "L3-FORGE-239-281-PRESERVATION-V1-20261008",
+  "plan_revision": "r41",
+  "join": "L1-FORGE-239-281-PRESERVATION-20261008",
+  "scope": "EXACT_PUBLISHED_2739_281_PRESERVATION_MAINTENANCE",
+  "source_version": "2.10.0",
+  "installed_target": "2.8.1",
+  "protected_implementation": {
+    "pull_request": "https://github.com/pcvantol/forge/pull/263",
+    "reviewed_head": "c30bf02399567cf5076ff14844db1547846f8c5c",
+    "source_revision": "5c96ca7adec4bdc20370b4e13b2ee365d49c5e5c",
+    "tree_revision": "e888732bd64502661124bd9502301930bcf37ea8",
+    "controller_sha256": "1b27fa4b985b3f731f4e169b56d9ca880a6aefe0acbc8f734f628ab02df9daf1",
+    "required_candidate_ci": {
+      "conclusion": "success",
+      "databaseId": 37820239070,
+      "event": "pull_request",
+      "headBranch": "codex/l3-preserve-2739-to-281",
+      "headSha": "c30bf02399567cf5076ff14844db1547846f8c5c",
+      "status": "completed",
+      "url": "https://github.com/pcvantol/forge/actions/runs/37820239070"
+    }
+  },
+  "owning_validation": {
+    "tests_run": 1313,
+    "failures": 0,
+    "existing_skips": 1,
+    "version": "PASS",
+    "projection": "PASS",
+    "log_sha256": "ec0246c40b69c788a908d8bd70fc8456cffb71a44af902c645ebd93aa8b2aae6",
+    "controller_coverage": {
+      "covered_lines": 1326,
+      "num_statements": 1651,
+      "percent_covered": 80.31496062992126,
+      "percent_covered_display": "80",
+      "missing_lines": 325,
+      "excluded_lines": 2,
+      "percent_statements_covered": 80.31496062992126,
+      "percent_statements_covered_display": "80"
+    },
+    "coverage_log_sha256": "7439bf5e8d8e62ed00953ded1cd472513cdbb66b95e7ad881d3a7f6aa995586c"
+  },
+  "mandatory_reviews": {
+    "quality": {
+      "result": "PASS",
+      "reviewed_head": "c30bf02399567cf5076ff14844db1547846f8c5c",
+      "sha256": "ba66c46ef839beba69e3f3fca48b443bd8dbf368e93cee3ec03354c8586626c6"
+    },
+    "security": {
+      "result": "PASS",
+      "reviewed_head": "c30bf02399567cf5076ff14844db1547846f8c5c",
+      "sha256": "b17f3e31b237b41e7e328a2580fbf17ec00a36f038670da45ea429ca2cacbf9b"
+    }
+  },
+  "implementation_main_producer": {
+    "qualification": "PUBLISHED_2739_281_PRESERVATION",
+    "source_revision": "5c96ca7adec4bdc20370b4e13b2ee365d49c5e5c",
+    "controller_sha256": "1b27fa4b985b3f731f4e169b56d9ca880a6aefe0acbc8f734f628ab02df9daf1",
+    "result": "PRESERVATION_PRODUCER_PASS",
+    "cases": [
+      {
+        "case": "positive",
+        "result": "PASS",
+        "from_schema": 40,
+        "to_schema": 45,
+        "published_target": "2.8.1",
+        "same_original_receipt": true,
+        "preserved_history_tables": 47,
+        "project_input_required": false,
+        "provider_login_performed": false,
+        "service_mission_reset_started": false,
+        "crash": null
+      },
+      {
+        "case": "scoped-denials",
+        "result": "PASS",
+        "negative_conditions": [
+          "runtime_id",
+          "installation_id",
+          "peer_configuration_digest",
+          "installed_source",
+          "product_source",
+          "wheel_sha256",
+          "qualification_receipt_sha256",
+          "controller_sha256",
+          "assessment_digest",
+          "REAL_RUNTIME_WRITER_LOCK",
+          "REAL_LOADED_PRODUCT_PROCESS",
+          "GENUINE_HISTORY_DRIFT_STALE_ASSESSMENT",
+          "ACTUAL_ORIGINAL_PRODUCT_BYTES_DRIFT"
+        ],
+        "canonical_database_resolver_slot_effects_on_denial": 0
+      },
+      {
+        "case": "crash-STAGED",
+        "result": "PASS",
+        "from_schema": 40,
+        "to_schema": 45,
+        "published_target": "2.8.1",
+        "same_original_receipt": true,
+        "preserved_history_tables": 47,
+        "project_input_required": false,
+        "provider_login_performed": false,
+        "service_mission_reset_started": false,
+        "crash": {
+          "phase": "STAGED",
+          "owned_process_group": true,
+          "actual_durable_boundary": true,
+          "observed_live_schema_after_signal": 40
+        }
+      },
+      {
+        "case": "crash-BACKED_UP",
+        "result": "PASS",
+        "from_schema": 40,
+        "to_schema": 45,
+        "published_target": "2.8.1",
+        "same_original_receipt": true,
+        "preserved_history_tables": 47,
+        "project_input_required": false,
+        "provider_login_performed": false,
+        "service_mission_reset_started": false,
+        "crash": {
+          "phase": "BACKED_UP",
+          "owned_process_group": true,
+          "actual_durable_boundary": true,
+          "observed_live_schema_after_signal": 40
+        }
+      },
+      {
+        "case": "crash-MIGRATION_QUALIFIED",
+        "result": "PASS",
+        "from_schema": 40,
+        "to_schema": 45,
+        "published_target": "2.8.1",
+        "same_original_receipt": true,
+        "preserved_history_tables": 47,
+        "project_input_required": false,
+        "provider_login_performed": false,
+        "service_mission_reset_started": false,
+        "crash": {
+          "phase": "MIGRATION_QUALIFIED",
+          "owned_process_group": true,
+          "actual_durable_boundary": true,
+          "observed_live_schema_after_signal": 40
+        }
+      },
+      {
+        "case": "crash-ACTIVATING",
+        "result": "PASS",
+        "from_schema": 40,
+        "to_schema": 45,
+        "published_target": "2.8.1",
+        "same_original_receipt": true,
+        "preserved_history_tables": 47,
+        "project_input_required": false,
+        "provider_login_performed": false,
+        "service_mission_reset_started": false,
+        "crash": {
+          "phase": "ACTIVATING",
+          "owned_process_group": true,
+          "actual_durable_boundary": true,
+          "observed_live_schema_after_signal": 45
+        }
+      },
+      {
+        "case": "tampered-positive-control",
+        "result": "FAIL",
+        "from_schema": 40,
+        "to_schema": 45,
+        "published_target": "2.8.1",
+        "same_original_receipt": true,
+        "preserved_history_tables": 47,
+        "project_input_required": false,
+        "provider_login_performed": false,
+        "service_mission_reset_started": false,
+        "crash": null,
+        "expected_failure_control": true,
+        "detected_by": "EXACT_TARGET_PRODUCT_BYTES_REPLAY",
+        "actual_exit": 1
+      }
+    ],
+    "source_tree_revision": "e888732bd64502661124bd9502301930bcf37ea8",
+    "immutable_artifact_binding": {
+      "installed_source": "ebc43dc12da27353f85c991a26da9852aa790f05",
+      "installed_artifact_digest": "sha256:b62bf5f7a1d937f5224ef941a3dea3e961d28b67d9206fd89b644153aea502f1",
+      "product_source": "c8833ffa4754800de451cce94b109ef1ad07123f",
+      "wheel_sha256": "sha256:7e4b6cf2bd4544865ca980ff9c5c0f7e4b104cd9a47f11dc6d1e3e944e1942c0",
+      "qualification_receipt_sha256": "sha256:51017bb17faa3d2568e457360d54b873deddbf59eeedb86310b4cb56e1345a76"
+    },
+    "limitations": [
+      "Disposable producer installations only; L1 actual installer continuation is not qualified.",
+      "Real published wheels, owning CLI migration and receipts; no approval/provider/EP/trust mocks."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "published_artifacts_unchanged": true,
+  "no_newer_installed_target": true,
+  "real_user_installation_mutated": false,
+  "l1_installed_qualification": false,
+  "budget_reset": false,
+  "state": "PROTECTED_IMPLEMENTATION_PRODUCER_QUALIFIED_FINALIZATION_PENDING",
+  "final_gates": "Exact-head finalization reviews/required CI/protected merge, fresh exact-final-main producer and main CI/current readbacks/cleanup remain subsequent gates; no future PASS asserted."
+}
