@@ -1,0 +1,1032 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/api/advisory-conversation-v1.json",
+  "title": "Scoped textual advisory conversation",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/submit"
+    },
+    {
+      "$ref": "#/$defs/turn"
+    },
+    {
+      "$ref": "#/$defs/history"
+    },
+    {
+      "$ref": "#/$defs/cancel_request"
+    },
+    {
+      "$ref": "#/$defs/cancel"
+    },
+    {
+      "$ref": "#/$defs/capability"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "version"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "source_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "state",
+        "repository",
+        "revision",
+        "path",
+        "content_digest",
+        "version"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "state": {
+          "const": "ACTIVE"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "path": {
+          "type": "string"
+        },
+        "content_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "turn_id",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "conversation_id",
+        "advisor_kind",
+        "objective",
+        "expected_revision",
+        "context_revision",
+        "selected_sources"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "advisor_kind": {
+          "enum": [
+            "BUSINESS",
+            "ARCHITECTURE"
+          ]
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "context_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "selected_sources": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_id",
+        "requested_model",
+        "requested_profile",
+        "requested_effort",
+        "policy_digest",
+        "generation_digest",
+        "configuration_revision",
+        "input_token_bound",
+        "context_token_bound",
+        "output_token_bound"
+      ],
+      "properties": {
+        "provider_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "requested_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requested_profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requested_effort": {
+          "const": "NOT_CONFIGURED"
+        },
+        "policy_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "generation_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "configuration_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "input_token_bound": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "context_token_bound": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "output_token_bound": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "process_started",
+        "exception_type",
+        "errno",
+        "timed_out",
+        "elapsed_milliseconds",
+        "returncode",
+        "error_category",
+        "terminal_events"
+      ],
+      "properties": {
+        "classification": {
+          "enum": [
+            "NOT_STARTED",
+            "REJECTED_BEFORE_GENERATION",
+            "MAY_HAVE_HAPPENED",
+            "COMPLETED_VALID",
+            "COMPLETED_CONTRACT_INVALID"
+          ]
+        },
+        "process_started": {
+          "type": "boolean"
+        },
+        "exception_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "errno": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "elapsed_milliseconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "returncode": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "terminal_events": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "request_digest",
+        "advisor_kind",
+        "summary",
+        "alternatives",
+        "questions",
+        "suggestions",
+        "evidence_references",
+        "applied"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "request_digest": {
+          "type": "string"
+        },
+        "advisor_kind": {
+          "enum": [
+            "BUSINESS",
+            "ARCHITECTURE"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "alternatives": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "questions": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "evidence_references": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "applied": {
+          "const": false
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution",
+        "diagnostic",
+        "usage",
+        "usage_status",
+        "observed_model",
+        "observed_effort",
+        "output",
+        "result_digest",
+        "error_code"
+      ],
+      "properties": {
+        "execution": {
+          "enum": [
+            "NOT_STARTED",
+            "MAY_HAVE_HAPPENED",
+            "CONFIRMED"
+          ]
+        },
+        "diagnostic": {
+          "$ref": "#/$defs/diagnostic"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "input_tokens",
+                "output_tokens"
+              ],
+              "properties": {
+                "input_tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "output_tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "usage_status": {
+          "enum": [
+            "NOT_REPORTED",
+            "OBSERVED"
+          ]
+        },
+        "observed_model": {
+          "const": "NOT_REPORTED"
+        },
+        "observed_effort": {
+          "const": "NOT_REPORTED"
+        },
+        "output": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/output"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_digest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "ADVICE_RESULT_INVALID",
+                "ADVICE_USAGE_NOT_REPORTED",
+                "ADVICE_USAGE_BOUND_EXCEEDED",
+                "ADVICE_PROVIDER_UNAVAILABLE"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "dataset_generation",
+        "included_sources",
+        "selected_sources",
+        "missing_sources",
+        "freshness",
+        "evidence_references",
+        "limitations"
+      ],
+      "properties": {
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "dataset_generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "included_sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selected_sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          },
+          "maxItems": 2
+        },
+        "missing_sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "freshness": {
+          "const": "CURRENT_CONFIGURED_BINDING"
+        },
+        "evidence_references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "turn_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "request_digest",
+        "session_id",
+        "invocation_id",
+        "context",
+        "provider",
+        "status",
+        "lifecycle",
+        "execution",
+        "outcome",
+        "admitted_at",
+        "grant_id",
+        "consumption"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/request"
+        },
+        "request_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "invocation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "context": {
+          "$ref": "#/$defs/context"
+        },
+        "provider": {
+          "$ref": "#/$defs/provider"
+        },
+        "status": {
+          "enum": [
+            "REASONING",
+            "REVIEW",
+            "COMPLETE",
+            "FAILED",
+            "CANCEL_REQUESTED"
+          ]
+        },
+        "lifecycle": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 5,
+          "items": {
+            "enum": [
+              "CREATED",
+              "PREPARED",
+              "REASONING",
+              "REVIEW",
+              "COMPLETE"
+            ]
+          }
+        },
+        "execution": {
+          "enum": [
+            "NOT_STARTED",
+            "MAY_HAVE_HAPPENED",
+            "CONFIRMED"
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/outcome"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "admitted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "grant_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "consumption": {
+          "const": 1
+        }
+      }
+    },
+    "submit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "recorded",
+        "original_turn",
+        "current_revision"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "recorded": {
+          "type": "boolean"
+        },
+        "original_turn": {
+          "$ref": "#/$defs/turn_record"
+        },
+        "current_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "original_turn",
+        "current_revision",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "original_turn": {
+          "$ref": "#/$defs/turn_record"
+        },
+        "current_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "conversation_id",
+        "scope",
+        "revision",
+        "turns",
+        "next_cursor",
+        "consumed_turns",
+        "maximum_turns",
+        "retention",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instance_id",
+            "project_id",
+            "repository_id"
+          ],
+          "properties": {
+            "instance_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "project_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "turns": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/turn_record"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "consumed_turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maximum_turns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "retention": {
+          "const": "PRIVATE_RETAINED_NO_AUTOMATIC_DELETE"
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "cancel_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "expected_revision",
+        "request_digest"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "request_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "original_turn",
+        "current_revision",
+        "provider_stopped",
+        "cancel_request_recorded"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "original_turn": {
+          "$ref": "#/$defs/turn_record"
+        },
+        "current_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provider_stopped": {
+          "const": false
+        },
+        "cancel_request_recorded": {
+          "const": true
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "supported_modes",
+        "unsupported",
+        "project_id",
+        "repository_id",
+        "instance_id",
+        "conversation_ids",
+        "context",
+        "context_revision",
+        "maximum_turns",
+        "available_sources",
+        "max_concurrent_invocations_per_instance",
+        "cancel_request_supported",
+        "provider_stop_supported",
+        "retained_principal_consumed_turns",
+        "live_model_quality",
+        "unknown_usage",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "supported_modes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "BUSINESS",
+              "ARCHITECTURE"
+            ]
+          }
+        },
+        "unsupported": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "instance_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "conversation_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        "context": {
+          "$ref": "#/$defs/context"
+        },
+        "context_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "maximum_turns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "available_sources": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/source_metadata"
+          }
+        },
+        "max_concurrent_invocations_per_instance": {
+          "const": 1
+        },
+        "cancel_request_supported": {
+          "const": true
+        },
+        "provider_stop_supported": {
+          "const": false
+        },
+        "retained_principal_consumed_turns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "live_model_quality": {
+          "const": "NOT_QUALIFIED"
+        },
+        "unknown_usage": {
+          "const": "NOT_REPORTED_AND_NOT_ACCEPTED_AS_BOUND_PROOF"
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "error"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-advisory-conversation/v1"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code"
+          ],
+          "properties": {
+            "code": {
+              "enum": [
+                "ADVISORY_SCOPE_DENIED",
+                "ADVISORY_CONFLICT",
+                "ADVISORY_NOT_FOUND",
+                "ADVISORY_REQUEST_INVALID",
+                "ADVISORY_SOURCE_UNAVAILABLE",
+                "ADVISORY_ROUTE_NOT_FOUND",
+                "CONVERSATION_BUSY",
+                "TRANSCRIPT_CAPACITY_EXHAUSTED",
+                "TURN_PAYLOAD_CONFLICT",
+                "CONVERSATION_OR_CONTEXT_STALE",
+                "INVOCATION_UNRESOLVED",
+                "TURN_BUDGET_EXHAUSTED",
+                "TRANSCRIPT_CAPACITY_EXHAUSTED",
+                "CONVERSATION_CAPACITY_EXHAUSTED",
+                "CANCEL_PRECONDITION_CHANGED",
+                "ADVISOR_UNSUPPORTED",
+                "CONTEXT_STALE",
+                "ADVISORY_PROVIDER_UNAVAILABLE"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

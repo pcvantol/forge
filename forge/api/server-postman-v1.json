@@ -23,6 +23,10 @@
     {
       "key": "worklistControlToken",
       "value": "replace-with-private-scoped-control-token"
+    },
+    {
+      "key": "advisoryToken",
+      "value": ""
     }
   ],
   "auth": {
@@ -1018,6 +1022,152 @@
             "{workset_id}",
             "commands",
             "{operation_id}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /v1/advisory/capability",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory",
+            "capability"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/advisory/{conversation_id}/turns",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory/{conversation_id}/turns",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory",
+            "{conversation_id}",
+            "turns"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /v1/advisory/{conversation_id}",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory/{conversation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory",
+            "{conversation_id}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "GET /v1/advisory/{conversation_id}/turns/{turn_id}",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory/{conversation_id}/turns/{turn_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory",
+            "{conversation_id}",
+            "turns",
+            "{turn_id}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /v1/advisory/{conversation_id}/turns/{turn_id}/cancel",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{advisoryToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/advisory/{conversation_id}/turns/{turn_id}/cancel",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "advisory",
+            "{conversation_id}",
+            "turns",
+            "{turn_id}",
+            "cancel"
           ]
         }
       }

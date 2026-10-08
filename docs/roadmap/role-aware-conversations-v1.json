@@ -127,5 +127,22 @@
         "New executable components >80% coverage plus critical negatives"
       ]
     }
+  ],
+  "selected_subset_evidence": [
+    {
+      "assignment_id": "L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008",
+      "plan_revision": "r38",
+      "state": "CANDIDATE_QUALIFICATION_PENDING",
+      "scope": "BUSINESS_ARCHITECTURE_TEXT_HTTP_PRODUCER",
+      "node_subsets": [
+        "RC-FC",
+        "RC-FS",
+        "RC-FA",
+        "F2_NECESSARY_AUTH_SCOPE_API"
+      ],
+      "handoff": "docs/handoff/ADVISORY_CONVERSATION_HTTP_V1.md",
+      "full_node_completion": false,
+      "consumer_assignment_changed": false
+    }
   ]
 }
