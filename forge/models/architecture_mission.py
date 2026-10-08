@@ -110,7 +110,7 @@ class ArchitectureMission:
     def is_engineering_ready(self) -> bool:
         """Require an explicit architectural contract before engineering approval."""
         return all((self.scope, self.engineering_constraints, self.acceptance_criteria, self.technical_assumptions,
-                    self.dependencies, self.required_capabilities, self.required_disciplines, self.risks))
+                    self.required_capabilities, self.required_disciplines, self.risks))
 
     def to_dict(self) -> dict[str, Any]:
         document = {

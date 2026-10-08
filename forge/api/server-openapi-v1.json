@@ -2298,6 +2298,434 @@
           }
         }
       }
+    },
+    "/v1/candidate-decisions/capability": {
+      "get": {
+        "summary": "Current Candidate decision capability/readback",
+        "security": [
+          {
+            "CandidateDecisionGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/candidate-decisions/{candidate_id}": {
+      "get": {
+        "summary": "Current Candidate decision capability/readback",
+        "security": [
+          {
+            "CandidateDecisionGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/candidate-decisions/{candidate_id}/business": {
+      "post": {
+        "summary": "Separate explicit canonical Candidate decision",
+        "security": [
+          {
+            "CandidateDecisionGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "candidate-decisions-v1.json#/$defs/business_request"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/candidate-decisions/{candidate_id}/architecture": {
+      "post": {
+        "summary": "Separate explicit canonical Candidate decision",
+        "security": [
+          {
+            "CandidateDecisionGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "candidate-decisions-v1.json#/$defs/architecture_request"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/candidate-decisions/{candidate_id}/operations/{operation_id}": {
+      "get": {
+        "summary": "Current Candidate decision capability/readback",
+        "security": [
+          {
+            "CandidateDecisionGrant": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed Candidate decision contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "candidate-decisions-v1.json"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2335,6 +2763,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate owner-issued conversation/proposal Candidate-only grant; no approval or execution."
+      },
+      "CandidateDecisionGrant": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate owner-provisioned exact Candidate/revision READ and Business/Architecture permissions, bound to current existing G001 operator role; no Mission/admin/other namespace authority."
       }
     },
     "schemas": {
