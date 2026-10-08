@@ -72,7 +72,10 @@ Console programme or EP PR is changed.
 L3-FORGE-ADVISORY-CONVERSATION-HTTP-V1-20261008 selects the bounded
 Business/Architecture text HTTP outcome described in
 [the owning handoff](../handoff/ADVISORY_CONVERSATION_HTTP_V1.md).
-Current state is candidate qualification pending; protected/installed delivery
-requires actual exact-source receipts. It does not close full RC-FC/FS/FA/FQ/F2
+Current state is protected implementation installed-qualified, with normal
+finalization/exact-final-main gates still pending. [PR254](https://github.com/pcvantol/forge/pull/254)
+merged6e40f18/2.8.0; [immutable selected proof](../qualification/advisory-conversation-selected-completion-2026-10-08.json)
+records exact-main237-file noneditable wheel,11 groups/genuine control/cleanup,
+independent reviews and unchanged historical CI gates. It does not close full RC-FC/FS/FA/FQ/F2
 families, RC-FP/apply or native chat. Existing DAG edges remain unchanged.
 L4 native hold independently retains Forge2.7.69/e64302f.
