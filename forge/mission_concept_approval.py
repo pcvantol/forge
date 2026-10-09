@@ -18,6 +18,7 @@ from .runtime.service import RuntimeServiceLock
 from .workspace_review_grant import _locked
 from .worklist_control import control_runtime
 from .mission_concept_readiness import current_readiness
+from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
 
 
 class MissionConceptApproval:
@@ -99,6 +100,26 @@ class MissionConceptApproval:
                 raise AdvisoryConflict('APPROVAL_PACKAGE_CHANGED')
             package = prepared['package']
             principal, configuration, allowance = self.setup.current(authorization, conversation_id)
+            if package['authority']['configuration_digest'] != configuration['configuration_digest']:
+                # Replacement access can replay an exact COMPLETE operation only.
+                # Never enter the mutation/recovery path or persist a new alias.
+                current = self.operation(authorization, conversation_id, body['operation_id'])
+                if (current['state'] != 'COMPLETE' or not current['source_fresh']
+                        or current['package_digest'] != body['package_digest']):
+                    raise PermissionError('complete original operation required')
+                with RecommendationLifecycleStore.read_only(candidate_source(self.root)) as store, \
+                        InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as runtime:
+                    bridge = GovernedCandidateIntake(store, runtime, resolve_governance_profile(configuration['profile_id']))
+                    preview, planning = architecture_inputs(package['mission_preview'], package['planning'])
+                    envelope = bridge.approved_envelope(current['candidate_id'], preview, planning)
+                return {'contract_version': CONTRACT, 'operation_id': body['operation_id'],
+                    'original_registration': current['original_registration'],
+                    'package_digest': current['package_digest'], 'candidate_id': current['candidate_id'],
+                    'mission_id': current['mission_id'], 'business_decision': current['business_decision'],
+                    'architecture_decision': current['architecture_decision'],
+                    'envelope_digest': envelope.digest, 'intake_subject_revision': package['subject_revision'],
+                    'execution_started': current['execution_started'], 'additional_model_calls': 0,
+                    'current': current['current_readiness']}
             candidate_guard_id = None
 
             def guard():

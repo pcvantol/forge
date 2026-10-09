@@ -126,9 +126,17 @@ class MissionConceptService(AdvisoryService):
         if type(revision) is not int or not 1 <= revision <= len(complete):
             raise FileNotFoundError('unknown concept revision')
         turn = complete[revision - 1]
+        original_package = None
+        if turn['grant_id'] != principal.grant_id:
+            from .mission_concept_continuity import original_configuration
+            configuration, original_package = original_configuration(
+                setup, principal, configuration, history, turn, revision)
         # Catalog growth is not a change to this exact subject. Recheck all
         # admitted owner/source bounds and only the actually referenced subjects.
         context, _ = self.context(principal, turn['request']['selected_sources'], conversation_id)
+        if turn['grant_id'] != principal.grant_id:
+            # Derived comparison view only, after complete canonical authority proof.
+            context['concept_configuration_revision'] = configuration['configuration_digest']
         catalogs = {'concept_dependency_references', 'concept_dependency_catalog', 'concept_dependency_graph'}
         admitted_base = {k:v for k,v in turn['context'].items() if k not in catalogs}
         current_base = {k:v for k,v in context.items() if k not in catalogs}
@@ -170,6 +178,8 @@ class MissionConceptService(AdvisoryService):
                 turn_id=turn['request']['turn_id'], session_id=turn['session_id'],
                 invocation_id=turn['invocation_id'], result_digest=turn['outcome']['result_digest'])
             prepared['package_digest'] = digest(prepared['package'])
+        if original_package is not None and prepared.get('package_digest') != digest(original_package):
+            raise PermissionError('original frozen approval package differs')
         setup.current(authorization, conversation_id)
         prepared['read_only'] = True
         prepared['additional_model_calls'] = 0
