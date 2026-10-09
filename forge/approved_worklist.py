@@ -323,7 +323,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             for dependency in member['dependencies']:
                 preceding=next(item for item in items if item['candidate_id']==dependency)
                 if not preceding['completed']:reasons.append('DEPENDENCY_NOT_PROVEN')
-            if value['consumed_activations']>=definition['maximum_activations'] and not claim and definition['members']:
+            if value['consumed_activations']>=definition['maximum_activations'] and not selected_claim and definition['members']:
                 reasons.append('ACTIVATION_LIMIT_EXHAUSTED')
             if not completed:
                 from .worklist_activation import validate_activation_inputs

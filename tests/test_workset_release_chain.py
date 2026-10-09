@@ -33,3 +33,9 @@ class ApprovedReleaseChainTests(unittest.TestCase):
             with self.subTest(scenario=scenario),TemporaryDirectory() as tmp:
                 result=chain.flow(Path(tmp)/scenario,scenario)
                 self.assertEqual([s['status'] for s in result[-1]['states']],['COMPLETED','COMPLETED'])
+
+    def test_real_accepted_a_exhausts_single_activation_and_b_readback_matches_runtime(self):
+        with TemporaryDirectory() as tmp:
+            result=chain.flow(Path(tmp)/'finite-one',maximum_activations=1,phase_runner=chain.process_phase)
+            self.assertEqual([s['status'] for s in result[-1]['states']],['COMPLETED','APPROVED_PLANNABLE'])
+            self.assertEqual(result[-1]['read']['continuation']['state'],'BLOCKED')

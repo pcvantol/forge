@@ -109,7 +109,7 @@ qualification remain open. No review-budget reset or L4 pin change occurred.
 ### Required installed legacy hold compatibility repair round2
 
 The old hosted05d1 installed hold gate and fresh local89f7 installed hold
-both failed at case43: a previously selected/admitted APPPROVED_PLANNABLE
+both failed at case43: a previously selected/admitted APPROVED_PLANNABLE
 Mission with lost claim-ID correlation must continue after future-only hold.
 The original42 successful cases/failure receipts and both prior exact-head
 review pairs are retained. Projection now distinguishes genuine selected
@@ -122,3 +122,24 @@ Formal bounded repairround2 is active; no budget reset, gate relaxation,
 Candidate reapproval or L4 pin/scope change. Fresh full owning/source coverage,
 installed26/control AND existing43-case hold gate, complete exact-head Q/S,
 protected delivery/finalization/final-main remain required.
+
+
+### Whole-scope Quality budget-readback repair round3
+
+The complete exact2c3e626 review returned Security PASS / Quality FAIL(P2):
+projection used the admission fallback as if it were an activation claim for
+finite-budget exhaustion. The runtime already denied B correctly, while the
+readback could incorrectly report READY after accepted A consumed the one
+allowed activation. Both reports and1361/26/43 evidence remain preserved.
+
+An actual separate-process chatA/B release withmaximum_activations1, real A
+source evidence and final acceptance reproduced the false READY before the
+fix(1FAIL6.540s). Projection now tests the canonical selected claim, preserving
+original Mission admissions separately. The exact same test passes after the
+fix(1PASS6.608s): A COMPLETE, B APPROVED_PLANNABLE, one claim/provider/EP,
+eight genuine governance decisions/two existing admissions, B and continuation
+BLOCKED/ACTIVATION_LIMIT_EXHAUSTED. No new activation/budget decision is added.
+The required installed matrix minimum is27. Formal bounded repairround3 is
+consumed without reset. Fresh full owning/strictcoverage/installed27/control,
+complete exact-head Q/S, all existing required CI, protected delivery,
+nonemptyNO_BUMP finalization and fresh exact-final-main remain open.

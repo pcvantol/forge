@@ -18,7 +18,7 @@ spec=spec_from_file_location('release_serial_fixture',SOURCE/'scripts/qualificat
 serial=module_from_spec(spec);spec.loader.exec_module(serial);utils=serial.utils
 
 
-def chat_setup(root,endpoint,scenario,*,release=True):
+def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2):
     sys.path.insert(0,str(SOURCE/'tests'))
     import test_mission_concept_ready_http as ready
     import test_mission_concept_contract as content
@@ -89,7 +89,7 @@ def chat_setup(root,endpoint,scenario,*,release=True):
         prepared_path=root/'prepared.private.json'
         with patch('sys.stdout',new_callable=StringIO):
             assert release_cli(prefix+['prepare','--mission-id',approved[0]['mission_id'],'--mission-id',approved[1]['mission_id'],
-                '--expires-at',(datetime.now(UTC)+timedelta(hours=1)).isoformat(),'--maximum-activations','2',
+                '--expires-at',(datetime.now(UTC)+timedelta(hours=1)).isoformat(),'--maximum-activations',str(maximum_activations),
                 '--progression-mode','continuous','--output',str(prepared_path)])==0
         package=json.loads(prepared_path.read_text());assert package['release_supported'],package
         from forge.workset_release_service import BASE
@@ -191,7 +191,7 @@ def phase(root,scenario,name,endpoint):
                 'pid':__import__('os').getpid(),'candidate_count':store._connection.execute('SELECT count(*) FROM candidates').fetchone()[0]}
 
 
-def flow(root,scenario='effect-read-only',*,failure_control=False,disarm=False,phase_runner=None):
+def flow(root,scenario='effect-read-only',*,failure_control=False,disarm=False,phase_runner=None,maximum_activations=2):
     phase_runner=phase_runner or phase
     simulator=utils.EpSimulatorState(project_id=utils.PROJECT,repository_id=utils.fixture.SOURCE.repository_id,
         repository_identity=utils.fixture.SOURCE.github_repository,consumer_id=utils.CONSUMER,
@@ -200,7 +200,7 @@ def flow(root,scenario='effect-read-only',*,failure_control=False,disarm=False,p
     server=utils.EpSimulatorServer(simulator);requests=utils._count_ep_http_requests(server)
     records=[]
     with server:
-        target,baseline,manifest=chat_setup(root,server.base_url,scenario)
+        target,baseline,manifest=chat_setup(root,server.base_url,scenario,maximum_activations=maximum_activations)
         initial=phase_runner(root,scenario,'read',server.base_url);records.append(initial)
         assert initial['allocations']==2 and initial['governance_decisions']==6 and initial['provider_invocations']==0
         for index in (1,2):
@@ -229,6 +229,17 @@ def flow(root,scenario='effect-read-only',*,failure_control=False,disarm=False,p
             assert len(simulator.submission_ids())==index
             accepted=phase_runner(root,scenario,'accept-'+str(index),server.base_url);records.append(accepted)
             assert accepted['states'][index-1]['status']=='COMPLETED'
+            if index==maximum_activations and maximum_activations<2:
+                blocked=phase_runner(root,scenario,'tick',server.base_url);records.append(blocked)
+                assert 'ACTIVATION_LIMIT_EXHAUSTED' in blocked['read']['items'][1]['blocking_reasons'],blocked['read']['continuation']
+                assert blocked['read']['items'][1]['eligibility']=='BLOCKED'
+                assert blocked['read']['continuation']['state']=='BLOCKED'
+                assert blocked['workset']['consumed_activations']==blocked['provider_invocations']==1
+                assert blocked['allocations']==2 and blocked['governance_decisions']==8
+                assert len(blocked['workset']['claims'])==1 and len(simulator.submission_ids())==1
+                assert blocked['states'][1]['status']=='APPROVED_PLANNABLE'
+                assert len((root/'provider-requests.private.jsonl').read_text().splitlines())==3
+                return records
             if index==1 and failure_control:phase_runner(root,scenario,'revoke',server.base_url)
             if index==1 and disarm:
                 phase_runner(root,scenario,'disarm',server.base_url)
