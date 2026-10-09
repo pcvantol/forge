@@ -85,7 +85,7 @@ class ApprovedWorklistService:
                 raise ValueError('stale workset revision')
         return value
 
-    def propose(self, definition: dict[str, Any]) -> dict[str, Any]:
+    def propose(self, definition: dict[str, Any], *, effect_guard=None, reuse_current=False) -> dict[str, Any]:
         required = {'contract_version','workset_id','profile_id','expires_at','maximum_activations','members'}
         if set(definition) != required or definition['contract_version'] != CONTRACT:
             raise ValueError('invalid workset definition shape')
@@ -121,7 +121,8 @@ class ApprovedWorklistService:
         value = {'runtime_generation':generation,'authority_digest':canonical_digest((canonical_digest(definition),self.installation_id,generation)), 'definition':definition,'definition_digest':canonical_digest(definition),
                  'installation_id':self.installation_id,'revision':1,'decisions':{},'release':'DISARMED',
                  'held':False,'revoked':False,'consumed_activations':0,'claims':{}}
-        with RuntimeServiceLock(self.runtime.database.path).acquire(), self.db:
+        with RuntimeServiceLock(self.runtime.database.path).acquire(reuse_current=reuse_current), self.db:
+            if effect_guard is not None:effect_guard()
             current = self.db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',(key,)).fetchone()
             if current:
                 old=self._get(key)
@@ -131,11 +132,12 @@ class ApprovedWorklistService:
             self.db.execute('INSERT INTO approved_worksets VALUES (?,?,?)',(key,1,json.dumps(value,sort_keys=True)))
         return value
 
-    def decide(self, workset_id: str, *, expected_revision: int, role: str, actor: str) -> dict[str,Any]:
+    def decide(self, workset_id: str, *, expected_revision: int, role: str, actor: str, effect_guard=None, reuse_current=False) -> dict[str,Any]:
         roles={'business':(GovernanceRole.BUSINESS_OWNER,GovernanceCapability.BUSINESS_APPROVAL),
                'architecture':(GovernanceRole.PLATFORM_ARCHITECT,GovernanceCapability.ARCHITECTURE_APPROVAL)}
         if role not in roles: raise ValueError('invalid workset decision role')
-        with RuntimeServiceLock(self.runtime.database.path).acquire():
+        with RuntimeServiceLock(self.runtime.database.path).acquire(reuse_current=reuse_current):
+            if effect_guard is not None:effect_guard()
             value=self._get(workset_id)
             if type(expected_revision) is not int or expected_revision != value['revision']:
                 raise ValueError('stale workset revision')
@@ -145,9 +147,22 @@ class ApprovedWorklistService:
             decision_id=f"workset:{workset_id}:{role}:{value['definition_digest'][7:]}"
             repository=self.runtime.repository
             if role in value['decisions']: return value
-            repository.record(GovernanceDecision(decision_id,workset_id,value['authority_digest'],capability,
-                'approved',tuple(m['candidate_id'] for m in value['definition']['members']),
-                ('EXACT_COMMITTED_ORDER','FINITE_ACTIVATION_ALLOWANCE'),evidence={'actor':actor}),repository.operators.context())
+            expected={'subject_id':workset_id,'subject_revision':value['authority_digest'],
+                'capability':capability.value,'decision':'approved',
+                'scope':sorted(m['candidate_id'] for m in value['definition']['members']),
+                'gates':['EXACT_COMMITTED_ORDER','FINITE_ACTIVATION_ALLOWANCE'],
+                'evidence':{'actor':actor},'installation_id':self.installation_id}
+            present=self.db.execute('SELECT 1 FROM governance_decisions WHERE decision_id=?',(decision_id,)).fetchone()
+            if present:
+                original=repository.decision(decision_id)
+                if any(original[k]!=v for k,v in expected.items()):
+                    raise ValueError('existing workset decision differs from exact intent')
+            else:
+                if effect_guard is not None:effect_guard()
+                repository.record(GovernanceDecision(decision_id,workset_id,value['authority_digest'],capability,
+                    'approved',tuple(m['candidate_id'] for m in value['definition']['members']),
+                    ('EXACT_COMMITTED_ORDER','FINITE_ACTIVATION_ALLOWANCE'),evidence={'actor':actor}),repository.operators.context())
+            if effect_guard is not None:effect_guard()
             value['decisions'][role]=decision_id
             return self._save(value,expected_revision)
 
@@ -158,7 +173,7 @@ class ApprovedWorklistService:
             return self._control_locked(workset_id,expected_revision=expected_revision,operation=operation)
 
     def _control_locked(self, workset_id, *, expected_revision, operation, hold_provenance=None,
-                        command_operation=None):
+                        command_operation=None, release_operation=None, effect_guard=None):
         """Caller retains the canonical mutation lease across intent/effect/receipt."""
         value=self._get(workset_id)
         if type(expected_revision) is not int or expected_revision != value['revision']:
@@ -167,6 +182,10 @@ class ApprovedWorklistService:
         if not self.runtime.repository.operators.authorize(context):
             raise PermissionError('current installed operator required')
         if operation=='arm':
+            from .workset_release_grant import validate_activation_authority
+            validate_activation_authority(self.runtime.data_root,value)
+            if any(c['intent']=='disarm' for c in value.get('release_commands',{}).values()):
+                raise ValueError('exact future release was withdrawn')
             if value['runtime_generation']!=self.db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:raise ValueError('workset runtime generation changed')
             if value['revoked'] or timestamp(value['definition']['expires_at']) <= datetime.now(UTC):
                 raise ValueError('workset release authority is not current')
@@ -195,6 +214,11 @@ class ApprovedWorklistService:
                 'reason_code':'OWNER_REQUEST'}) if value['held'] else None
             if value['operator_hold'] is not None:
                 value['operator_hold']['control_revision']=value['control_revision']
+        if effect_guard is not None:effect_guard()
+        if release_operation is not None:
+            receipt={**release_operation,'applied_revision':expected_revision+1,
+                'original_release':value['release'],'observed_at':datetime.now(UTC).isoformat()}
+            value.setdefault('release_commands',{})[release_operation['operation_id']]=receipt
         if command_operation is not None:
             from .worklist_control import finish_operation
             finish_operation(value,command_operation)
@@ -272,9 +296,23 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
                             or decision['decision']!='approved'):candidate_approved=False
             if not candidate_approved:reasons.append('SUBJECT_UNAPPROVED')
             if value['runtime_generation']!=db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:reasons.append('RUNTIME_GENERATION_CHANGED')
+            if (value.get('release_capability') or 'release_capability' in value
+                    or value.get('release_commands') or definition['workset_id'].startswith('released-')):
+                from .workset_release_grant import validate_activation_authority
+                try:validate_activation_authority(data_root,value)
+                except (PermissionError,ValueError,OSError,KeyError):reasons.append('RELEASE_CAPABILITY_UNAVAILABLE')
             if value['revoked']:reasons.append('RELEASE_REVOKED')
             if timestamp(definition['expires_at'])<=datetime.now(UTC):reasons.append('RELEASE_EXPIRED')
-            if value['held'] and binding is None:reasons.append('WORKSET_HELD')
+            selected_claim=value['claims'].get(member['candidate_id'])
+            expected_claim=canonical_digest((value['authority_digest'],member['candidate_id'],member['subject_revision']))
+            already_selected=bool(selected_claim and state
+                and selected_claim.get('operation_id')==expected_claim
+                and selected_claim.get('subject_revision')==member['subject_revision']
+                and selected_claim.get('runtime_generation')==value['runtime_generation']
+                and (state.get('execution_policy') or {}).get('assignment_id')=='workset-policy:'+expected_claim[7:])
+            # Admission alone is not selection. A genuine prior activation claim
+            # remains ongoing for future-only hold, including lost ID correlation.
+            if value['held'] and (binding is None or lifecycle=='APPROVED_PLANNABLE' and not already_selected):reasons.append('WORKSET_HELD')
             if value['release']!='AUTO_WHEN_ELIGIBLE':reasons.append('NOT_RELEASED')
             if set(value['decisions'])!={'business','architecture'}:reasons.append('WORKSET_UNAPPROVED')
             if claim and state is None:reasons.append('MISSION_STATE_UNAVAILABLE')
@@ -285,7 +323,7 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             for dependency in member['dependencies']:
                 preceding=next(item for item in items if item['candidate_id']==dependency)
                 if not preceding['completed']:reasons.append('DEPENDENCY_NOT_PROVEN')
-            if value['consumed_activations']>=definition['maximum_activations'] and not claim and definition['members']:
+            if value['consumed_activations']>=definition['maximum_activations'] and not selected_claim and definition['members']:
                 reasons.append('ACTIVATION_LIMIT_EXHAUSTED')
             if not completed:
                 from .worklist_activation import validate_activation_inputs

@@ -1422,14 +1422,20 @@ class InstalledDynamicMissionRuntime:
         return contract
 
     def _assert_single_resumable(self, mission_id: str) -> None:
-        # A zero-Action failed planning attempt is durably held without any
-        # possible Host effect. Other blocked Missions retain exclusive scope.
-        active = tuple(
-            state.mission_id for state in self.states.resumable()
-            if state.mission_id == mission_id
-            or not _quiescent_failed_attempt(state)
-        )
-        if active != (mission_id,):
+        # Only a real governed workset claim permits coexistence with untouched
+        # zero-Action definitions. Active/partially-started work stays exclusive.
+        from ..worklist_activation import has_exact_activation_claim
+        states=tuple(self.states.resumable())
+        pending=any(s.mission_id!=mission_id and s.status is MissionExecutionStatus.APPROVED_PLANNABLE
+                    for s in states)
+        selected=next((s for s in states if s.mission_id==mission_id),None)
+        claimed=pending and selected is not None and not _quiescent_failed_attempt(selected) and has_exact_activation_claim(self,mission_id)
+        active=tuple(s.mission_id for s in states if s.mission_id==mission_id
+            or not (_quiescent_failed_attempt(s) or (claimed
+                and s.status is MissionExecutionStatus.APPROVED_PLANNABLE
+                and not s.actions and not s.intents
+                and not (s.execution_policy or {}).get('assignment_contract'))))
+        if active!=(mission_id,):
             raise InstalledDynamicMissionError("public runtime requires exactly one selected non-terminal Mission")
 
     def _result(self, state: MissionExecutionState) -> DynamicMissionRunResult:

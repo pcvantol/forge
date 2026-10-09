@@ -1,12 +1,13 @@
 """Owner-selected immutable public repository snapshots with current private ACL."""
 from pathlib import Path
+from datetime import UTC,datetime
 from hashlib import sha256
 import argparse
 import json
 import re
 from .advisory_contract import CONTRACT, digest, text, AdvisoryConflict
 from .advisory_grant import project_scope
-from .approved_worklist import identifier
+from .approved_worklist import identifier,timestamp
 from .completion.repository_observer import GitHubRepositoryArtifactReader
 from .execution_host_configuration import read_peer_configuration
 from .workspace_worklist_control_grant import current_operator
@@ -24,8 +25,10 @@ class AdvisoryContext:
         if not isinstance(records,list) or len(records)>16:raise RuntimeError('context catalog invalid')
         seen=set()
         for r in records:
-            if not isinstance(r,dict) or set(r)!=fields or r['state'] not in ('ACTIVE','REVOKED'):raise RuntimeError('context shape invalid')
-            try:identifier(r['source_id']);text(r['content'],2048)
+            if not isinstance(r,dict) or set(r) not in (fields,fields|{'observed_at'}) or r['state'] not in ('ACTIVE','REVOKED'):raise RuntimeError('context shape invalid')
+            try:
+                identifier(r['source_id']);text(r['content'],2048)
+                if 'observed_at' in r:timestamp(r['observed_at'])
             except (ValueError,TypeError):raise RuntimeError('context content invalid') from None
             if r['source_id'] in seen or r['content_digest']!='sha256:'+sha256(r['content'].encode()).hexdigest() or r['version']!=digest({k:v for k,v in r.items() if k not in ('state','version')}):raise RuntimeError('context provenance invalid')
             seen.add(r['source_id'])
@@ -44,7 +47,8 @@ class AdvisoryContext:
             text(content,2048);records=self._read(True)
             if any(r['source_id']==source_id for r in records) or len(records)>=16:raise ValueError('immutable source exists or capacity exhausted')
             r={'source_id':source_id,'scope':scope,'state':'ACTIVE','repository':binding.repository_identity,
-               'revision':revision,'path':path,'content':content,'content_digest':'sha256:'+sha256(content.encode()).hexdigest()}
+               'revision':revision,'path':path,'content':content,'content_digest':'sha256:'+sha256(content.encode()).hexdigest(),
+               'observed_at':datetime.now(UTC).isoformat()}
             r['version']=digest({k:v for k,v in r.items() if k!='state'});self._save([*records,r]);return self.metadata(r)
 
     def revoke(self,source_id):
@@ -60,7 +64,7 @@ class AdvisoryContext:
         _write_private(self.path,raw)
 
     @staticmethod
-    def metadata(r):return {k:v for k,v in r.items() if k not in ('content','scope')}
+    def metadata(r):return {k:v for k,v in r.items() if k not in ('content','scope','observed_at')}
 
     def available(self,p):
         scope={k:getattr(p,k) for k in ['instance_id','project_id','repository_id']}

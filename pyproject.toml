@@ -41,6 +41,8 @@ forge-advisory = "forge.advisory_cli:main"
 forge-advisory-context = "forge.advisory_context:main"
 forge-advisory-grant = "forge.advisory_grant:main"
 forge-mission-concept-setup = "forge.mission_concept_setup:main"
+forge-workset-release = "forge.workset_release_cli:main"
+forge-workset-release-grant = "forge.workset_release_grant:main"
 forge-workspace-worklist-control-grant = "forge.workspace_worklist_control_grant:main"
 
 [tool.setuptools]
