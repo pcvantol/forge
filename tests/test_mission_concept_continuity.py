@@ -77,6 +77,9 @@ class MissionConceptContinuityTests(unittest.TestCase):
                 time.sleep(remaining+0.02)
             baseline = driver.counts(root)
             transcript = {p:p.read_bytes() for p in (root/'runtime/advisory').rglob('*.json')}
+            # Exercise the Linux order: non-transcript ledgers precede concepts.
+            transcript = dict(sorted(transcript.items(),
+                key=lambda item: item[0].name.startswith('concept-')))
             before_setup = (root/'runtime/credentials/mission-concepts/setup.json').read_bytes()
             for _ in range(2):
                 with qual.http(root) as port:
@@ -95,7 +98,11 @@ class MissionConceptContinuityTests(unittest.TestCase):
                     self.assertNotEqual(call(port,token,'POST',base+'/approve',
                         {**command,'operation_id':'replacement-new-key'})[0],200)
                     _, current_context=call(port,token,'GET',base+'/context')
-                    stored=json.loads(next(iter(transcript.values())))
+                    concept_paths=[p for p in transcript
+                        if p.parent==root/'runtime/advisory/transcripts'
+                        and p.name.startswith('concept-')]
+                    self.assertEqual(len(concept_paths),1)
+                    stored=json.loads(transcript[concept_paths[0]])
                     status,out=call(port,token,'POST',base+'/turns',
                         {**stored['turns'][0]['request'],'turn_id':'extra-turn',
                          'expected_revision':stored['revision'],
