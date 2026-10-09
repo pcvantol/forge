@@ -14,7 +14,7 @@ MODULES=('test_mission_concept_contract','test_mission_concept_provider',
          'test_mission_concept_planning','test_mission_concept_ready_http',
          'test_mission_concept_dependencies','test_mission_concept_resolver',
          'test_mission_concept_recovery','test_mission_concept_output_boundaries',
-         'test_mission_concept_readiness')
+         'test_mission_concept_readiness','test_mission_concept_continuity')
 
 
 def positive_control(root):
