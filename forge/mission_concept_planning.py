@@ -8,7 +8,7 @@ from .mission_concept_contract import CONTRACT, WORK_KINDS, proposed_definition
 from .models.mission_effect import MissionEffectPolicy
 from .models.architecture_mission import ArchitectureMission, ArchitectureMissionStatus
 from .models.mission_recommendation import RequiredDiscipline
-from .models.criterion_assessment import CriterionAssessmentContract, CriterionEvidenceRequirement
+from .models.criterion_assessment import CriterionAssessmentContract, CriterionEvidenceRequirement, ApprovedRepositoryEvidenceSource
 from .models.criterion_observation import canonical_digest
 from .governance_authority import ArchitecturePlanningEvidence
 from .lifecycle import MissionCandidate
@@ -75,6 +75,23 @@ def derive_package(definition, *, request_digest, context, profiles,
         return {'contract_version': CONTRACT, 'object_id': object_id, 'revision': revision,
                 'definition': definition, 'questions': missing,
                 'approval_supported': False, 'package': None}
+    catalog = {r['candidate_id']:r for r in context.get('concept_dependency_catalog',[])}
+    if any(dep not in catalog for dep in definition['dependencies']):
+        raise ValueError('current exact dependency binding required')
+    graph = {key:row['dependencies'] for key,row in catalog.items()}
+    verified = set()
+    def visit(node, path):
+        if node in path:
+            raise ValueError('dependency cycle detected')
+        if node in verified:
+            return
+        for predecessor in graph.get(node,[]):
+            if predecessor not in graph:
+                raise ValueError('unresolved scoped dependency')
+            visit(predecessor,path | {node})
+        verified.add(node)
+    for node in graph:
+        visit(node,set())
     for key in ('input_token_bound', 'output_token_bound'):
         if type(provider_bounds.get(key)) is not int or provider_bounds[key] < 1:
             raise ValueError('current provider bounds unavailable')
@@ -84,6 +101,10 @@ def derive_package(definition, *, request_digest, context, profiles,
               'context_revision': digest(context)}
     key = digest(source)[7:39]
     effect = MissionEffectPolicy.from_dict(profile['effect_policy'])
+    repository_source = (ApprovedRepositoryEvidenceSource.from_dict(context['concept_repository_source'])
+                         if context.get('concept_repository_source') is not None else None)
+    if repository_source is not None and repository_source.repository_id != context['repository_id']:
+        raise ValueError('repository planning source outside actual project binding')
     candidate = MissionCandidate(
         id='concept-candidate-' + key, recommendation_id='concept-recommendation-' + key,
         title=definition['title'], objective=definition['objective'],
@@ -114,7 +135,7 @@ def derive_package(definition, *, request_digest, context, profiles,
         risks=tuple(definition['risks']), status=ArchitectureMissionStatus.APPROVED_FOR_ENGINEERING,
         criterion_assessment_contracts=contracts, maximum_actions=profile['maximum_actions'],
         maximum_consecutive_no_progress_actions=profile['maximum_consecutive_no_progress_actions'],
-        effect_policy=effect)
+        effect_policy=effect, repository_evidence_source=repository_source)
     planning = ArchitecturePlanningEvidence(
         scope=candidate.scope, write_scopes=effect.write_paths,
         non_goals=tuple(definition['exclusions']), risk_inputs=tuple(definition['risks']),
@@ -123,7 +144,8 @@ def derive_package(definition, *, request_digest, context, profiles,
         context_output_bound=provider_bounds['output_token_bound'], provenance_revision=subject_revision,
         criterion_assessment_contracts=contracts, maximum_actions=profile['maximum_actions'],
         maximum_consecutive_no_progress_actions=profile['maximum_consecutive_no_progress_actions'],
-        mission_spec_digest=canonical_digest(preview.to_dict()), effect_policy=effect)
+        mission_spec_digest=canonical_digest(preview.to_dict()), effect_policy=effect,
+        repository_evidence_source=repository_source)
     body = {'contract_version': CONTRACT, 'source': source, 'definition': definition,
             'candidate': candidate.to_dict(), 'subject_revision': subject_revision,
             'mission_preview': preview.to_dict(), 'planning': planning.to_dict(),
@@ -133,6 +155,9 @@ def derive_package(definition, *, request_digest, context, profiles,
             'consequences': {'repository_effect': effect.to_dict(),
                              'human_gates': profile['human_gates'],
                              'exclusions': definition['exclusions'], 'risks': definition['risks']}}
+    body['dependency_bindings'] = [{'candidate_id':dep,'subject_revision':catalog[dep]['subject_revision'],
+                                  'object_id':catalog[dep]['object_id'],'reason':definition['dependency_reasons'][dep],
+                                  'kind':'REQUIRES','state':'PROPOSED'} for dep in definition['dependencies']]
     body = json.loads(json.dumps(body))
     return {'contract_version': CONTRACT, 'object_id': object_id, 'revision': revision,
             'definition': definition, 'questions': [], 'approval_supported': True,

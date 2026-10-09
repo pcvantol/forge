@@ -44,6 +44,15 @@
     },
     {
       "$ref": "#/$defs/compound_operation"
+    },
+    {
+      "$ref": "#/$defs/resolve_request"
+    },
+    {
+      "$ref": "#/$defs/resolve_result"
+    },
+    {
+      "$ref": "#/$defs/concept_context"
     }
   ],
   "$defs": {
@@ -379,7 +388,9 @@
             "dependencies",
             "questions",
             "change_summary",
-            "work_kind"
+            "work_kind",
+            "dependency_reasons",
+            "possible_subresults"
           ],
           "properties": {
             "title": {
@@ -415,6 +426,15 @@
                 "DOCUMENT",
                 "UNDECIDED"
               ]
+            },
+            "dependency_reasons": {
+              "type": "object",
+              "maxProperties": 8,
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 1000
+              }
             },
             "scope": {
               "type": "array",
@@ -477,6 +497,41 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 1000
+              }
+            },
+            "possible_subresults": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "expected_result",
+                  "acceptance_criteria"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "expected_result": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 1000
+                  },
+                  "acceptance_criteria": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 1000
+                    }
+                  }
+                }
               }
             }
           }
@@ -599,7 +654,9 @@
         "limitations",
         "concept_dependency_references",
         "concept_work_profiles",
-        "concept_configuration_revision"
+        "concept_configuration_revision",
+        "concept_dependency_catalog",
+        "concept_repository_source"
       ],
       "properties": {
         "instance_id": {
@@ -689,6 +746,16 @@
               "type": "null"
             }
           ]
+        },
+        "concept_dependency_catalog": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/dependency_reference"
+          }
+        },
+        "concept_repository_source": {
+          "$ref": "#/$defs/decision_repository_source"
         }
       }
     },
@@ -1012,7 +1079,8 @@
         "readiness_qualified",
         "generated_content_origin",
         "maximum_missions",
-        "supported_work_kinds"
+        "supported_work_kinds",
+        "workspace_reference_resolution_supported"
       ],
       "properties": {
         "contract_version": {
@@ -1142,6 +1210,9 @@
               "DOCUMENT"
             ]
           }
+        },
+        "workspace_reference_resolution_supported": {
+          "type": "boolean"
         }
       }
     },
@@ -1194,7 +1265,13 @@
                 "APPROVAL_PACKAGE_CHANGED",
                 "BUSINESS_PUBLICATION_REQUIRED",
                 "CONCEPT_APPROVAL_INPUT_OR_STATE_INVALID",
-                "CONCEPT_APPROVAL_PENDING"
+                "CONCEPT_APPROVAL_PENDING",
+                "WORKSPACE_RESOLUTION_PAYLOAD_CHANGED",
+                "WORKSPACE_RESOLUTION_CAPACITY_EXHAUSTED",
+                "WORKSPACE_BINDING_CAPACITY_EXHAUSTED",
+                "EXISTING_CONVERSATION_CAPACITY_EXHAUSTED",
+                "WORKSPACE_BINDING_BYTE_CAPACITY_EXHAUSTED",
+                "DEPENDENCY_SUBJECT_CHANGED"
               ]
             }
           }
@@ -1267,7 +1344,9 @@
             "dependencies",
             "questions",
             "change_summary",
-            "work_kind"
+            "work_kind",
+            "dependency_reasons",
+            "possible_subresults"
           ],
           "properties": {
             "title": {
@@ -1303,6 +1382,15 @@
                 "DOCUMENT",
                 "UNDECIDED"
               ]
+            },
+            "dependency_reasons": {
+              "type": "object",
+              "maxProperties": 8,
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 1000
+              }
             },
             "scope": {
               "type": "array",
@@ -1366,6 +1454,41 @@
                 "minLength": 1,
                 "maxLength": 1000
               }
+            },
+            "possible_subresults": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "expected_result",
+                  "acceptance_criteria"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "expected_result": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 1000
+                  },
+                  "acceptance_criteria": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 1000
+                    }
+                  }
+                }
+              }
             }
           }
         },
@@ -1395,7 +1518,8 @@
             "SUBJECT_STALE",
             "RECOMMENDED",
             "BUSINESS_APPROVED",
-            "APPROVED_WAITING"
+            "APPROVED_WAITING",
+            "READY_FOR_GOVERNED_ACTIVATION"
           ]
         },
         "approval_supported": {
@@ -1403,14 +1527,9 @@
         },
         "blockers": {
           "type": "array",
-          "maxItems": 8,
+          "maxItems": 64,
           "items": {
-            "enum": [
-              "TRUSTED_PLANNING_AND_APPROVAL_PACKAGE_REQUIRED",
-              "CANONICAL_SUBJECT_CHANGED",
-              "EXPLICIT_WORKSET_RELEASE_REQUIRED",
-              "CANONICAL_APPROVAL_OR_INTAKE_PENDING"
-            ]
+            "type": "string"
           }
         },
         "questions": {
@@ -1429,10 +1548,25 @@
           "const": null
         },
         "labels": {
-          "const": []
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "Investigation",
+              "Architecture",
+              "Implementation",
+              "Documentation",
+              "Needs clarification"
+            ]
+          }
         },
         "edges": {
-          "const": []
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/dependency_edge"
+          }
         },
         "candidate_id": {
           "oneOf": [
@@ -3338,7 +3472,8 @@
         "execution_started",
         "actions_predefined",
         "consequences",
-        "authority"
+        "authority",
+        "dependency_bindings"
       ],
       "properties": {
         "contract_version": {
@@ -3363,7 +3498,9 @@
             "dependencies",
             "questions",
             "change_summary",
-            "work_kind"
+            "work_kind",
+            "dependency_reasons",
+            "possible_subresults"
           ],
           "properties": {
             "title": {
@@ -3399,6 +3536,15 @@
                 "DOCUMENT",
                 "UNDECIDED"
               ]
+            },
+            "dependency_reasons": {
+              "type": "object",
+              "maxProperties": 8,
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 1000
+              }
             },
             "scope": {
               "type": "array",
@@ -3461,6 +3607,41 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 1000
+              }
+            },
+            "possible_subresults": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "expected_result",
+                  "acceptance_criteria"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "expected_result": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 1000
+                  },
+                  "acceptance_criteria": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 1000
+                    }
+                  }
+                }
               }
             }
           }
@@ -3570,6 +3751,13 @@
               "maximum": 4
             }
           }
+        },
+        "dependency_bindings": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/dependency_binding"
+          }
         }
       }
     },
@@ -3618,7 +3806,9 @@
             "dependencies",
             "questions",
             "change_summary",
-            "work_kind"
+            "work_kind",
+            "dependency_reasons",
+            "possible_subresults"
           ],
           "properties": {
             "title": {
@@ -3654,6 +3844,15 @@
                 "DOCUMENT",
                 "UNDECIDED"
               ]
+            },
+            "dependency_reasons": {
+              "type": "object",
+              "maxProperties": 8,
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 1000
+              }
             },
             "scope": {
               "type": "array",
@@ -3716,6 +3915,41 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 1000
+              }
+            },
+            "possible_subresults": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "expected_result",
+                  "acceptance_criteria"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "expected_result": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 1000
+                  },
+                  "acceptance_criteria": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 1000
+                    }
+                  }
+                }
               }
             }
           }
@@ -3791,7 +4025,9 @@
             "dependencies",
             "questions",
             "change_summary",
-            "work_kind"
+            "work_kind",
+            "dependency_reasons",
+            "possible_subresults"
           ],
           "properties": {
             "title": {
@@ -3827,6 +4063,15 @@
                 "DOCUMENT",
                 "UNDECIDED"
               ]
+            },
+            "dependency_reasons": {
+              "type": "object",
+              "maxProperties": 8,
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 20,
+                "maxLength": 1000
+              }
             },
             "scope": {
               "type": "array",
@@ -3889,6 +4134,41 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 1000
+              }
+            },
+            "possible_subresults": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "expected_result",
+                  "acceptance_criteria"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "expected_result": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 1000
+                  },
+                  "acceptance_criteria": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "minLength": 20,
+                      "maxLength": 1000
+                    }
+                  }
+                }
               }
             }
           }
@@ -4097,30 +4377,7 @@
           "const": 0
         },
         "current": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "state",
-            "mission_status",
-            "blockers",
-            "readiness_owner"
-          ],
-          "properties": {
-            "state": {
-              "const": "APPROVED_WAITING"
-            },
-            "mission_status": {
-              "type": "string"
-            },
-            "blockers": {
-              "const": [
-                "EXPLICIT_WORKSET_RELEASE_REQUIRED"
-              ]
-            },
-            "readiness_owner": {
-              "const": "FORGE_APPROVED_WORKLIST"
-            }
-          }
+          "$ref": "#/$defs/readiness"
         }
       }
     },
@@ -4143,7 +4400,8 @@
         "current_definition_state",
         "execution_started",
         "read_only",
-        "additional_model_calls"
+        "additional_model_calls",
+        "current_readiness"
       ],
       "properties": {
         "contract_version": {
@@ -4245,6 +4503,449 @@
         },
         "additional_model_calls": {
           "const": 0
+        },
+        "current_readiness": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/readiness"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "resolve_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "operation_id",
+        "workspace_conversation_id",
+        "workspace_draft_id"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-chat-first-mission/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workspace_conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workspace_draft_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      }
+    },
+    "workspace_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal_reference",
+        "scope",
+        "workspace_conversation_id",
+        "workspace_draft_id",
+        "conversation_id",
+        "binding_key"
+      ],
+      "properties": {
+        "principal_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instance_id",
+            "project_id",
+            "repository_id"
+          ],
+          "properties": {
+            "instance_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "project_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "repository_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        },
+        "workspace_conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workspace_draft_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "binding_key": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "resolve_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "operation_id",
+        "binding",
+        "additional_model_calls",
+        "grant_issued",
+        "budget_reset"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-chat-first-mission/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "binding": {
+          "$ref": "#/$defs/workspace_binding"
+        },
+        "additional_model_calls": {
+          "const": 0
+        },
+        "grant_issued": {
+          "const": false
+        },
+        "budget_reset": {
+          "const": false
+        }
+      }
+    },
+    "dependency_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "subject_revision",
+        "object_id",
+        "concept_revision",
+        "title",
+        "dependencies",
+        "recommendation_status"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "object_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "concept_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "dependencies": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        "recommendation_status": {
+          "type": "string"
+        }
+      }
+    },
+    "concept_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "conversation_id",
+        "context",
+        "context_revision",
+        "read_only",
+        "additional_model_calls"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-chat-first-mission/v1"
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "context": {
+          "$ref": "#/$defs/context"
+        },
+        "context_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "read_only": {
+          "const": true
+        },
+        "additional_model_calls": {
+          "const": 0
+        }
+      }
+    },
+    "dependency_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "subject_revision",
+        "object_id",
+        "reason",
+        "kind",
+        "state"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "object_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 1000
+        },
+        "kind": {
+          "const": "REQUIRES"
+        },
+        "state": {
+          "const": "PROPOSED"
+        }
+      }
+    },
+    "dependency_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "source_object_id",
+        "target_object_id",
+        "candidate_id",
+        "subject_revision",
+        "reason",
+        "state"
+      ],
+      "properties": {
+        "kind": {
+          "const": "REQUIRES"
+        },
+        "source_object_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "target_object_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 1000
+        },
+        "state": {
+          "enum": [
+            "PROPOSED",
+            "APPROVED_DEFINITION"
+          ]
+        }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "mission_status",
+        "blockers",
+        "readiness_owner",
+        "dependency_facts",
+        "workset_facts",
+        "execution_resources",
+        "execution_ready",
+        "subject_revision"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "APPROVED_WAITING",
+            "READY_FOR_GOVERNED_ACTIVATION"
+          ]
+        },
+        "mission_status": {
+          "type": "string"
+        },
+        "blockers": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string"
+          }
+        },
+        "readiness_owner": {
+          "const": "FORGE_APPROVED_WORKLIST"
+        },
+        "dependency_facts": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "candidate_id",
+              "subject_revision",
+              "proven"
+            ],
+            "properties": {
+              "candidate_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "subject_revision": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "proven": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "workset_facts": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "workset_id",
+              "snapshot_revision",
+              "eligible",
+              "selected_next",
+              "blocking_reasons"
+            ],
+            "properties": {
+              "workset_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "snapshot_revision": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "eligible": {
+                "type": "boolean"
+              },
+              "selected_next": {
+                "type": "boolean"
+              },
+              "blocking_reasons": {
+                "type": "array",
+                "maxItems": 64,
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "execution_resources": {
+          "const": "NOT_OBSERVED"
+        },
+        "execution_ready": {
+          "const": false
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         }
       }
     }

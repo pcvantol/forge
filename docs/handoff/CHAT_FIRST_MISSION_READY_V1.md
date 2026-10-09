@@ -1,135 +1,160 @@
 # Chat-first Mission ready — r42 working contract
 
 Assignment `L3-CHAT-FIRST-MISSION-READY-V1-20261008`; JOIN
-`L3-L4-CHAT-FIRST-MISSION-READY-V1-20261008`.
-This is an implementation checkpoint, not an available HTTP capability or installed proof.
-Existing textual advice and explicit-user Candidate contracts retain their meaning.
+`L3-L4-CHAT-FIRST-MISSION-READY-V1-20261008`. Same sole L3 source writer.
+r41 remains CLOSED. This is source development evidence, not a protected release,
+installed qualification or complete native UX acceptance.
 
 ## Existing route reuse and bounded delta
 
-| Existing owner | Reuse | Required delta | Qualification |
+| Existing owner | Reuse | Delta | Required proof |
 | --- | --- | --- | --- |
-| AdvisoryService / AdvisoryProvider | Actual authorized project/context, current provider policy, durable turn intent and finite consumption | Separate typed concept output and immutable revision bound to source turn | Natural prompt/refinement/questions, malformed/late output, crash without regeneration |
-| AdvisoryCandidateService / canonical lifecycle | Stable recommendation/Candidate lineage and immutable registration | Generated-content provenance separate from EXPLICIT_USER; deterministic internal identities | Exact promotion, restart/alias duplicates, no authority from model text |
-| CandidateDecisionService / GovernedCandidateIntake | Current G001 signer, real separate canonical Business/Architecture decisions | Frozen complete package and durable bounded composite intent with effect-boundary revalidation | Single Solo confirmation, revocation between steps, torn writes, actual zero-Action intake |
-| Approved worklist / serial eligibility | Actual approved subject, hold/dependency/release/provider conditions | Project/principal-bound catalog, stable concept-to-Mission correlation and typed edges | Scoped pagination, cycles/foreign references, blocked vs ready current readback |
+| AdvisoryService / AdvisoryProvider | Actual scoped context, current provider policy, durable finite turn consumption | Typed concept output and immutable generated revision | Natural refinement/questions, malformed/late output, crash without regeneration |
+| AdvisoryCandidateService / canonical lifecycle | Recommendation/Candidate lineage and immutable registration | Generated provenance separate from EXPLICIT_USER; deterministic identities | Exact promotion and restart/alias recovery |
+| CandidateDecisionService / GovernedCandidateIntake | Actual G001 signer and separate canonical approvals | Frozen package and bounded durable compound intent | Solo confirmation, authority drift, torn stores, zero-Action Intake |
+| Approved worklist / serial eligibility | Actual approved subjects, completion facts, holds and release | Scoped catalog and current dependency/readiness projection | Exact predecessor revisions, real blockers and supported positive release |
 
-## First concrete content schema
+## Generated content and owner setup
 
-`forge/mission_concept_contract.py` defines `forge-chat-first-mission/v1`.
-The external generation result has only `contract_version`, `request_digest`,
-and `definition`. Definition carries title, objective, business_value,
-expected_result, scope, exclusions, acceptance_criteria, architecture_choices,
-risks, dependencies, questions and change_summary. All fields are closed/bounded.
-Dependencies resolve against the actual authorized catalog. A missing substantive
-scope/criterion requires a meaningful question. This content validator alone
-makes no planning, authority, approval or readiness claim.
+`forge-chat-first-mission/v1` is defined in
+`forge/mission_concept_contract.py`; HTTP schemas are in
+`forge/api/mission-concepts-v1.json`. Model output contains only contract_version,
+request_digest and definition. The definition carries title, objective,
+business_value, expected_result, scope, exclusions, acceptance_criteria,
+architecture_choices, risks, dependencies, dependency_reasons, questions,
+change_summary, work_kind and possible_subresults. Closed finite bounds apply to every field.
 
-Model output cannot supply IDs, signer, roles, effect policy, approved status,
-planning evidence or mechanical digests. Trusted configuration and existing
-services must resolve those separately, with unresolved content/configuration
-shown as owning gaps. The client displays the full frozen human meaning before
-explicit confirmation; previews/catalog/confirmation make zero provider calls.
+Work kind follows the intended human effect: INVESTIGATE, DESIGN, BUILD,
+DOCUMENT or UNDECIDED with meaningful questions. Dependencies require actual
+scoped catalog references and substantive human reasons. IDs, signer, roles,
+policies, technical ceilings, digests and approval status are never model fields.
+An incomplete definition remains an unapproved concept. An explicit split request
+can propose up to four human subresults (title, expected result and testable
+criteria). These remain content suggestions, never child Mission/Action IDs or
+bulk approval. Workspace may organize presentation groups using canonical object
+references; semantic dependencies still require actual scoped canonical subjects.
+Catalog labels describe the proposed work kind and never confer grants.
 
-## HTTP integration status
+`forge-mission-concept-setup` configures finite supported profiles over an
+existing genuinely scoped advisory grant and actual G001 primary operator.
+Profiles are trusted ceilings, not permission to broaden the human objective.
+Aliases retain minimum prior Mission allowance. Advice and concept generation
+share retained consumed budgets; confirmation never expands grants or budgets.
+No technical field entry is required per Mission. Ordinary owner provisioning
+remains a separate genuine configuration action.
 
-Pending implementation: supported owner setup with finite project/draft bounds,
-refine operation, immutable definition detail, authorized catalog snapshot,
-exact frozen approval package and durable composite operation current readback.
-No endpoint name or shape in this checkpoint is an advertised available route.
-A concrete versioned API schema will supersede this status before L4 integration.
-
-## Tested source checkpoint: concept routes only
-
-The local source now implements, under the existing explicitly scoped advisory
-credential and its retained shared principal/provider budgets:
+## Implemented source HTTP routes
 
 - `GET /v1/mission-concepts/capability`
+- `POST /v1/mission-concepts/resolve`
+- `GET /v1/mission-concepts/{conversation_id}/context`
 - `POST /v1/mission-concepts/{conversation_id}/turns`
 - `GET /v1/mission-concepts/{conversation_id}`
 - `GET /v1/mission-concepts/{conversation_id}/turns/{turn_id}`
 - `POST /v1/mission-concepts/{conversation_id}/turns/{turn_id}/cancel`
-- `GET /v1/mission-concepts/catalog?cursor=0&limit=4&snapshot_revision=sha256:...`
-
-Refine reuses the existing bounded turn request fields under the new contract:
-contract_version, turn_id, instance_id, project_id, repository_id,
-conversation_id, advisor_kind, objective, expected_revision, context_revision,
-selected_sources. These are client-resolved context/operation fields, never
-technical form input. Source currentness and grant/provider authority remain
-checked by the real owning service. Generation is persisted in distinct immutable
-concept transcripts while the existing shared retained-principal budget counts
-both advice and concept turns. Replay reuses the original admitted result.
-
-The catalog is explicitly an authorized admitted-concepts subset, not a full
-portfolio. Snapshot revisions bind pagination; foreign principal concepts are
-absent. Object IDs correlate a principal/project/conversation concept across its
-refinements. Items include the human definition/digest, actual source turn and
-conversation/context revisions. Candidate/Mission links remain null, state is
-CONCEPT and approval_supported is false until the real owning promotion route
-exists. No dependency edges are claimed before authorized canonical binding.
-
-Remaining mandatory producer work: finite owner setup/project-draft permissions,
-trusted planning derivation, typed dependency semantics/reason/proposed-versus-
-committed validation, complete frozen approval package with human consequences,
-substantive questions/current blockers, canonical registration/provenance,
-durable composite separate real approvals and zero-Action governed intake,
-complete negative/crash/integration/installed/coverage/CI assurance and protected
-lifecycle. L4 must not enable Approve from this checkpoint.
-
-## Current r42 source: one exact approval and actual canonical Intake
-
-Normal capability source version is being advanced to 2.11.0 under the same
-r42 operation; this is not publication or an installed delivery.
-
-`work_kind` is generated from the intended human effect (INVESTIGATE, DESIGN,
-BUILD, DOCUMENT, or UNDECIDED with a meaningful question). Real owner setup
-supplies closed finite project profiles. The model cannot supply policy, role,
-signer, Action ceilings or human gates. `forge-mission-concept-setup` supports
-one owner configuration over an existing genuinely scoped advisory credential
-bound to the actual G001 primary operator. No general admin proxy is provided.
-Different aliases retain the minimum prior Mission allowance and the actual
-shared generation/registration/decision consumption. No configuration changes
-or extra capability issuance occur during a normal Mission confirmation.
-
-Actual additional source routes:
-
 - `GET /v1/mission-concepts/{conversation_id}/package?revision=...`
 - `POST /v1/mission-concepts/{conversation_id}/approve`
 - `GET /v1/mission-concepts/{conversation_id}/operations/{operation_id}`
+- `GET /v1/mission-concepts/catalog?cursor=0&limit=4&snapshot_revision=sha256:...`
 
-Approve's closed request contains contract_version, operation_id, revision,
-package_digest and explicit confirm. These are trusted client transport fields;
-the user approves the exact full human card, not an internal field editor.
-The package freezes the complete definition, true turn/session/invocation/result
-provenance, actual scope/revisions, deterministic Candidate subject, canonical
-Mission preview/planning and current owner profile/signer/bounds. Effects,
-exclusions, risks and human gates are visible consequences of the same package.
+The resolver accepts operation_id and Workspace conversation/draft references.
+Workspace authenticates its own references before forwarding; Forge requires
+current scoped principal/project/G001/setup. It atomically binds the pair to an
+existing unused permitted conversation slot. Same/new operation keys and restart
+preserve the pair. Existing unbound transcripts are not adopted or overwritten.
+Capacity exhaustion denies resolution; no new grants, slots or resets are issued.
+Forge conversation IDs have the general identifier grammar, independent of
+Workspace's own 32-hex IDs.
 
-The source compound route journals that complete intent before effects, reuses
-the actual canonical Candidate store, records distinct actual Business and
-Architecture decisions and invokes the existing governed zero-Action Intake.
-Source/context/provider/config/signer/Candidate revision checks run at real
-boundaries. Historical EXPLICIT_USER remains unchanged; generated origin is
-VALIDATED_MODEL_PROPOSAL with TRUSTED_OWNER_CONFIGURATION for planning and
-unknown confidence (never an invented numeric score). Legacy r40 decision grants
-cannot admit this new versioned source as an old r39 Candidate.
+A focused context read precedes explicit refinement. Transport bindings and
+revisions are client-resolved fields, not user forms. Only explicit turns invoke
+the production bounded tool-disabled provider. Concept transcripts preserve
+source turn/context/invocation/result provenance and historical revisions.
+Reads, preview, catalog, resolution and confirmation invoke no model.
 
-Actual current qualification chain exercises meaningful question/refinement,
-frozen package, one confirmation, two canonical decisions, one real allocation,
-zero Actions/Intents/dispatcher start, same/new-key replay, canonical catalog
-promotion on the same object, and post-approval refinement preserving prior
-records. Permission/actor/confirmation/digest denials have no effects; actual
-grant revoke denies further requests. Modelcalls occur only on explicit turns.
+## Frozen confirmation and genuine effects
 
-Operation GET returns `frozen_package` from the immutable original intent even
-when the latest concept revision changes. Current authority is still required;
-COMPLETE describes the original real effects. `source_fresh=false` and
-SUPERSEDED describe a later definition; historical package bytes confer no
-new approval or READY authority. Prepare/Approve reject an obsolete revision.
+The package binds full human definition, trusted technical planning/effects,
+exact dependencies, source provenance and current signer/profile/bounds.
+Confirmation submits contract_version, operation_id, revision, package_digest
+and confirm=true after displaying that exact meaning. No generation follows
+confirmation.
 
-The present source route reports APPROVED_WAITING pending the owning worklist
-release boundary. True dependency semantics and current eligibility/hold/release/
-provider/resource integration remain required; a fixed waiting label is not
-final readiness delivery. Full negative crash/concurrency/scope matrix,
-whole validation/coverage, independent reviews, protected lifecycle, exact-main
-noneditable producer and L4 native integration/UX acceptance remain OPEN.
+A durable intent precedes canonical effects. Existing services register one
+Candidate, record distinct actual Business and Architecture decisions and admit
+one genuine Mission with zero predefined Actions/Intents. Current source,
+configuration, provider policy, subject and signer are checked at effect
+boundaries. Generated provenance is VALIDATED_MODEL_PROPOSAL with
+TRUSTED_OWNER_CONFIGURATION for planning; confidence is unknown. Historical
+EXPLICIT_USER and older decision contracts retain their meaning.
+
+Operation GET returns the immutable original frozen_package and actual
+partial/complete effect lineage. Refinement after approval creates a new concept
+revision; old effects remain immutable and source_fresh=false/SUPERSEDED prevents
+new approval authority from their receipt. Same/new-key recovery does not create
+duplicate Candidates, canonical decisions or Missions. An alias adds an operation
+journal row, while the distinct registration key and consumed allowance remain
+unchanged.
+
+## Scoped catalog and current readiness
+
+The catalog is AUTHORIZED_ADMITTED_CONCEPTS_ONLY, not a full portfolio. Exact
+snapshots bind pagination. Promotion keeps one object_id and links its actual
+Candidate/Mission. REQUIRES edges carry actual predecessor object/subject
+references and human reasons. PROPOSED and APPROVED_DEFINITION describe approval
+of the definition, not committed execution order. Cycles, foreign and unresolved
+references fail closed. Parent/group placeholders carry no semantic authority.
+
+Independent catalog growth does not stale an unchanged frozen subject. Current
+owner/source bounds and actually referenced canonical subject revisions are
+revalidated. Dependency changes, source revoke, profile/signer/provider drift or
+new own definition revision still block the old package.
+
+Approval, operation and catalog use the same existing approved-worklist
+projection and real predecessor completion facts. They expose release,
+activation-input, hold, eligibility and subject blockers. Physical resources are
+NOT_OBSERVED and execution_ready=false until actual owning evidence exists.
+READY_FOR_GOVERNED_ACTIVATION denotes only the supported logical next step;
+it does not observe host resources, start a controller or dispatch to EP.
+
+## Development evidence and remaining delivery
+
+Actual source HTTP tests generate and promote two independent scoped subjects
+with a reasoned A-to-B dependency; enforce real hold/release/missing-input
+blockers; preserve context across promotion and unrelated catalog growth; and
+keep historical meaning after later refinement.
+
+`scripts/qualification/qualify_mission_concept_recovery.py` kills owned OS
+processes before/after generation and around canonical registration, both
+approval stores/receipts and Intake. Fresh processes recover original lineage.
+Only external OS/model/repository boundaries use explicit deterministic
+adapters; product auth/governance/storage/planning/Intake remain real. Additional
+tests deny current signer drift between effects and reject a concurrent
+confirmation without duplicates.
+
+An actual positive test joins a chat-approved subject to the existing separately
+approved exact workset, validates a genuinely owner-published repository snapshot
+and existing progression policy, and arms the workset through its owning control
+service. Operation and catalog both report READY_FOR_GOVERNED_ACTIVATION; hold
+restores APPROVED_WAITING with its actual blocker. Two real workset decisions are
+additional to the two Candidate decisions. Resources remain unobserved, and no
+controller, Action, Mission start or EP submission occurs.
+
+Rejected malformed/foreign/authority-injecting model outputs preserve the exact
+previously approved definition/package; a failed attempt is not a semantic
+successor. The frozen accepted turn revision is distinct from later transport
+ledger revisions.
+
+Full owning validation and strict per-file coverage, whole exact-head
+independent Quality/Security, protected implementation, nonempty finalization,
+exact-final-main noneditable qualification and actual CI/TDE readback. L4 owns
+final installed integration, genuine packaged GUI clicks and independent UX
+acceptance. Existing development subsets and source examples do not satisfy
+those terminal gates. No live EP environment, signing, start or paid probe is
+part of this work.
+
+Ordinary CI now includes the exact-wheel noneditable selected matrix and a real
+revoked-grant positive failure control via
+`scripts/qualification/qualify_installed_mission_concepts.py`. Qualification binds
+source/tree/wheel/schema bytes and owns isolated test home/scratch/config cleanup.
+This integration is source WIP until its actual installed and hosted gates pass.

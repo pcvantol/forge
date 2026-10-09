@@ -20,10 +20,21 @@ class MissionConceptService(AdvisoryService):
         old = super()._path(principal, conversation_id)
         return old.with_name('concept-' + old.name)
 
-    def context(self, principal, selections=None):
+    def turn_context(self, principal, request):
+        return self.context(principal, request['selected_sources'], request['conversation_id'])
+
+    def context(self, principal, selections=None, conversation_id=None):
         value, _ = super().context(principal, selections)
+        from .execution_host_configuration import read_peer_configuration
+        binding = read_peer_configuration(self.root).configuration
+        if binding is None or binding.ep_project_id != principal.project_id or binding.ep_repository_id != principal.repository_id:
+            raise PermissionError('actual repository planning binding required')
+        value['concept_repository_source'] = {'repository_id': principal.repository_id,
+                                              'github_repository': binding.repository_identity}
         # No dependencies can be invented before an authorized catalog exists.
-        value['concept_dependency_references'] = []
+        dependencies = self._dependency_catalog(principal, conversation_id)
+        value['concept_dependency_references'] = [r['candidate_id'] for r in dependencies]
+        value['concept_dependency_catalog'] = dependencies
         records = MissionConceptSetup(self.root, principal.instance_id)._records()
         configured = next((r for r in records if r['grant_id'] == principal.grant_id
                            and r['principal_id'] == principal.principal_id
@@ -32,6 +43,43 @@ class MissionConceptService(AdvisoryService):
         value['concept_work_profiles'] = configured['profiles'] if configured else {}
         value['concept_configuration_revision'] = configured['configuration_digest'] if configured else None
         return value, digest(value)
+
+    def _dependency_catalog(self, principal, exclude_conversation):
+        from .advisory_candidate_service import AdvisoryCandidateService
+        from .lifecycle import RecommendationLifecycleStore
+        from .mission_concept_registration import registration_receipt
+        import json
+        path = AdvisoryCandidateService(self.root, self.grant)._database_path()
+        if not path.exists():
+            return []
+        with RecommendationLifecycleStore.read_only(path) as store:
+            if store._connection.execute('SELECT 1 FROM sqlite_master WHERE name=?',
+                    ('advisory_candidate_registrations',)).fetchone() is None:
+                return []
+            rows = store._connection.execute('SELECT document FROM advisory_candidate_registrations WHERE principal=?',
+                                            (principal.reference,)).fetchall()
+            result = []
+            for row in rows:
+                receipt = json.loads(row[0])
+                if receipt.get('contract_version') != CONTRACT:
+                    continue
+                _, proposal = store.registered_candidate_source(receipt['candidate']['id'])
+                if (proposal['conversation_id'] == exclude_conversation
+                        or proposal['conversation_id'] not in principal.conversation_ids
+                        or any(proposal[k] != getattr(principal,k) for k in ('instance_id','project_id','repository_id'))):
+                    continue
+                expected = registration_receipt(principal.reference, receipt['operation_id'],
+                    receipt['registration_key'], proposal, receipt['registered_at'])
+                if digest(expected) != digest(receipt):
+                    raise RuntimeError('dependency source integrity differs')
+                candidate = store.get_candidate(receipt['candidate']['id'])
+                if canonical_digest(candidate.to_dict()) != proposal['package']['subject_revision']:
+                    raise AdvisoryConflict('DEPENDENCY_SUBJECT_CHANGED')
+                result.append({'candidate_id':candidate.id,'subject_revision':proposal['package']['subject_revision'],
+                    'object_id':proposal['proposal_id'],'concept_revision':proposal['proposal_revision'],
+                    'title':candidate.title,'dependencies':list(candidate.dependencies),
+                    'recommendation_status':store.get_recommendation(candidate.recommendation_id).status.value})
+            return sorted(result, key=lambda r:r['candidate_id'])
 
     @staticmethod
     def validate_result(document, admitted, references):
@@ -48,9 +96,11 @@ class MissionConceptService(AdvisoryService):
         value['approval_supported'] = False
         value['readiness_qualified'] = False
         value['generated_content_origin'] = 'VALIDATED_MODEL_PROPOSAL'
+        value['workspace_reference_resolution_supported'] = False
         try:
             _, configuration, allowance = MissionConceptSetup(self.root, self.grant.instance_id).current(authorization)
             value['approval_supported'] = True
+            value['workspace_reference_resolution_supported'] = True
             value['supported_operations'].extend(['PREPARE', 'APPROVE', 'READ_OPERATION'])
             value['maximum_missions'] = allowance
             value['supported_work_kinds'] = sorted(configuration['profiles'])
@@ -63,7 +113,7 @@ class MissionConceptService(AdvisoryService):
         """Resolve trusted limits and freeze the same complete visible definition."""
         setup = MissionConceptSetup(self.root, self.grant.instance_id)
         principal, configuration, allowance = setup.current(authorization, conversation_id)
-        context, context_revision = self.context(principal)
+        context, context_revision = self.context(principal, conversation_id=conversation_id)
         history = self._read(self._path(principal, conversation_id), principal,
                              conversation_id, context)
         complete = [t for t in history['turns'] if t['status'] == 'COMPLETE']
@@ -72,8 +122,20 @@ class MissionConceptService(AdvisoryService):
         if type(revision) is not int or not 1 <= revision <= len(complete):
             raise FileNotFoundError('unknown concept revision')
         turn = complete[revision - 1]
-        if (revision != len(complete) or turn['request']['context_revision'] != context_revision
-                or history['turns'][-1]['status'] != 'COMPLETE'):
+        # Catalog growth is not a change to this exact subject. Recheck all
+        # admitted owner/source bounds and only the actually referenced subjects.
+        context, _ = self.context(principal, turn['request']['selected_sources'], conversation_id)
+        catalogs = {'concept_dependency_references', 'concept_dependency_catalog'}
+        admitted_base = {k:v for k,v in turn['context'].items() if k not in catalogs}
+        current_base = {k:v for k,v in context.items() if k not in catalogs}
+        actual_dependencies = {r['candidate_id']:r['subject_revision']
+                               for r in context['concept_dependency_catalog']}
+        old_dependencies = {r['candidate_id']:r['subject_revision']
+                            for r in turn['context']['concept_dependency_catalog']}
+        changed_dependency = any(actual_dependencies.get(ref) != old_dependencies.get(ref)
+            for ref in turn['outcome']['output']['definition']['dependencies'])
+        if (revision != len(complete) or admitted_base != current_base or changed_dependency
+                or history['turns'][-1]['status'] in {'REASONING', 'REVIEW', 'CANCEL_REQUESTED'}):
             raise AdvisoryConflict('CONCEPT_OR_CONTEXT_CHANGED')
         from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
         from .advisory_provider import AdvisoryProvider
@@ -95,7 +157,11 @@ class MissionConceptService(AdvisoryService):
                 'profile_id': configuration['profile_id'], 'signer': configuration['signer'],
                 'maximum_missions': allowance}
             prepared['package']['source']['conversation_id'] = conversation_id
-            prepared['package']['source']['conversation_revision'] = history['revision']
+            # Bind the accepted turn's durable phase writes, not unrelated failed
+            # attempts recorded later. Complete turns have these exact phases.
+            prepared['package']['source']['conversation_revision'] = (
+                turn['request']['expected_revision'] + sum(phase in
+                    {'REASONING', 'REVIEW', 'COMPLETE'} for phase in turn['lifecycle']))
             prepared['package']['source'].update(
                 turn_id=turn['request']['turn_id'], session_id=turn['session_id'],
                 invocation_id=turn['invocation_id'], result_digest=turn['outcome']['result_digest'])
@@ -138,10 +204,22 @@ class MissionConceptService(AdvisoryService):
                 'state': 'CONCEPT', 'approval_supported': False,
                 'blockers': ['TRUSTED_PLANNING_AND_APPROVAL_PACKAGE_REQUIRED'],
                 'questions': definition['questions'],
-                'parent_id': None, 'group_id': None, 'labels': [], 'edges': [],
+                'parent_id': None, 'group_id': None,
+                'labels': [{'INVESTIGATE':'Investigation','DESIGN':'Architecture',
+                            'BUILD':'Implementation','DOCUMENT':'Documentation',
+                            'UNDECIDED':'Needs clarification'}[definition['work_kind']]], 'edges': [],
                 'candidate_id': None, 'mission_id': None,
             }
-            self._canonical_links(principal, item)
+            dependencies = {r['candidate_id']:r for r in self._dependency_catalog(principal, conversation_id)}
+            for dependency in definition['dependencies']:
+                predecessor = dependencies.get(dependency)
+                if predecessor is None:
+                    raise AdvisoryConflict('DEPENDENCY_SUBJECT_CHANGED')
+                item['edges'].append({'kind':'REQUIRES','source_object_id':predecessor['object_id'],
+                    'target_object_id':item['object_id'],'candidate_id':dependency,
+                    'subject_revision':predecessor['subject_revision'],
+                    'reason':definition['dependency_reasons'][dependency],'state':'PROPOSED'})
+            self._canonical_links(authorization, principal, item)
             items.append(item)
         snapshot = digest(items)
         if expected_snapshot is not None and expected_snapshot != snapshot:
@@ -158,7 +236,7 @@ class MissionConceptService(AdvisoryService):
                 'population': 'AUTHORIZED_ADMITTED_CONCEPTS_ONLY',
                 'complete_portfolio': False, 'read_only': True, 'additional_model_calls': 0}
 
-    def _canonical_links(self, principal, item):
+    def _canonical_links(self, authorization, principal, item):
         """Promotion projects the same scoped concept, never a second card."""
         from .advisory_candidate_service import AdvisoryCandidateService
         from .lifecycle import RecommendationLifecycleStore
@@ -201,7 +279,25 @@ class MissionConceptService(AdvisoryService):
                 item['mission_id'] = allocation.mission_id if allocation else None
                 item['state'] = ('APPROVED_WAITING' if rec.status.value in
                     {'ARCHITECTURE_APPROVED', 'MISSION_ALLOCATED'} else rec.status.value)
-                item['blockers'] = ['EXPLICIT_WORKSET_RELEASE_REQUIRED'] if allocation else ['CANONICAL_APPROVAL_OR_INTAKE_PENDING']
+                if item['state'] == 'APPROVED_WAITING':
+                    for edge in item['edges']:
+                        edge['state'] = 'APPROVED_DEFINITION'
+                item['blockers'] = ['CANONICAL_APPROVAL_OR_INTAKE_PENDING']
+                if allocation:
+                    try:
+                        prepared = self.prepare(authorization, item['conversation_id'], item['revision'])
+                        if prepared.get('package_digest') != digest(proposal['package']):
+                            raise AdvisoryConflict('APPROVAL_PACKAGE_CHANGED')
+                    except AdvisoryConflict:
+                        item['state'] = 'SUBJECT_STALE'
+                        item['blockers'] = ['APPROVAL_PACKAGE_CHANGED']
+                        return
+                    from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
+                    from .mission_concept_readiness import current_readiness
+                    with InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as runtime:
+                        current = current_readiness(runtime, store, proposal['package'],
+                            runtime.states.get(allocation.mission_id), principal)
+                    item['state'], item['blockers'] = current['state'], current['blockers']
                 return
 
     def handle(self, method, target, authorization, body):
@@ -211,6 +307,35 @@ class MissionConceptService(AdvisoryService):
             return 404, {'contract_version': CONTRACT,
                          'error': {'code': 'CONCEPT_ROUTE_NOT_FOUND'}}
         parts = parsed.path.split('/')
+        if method == 'GET' and len(parts) == 5 and parts[4] == 'context':
+            try:
+                if parsed.query:
+                    raise ValueError('closed context route required')
+                principal = self.grant.authorize(authorization, parts[3])
+                context, revision = self.context(principal, conversation_id=parts[3])
+                self.grant.authorize(authorization, parts[3])
+                return 200, {'contract_version':CONTRACT,'conversation_id':parts[3],
+                    'context':context,'context_revision':revision,'read_only':True,'additional_model_calls':0}
+            except PermissionError:
+                code,status='CONCEPT_SCOPE_DENIED',403
+            except (ValueError,TypeError,KeyError):
+                code,status='CONCEPT_REQUEST_INVALID',400
+            except (OSError,RuntimeError):
+                code,status='CONCEPT_SOURCE_UNAVAILABLE',503
+            return status,{'contract_version':CONTRACT,'error':{'code':code}}
+        if method == 'POST' and parsed.path == prefix + '/resolve' and not parsed.query:
+            try:
+                from .mission_concept_resolver import MissionConceptResolver
+                return 200, MissionConceptResolver(self.root, self.grant.instance_id).resolve(authorization, body)
+            except PermissionError:
+                code, status = 'CONCEPT_SCOPE_DENIED', 403
+            except AdvisoryConflict as error:
+                code, status = error.code, 409
+            except (ValueError, TypeError, KeyError):
+                code, status = 'CONCEPT_REQUEST_INVALID', 400
+            except (OSError, RuntimeError):
+                code, status = 'CONCEPT_SOURCE_UNAVAILABLE', 503
+            return status, {'contract_version': CONTRACT, 'error': {'code': code}}
         if method == 'GET' and len(parts) == 6 and parts[4] == 'operations' and not parsed.query:
             try:
                 from .mission_concept_approval import MissionConceptApproval

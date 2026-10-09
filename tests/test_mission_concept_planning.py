@@ -20,6 +20,23 @@ def profiles():
 
 
 class MissionConceptPlanningTests(unittest.TestCase):
+    def test_cycle_missing_and_foreign_dependency_fail_closed(self):
+        definition=content.MissionConceptContractTests().output()['definition']
+        context={'instance_id':'instance','project_id':'project','repository_id':'repository',
+                 'concept_dependency_references':['a','b'],'concept_dependency_catalog':[
+                     {'candidate_id':'a','object_id':'oa','subject_revision':'sha256:'+'a'*64,'dependencies':['b']},
+                     {'candidate_id':'b','object_id':'ob','subject_revision':'sha256:'+'b'*64,'dependencies':['a']}]}
+        def prepare():
+            return derive_package(definition,request_digest='sha256:'+'a'*64,context=context,
+                profiles=profiles(),object_id='current',revision=1,
+                provider_bounds={'input_token_bound':40000,'output_token_bound':8000})
+        with self.assertRaisesRegex(ValueError,'cycle'):prepare()
+        context['concept_dependency_catalog'][1]['dependencies']=['unresolved']
+        with self.assertRaisesRegex(ValueError,'unresolved'):prepare()
+        context['concept_dependency_catalog'][1]['dependencies']=[]
+        definition['dependencies']=['outside'];definition['dependency_reasons']={'outside':'An unauthorized external subject should not be accepted.'}
+        with self.assertRaises(ValueError):prepare()
+
     def derive(self, definition=None, config=None):
         context={'instance_id':'instance', 'project_id':'project', 'repository_id':'repository',
                  'concept_dependency_references':[]}

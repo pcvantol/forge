@@ -90,10 +90,15 @@ class MissionConceptReadyHTTPTests(unittest.TestCase):
                 self.assertFalse(incomplete['approval_supported'])
                 validator.validate(incomplete)
                 refined={**draft,'work_kind':'BUILD','questions':[],
-                         'change_summary':'Build the portal; payment execution remains excluded.'}
+                         'change_summary':'Build the portal; payment execution remains excluded.',
+                         'possible_subresults':[{'title':'Account isolation',
+                             'expected_result':'The portal authenticates and isolates each account.',
+                             'acceptance_criteria':['An account cannot see invoices belonging to another account.']},
+                             {'title':'Invoice views','expected_result':'Clients see current invoice and payment status.',
+                              'acceptance_criteria':['Clients see the invoice status belonging to their own account.']}]}
                 model_output(root,refined)
                 status,second=call(port,owner,'POST','/v1/mission-concepts/mission-chat/turns',
-                    {**request,'turn_id':'second','objective':'Build it, but do not execute payments.',
+                    {**request,'turn_id':'second','objective':'Build it, split account isolation and invoice views, but do not execute payments.',
                      'expected_revision':first['current_revision'],'advisor_kind':'ARCHITECTURE'})
                 self.assertEqual(status,200,second)
                 status,prepared=call(port,owner,'GET','/v1/mission-concepts/mission-chat/package')
@@ -135,6 +140,11 @@ class MissionConceptReadyHTTPTests(unittest.TestCase):
                 self.assertEqual(catalog['items'][0]['candidate_id'],approved['candidate_id'])
                 self.assertEqual(catalog['items'][0]['mission_id'],approved['mission_id'])
                 self.assertEqual(catalog['items'][0]['state'],'APPROVED_WAITING')
+                self.assertEqual(catalog['items'][0]['labels'],['Implementation'])
+                self.assertEqual(len(catalog['items'][0]['definition']['possible_subresults']),2)
+                # Suggestions remain content: no inferred child Mission or Action.
+                self.assertIsNone(catalog['items'][0]['parent_id'])
+                self.assertEqual(counts(root)['mission_state'],1)
                 validator.validate(catalog)
                 status,current=call(port,owner,'GET',
                     '/v1/mission-concepts/mission-chat/operations/approve-exact-definition')

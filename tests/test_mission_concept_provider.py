@@ -82,6 +82,14 @@ class MissionConceptProviderTests(unittest.TestCase):
                 self.assertEqual(replay['original_turn'], first['original_turn'])
                 self.assertEqual(restarted.read(token, 'conversation-alice')['consumed_turns'], 1)
                 self.assertEqual(len((root / 'provider-requests.private.jsonl').read_text().splitlines()), 2)
+                from urllib.error import HTTPError
+                for query in ('cursor=-1', 'limit=0', 'cursor=0&cursor=1', 'foreign_filter=all'):
+                    with self.subTest(query=query), self.assertRaises(HTTPError) as denied:
+                        urlopen(Request('http://127.0.0.1:' + str(port) +
+                            '/v1/mission-concepts/catalog?' + query,
+                            headers={'Authorization': token}))
+                    self.assertEqual(denied.exception.code, 400)
+                    denied.exception.close()
                 catalog = restarted.catalog(token)
                 validator.validate(catalog)
                 self.assertEqual(len(catalog['items']), 1)

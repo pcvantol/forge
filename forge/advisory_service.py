@@ -48,6 +48,9 @@ class AdvisoryService:
     def __init__(self, root, grant, provider_id):
         self.root=Path(root);self.grant=grant;self.provider_id=provider_id
 
+    def turn_context(self, principal, request):
+        return self.context(principal, request['selected_sources'])
+
     def context(self, p, selections=None):
         scope=project_scope(self.root,p.instance_id)
         with InstalledOperationsReadService(self.root)._runtime_snapshot() as (c,_):
@@ -139,7 +142,7 @@ class AdvisoryService:
         with conversation_lock(path):
             # Grant lease linearizes revoke and transport; conversation lock rejects overlap.
             with _locked(self.grant.path),_locked(AdvisoryContext(self.root,p.instance_id).path):
-                p=self.grant.authorize(authorization,r['conversation_id']);context,context_revision=self.context(p,r['selected_sources'])
+                p=self.grant.authorize(authorization,r['conversation_id']);context,context_revision=self.turn_context(p,r)
                 value=self._read(path,p,r['conversation_id'],context,True)
                 existing=next((t for t in value['turns'] if t['request']['turn_id']==r['turn_id']),None)
                 if existing is not None:
@@ -169,7 +172,7 @@ class AdvisoryService:
                                    'context_token_bound':policy.context_token_bound,'output_token_bound':policy.output_token_bound}
                     value['turns'].append(t);self._save(path,value)
                     def authorize():
-                        actual=self.grant.authorize(authorization,r['conversation_id']);_,current=self.context(actual,r['selected_sources'])
+                        actual=self.grant.authorize(authorization,r['conversation_id']);_,current=self.turn_context(actual,r)
                         if current!=context_revision:raise PermissionError('context changed before provider')
                     def sink(outcome):
                         t['outcome']=outcome;t['execution']=outcome['execution']

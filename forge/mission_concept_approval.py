@@ -17,6 +17,7 @@ from .lifecycle import RecommendationLifecycleStore
 from .runtime.service import RuntimeServiceLock
 from .workspace_review_grant import _locked
 from .worklist_control import control_runtime
+from .mission_concept_readiness import current_readiness
 
 
 class MissionConceptApproval:
@@ -73,6 +74,7 @@ class MissionConceptApproval:
                 'business_decision': decisions['BUSINESS'], 'architecture_decision': decisions['ARCHITECTURE'],
                 'candidate_id': candidate.id, 'mission_id': allocation.mission_id if allocation else None,
                 'source_fresh': fresh, 'mission_status': state.status.value if state else None,
+                'current_readiness': current_readiness(runtime, store, package, state, principal) if complete and fresh else None,
                 'current_definition_state': 'APPROVED_WAITING' if complete and fresh else 'SUPERSEDED' if not fresh else 'PENDING',
                 'execution_started': bool(state and state.actions), 'read_only': True,
                 'additional_model_calls': 0}
@@ -195,6 +197,4 @@ class MissionConceptApproval:
                     'architecture_decision': CandidateDecisionService.checked_receipt(store, runtime, architecture_id),
                     'envelope_digest': envelope.digest, 'intake_subject_revision': revision,
                     'execution_started': False, 'additional_model_calls': 0,
-                    'current': {'state': 'APPROVED_WAITING', 'mission_status': state.status.value,
-                                'blockers': ['EXPLICIT_WORKSET_RELEASE_REQUIRED'],
-                                'readiness_owner': 'FORGE_APPROVED_WORKLIST'}}
+                    'current': current_readiness(runtime, store, package, state, principal)}

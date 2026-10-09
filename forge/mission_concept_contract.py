@@ -7,7 +7,7 @@ CONTRACT = 'forge-chat-first-mission/v1'
 CONTENT_FIELDS = ('title', 'objective', 'business_value', 'expected_result',
                   'scope', 'exclusions', 'acceptance_criteria',
                   'architecture_choices', 'risks', 'dependencies', 'questions',
-                  'change_summary', 'work_kind')
+                  'change_summary', 'work_kind', 'dependency_reasons', 'possible_subresults')
 LIST_FIELDS = CONTENT_FIELDS[4:11]
 WORK_KINDS = ('INVESTIGATE', 'DESIGN', 'BUILD', 'DOCUMENT', 'UNDECIDED')
 
@@ -37,6 +37,15 @@ OUTPUT_SCHEMA = {
                        'items': {'type': 'string', 'minLength': 1, 'maxLength': 1000}}
                    for k in LIST_FIELDS},
                 'work_kind': {'enum': list(WORK_KINDS)},
+                'possible_subresults': {'type':'array','maxItems':4,'items':{
+                    'type':'object','additionalProperties':False,
+                    'required':['title','expected_result','acceptance_criteria'],
+                    'properties':{'title':{'type':'string','minLength':1,'maxLength':256},
+                        'expected_result':{'type':'string','minLength':20,'maxLength':1000},
+                        'acceptance_criteria':{'type':'array','minItems':1,'maxItems':4,
+                            'items':{'type':'string','minLength':20,'maxLength':1000}}}}},
+                'dependency_reasons': {'type':'object','maxProperties':8,
+                                      'additionalProperties':{'type':'string','minLength':20,'maxLength':1000}},
             },
         },
     },
@@ -58,6 +67,33 @@ def proposed_definition(value, request_digest, allowed_dependencies):
         raise ValueError('closed concept content required')
     for key in CONTENT_FIELDS:
         field = definition[key]
+        if key == 'possible_subresults':
+            if not isinstance(field,list) or len(field)>4:
+                raise ValueError('finite possible subresults required')
+            titles=set()
+            for result in field:
+                if not isinstance(result,dict) or set(result)!={'title','expected_result','acceptance_criteria'}:
+                    raise ValueError('closed human subresult proposal required')
+                text(result['title'],256);text(result['expected_result'],1000)
+                criteria=result['acceptance_criteria']
+                if (result['title'] in titles or len(result['expected_result'].strip())<20
+                        or not isinstance(criteria,list) or not 1<=len(criteria)<=4
+                        or any(not isinstance(c,str) for c in criteria) or len(set(criteria))!=len(criteria)):
+                    raise ValueError('distinct substantive subresults required')
+                for criterion in criteria:
+                    text(criterion,1000)
+                    if len(criterion.strip())<20:
+                        raise ValueError('testable subresult criterion required')
+                titles.add(result['title'])
+            continue
+        if key == 'dependency_reasons':
+            if not isinstance(field,dict) or set(field) != set(definition['dependencies']):
+                raise ValueError('exact dependency reasons required')
+            for reason in field.values():
+                text(reason,1000)
+                if len(reason.strip()) < 20:
+                    raise ValueError('substantive dependency reason required')
+            continue
         if key == 'work_kind':
             if field not in WORK_KINDS:
                 raise ValueError('explicit supported proposed work kind required')

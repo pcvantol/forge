@@ -15,7 +15,8 @@ class MissionConceptContractTests(unittest.TestCase):
                     'acceptance_criteria': ['Clients see only invoices belonging to their account.'],
                     'architecture_choices': [], 'risks': ['Account isolation must be verified.'],
                     'dependencies': [], 'questions': [],
-                    'change_summary': 'Initial proposed definition.', 'work_kind': 'BUILD'}}
+                    'change_summary': 'Initial proposed definition.', 'work_kind': 'BUILD',
+                    'dependency_reasons': {},'possible_subresults':[]}}
 
     def validate(self, value):
         return proposed_definition(value, 'sha256:' + 'a' * 64, ('known-predecessor',))
@@ -46,6 +47,7 @@ class MissionConceptContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.validate(value)
         value['definition']['dependencies'] = ['known-predecessor']
+        value['definition']['dependency_reasons'] = {'known-predecessor':'The predecessor supplies the required project foundation.'}
         self.assertEqual(self.validate(value)['dependencies'], ['known-predecessor'])
 
     def test_binding_closed_types_and_bounds(self):
@@ -61,3 +63,15 @@ class MissionConceptContractTests(unittest.TestCase):
             value['definition'][key] = field
             with self.subTest(key=key, field=field), self.assertRaises(ValueError):
                 self.validate(value)
+
+    def test_subresults_are_bounded_human_proposals_without_authority_or_actions(self):
+        value=self.output()
+        proposal={'title':'Account foundation','expected_result':'Isolated account access is available to the portal.',
+                  'acceptance_criteria':['Each account can access only its own invoice records.']}
+        value['definition']['possible_subresults']=[proposal]
+        self.assertEqual(self.validate(value)['possible_subresults'],[proposal])
+        for invalid in ([proposal]*5,[proposal,proposal],[{**proposal,'mission_id':'invented'}],
+                        [{**proposal,'acceptance_criteria':[]}],[{**proposal,'acceptance_criteria':['short']}],
+                        [{**proposal,'expected_result':'short'}],'invalid'):
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                self.validate({**value,'definition':{**value['definition'],'possible_subresults':invalid}})
