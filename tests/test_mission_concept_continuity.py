@@ -162,10 +162,11 @@ class MissionConceptContinuityTests(unittest.TestCase):
                     with closing(sqlite3.connect(root/'runtime/governance/candidates.sqlite')) as db:
                         # Corrupt disposable fixture storage below the real immutable
                         # API, never a supported product mutation or success fixture.
-                        triggers=db.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name=?",(table,)).fetchall()
-                        for (name,) in triggers:
+                        triggers=db.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?",(table,)).fetchall()
+                        for name,_ in triggers:
                             db.execute('DROP TRIGGER "'+name.replace('"','""')+'"')
                         db.execute('DELETE FROM '+table)
+                        for _,sql in triggers:db.execute(sql)
                         db.commit()
                     baseline=driver.counts(root)
                     self.assertNotEqual(call(port,token,'GET','/v1/mission-concepts/mission-chat/package')[0],200)
@@ -201,3 +202,58 @@ class MissionConceptContinuityTests(unittest.TestCase):
                     self.assertNotEqual(call(port,token,'GET','/v1/mission-concepts/mission-chat/package')[0],200)
                     self.assertNotEqual(call(port,token,'POST','/v1/mission-concepts/mission-chat/approve',command)[0],200)
                     self.assertEqual(driver.counts(root),baseline)
+
+    def test_exact_original_request_mission_admission_allocation_proof_required(self):
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp)/'exact-proof';grant=configure(root)
+            with qual.http(root) as port:
+                original,_=self.provision(root,grant)
+                _,command,approved=self.complete(root,port,original)
+                token,_=self.provision(root,grant)
+                base='/v1/mission-concepts/mission-chat'
+                status,out=call(port,token,'GET',base+'/package')
+                self.assertEqual(status,200,out)
+                faults=(('mission','engineering_constraints'),
+                    *(('admission',k) for k in ('envelope_digest','candidate_id','installation_id',
+                        'business_decision_id','architecture_decision_id','planning','mission')),
+                    *(('allocation',k) for k in ('candidate_id','installation_id','business_decision_evidence_id',
+                        'architecture_decision_evidence_id')),
+                    *(('request',k) for k in ('confirm','context_revision','proposal_digest',
+                        'proposal_revision','expected_conversation_revision','extra_field')))
+                for kind,key in faults:
+                    with self.subTest(kind=kind,key=key):
+                        database=root/'runtime'/('governance/candidates.sqlite' if kind in ('request','allocation') else 'forge.db')
+                        table='advisory_candidate_intents' if kind=='request' else 'allocations' if kind=='allocation' else 'mission_state'
+                        with closing(sqlite3.connect(database)) as db:
+                            raw=db.execute('SELECT document FROM '+table).fetchone()[0]
+                            value=json.loads(raw)
+                            target=value['mission'] if kind=='mission' else value['admission_contract'] if kind=='admission' else value['request'] if kind=='request' else value
+                            if key=='engineering_constraints':target[key].append('Unapproved expanded objective.')
+                            elif key=='planning':target[key]['maximum_actions']+=1
+                            elif key=='mission':target[key]['engineering_constraints'].append('Unapproved admission definition.')
+                            elif key=='confirm':target[key]=False
+                            elif key=='extra_field':target[key]='not admitted'
+                            elif type(target[key]) is int:target[key]+=1
+                            else:target[key]='sha256:'+'b'*64 if 'digest' in key or 'revision' in key else 'foreign-binding'
+                            triggers=db.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?",(table,)).fetchall()
+                            for name,_ in triggers:
+                                db.execute('DROP TRIGGER "'+name.replace('"','""')+'"')
+                            db.execute('UPDATE '+table+' SET document=?',(json.dumps(value),))
+                            for _,sql in triggers:db.execute(sql)
+                            db.commit()
+                        baseline=driver.counts(root)
+                        try:
+                            for method,route,body in (('GET',base+'/package',None),
+                                ('POST',base+'/approve',command),
+                                ('GET',base+'/operations/original-approval',None),
+                                ('GET','/v1/mission-concepts/catalog',None)):
+                                status,out=call(port,token,method,route,body)
+                                self.assertNotEqual(status,200,out)
+                            self.assertEqual(driver.counts(root),baseline)
+                        finally:
+                            with closing(sqlite3.connect(database)) as db:
+                                for name,_ in triggers:
+                                    db.execute('DROP TRIGGER "'+name.replace('"','""')+'"')
+                                db.execute('UPDATE '+table+' SET document=?',(raw,))
+                                for _,sql in triggers:db.execute(sql)
+                                db.commit()

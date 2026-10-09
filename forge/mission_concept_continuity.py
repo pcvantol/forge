@@ -10,9 +10,10 @@ from .candidate_decision_service import CandidateDecisionService
 from .governance import resolve_governance_profile
 from .governed_candidate_intake import GovernedCandidateIntake
 from .lifecycle import RecommendationLifecycleStore
-from .mission_concept_registration import registration_receipt
+from .mission_concept_registration import registration_receipt, registration_request
 from .models.criterion_observation import canonical_digest
 from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
+from dataclasses import replace
 
 
 def approval_basis(configuration, grant, records, grants, history):
@@ -61,6 +62,15 @@ def original_configuration(setup, principal, configuration, history, turn, revis
         proposal = intent['proposal']
         package = proposal['package']
         source = package['source']
+        expected_request = {'contract_version': proposal['contract_version'],
+            'operation_id': receipt['operation_id'],
+            **{k: proposal[k] for k in ('instance_id', 'project_id', 'repository_id',
+                'conversation_id', 'proposal_id', 'proposal_revision', 'proposal_digest')},
+            'expected_conversation_revision': source['conversation_revision'],
+            'context_revision': source['context_revision'], 'confirm': True}
+        if (set(intent) != {'request', 'proposal', 'registered_at'}
+                or digest(registration_request(intent['request'])) != digest(expected_request)):
+            raise PermissionError('original exact approval request differs')
         expected = registration_receipt(principal.reference, receipt['operation_id'], key,
                                         proposal, intent['registered_at'])
         if (digest(receipt) != digest(expected)
@@ -85,7 +95,27 @@ def original_configuration(setup, principal, configuration, history, turn, revis
         if allocation is None:
             raise PermissionError('replacement access cannot finish pending admission')
         state = runtime.states.get(allocation.mission_id)
-        if ((state.admission_contract or {}).get('subject_revision') != package['subject_revision']
-                or allocation.envelope_digest != envelope.digest):
+        mission = replace(preview, id=allocation.mission_id).to_dict()
+        admission = {'installation_id': envelope.installation_id, 'candidate_id': candidate.id,
+            'subject_revision': envelope.subject_revision,
+            'business_decision_id': envelope.business_decision_id,
+            'architecture_decision_id': envelope.architecture_decision_id,
+            'planning': envelope.planning.to_dict(), 'envelope_digest': envelope.digest,
+            'mission': mission, 'write_scope': 'NONE',
+            'admission_version': 'canonical-governance-envelope-v1'}
+        actual_allocation = runtime.database._connection.execute(
+            'SELECT mission_id FROM mission_id_allocations WHERE source=?',
+            ('canonical-governance-envelope:' + envelope.digest,)).fetchone()
+        if (canonical_digest(dict(state.mission)) != canonical_digest(mission)
+                or digest(state.admission_contract) != digest(admission)
+                or allocation.candidate_id != candidate.id
+                or allocation.recommendation_id != candidate.recommendation_id
+                or allocation.installation_id != envelope.installation_id
+                or allocation.envelope_digest != envelope.digest
+                or allocation.business_decision_evidence_id != bridge._lifecycle_decision_id(
+                    candidate.recommendation_id, 'business_decision')
+                or allocation.architecture_decision_evidence_id != bridge._lifecycle_decision_id(
+                    candidate.recommendation_id, 'architecture_decision')
+                or actual_allocation is None or actual_allocation['mission_id'] != allocation.mission_id):
             raise PermissionError('original admission provenance differs')
     return original, package

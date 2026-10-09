@@ -23,6 +23,11 @@ setup digest, admitted turn identities/result/context, registration receipt and
 immutable intent, exact current Candidate subject, both checked canonical
 decision receipts, validated governance envelope and real allocation/admission
 must agree. The recomputed package must match the exact original frozen bytes.
+The original closed confirmation request must exactly match its proposal/source
+and true confirmation. Actual stored Mission definition and full admission
+contract must match that original preview/envelope, including planning, both
+decision IDs, candidate and installation. Lifecycle allocation lineage and the
+runtime allocation keyed by that canonical envelope must resolve the same ID.
 Only then may the derived current context use the original configuration revision
 for freshness comparison. Stored context/package/decision/operation/Mission IDs
 and durable consumption are never rewritten.
