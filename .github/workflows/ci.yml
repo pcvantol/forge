@@ -244,7 +244,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_workset_release.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-workset-release"
-          python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-workset-release/installed-workset-release.public.json").read_text()); assert d["result"]=="APPROVED_WORKSET_RELEASE_PASS" and d["case_count"]>=25 and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
+          python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-workset-release/installed-workset-release.public.json").read_text()); assert d["result"]=="APPROVED_WORKSET_RELEASE_PASS" and d["case_count"]>=26 and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
           set +e
           "$RUNNER_TEMP/forge-installed/bin/python" -I \
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_workset_release.py" \

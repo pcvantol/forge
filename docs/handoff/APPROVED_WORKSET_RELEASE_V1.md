@@ -104,3 +104,21 @@ external concurrency adapter was separately qualified4PASS. The fresh complete
 owning gate and installed25/control qualification are running; fresh complete
 exact-head Quality/Security, protected merge, finalization and exact-final-main
 qualification remain open. No review-budget reset or L4 pin change occurred.
+
+
+### Required installed legacy hold compatibility repair round2
+
+The old hosted05d1 installed hold gate and fresh local89f7 installed hold
+both failed at case43: a previously selected/admitted APPPROVED_PLANNABLE
+Mission with lost claim-ID correlation must continue after future-only hold.
+The original42 successful cases/failure receipts and both prior exact-head
+review pairs are retained. Projection now distinguishes genuine selected
+claim operation/subject/generation and canonical workset-policy assignment
+from mere pre-admission. This preserves ongoing selected work while blocking
+unclaimed pre-admitted A/B members. The actual new hold/zero-claim/zero-provider/
+zero-EP case is mandatory, raising the selected installed matrix to26.
+
+Formal bounded repairround2 is active; no budget reset, gate relaxation,
+Candidate reapproval or L4 pin/scope change. Fresh full owning/source coverage,
+installed26/control AND existing43-case hold gate, complete exact-head Q/S,
+protected delivery/finalization/final-main remain required.

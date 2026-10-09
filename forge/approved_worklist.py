@@ -303,7 +303,16 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
                 except (PermissionError,ValueError,OSError,KeyError):reasons.append('RELEASE_CAPABILITY_UNAVAILABLE')
             if value['revoked']:reasons.append('RELEASE_REVOKED')
             if timestamp(definition['expires_at'])<=datetime.now(UTC):reasons.append('RELEASE_EXPIRED')
-            if value['held'] and (binding is None or lifecycle=='APPROVED_PLANNABLE'):reasons.append('WORKSET_HELD')
+            selected_claim=value['claims'].get(member['candidate_id'])
+            expected_claim=canonical_digest((value['authority_digest'],member['candidate_id'],member['subject_revision']))
+            already_selected=bool(selected_claim and state
+                and selected_claim.get('operation_id')==expected_claim
+                and selected_claim.get('subject_revision')==member['subject_revision']
+                and selected_claim.get('runtime_generation')==value['runtime_generation']
+                and (state.get('execution_policy') or {}).get('assignment_id')=='workset-policy:'+expected_claim[7:])
+            # Admission alone is not selection. A genuine prior activation claim
+            # remains ongoing for future-only hold, including lost ID correlation.
+            if value['held'] and (binding is None or lifecycle=='APPROVED_PLANNABLE' and not already_selected):reasons.append('WORKSET_HELD')
             if value['release']!='AUTO_WHEN_ELIGIBLE':reasons.append('NOT_RELEASED')
             if set(value['decisions'])!={'business','architecture'}:reasons.append('WORKSET_UNAPPROVED')
             if claim and state is None:reasons.append('MISSION_STATE_UNAVAILABLE')

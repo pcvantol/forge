@@ -90,3 +90,25 @@ class ApprovedReleaseSelectionTests(unittest.TestCase):
                     current=release.operation(token,'release-a-b')
                     self.assertEqual(current['state'],'PENDING');self.assertIn('WORKSET_HELD',current['current']['items'][0]['blocking_reasons'])
                     self.assertFalse(simulator.submission_ids())
+
+    def test_hold_blocks_pre_admitted_members_without_real_activation_claim(self):
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp)/'pre-admitted-hold'
+            simulator=chain.utils.EpSimulatorState(project_id=chain.utils.PROJECT,repository_id=chain.utils.fixture.SOURCE.repository_id,
+                repository_identity=chain.utils.fixture.SOURCE.github_repository,consumer_id=chain.utils.CONSUMER,
+                instance_id=chain.utils.INSTANCE,bearer_token=chain.utils.TOKEN,
+                scenario=chain.utils.EpSimulatorScenario(name='pre-admitted-hold',effect_declaration_supported=True))
+            with chain.utils.EpSimulatorServer(simulator) as server:
+                chain.chat_setup(root,server.base_url,'effect-read-only',release=True)
+                with patch.object(chain.utils.composition.MacOSGeneratedUIDIdentityAdapter,'resolve',return_value=chain.utils.fixture.IDENTITY):
+                    data=chain.utils.fixture._read(root/'release-case.private.json')
+                    with control_runtime(root/'runtime') as runtime,RecommendationLifecycleStore(candidate_source(root/'runtime')) as store:
+                        service=ApprovedWorklistService(runtime,store);value=service._get(data['workset_id'])
+                        self.assertFalse(value['claims'])
+                        service.control(data['workset_id'],expected_revision=value['revision'],operation='hold')
+                result=chain.process_phase(root,'effect-read-only','tick',server.base_url)
+                self.assertEqual(result['allocations'],2);self.assertEqual(result['provider_invocations'],0)
+                self.assertEqual(result['workset']['consumed_activations'],0)
+                self.assertTrue(all(s['status']=='APPROVED_PLANNABLE' for s in result['states']))
+                self.assertIn('WORKSET_HELD',result['read']['items'][0]['blocking_reasons'])
+                self.assertFalse(simulator.submission_ids())
