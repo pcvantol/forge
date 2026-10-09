@@ -19,3 +19,8 @@ class ApprovedReleaseRecoveryTests(unittest.TestCase):
                       'crash-after-architecture','crash-after-arm','lost-response'):
             with self.subTest(stage=stage),TemporaryDirectory() as tmp:
                 self.assertEqual(chain.crash_recovery(Path(tmp)/stage,stage)['result'],'COLD_RECOVERY_PASS')
+
+    def test_active_alias_cannot_restore_revoked_original_partial_release(self):
+        with TemporaryDirectory() as tmp:
+            self.assertEqual(chain.crash_recovery(Path(tmp)/'alias','crash-after-business',
+                revoke_between=True,alias_after_revoke=True)['result'],'WITHDRAWN_OR_REVOKED_REMAINDER_DENIED')

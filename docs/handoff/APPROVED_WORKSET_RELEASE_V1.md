@@ -83,3 +83,24 @@ and Security, required CI, protected implementation/nonempty NO_BUMP
 finalization, fresh exact-final-main HTTP/CLI/runtime simulator qualification,
 actual main CI/TDE readbacks and safe cleanup. No live EP, signing, paid model
 probe, consumer UI, public release, full PRM/F5 or family closure is claimed.
+
+
+### Independent Security repair round1
+
+The first complete exact-head review on05d1b58377bcbe3f7b65c46ca262a2e7fc0bf6ee
+returned Quality PASS / Security FAIL. Both original reports and all prior
+qualification attempts are retained. An active alias cannot reauthorize a
+revoked original partial release: original intent/grant/signer/project/subjects
+are rechecked before journal alias publication and every remaining release
+effect. The original Business decision is preserved and no Architecture/arm
+is added after revocation. Disarm remains independently authorized.
+
+New `released-` lineage and durable release receipts cannot become legacy by
+removing/nulling capability metadata. Projection, claims, start and arm fail
+closed; genuine legacy worksets retain compatibility. Actual process-crash /
+new active alias and product-generated canonical metadata corruption cases are
+included in the mandatory installed matrix, now at least25 cases. A corrected
+external concurrency adapter was separately qualified4PASS. The fresh complete
+owning gate and installed25/control qualification are running; fresh complete
+exact-head Quality/Security, protected merge, finalization and exact-final-main
+qualification remain open. No review-budget reset or L4 pin change occurred.

@@ -153,7 +153,14 @@ class WorksetReleaseGrant:
 def validate_activation_authority(root,value):
     """Current original release capability gates future claims/start, not old work."""
     authority=value.get('release_capability')
-    if authority is None:return  # Preserve separately qualified legacy owner worksets.
+    if authority is None:
+        # The reserved release ID and durable receipts identify new lineage even
+        # when capability metadata is removed or nulled by storage corruption.
+        if (value['definition']['workset_id'].startswith('released-')
+                or value.get('release_commands') or 'release_capability' in value):
+            raise PermissionError('original release capability metadata unavailable')
+        return  # Genuine separately qualified legacy owner worksets.
+    if not isinstance(authority,dict):raise PermissionError('invalid original release capability')
     from .workset_release_journal import ReleaseJournal
     from .models.criterion_observation import canonical_digest
     # Runtime identity is supplied by canonical metadata, never the repository ID.

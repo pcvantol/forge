@@ -272,7 +272,7 @@ def phase_command(root,scenario,name,endpoint):
     return command
 
 
-def crash_recovery(root,stage,*,withdraw_between=False,revoke_between=False):
+def crash_recovery(root,stage,*,withdraw_between=False,revoke_between=False,alias_after_revoke=False):
     simulator=utils.EpSimulatorState(project_id=utils.PROJECT,repository_id=utils.fixture.SOURCE.repository_id,
         repository_identity=utils.fixture.SOURCE.github_repository,consumer_id=utils.CONSUMER,
         instance_id=utils.INSTANCE,bearer_token=utils.TOKEN,
@@ -298,7 +298,16 @@ def crash_recovery(root,stage,*,withdraw_between=False,revoke_between=False):
                 from forge.workset_release_grant import WorksetReleaseGrant
                 from forge.server_runtime import existing_instance
                 instance=existing_instance(root/'runtime')
-                WorksetReleaseGrant(root/'runtime',instance.instance_id).revoke(data['grant_id'])
+                grant=WorksetReleaseGrant(root/'runtime',instance.instance_id)
+                original=next(r for r in grant._records() if r['grant_id']==data['grant_id'])
+                grant.revoke(data['grant_id'])
+                if alias_after_revoke:
+                    (root/'release.private').unlink()
+                    grant.issue(principal_id=original['principal_id'],project_id=original['project_id'],
+                        repository_id=original['repository_id'],permissions=original['permissions'],
+                        subjects=original['subjects'],maximum_releases=original['maximum_releases'],
+                        maximum_activations=original['maximum_activations'],expires_at=original['expires_at'],
+                        token_path=root/'release.private')
             if withdraw_between:phase(root,'effect-read-only','disarm',server.base_url)
         if revoke_between or withdraw_between:
             recovered=subprocess.run(phase_command(root,'effect-read-only','release',server.base_url),capture_output=True,text=True,timeout=30)

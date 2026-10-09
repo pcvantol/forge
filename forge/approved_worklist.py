@@ -182,7 +182,9 @@ class ApprovedWorklistService:
         if not self.runtime.repository.operators.authorize(context):
             raise PermissionError('current installed operator required')
         if operation=='arm':
-            if value.get('release_capability') and any(c['intent']=='disarm' for c in value.get('release_commands',{}).values()):
+            from .workset_release_grant import validate_activation_authority
+            validate_activation_authority(self.runtime.data_root,value)
+            if any(c['intent']=='disarm' for c in value.get('release_commands',{}).values()):
                 raise ValueError('exact future release was withdrawn')
             if value['runtime_generation']!=self.db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:raise ValueError('workset runtime generation changed')
             if value['revoked'] or timestamp(value['definition']['expires_at']) <= datetime.now(UTC):
@@ -294,7 +296,8 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
                             or decision['decision']!='approved'):candidate_approved=False
             if not candidate_approved:reasons.append('SUBJECT_UNAPPROVED')
             if value['runtime_generation']!=db.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:reasons.append('RUNTIME_GENERATION_CHANGED')
-            if value.get('release_capability'):
+            if (value.get('release_capability') or 'release_capability' in value
+                    or value.get('release_commands') or definition['workset_id'].startswith('released-')):
                 from .workset_release_grant import validate_activation_authority
                 try:validate_activation_authority(data_root,value)
                 except (PermissionError,ValueError,OSError,KeyError):reasons.append('RELEASE_CAPABILITY_UNAVAILABLE')

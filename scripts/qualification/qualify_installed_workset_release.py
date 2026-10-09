@@ -69,7 +69,7 @@ def run(args):
             if not result.wasSuccessful():raise AssertionError('selected installed release boundary failed')
             receipt['cases'].append({'case':name,'test_count':result.testsRun,'result':'PASS'})
             receipt['case_count']+=result.testsRun
-        assert receipt['case_count']>=23
+        assert receipt['case_count']>=25
         receipt['result']='APPROVED_WORKSET_RELEASE_PASS'
     except Exception as error:
         receipt['failure']={'type':type(error).__name__,'stage':stage,

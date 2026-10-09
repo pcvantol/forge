@@ -10,11 +10,21 @@ from .operations_read_api import InstalledOperationsReadService
 from .runtime.service import RuntimeServiceLock, RuntimeServiceBusy
 from .workspace_review_grant import _locked
 from .worklist_control import control_runtime
-from .workset_release_grant import CONTRACT
+from .workset_release_grant import CONTRACT, validate_activation_authority
 from .workset_release_journal import ReleaseJournal
 from .workset_release_package import prepare, selection
 
 BASE='/v1/approved-workset-releases'
+
+
+def original_intent_authority(root,intent,reference):
+    from .models.criterion_observation import canonical_digest
+    package=intent['package']
+    validate_activation_authority(root,{'definition':package['definition'],
+        'definition_digest':canonical_digest(package['definition']),
+        'release_capability':{'grant_id':intent['grant_id'],'principal_reference':reference,
+            'package_digest':intent['package_digest'],'subjects':package['selection']['subjects']}})
+
 
 
 class WorksetReleaseService:
@@ -127,6 +137,7 @@ class WorksetReleaseService:
                     if body['selection']!=existing['package']['selection']:
                         raise ValueError('release selection changed')
                     intent=existing;key=intent['package']['release_key']
+                    if body['intent']=='release':original_intent_authority(self.root,intent,p.reference)
                 else:
                     if body['intent']=='disarm':raise ValueError('no original release to disarm')
                     prepared=self.prepare(token,body['selection'])
@@ -160,6 +171,7 @@ class WorksetReleaseService:
                     for s in package['selection']['subjects']:
                         approved_subject(self.root,package['scope'],**s)
                     if body['intent']=='release':
+                        original_intent_authority(self.root,intent,p.reference)
                         existing=service.db.execute('SELECT document FROM approved_worksets WHERE workset_id=?',(workset_id,)).fetchone()
                         if existing and json.loads(existing[0])['held']:
                             raise ValueError('original workset is held')

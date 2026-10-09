@@ -72,3 +72,30 @@ class ApprovedReleaseIntegrityTests(unittest.TestCase):
                 status,current=ready.call(port,token,'GET',BASE+'/operations/original')
                 self.assertEqual(status,200,current);self.assertEqual(current['original_receipt'],original['original_receipt'])
                 self.assertEqual(driver.counts(root),before)
+
+    def test_missing_or_null_new_release_capability_cannot_become_legacy(self):
+        from forge.workset_release_grant import validate_activation_authority
+        ready,_=driver.cases()
+        for fault in ('missing','null'):
+            with self.subTest(fault=fault),TemporaryDirectory() as tmp:
+                root=Path(tmp)/fault;body=driver.prepare_case(root,'approval')
+                with ready.qual.http(root) as port:
+                    _,approved=ready.call(port,root/'owner.private','POST','/v1/mission-concepts/recovery-chat/approve',body)
+                    grant,record,selection=provision(root,approved);token=root/'release.private'
+                    _,prepared=ready.call(port,token,'POST',BASE+'/prepare',selection)
+                    command={'contract_version':CONTRACT,'operation_id':'real-release','intent':'release',
+                        'selection':selection,'package_digest':prepared['package_digest'],'confirm':True,'expected_revision':None}
+                    status,released=ready.call(port,token,'POST',BASE+'/commands',command);self.assertEqual(status,200,released)
+                    before=driver.counts(root)
+                    # Fault only existing product-created metadata; never seed approval.
+                    with control_runtime(root/'runtime') as runtime,RecommendationLifecycleStore(candidate_source(root/'runtime')) as store:
+                        service=ApprovedWorklistService(runtime,store);value=service._get(released['workset_id'])
+                        if fault=='missing':value.pop('release_capability')
+                        else:value['release_capability']=None
+                        service._save(value,value['revision'])
+                    grant.revoke(record['grant_id'])
+                    with self.assertRaises(PermissionError):validate_activation_authority(root/'runtime',value)
+                    from forge.approved_worklist import projection
+                    current=projection(root/'runtime',grant.instance_id,released['workset_id'],record['principal_id'])
+                    self.assertIn('RELEASE_CAPABILITY_UNAVAILABLE',current['items'][0]['blocking_reasons'])
+                    self.assertEqual(driver.counts(root),before)
