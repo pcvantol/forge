@@ -71,6 +71,7 @@ from .workspace_worklist_grant import WorkspaceWorklistGrant
 from .workspace_worklist_control_grant import WorkspaceWorklistControlGrant
 from .advisory_grant import AdvisoryGrant
 from .advisory_service import AdvisoryService
+from .mission_concept_service import MissionConceptService
 from .advisory_candidate_grant import AdvisoryCandidateGrant
 from .advisory_candidate_service import AdvisoryCandidateService
 from .candidate_decision_grant import CandidateDecisionGrant
@@ -932,8 +933,11 @@ class ForgeServerAPI:
         if path=="/v1/advisory-candidates" or path.startswith("/v1/advisory-candidates/"):
             return APIResponse(403,{"contract_version":"forge-advisory-candidate/v1","error":{"code":"CANDIDATE_SCOPE_DENIED"}},headers)
         if kind == "ADVISORY":
-            status,document=AdvisoryService(self.services.root,self.advisory_grant,self.services.provider_id).handle(method,target,authorization,body)
+            service_type = MissionConceptService if path=="/v1/mission-concepts" or path.startswith("/v1/mission-concepts/") else AdvisoryService
+            status,document=service_type(self.services.root,self.advisory_grant,self.services.provider_id).handle(method,target,authorization,body)
             return APIResponse(status,document,headers)
+        if path=="/v1/mission-concepts" or path.startswith("/v1/mission-concepts/"):
+            return APIResponse(403,{"contract_version":"forge-chat-first-mission/v1","error":{"code":"CONCEPT_SCOPE_DENIED"}},headers)
         if path=="/v1/advisory" or path.startswith("/v1/advisory/"):
             return APIResponse(403,{"contract_version":"forge-advisory-conversation/v1","error":{"code":"ADVISORY_SCOPE_DENIED"}},headers)
         if kind == "WORKSPACE_WORKLIST_CONTROL":

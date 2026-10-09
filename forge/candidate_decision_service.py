@@ -69,6 +69,8 @@ class CandidateDecisionService:
         identifier(candidate_id)
         with self.read_store() as store:
             receipt,proposal=store.registered_candidate_source(candidate_id)
+            if proposal.get('contract_version') != 'forge-advisory-candidate/v1':
+                raise PermissionError('Candidate source requires its owning versioned decision route')
             if any(proposal[k]!=scope[k] for k in ('instance_id','project_id','repository_id')):
                 raise PermissionError('foreign registered Candidate project')
             expected=registration_receipt(proposal['principal_reference'],receipt['operation_id'],receipt['registration_key'],proposal,receipt['registered_at'])

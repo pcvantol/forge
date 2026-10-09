@@ -64,7 +64,7 @@ class MissionRecommendation:
     decision_evidence_reference: str
     dependencies: tuple[str, ...]
     alternatives: tuple[str, ...]
-    confidence: int
+    confidence: int | None
     recommendation_timestamp: str
     status: RecommendationStatus = RecommendationStatus.PROPOSED
     recommendation_set_id: str | None = None
@@ -83,7 +83,8 @@ class MissionRecommendation:
                     self.business_value, self.engineering_value, self.architectural_value,
                     self.decision_evidence_reference, self.recommendation_timestamp)):
             raise LifecycleError("recommendation requires complete governance context")
-        if not 0 <= self.confidence <= 100:
+        if (self.confidence is None and self.recommendation_type != 'generated_mission_concept'
+                or self.confidence is not None and not 0 <= self.confidence <= 100):
             raise LifecycleError("recommendation confidence must be between 0 and 100")
         if self.rank is not None and self.rank < 1:
             raise LifecycleError("recommendation rank must be positive when supplied")
@@ -393,6 +394,9 @@ class RecommendationLifecycleStore:
         if type(maximum) is not int or not 1 <= maximum <= 8:
             raise LifecycleError("invalid registration allowance")
         from forge.advisory_candidate_contract import registration_request, digest
+        if (isinstance(document, dict) and isinstance(document.get('request'), dict)
+                and document['request'].get('contract_version') == 'forge-chat-first-mission/v1'):
+            from forge.mission_concept_registration import registration_request
         try:
             if not isinstance(document, dict) or set(document) != {'request','proposal','registered_at'}:
                 raise ValueError('invalid intent shape')

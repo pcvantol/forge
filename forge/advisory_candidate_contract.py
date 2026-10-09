@@ -48,6 +48,9 @@ def registration_request(value):
 
 def candidate_objects(proposal,key,occurred_at):
     """Only declared user fields populate the existing governance models."""
+    if proposal.get('contract_version') == 'forge-chat-first-mission/v1':
+        from .mission_concept_registration import candidate_objects as generated_objects
+        return generated_objects(proposal,key,occurred_at)
     f=fields(proposal['fields']);source=proposal['source'];rec_id='advice-recommendation-'+key[7:39];can_id='advice-candidate-'+key[7:39]
     rec=MissionRecommendation(id=rec_id,title=f['title'],mission_origin=source['advisor_kind'].lower(),
         business_summary=f['objective'],engineering_summary=f['objective'],business_value=f['business_value'],
@@ -65,6 +68,9 @@ def registration_key(principal,proposal):
     return digest([principal,proposal['project_id'],proposal['repository_id'],proposal['conversation_id'],proposal['proposal_id'],proposal['proposal_revision']])
 
 def registration_receipt(principal,operation_id,key,proposal,occurred_at):
+    if proposal.get('contract_version') == 'forge-chat-first-mission/v1':
+        from .mission_concept_registration import registration_receipt as generated_receipt
+        return generated_receipt(principal,operation_id,key,proposal,occurred_at)
     from .approved_worklist import timestamp
     timestamp(occurred_at)
     if proposal['principal_reference']!=principal or registration_key(principal,proposal)!=key:raise ValueError('registration correlation differs')

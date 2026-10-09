@@ -17,6 +17,13 @@ class AdvisoryNotStarted(PermissionError):pass
 class AdvisoryProviderUnavailable(RuntimeError):pass
 
 class AdvisoryProvider:
+    contract = CONTRACT
+    output_schema = OUTPUT_SCHEMA
+    instructions = INSTRUCTIONS
+
+    def validate_output(self, document, admitted):
+        return result(document, admitted, admitted['context']['evidence_references'])
+
     def __init__(self, runtime, provider_id):
         service=PlanningProviderSecurityService(runtime.database,None,runtime.repository.operators)
         try:self.configuration=CodexCliChatGPTSessionPlanningProviderConfiguration.from_canonical_session(service,provider_id)
@@ -31,13 +38,13 @@ class AdvisoryProvider:
             raise AdvisoryConflict('INVOCATION_UNRESOLVED')
         from .advisory_context import AdvisoryContext
         sources=AdvisoryContext(self.configuration.policy_service.db.path.parent,admitted['request']['instance_id']).selected(type('Scope',(),{k:admitted['request'][k] for k in ['instance_id','project_id','repository_id']})(),admitted['request']['selected_sources'])
-        prompt={'contract_version':CONTRACT,'request':admitted['request'],
+        prompt={'contract_version':self.contract,'request':admitted['request'],
                 'request_digest':admitted['request_digest'],'session_id':admitted['session_id'],
                 'invocation_id':admitted['invocation_id'],'context':admitted['context'],'selected_source_text':[{'reference':'advisory-source:'+r['source_id']+':'+r['version'],'content':r['content']} for r in sources],'prior_turns':history}
         # Conservative byte bound; observed usage remains separately enforced.
         if len(__import__('json').dumps(prompt).encode())>min(policy.input_token_bound,policy.context_token_bound):
             raise ValueError('advisory context exceeds configured bound')
-        binding={'request':prompt,'schema':OUTPUT_SCHEMA,'instructions':INSTRUCTIONS,'policy_digest':_policy_digest(policy)}
+        binding={'request':prompt,'schema':self.output_schema,'instructions':self.instructions,'policy_digest':_policy_digest(policy)}
         if len(__import__('json').dumps(binding).encode())>min(policy.input_token_bound,policy.context_token_bound):raise ValueError('advisory envelope exceeds configured bound')
         return policy,prompt,digest(binding)
 
@@ -60,7 +67,7 @@ class AdvisoryProvider:
                 authorize()
                 service._commit_generation_transport(permit,policy,_policy_digest(policy),generation_digest)
             except PermissionError as e:raise AdvisoryNotStarted('generation not started') from e
-            run=self.transport._run_read_only(policy,None,OUTPUT_SCHEMA,INSTRUCTIONS,prompt_document=prompt)
+            run=self.transport._run_read_only(policy,None,self.output_schema,self.instructions,prompt_document=prompt)
             d=run.diagnostic.document()
             confirmed=run.diagnostic.classification is CodexCliInvocationClassification.COMPLETED_VALID
             known_not_started=run.diagnostic.classification in {CodexCliInvocationClassification.NOT_STARTED,CodexCliInvocationClassification.REJECTED_BEFORE_GENERATION}
@@ -70,7 +77,7 @@ class AdvisoryProvider:
             if confirmed:
                 outcome['result_digest']=digest(run.document)
                 try:
-                    output=result(run.document,admitted,admitted['context']['evidence_references'])
+                    output=self.validate_output(run.document,admitted)
                     usage_error=_usage_policy_error(run.usage,policy)
                     if usage_error:outcome['error_code']='ADVICE_USAGE_NOT_REPORTED' if run.usage is None else 'ADVICE_USAGE_BOUND_EXCEEDED'
                     else:outcome['output']=output

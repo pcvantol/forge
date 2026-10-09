@@ -139,16 +139,23 @@ class GovernedCandidateIntake:
         return envelope
 
     def admit(self, candidate_id: str, mission_preview: ArchitectureMission,
-              planning: ArchitecturePlanningEvidence, *, occurred_at: str) -> MissionExecutionState:
+              planning: ArchitecturePlanningEvidence, *, occurred_at: str,
+              effect_guard=None) -> MissionExecutionState:
+        if effect_guard is not None:
+            effect_guard()
         candidate, revision = self._candidate(candidate_id)
         envelope = self.approved_envelope(candidate_id, mission_preview, planning)
         allocation = self.lifecycle.allocation_for_recommendation(candidate.recommendation_id)
         if allocation is None:
+            def allocate_id(_source, timestamp):
+                if effect_guard is not None:
+                    effect_guard()
+                return self.runtime.database.allocate_next_mission_id(
+                    source="canonical-governance-envelope:" + envelope.digest, allocated_at=timestamp)
             allocation = self.lifecycle.allocate(
                 candidate_id, actor="forge", occurred_at=occurred_at,
                 rationale="Exact Business and Architecture approvals permit canonical Mission Intake.",
-                allocate_mission_id=lambda _source, timestamp: self.runtime.database.allocate_next_mission_id(
-                    source="canonical-governance-envelope:" + envelope.digest, allocated_at=timestamp),
+                allocate_mission_id=allocate_id,
                 installation_id=envelope.installation_id, envelope_digest=envelope.digest,
                 expected_candidate_digest=revision,
             )
@@ -162,6 +169,8 @@ class GovernedCandidateIntake:
                     candidate.recommendation_id, "architecture_decision")):
             raise GovernedCandidateIntakeError("allocation differs from the approved Candidate")
         source = "canonical-governance-envelope:" + envelope.digest
+        if effect_guard is not None:
+            effect_guard()
         allocated_id = self.runtime.database.allocate_next_mission_id(source=source, allocated_at=occurred_at)
         if allocated_id != mission.id:
             raise GovernedCandidateIntakeError("allocation differs from the installed Runtime Instance")
@@ -179,6 +188,8 @@ class GovernedCandidateIntake:
                     or contract.get("candidate_id") != candidate_id):
                 raise GovernedCandidateIntakeError("existing Mission has conflicting Candidate lineage")
             return state
+        if effect_guard is not None:
+            effect_guard()
         return self.runtime.admit(mission, envelope)
 
     def _require_current_installation_allocation(self, recommendation_id: str) -> None:
