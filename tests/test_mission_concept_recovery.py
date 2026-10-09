@@ -17,7 +17,7 @@ class MissionConceptRecoveryTests(unittest.TestCase):
 
     def test_real_os_crashes_between_compound_effects_and_lost_response(self):
         for stage in ('crash-before-registration','crash-after-registration','crash-business-between-stores','crash-after-business',
-                      'crash-architecture-between-stores','crash-after-architecture','crash-after-intake','lost-response'):
+                      'crash-architecture-between-stores','crash-after-architecture','crash-after-allocation','crash-after-intake','lost-response'):
             with self.subTest(stage=stage),TemporaryDirectory() as tmp:
                 result=driver.process_case(Path(tmp)/'approval',stage,'approval')
                 self.assertEqual(result['result'],'PASS')

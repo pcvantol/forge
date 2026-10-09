@@ -58,9 +58,11 @@ def phase(root, stage, mode):
                             'crash-after-business':(1,1,1,1,0),
                             'crash-architecture-between-stores':(1,1,2,1,0),
                             'crash-after-architecture':(1,1,2,2,0),
+                            'crash-after-allocation':(1,1,2,2,0),
                             'crash-after-intake':(1,1,2,2,1)}[stage]
                 hit = tuple(actual[k] for k in ('advisory_candidate_intents','advisory_candidate_registrations',
                            'governance_decisions','candidate_decision_receipts','mission_state')) == expected
+                if stage=='crash-after-allocation':hit = hit and actual['allocations']==1
             if hit:
                 (root/'boundary.ready.private').write_text(str(os.getpid()))
                 time.sleep(20)

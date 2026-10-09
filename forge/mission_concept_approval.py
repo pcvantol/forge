@@ -57,7 +57,10 @@ class MissionConceptApproval:
                                                                    package['subject_revision'])
                 decisions[kind] = CandidateDecisionService.checked_receipt(store, runtime, decision_id)
             allocation = store.allocation_for_recommendation(candidate.recommendation_id)
-            state = runtime.states.get(allocation.mission_id) if allocation else None
+            present = (runtime.database._connection.execute(
+                'SELECT 1 FROM mission_state WHERE mission_id=?',(allocation.mission_id,)).fetchone()
+                if allocation else None)
+            state = runtime.states.get(allocation.mission_id) if present else None
             if state is not None and (state.admission_contract or {}).get('subject_revision') != package['subject_revision']:
                 raise RuntimeError('compound admitted subject differs')
             try:

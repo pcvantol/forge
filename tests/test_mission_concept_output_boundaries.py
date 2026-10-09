@@ -27,7 +27,8 @@ class MissionConceptOutputBoundaryTests(unittest.TestCase):
                      'dependency_reasons':{'foreign-candidate':'Invented external predecessor not authorized here.'}},
                     {**definition,'acceptance_criteria':[],'questions':[]},
                     {**definition,'objective':'Bearer abcdefghijklmnop'},
-                    {**definition,'effect_policy':{'mode':'UNRESTRICTED'}}]
+                    {**definition,'effect_policy':{'mode':'UNRESTRICTED'}},
+                    {**definition,'components':['Outside project component']}]
                 _,history=ready.call(port,token,'GET',base)
                 ledger_revision=history['revision']
                 for index,bad in enumerate(bad_outputs):
@@ -52,4 +53,4 @@ class MissionConceptOutputBoundaryTests(unittest.TestCase):
                         self.assertEqual(status,200,package)
                         self.assertEqual(package['package_digest'],body['package_digest'])
                         self.assertEqual(driver.counts(root),original_counts)
-                self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),7)
+                self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),8)

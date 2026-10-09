@@ -35,6 +35,9 @@ class MissionConceptService(AdvisoryService):
         dependencies = self._dependency_catalog(principal, conversation_id)
         value['concept_dependency_references'] = [r['candidate_id'] for r in dependencies]
         value['concept_dependency_catalog'] = dependencies
+        # Historical own subjects remain integrity nodes, never selectable self-dependencies.
+        value['concept_dependency_graph'] = {r['candidate_id']:r['dependencies']
+            for r in self._dependency_catalog(principal,None)}
         records = MissionConceptSetup(self.root, principal.instance_id)._records()
         configured = next((r for r in records if r['grant_id'] == principal.grant_id
                            and r['principal_id'] == principal.principal_id
@@ -85,7 +88,8 @@ class MissionConceptService(AdvisoryService):
     def validate_result(document, admitted, references):
         definition = proposed_definition(
             document, admitted['request_digest'],
-            admitted['context']['concept_dependency_references'])
+            admitted['context']['concept_dependency_references'],
+            admitted['context'].get('concept_work_profiles'))
         return {'contract_version': CONTRACT,
                 'request_digest': admitted['request_digest'],
                 'definition': definition}
@@ -125,7 +129,7 @@ class MissionConceptService(AdvisoryService):
         # Catalog growth is not a change to this exact subject. Recheck all
         # admitted owner/source bounds and only the actually referenced subjects.
         context, _ = self.context(principal, turn['request']['selected_sources'], conversation_id)
-        catalogs = {'concept_dependency_references', 'concept_dependency_catalog'}
+        catalogs = {'concept_dependency_references', 'concept_dependency_catalog', 'concept_dependency_graph'}
         admitted_base = {k:v for k,v in turn['context'].items() if k not in catalogs}
         current_base = {k:v for k,v in context.items() if k not in catalogs}
         actual_dependencies = {r['candidate_id']:r['subject_revision']
@@ -208,7 +212,7 @@ class MissionConceptService(AdvisoryService):
                 'labels': [{'INVESTIGATE':'Investigation','DESIGN':'Architecture',
                             'BUILD':'Implementation','DOCUMENT':'Documentation',
                             'UNDECIDED':'Needs clarification'}[definition['work_kind']]], 'edges': [],
-                'candidate_id': None, 'mission_id': None,
+                'candidate_id': None, 'mission_id': None, 'canonical_history': [],
             }
             dependencies = {r['candidate_id']:r for r in self._dependency_catalog(principal, conversation_id)}
             for dependency in definition['dependencies']:
@@ -218,6 +222,7 @@ class MissionConceptService(AdvisoryService):
                 item['edges'].append({'kind':'REQUIRES','source_object_id':predecessor['object_id'],
                     'target_object_id':item['object_id'],'candidate_id':dependency,
                     'subject_revision':predecessor['subject_revision'],
+                    'source_definition_revision':predecessor['concept_revision'],
                     'reason':definition['dependency_reasons'][dependency],'state':'PROPOSED'})
             self._canonical_links(authorization, principal, item)
             items.append(item)
@@ -253,6 +258,39 @@ class MissionConceptService(AdvisoryService):
                 'SELECT document FROM advisory_candidate_registrations WHERE principal=?',
                 (principal.reference,)).fetchall()
             import json
+            from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
+            for row in rows:
+                receipt = json.loads(row[0])
+                if receipt.get('contract_version') != CONTRACT:
+                    continue
+                _, proposal = store.registered_candidate_source(receipt['candidate']['id'])
+                if (proposal['proposal_id'] != item['object_id']
+                        or proposal['conversation_id'] != item['conversation_id']
+                        or any(proposal[k] != getattr(principal,k) for k in
+                               ('instance_id','project_id','repository_id'))):
+                    continue
+                expected = registration_receipt(principal.reference,receipt['operation_id'],
+                    receipt['registration_key'],proposal,receipt['registered_at'])
+                if digest(expected) != digest(receipt):
+                    raise RuntimeError('historical canonical registration differs')
+                candidate = store.get_candidate(receipt['candidate']['id'])
+                allocation = store.allocation_for_recommendation(candidate.recommendation_id)
+                mission_status = None
+                if allocation:
+                    with InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as runtime:
+                        present = runtime.database._connection.execute(
+                            'SELECT 1 FROM mission_state WHERE mission_id=?',(allocation.mission_id,)).fetchone()
+                        if present:
+                            admitted = runtime.states.get(allocation.mission_id)
+                            if (admitted.admission_contract or {}).get('subject_revision') != proposal['package']['subject_revision']:
+                                raise RuntimeError('historical Mission subject differs')
+                            mission_status = admitted.status.value
+                item['canonical_history'].append({'definition_revision':proposal['proposal_revision'],
+                    'candidate_id':candidate.id,'subject_revision':proposal['package']['subject_revision'],
+                    'subject_current':canonical_digest(candidate.to_dict())==proposal['package']['subject_revision'],
+                    'mission_id':allocation.mission_id if allocation else None,'mission_status':mission_status,
+                    'operation_id':receipt['operation_id']})
+            item['canonical_history'].sort(key=lambda entry:entry['definition_revision'])
             for row in rows:
                 receipt = json.loads(row[0])
                 if receipt.get('contract_version') != CONTRACT:
@@ -295,9 +333,12 @@ class MissionConceptService(AdvisoryService):
                     from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
                     from .mission_concept_readiness import current_readiness
                     with InstalledDynamicMissionRuntime.open_for_governance_read(str(self.root)) as runtime:
-                        current = current_readiness(runtime, store, proposal['package'],
-                            runtime.states.get(allocation.mission_id), principal)
-                    item['state'], item['blockers'] = current['state'], current['blockers']
+                        present = runtime.database._connection.execute(
+                            'SELECT 1 FROM mission_state WHERE mission_id=?',(allocation.mission_id,)).fetchone()
+                        if present:
+                            current = current_readiness(runtime, store, proposal['package'],
+                                runtime.states.get(allocation.mission_id), principal)
+                            item['state'], item['blockers'] = current['state'], current['blockers']
                 return
 
     def handle(self, method, target, authorization, body):

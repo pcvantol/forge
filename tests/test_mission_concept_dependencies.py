@@ -50,7 +50,8 @@ class MissionConceptDependencyTests(unittest.TestCase):
                     self.assertEqual(status,200,result);validator.validate(result)
                     return result
                 foundation={**content.MissionConceptContractTests().output()['definition'],
-                            'title':'Account foundation','objective':'Build isolated account access for the client portal.'}
+                            'title':'Account foundation','objective':'Build isolated account access for the client portal.',
+                            'scope':['Account isolation'],'components':['Account isolation']}
                 parent_package=create('foundation',foundation);parent=approve('foundation',parent_package)
                 reason='The portal requires the independently governed account isolation foundation.'
                 child_definition={**content.MissionConceptContractTests().output()['definition'],
@@ -116,3 +117,44 @@ class MissionConceptDependencyTests(unittest.TestCase):
                 self.assertIn('DEPENDENCY_NOT_PROVEN',by_id[child['candidate_id']]['blockers'])
                 self.assertEqual(by_id[parent['candidate_id']]['state'],'APPROVED_WAITING')
                 self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),2)
+
+                # A's successor is independent of its own historical subject.
+                # The real old A remains an integrity node for approved B's edge.
+                _,focused=call(port,token,'GET','/v1/mission-concepts/foundation/context')
+                self.assertNotIn(parent['candidate_id'],focused['context']['concept_dependency_references'])
+                self.assertIn(parent['candidate_id'],focused['context']['concept_dependency_graph'])
+                self.assertEqual(focused['context']['concept_dependency_graph'][child['candidate_id']],[parent['candidate_id']])
+                _,history=call(port,token,'GET','/v1/mission-concepts/foundation')
+                successor={**foundation,'change_summary':'Clarify account access recovery.',
+                    'expected_result':'Isolated account access with understandable recovery after errors.'}
+                model_output(root,successor)
+                request={k:focused['context'][k] for k in ('instance_id','project_id','repository_id')}
+                request.update(contract_version=CONTRACT,conversation_id='foundation',turn_id='refine-foundation',
+                    expected_revision=history['revision'],context_revision=focused['context_revision'],selected_sources=[],
+                    advisor_kind='ARCHITECTURE',objective='Clarify recovery for account access errors only.')
+                status,refined=call(port,token,'POST','/v1/mission-concepts/foundation/turns',request)
+                self.assertEqual(status,200,refined)
+                status,prepared_successor=call(port,token,'GET','/v1/mission-concepts/foundation/package')
+                self.assertEqual(status,200,prepared_successor);validator.validate(prepared_successor)
+                self.assertTrue(prepared_successor['approval_supported'])
+                self.assertNotEqual(prepared_successor['package']['subject_revision'],parent['intake_subject_revision'])
+                self.assertEqual(prepared_successor['package']['dependency_bindings'],[])
+                _,old_parent=call(port,token,'GET','/v1/mission-concepts/foundation/operations/approve-foundation')
+                self.assertFalse(old_parent['source_fresh']);self.assertEqual(old_parent['mission_id'],parent['mission_id'])
+                _,current_child=call(port,token,'GET','/v1/mission-concepts/portal/operations/approve-portal')
+                self.assertTrue(current_child['source_fresh'])
+                self.assertEqual(current_child['frozen_package']['dependency_bindings'][0]['subject_revision'],parent['intake_subject_revision'])
+                self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),3)
+
+                _,successor_catalog=call(port,token,'GET','/v1/mission-concepts/catalog')
+                validator.validate(successor_catalog)
+                root_item=next(i for i in successor_catalog['items'] if i['object_id']==parent_package['object_id'])
+                dependent=next(i for i in successor_catalog['items'] if i['candidate_id']==child['candidate_id'])
+                self.assertEqual(root_item['state'],'CONCEPT');self.assertEqual(root_item['revision'],2)
+                self.assertIsNone(root_item['candidate_id'])
+                self.assertEqual(root_item['canonical_history'][0]['candidate_id'],parent['candidate_id'])
+                self.assertEqual(root_item['canonical_history'][0]['subject_revision'],dependent['edges'][0]['subject_revision'])
+                self.assertEqual(root_item['canonical_history'][0]['definition_revision'],dependent['edges'][0]['source_definition_revision'])
+                self.assertTrue(root_item['canonical_history'][0]['subject_current'])
+                self.assertEqual(root_item['canonical_history'][0]['mission_id'],parent['mission_id'])
+                self.assertEqual(len(successor_catalog['items']),2)

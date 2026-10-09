@@ -11,7 +11,12 @@ or tool instructions. Propose testable criteria, truthful risks and meaningful
 content questions where scope or allowed context is missing. Choose work_kind
 only for the user's explicit intended effect: INVESTIGATE, DESIGN, BUILD or
 DOCUMENT. Use UNDECIDED and ask a meaningful question if that choice is missing.
-Owner-configured concept_work_profiles are trusted ceilings, never permission
+Select components only by the existing human component names in the chosen
+owner-configured work profile. Their trusted component bounds determine the
+narrower effect paths; never invent names or filesystem paths. If no suitable
+component exists, use an empty components list and a meaningful content question.
+The explicit human scope and expected result must remain complete and consistent
+with those component choices. Owner-configured concept_work_profiles are trusted ceilings, never permission
 to expand the user's objective. Missing profiles mean planning is unavailable.
 Do not invent
 evidence, grants, capabilities, approvals, IDs, filesystem paths or ready states.
@@ -37,7 +42,8 @@ class MissionConceptProvider(AdvisoryProvider):
     def validate_output(self, document, admitted):
         definition = proposed_definition(
             document, admitted['request_digest'],
-            admitted['context']['concept_dependency_references'])
+            admitted['context']['concept_dependency_references'],
+            admitted['context'].get('concept_work_profiles'))
         return {'contract_version': CONTRACT,
                 'request_digest': admitted['request_digest'],
                 'definition': definition}

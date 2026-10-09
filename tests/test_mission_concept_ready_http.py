@@ -78,7 +78,7 @@ class MissionConceptReadyHTTPTests(unittest.TestCase):
                 _,cap=call(port,owner,'GET','/v1/mission-concepts/capability')
                 draft=content.MissionConceptContractTests().output()['definition']
                 draft['questions']=['Only investigate the portal, or also implement it?']
-                draft['work_kind']='UNDECIDED';model_output(root,draft)
+                draft['work_kind']='UNDECIDED';draft['components']=[];model_output(root,draft)
                 request={k:cap[k] for k in ('instance_id','project_id','repository_id','context_revision')}
                 request.update(contract_version=CONTRACT,turn_id='first',conversation_id='mission-chat',
                     advisor_kind='BUSINESS',objective='I want clients to see their invoices and payments.',
@@ -91,6 +91,7 @@ class MissionConceptReadyHTTPTests(unittest.TestCase):
                 validator.validate(incomplete)
                 refined={**draft,'work_kind':'BUILD','questions':[],
                          'change_summary':'Build the portal; payment execution remains excluded.',
+                         'components':['Invoice views','Payment views'],
                          'possible_subresults':[{'title':'Account isolation',
                              'expected_result':'The portal authenticates and isolates each account.',
                              'acceptance_criteria':['An account cannot see invoices belonging to another account.']},
@@ -166,6 +167,13 @@ class MissionConceptReadyHTTPTests(unittest.TestCase):
                     admitted=runtime.states.get(approved['mission_id'])
                     self.assertEqual(admitted.actions,())
                     self.assertEqual(admitted.intents,())
+                    for phrase in refined['scope']:
+                        self.assertIn('IN SCOPE: '+phrase,admitted.mission['engineering_constraints'])
+                    self.assertIn('EXPECTED RESULT: '+refined['expected_result'],admitted.mission['engineering_constraints'])
+                    self.assertEqual(admitted.mission['effect_policy']['write_paths'],
+                        ['src/invoices/views.py','src/payments/views.py','tests/test_invoice_views.py','tests/test_payment_views.py'])
+                    self.assertEqual(admitted.admission_contract['planning']['write_scopes'],
+                                     admitted.mission['effect_policy']['write_paths'])
                     active=runtime.database._connection.execute('SELECT active_mission_id FROM dispatcher_state WHERE singleton=1').fetchone()
                     self.assertTrue(active is None or active[0] is None)
                 before=counts(root)
@@ -179,12 +187,14 @@ class MissionConceptReadyHTTPTests(unittest.TestCase):
                 self.assertEqual(call(port,root/'admin.private','POST',
                     '/v1/mission-concepts/mission-chat/approve',command)[0],403)
                 self.assertEqual(counts(root),before)
-                successor={**refined,'acceptance_criteria':[
+                successor={**refined,'scope':['Only invoice listing; do not implement payment views.'],
+                    'components':['Invoice views'],'acceptance_criteria':[
                     *refined['acceptance_criteria'],'Show a recoverable error when invoice lookup is unavailable.'],
-                    'change_summary':'Add visible recovery for invoice lookup failures.'}
+                    'change_summary':'Limit implementation to invoice listing and add visible error recovery.'}
                 model_output(root,successor)
+                _,fresh_context=call(port,owner,'GET','/v1/mission-concepts/mission-chat/context')
                 status,third=call(port,owner,'POST','/v1/mission-concepts/mission-chat/turns',
-                    {**request,'turn_id':'third','objective':'Also include recovery when invoice lookup fails.',
+                    {**request,'context_revision':fresh_context['context_revision'],'turn_id':'third','objective':'Only invoice listing, exclude payment views, and include recovery when invoice lookup fails.',
                      'expected_revision':second['current_revision'],'advisor_kind':'ARCHITECTURE'})
                 self.assertEqual(status,200,third)
                 _,old_operation=call(port,owner,'GET',
@@ -200,6 +210,25 @@ class MissionConceptReadyHTTPTests(unittest.TestCase):
                 self.assertEqual(updated_catalog['items'][0]['state'],'CONCEPT')
                 self.assertEqual(counts(root)['governance_decisions'],2)
                 self.assertEqual(counts(root)['mission_id_allocations'],1)
+                self.assertEqual(counts(root)['provider_calls'],3)
+                # A second explicit confirmation approves the narrowed successor,
+                # never mutating the earlier full-portal approvals or Mission.
+                _,narrowed=call(port,owner,'GET','/v1/mission-concepts/mission-chat/package')
+                second_command={**command,'operation_id':'approve-invoice-only','revision':3,
+                                'package_digest':narrowed['package_digest']}
+                status,second_approved=call(port,owner,'POST','/v1/mission-concepts/mission-chat/approve',second_command)
+                self.assertEqual(status,200,second_approved)
+                self.assertNotEqual(second_approved['candidate_id'],approved['candidate_id'])
+                with InstalledDynamicMissionRuntime.open_for_governance_read(str(root/'runtime')) as runtime:
+                    old=runtime.states.get(approved['mission_id']);new=runtime.states.get(second_approved['mission_id'])
+                    self.assertEqual(old.mission['effect_policy'],package['candidate']['effect_policy'])
+                    self.assertEqual(new.mission['effect_policy']['write_paths'],
+                                     ['src/invoices/views.py','tests/test_invoice_views.py'])
+                    self.assertIn('IN SCOPE: '+successor['scope'][0],new.mission['engineering_constraints'])
+                    self.assertNotEqual(old.admission_contract['subject_revision'],new.admission_contract['subject_revision'])
+                    self.assertEqual(new.actions,());self.assertEqual(old.actions,())
+                self.assertEqual(counts(root)['governance_decisions'],4)
+                self.assertEqual(counts(root)['mission_state'],2)
                 self.assertEqual(counts(root)['provider_calls'],3)
                 grant.revoke(issued['grant_id'])
                 self.assertEqual(call(port,owner,'POST','/v1/mission-concepts/mission-chat/approve',command)[0],401)

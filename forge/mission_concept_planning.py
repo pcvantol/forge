@@ -28,7 +28,7 @@ def planning_profiles(value):
                      'DOCUMENT': 'DOCUMENTATION_ONLY',
                      'BUILD': 'BOUNDED_REPOSITORY_CHANGE'}
     for kind, profile in value.items():
-        if not isinstance(profile, dict) or set(profile) != set(PROFILE_FIELDS):
+        if not isinstance(profile, dict) or set(profile) not in (set(PROFILE_FIELDS), set(PROFILE_FIELDS)|{'components'}):
             raise ValueError('closed trusted planning profile required')
         effect = MissionEffectPolicy.from_dict(profile['effect_policy'])
         if effect.mode != expected_mode[kind]:
@@ -36,6 +36,22 @@ def planning_profiles(value):
         if (effect.mode in {'ARCHITECTURE_DESIGN_ONLY', 'DOCUMENTATION_ONLY'}
                 and any(path.endswith('/') for path in effect.write_paths)):
             raise ValueError('document work requires exact document paths')
+        components = profile.get('components',{})
+        if not isinstance(components,dict) or len(components)>8:
+            raise ValueError('bounded trusted component catalog required')
+        for name,component in components.items():
+            text(name,256)
+            if not isinstance(component,dict) or set(component)!={'description','read_paths','write_paths'}:
+                raise ValueError('closed trusted component bounds required')
+            text(component['description'],1000)
+            narrowed = MissionEffectPolicy.from_dict({**effect.to_dict(),
+                'read_paths':component['read_paths'],'write_paths':component['write_paths']})
+            for paths,ceilings in ((narrowed.read_paths,effect.read_paths),(narrowed.write_paths,effect.write_paths)):
+                for path in paths:
+                    if not any(path==ceiling or ceiling.endswith('/') and path.startswith(ceiling) for ceiling in ceilings):
+                        raise ValueError('component expands trusted profile ceiling')
+                    if path in ceilings and path.endswith('/'):
+                        raise ValueError('component needs a narrower repository boundary')
         for key in PROFILE_FIELDS[1:6]:
             fields = profile[key]
             if (not isinstance(fields, list) or not 1 <= len(fields) <= 8
@@ -65,6 +81,14 @@ def derive_package(definition, *, request_digest, context, profiles,
     missing = list(definition['questions'])
     if profile is None:
         missing.append('The requested kind of work has no authorized project profile.')
+    selected_components = definition['components']
+    components = profile.get('components',{}) if profile else {}
+    if profile is not None and any(name not in components for name in selected_components):
+        raise ValueError('component outside trusted project catalog')
+    if not selected_components:
+        missing.append('Which part of the configured project should this Mission investigate or change?')
+    if not components:
+        missing.append('The project has no authorized component boundaries for this kind of work.')
     if not definition['exclusions']:
         missing.append('Which work should explicitly remain outside this Mission?')
     if not definition['risks']:
@@ -78,7 +102,7 @@ def derive_package(definition, *, request_digest, context, profiles,
     catalog = {r['candidate_id']:r for r in context.get('concept_dependency_catalog',[])}
     if any(dep not in catalog for dep in definition['dependencies']):
         raise ValueError('current exact dependency binding required')
-    graph = {key:row['dependencies'] for key,row in catalog.items()}
+    graph = context.get('concept_dependency_graph', {key:row['dependencies'] for key,row in catalog.items()})
     verified = set()
     def visit(node, path):
         if node in path:
@@ -100,7 +124,10 @@ def derive_package(definition, *, request_digest, context, profiles,
               'revision': revision, 'request_digest': request_digest,
               'context_revision': digest(context)}
     key = digest(source)[7:39]
-    effect = MissionEffectPolicy.from_dict(profile['effect_policy'])
+    ceiling = MissionEffectPolicy.from_dict(profile['effect_policy'])
+    effect = MissionEffectPolicy.from_dict({**ceiling.to_dict(),
+        'read_paths':sorted({path for name in selected_components for path in components[name]['read_paths']}),
+        'write_paths':sorted({path for name in selected_components for path in components[name]['write_paths']})})
     repository_source = (ApprovedRepositoryEvidenceSource.from_dict(context['concept_repository_source'])
                          if context.get('concept_repository_source') is not None else None)
     if repository_source is not None and repository_source.repository_id != context['repository_id']:
@@ -112,6 +139,9 @@ def derive_package(definition, *, request_digest, context, profiles,
         acceptance_criteria=tuple(definition['acceptance_criteria']),
         architecture_constraints=tuple(dict.fromkeys([
             *profile['constraints'], *definition['architecture_choices'],
+            *('IN SCOPE: ' + item for item in definition['scope']),
+            'EXPECTED RESULT: ' + definition['expected_result'],
+            *('COMPONENT: ' + name + ': ' + components[name]['description'] for name in selected_components),
             *('EXCLUDED: ' + item for item in definition['exclusions'])])),
         dependencies=tuple(definition['dependencies']), effect_policy=effect)
     subject_revision = canonical_digest(candidate.to_dict())

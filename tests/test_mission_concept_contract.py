@@ -16,7 +16,7 @@ class MissionConceptContractTests(unittest.TestCase):
                     'architecture_choices': [], 'risks': ['Account isolation must be verified.'],
                     'dependencies': [], 'questions': [],
                     'change_summary': 'Initial proposed definition.', 'work_kind': 'BUILD',
-                    'dependency_reasons': {},'possible_subresults':[]}}
+                    'dependency_reasons': {},'possible_subresults':[],'components':['Invoice views','Payment views']}}
 
     def validate(self, value):
         return proposed_definition(value, 'sha256:' + 'a' * 64, ('known-predecessor',))

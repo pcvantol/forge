@@ -34,6 +34,10 @@ class MissionConceptProviderTests(unittest.TestCase):
             start = raw.index("response={'contract_version'")
             end = raw.index("if fault=='inject'", start)
             definition = concept_tests.MissionConceptContractTests().output()['definition']
+            # This advice-only grant has no owner component authority: preserve
+            # a meaningful unresolved content proposal, never invent path bounds.
+            definition['components']=[]
+            definition['questions']=['Which configured project component should contain the portal?']
             raw = raw[:start] + ('response={"contract_version":v["contract_version"],'
                   '"request_digest":v["request_digest"],"definition":' + repr(definition) + '}\n') + raw[end:]
             executable.write_text(raw)

@@ -22,7 +22,7 @@ installed qualification or complete native UX acceptance.
 request_digest and definition. The definition carries title, objective,
 business_value, expected_result, scope, exclusions, acceptance_criteria,
 architecture_choices, risks, dependencies, dependency_reasons, questions,
-change_summary, work_kind and possible_subresults. Closed finite bounds apply to every field.
+change_summary, work_kind, components and possible_subresults. Closed finite bounds apply to every field.
 
 Work kind follows the intended human effect: INVESTIGATE, DESIGN, BUILD,
 DOCUMENT or UNDECIDED with meaningful questions. Dependencies require actual
@@ -38,6 +38,14 @@ Catalog labels describe the proposed work kind and never confer grants.
 `forge-mission-concept-setup` configures finite supported profiles over an
 existing genuinely scoped advisory grant and actual G001 primary operator.
 Profiles are trusted ceilings, not permission to broaden the human objective.
+Optional owner-configured components have human names/descriptions and finite
+read/write paths strictly within the ceilings. The model selects existing names;
+product code narrows the effect policy to those actual component bounds. Missing
+component configuration/choice yields a meaningful question, never ceiling paths
+as a fictional per-Mission default. Legacy profile records remain immutable and
+readable; no allowance or grant is expanded by this change. Canonical Candidate
+constraints bind every human IN SCOPE item, EXPECTED RESULT and selected trusted
+COMPONENT description, so distinct scope cannot disappear downstream.
 Aliases retain minimum prior Mission allowance. Advice and concept generation
 share retained consumed budgets; confirmation never expands grants or budgets.
 No technical field entry is required per Mission. Ordinary owner provisioning
@@ -103,7 +111,9 @@ snapshots bind pagination. Promotion keeps one object_id and links its actual
 Candidate/Mission. REQUIRES edges carry actual predecessor object/subject
 references and human reasons. PROPOSED and APPROVED_DEFINITION describe approval
 of the definition, not committed execution order. Cycles, foreign and unresolved
-references fail closed. Parent/group placeholders carry no semantic authority.
+references fail closed. The integrity graph retains actual historical own
+subjects even though selectable references exclude the current conversation;
+A can be refined after B depends on its old approved subject. Parent/group placeholders carry no semantic authority.
 
 Independent catalog growth does not stale an unchanged frozen subject. Current
 owner/source bounds and actually referenced canonical subject revisions are
@@ -143,7 +153,11 @@ controller, Action, Mission start or EP submission occurs.
 Rejected malformed/foreign/authority-injecting model outputs preserve the exact
 previously approved definition/package; a failed attempt is not a semantic
 successor. The frozen accepted turn revision is distinct from later transport
-ledger revisions.
+ledger revisions. Catalog canonical_history retains actual prior Candidate/Mission
+references on the same card; source_definition_revision binds an edge to its
+historical source subject after refinement. subject_current describes that
+canonical Candidate's bytes, not approval of the latest draft. Allocation without
+a Mission document is real partial lineage/PENDING and recovers without repair.
 
 Full owning validation and strict per-file coverage, whole exact-head
 independent Quality/Security, protected implementation, nonempty finalization,
@@ -158,3 +172,15 @@ revoked-grant positive failure control via
 `scripts/qualification/qualify_installed_mission_concepts.py`. Qualification binds
 source/tree/wheel/schema bytes and owns isolated test home/scratch/config cleanup.
 This integration is source WIP until its actual installed and hosted gates pass.
+
+## Independent review and bounded repair lineage
+
+Exact head05a4a5a received whole-scope Security PASS and Quality FAIL. Quality's
+human-scope loss and filtered A→B→refine-A graph counterexamples are preserved in
+separate private receipts; that head is not deliverable. Repair round1 binds
+human scope/results to the real canonical Mission, selects actual narrower
+component bounds, preserves historical graph nodes/references, and tests genuine
+approval/Intake/downstream planner input. The real allocation-to-Mission crash
+boundary now returns PENDING before same-intent recovery. Old receipts, wheel and
+review consumption remain preserved; fresh whole validation, exact-wheel evidence
+and both independent exact-head reviews are required for the repaired candidate.

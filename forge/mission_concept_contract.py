@@ -7,8 +7,8 @@ CONTRACT = 'forge-chat-first-mission/v1'
 CONTENT_FIELDS = ('title', 'objective', 'business_value', 'expected_result',
                   'scope', 'exclusions', 'acceptance_criteria',
                   'architecture_choices', 'risks', 'dependencies', 'questions',
-                  'change_summary', 'work_kind', 'dependency_reasons', 'possible_subresults')
-LIST_FIELDS = CONTENT_FIELDS[4:11]
+                  'change_summary', 'work_kind', 'dependency_reasons', 'possible_subresults', 'components')
+LIST_FIELDS = CONTENT_FIELDS[4:11] + ('components',)
 WORK_KINDS = ('INVESTIGATE', 'DESIGN', 'BUILD', 'DOCUMENT', 'UNDECIDED')
 
 
@@ -52,7 +52,7 @@ OUTPUT_SCHEMA = {
 }
 
 
-def proposed_definition(value, request_digest, allowed_dependencies):
+def proposed_definition(value, request_digest, allowed_dependencies, work_profiles=None):
     """Validate content only; never interpret model text as an authority grant.
 
     Missing substantive content is preserved as a question-bearing concept.
@@ -107,6 +107,12 @@ def proposed_definition(value, request_digest, allowed_dependencies):
                 text(item, 1000)
         else:
             text(field, 256 if key == 'title' else 1000)
+    if work_profiles is not None:
+        allowed_components = work_profiles.get(definition['work_kind'],{}).get('components',{})
+        if any(name not in allowed_components for name in definition['components']):
+            raise ValueError('component outside trusted project catalog')
+        if not definition['components'] and not definition['questions']:
+            raise ValueError('missing component choice requires a content question')
     if any(item not in allowed_dependencies for item in definition['dependencies']):
         raise ValueError('dependency outside authorized catalog')
     if (not definition['scope'] or not definition['acceptance_criteria']

@@ -76,6 +76,19 @@ class MissionConceptReadinessTests(unittest.TestCase):
                     self.assertIn('WORKSET_HELD',held['current_readiness']['blockers'])
                     admitted=runtime.states.get(approved['mission_id'])
                     self.assertEqual(admitted.actions,());self.assertEqual(admitted.intents,())
+                    # Read-only construction of the real downstream planner input
+                    # from the genuine admitted Mission plus the observed external
+                    # repository snapshot. No persisted state or Action is seeded.
+                    from dataclasses import replace
+                    planning_input=runtime._planning_input(replace(admitted,
+                        repository_truth=runtime._truth_from_snapshot(truth)))
+                    self.assertEqual(planning_input.mission.engineering_constraints,
+                                     tuple(package['mission_preview']['engineering_constraints']))
+                    self.assertEqual(planning_input.mission.effect_policy.write_paths,
+                                     tuple(package['planning']['write_scopes']))
+                    self.assertIn('IN SCOPE: '+package['definition']['scope'][0],
+                                  planning_input.mission.engineering_constraints)
+                    self.assertEqual(runtime.states.get(approved['mission_id']),admitted)
                     active=runtime.database._connection.execute('SELECT active_mission_id FROM dispatcher_state WHERE singleton=1').fetchone()
                     self.assertTrue(active is None or active[0] is None)
                 self.assertEqual(driver.counts(root),{**before,'governance_decisions':before['governance_decisions']+2})
