@@ -184,3 +184,27 @@ approval/Intake/downstream planner input. The real allocation-to-Mission crash
 boundary now returns PENDING before same-intent recovery. Old receipts, wheel and
 review consumption remain preserved; fresh whole validation, exact-wheel evidence
 and both independent exact-head reviews are required for the repaired candidate.
+
+
+## Protected implementation and nonempty source finalization
+
+Implementation PR265 is protected merged at
+`6963099cdc5623c011436ff8cb7f18899487fc78`, tree
+`d5c2f1be0e386473bcc9ad177123b1c19dde4950`, after required CI37895872247
+SUCCESS and exact481b2f6 whole-scope Quality/Security PASS. The repository
+permits only squash merge; original branch commits/reviews/receipts remain
+preserved. No admin bypass, direct main push, second writer or budget reset.
+
+Fresh actual noneditable implementation-main qualification records22PASS and
+its actual revoked-positive-grant failure control, exact source/tree/schema/wheel
+payload verification and owned cleanup. The selected completion JSON in
+`docs/qualification/forge-chat-first-mission-selected-completion-2026-10-09.json`
+binds those receipts and the retained review/repair lineage. Normal NO_BUMP
+source-finalization shares the original event lineage and retains version2.11.0.
+
+This source finalization is nonempty and reviewable. Exact-final-main producer,
+hosted main CI/TDE readback, L4 protected integration, real packaged GUI clicks
+and independent shared UX acceptance remain required external post-merge gates.
+The completion JSON intentionally does not invent its own future final SHA.
+TDE workflow success is separate from its actual observe-mode policyFAIL and
+repositoryqualificationFAILED; no policyPASS is claimed.
