@@ -213,7 +213,7 @@ class MissionConceptContinuityTests(unittest.TestCase):
                 base='/v1/mission-concepts/mission-chat'
                 status,out=call(port,token,'GET',base+'/package')
                 self.assertEqual(status,200,out)
-                faults=(('mission','engineering_constraints'),
+                faults=(('state','mission_id'),('mission','engineering_constraints'),
                     *(('admission',k) for k in ('envelope_digest','candidate_id','installation_id',
                         'business_decision_id','architecture_decision_id','planning','mission')),
                     *(('allocation',k) for k in ('candidate_id','installation_id','business_decision_evidence_id',

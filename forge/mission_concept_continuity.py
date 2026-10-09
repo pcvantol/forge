@@ -106,7 +106,8 @@ def original_configuration(setup, principal, configuration, history, turn, revis
         actual_allocation = runtime.database._connection.execute(
             'SELECT mission_id FROM mission_id_allocations WHERE source=?',
             ('canonical-governance-envelope:' + envelope.digest,)).fetchone()
-        if (canonical_digest(dict(state.mission)) != canonical_digest(mission)
+        if (state.mission_id != allocation.mission_id
+                or canonical_digest(dict(state.mission)) != canonical_digest(mission)
                 or digest(state.admission_contract) != digest(admission)
                 or allocation.candidate_id != candidate.id
                 or allocation.recommendation_id != candidate.recommendation_id
