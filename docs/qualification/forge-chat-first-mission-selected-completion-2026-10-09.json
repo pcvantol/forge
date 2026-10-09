@@ -1,0 +1,324 @@
+{
+  "assignment_id": "L3-CHAT-FIRST-MISSION-READY-V1-20261008",
+  "plan_revision": "r42",
+  "repair_round": 1,
+  "join": "L3-L4-CHAT-FIRST-MISSION-READY-V1-20261008",
+  "source_version": "2.11.0",
+  "candidate": {
+    "pull_request": "https://github.com/pcvantol/forge/pull/265",
+    "reviewed_head": "481b2f6a5e55160f695498e2f8862a6d31317086",
+    "tree": "d5c2f1be0e386473bcc9ad177123b1c19dde4950",
+    "base": "0ea8c1a263a8b71a09d1206387099b748789b04b"
+  },
+  "owning_validation": {
+    "tests_run": 1335,
+    "existing_skips": 1,
+    "failures": 0,
+    "log_sha256": "7655f5b941590e2873c07b121567a77ed83475911505a3e24818d70d33199c6e",
+    "coverage_gate_sha256": "aae4ae87ae9d2563abdc3181971eff43c9165dc6763fc46caa600c5a4a60b1be"
+  },
+  "mandatory_reviews": {
+    "quality": {
+      "result": "PASS",
+      "reviewed_head": "481b2f6a5e55160f695498e2f8862a6d31317086",
+      "sha256": "b009bf854acbb5c8f8d61e24a67d4171f4cc56f6cd0050326f28ea06e6ad1d61"
+    },
+    "security": {
+      "result": "PASS",
+      "reviewed_head": "481b2f6a5e55160f695498e2f8862a6d31317086",
+      "sha256": "a2cb759070e0679ea2d4f1edda3170b799acb6d3ccbdcec381649095c780a369"
+    }
+  },
+  "installed_candidate": {
+    "qualification": "INSTALLED_CHAT_FIRST_MISSION_PRODUCER_V1",
+    "source_revision": "481b2f6a5e55160f695498e2f8862a6d31317086",
+    "artifact": {
+      "version": "2.11.0",
+      "wheel_sha256": "sha256:40f03ff45bf4bcc979ffdd8a79a9ffe9221c0c1445ffe8f157fba8f8c5f4853e",
+      "source_tree_revision": "d5c2f1be0e386473bcc9ad177123b1c19dde4950",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 258,
+      "source_product_files_verified": 258
+    },
+    "schema_sha256": "sha256:0311529ca95451a99f4fd8a35127707310252c96324b42f3230e8c79fcfa6124",
+    "result": "CHAT_FIRST_MISSION_PRODUCER_PASS",
+    "case_count": 22,
+    "cases": [
+      {
+        "case": "test_mission_concept_contract",
+        "test_count": 5,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_provider",
+        "test_count": 1,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_planning",
+        "test_count": 6,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_ready_http",
+        "test_count": 1,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_dependencies",
+        "test_count": 1,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_resolver",
+        "test_count": 2,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_recovery",
+        "test_count": 4,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_output_boundaries",
+        "test_count": 1,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_readiness",
+        "test_count": 1,
+        "result": "PASS"
+      }
+    ],
+    "failure": null,
+    "expected_failure_control": false,
+    "external_fault": null,
+    "limitations": [
+      "Actual noneditable HTTP/auth/G001/context/provider adapter/validator/storage/approvals/Intake/worklist services.",
+      "External deterministic model executable, OS identity and repository transport only; live model quality not qualified.",
+      "Logical governed-activation readiness is distinct from unobserved execution resources; no controller/start/EP-submit.",
+      "Native consumer and UX acceptance are separately owned by L4."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "positive_failure_control": {
+    "qualification": "INSTALLED_CHAT_FIRST_MISSION_PRODUCER_V1",
+    "source_revision": "481b2f6a5e55160f695498e2f8862a6d31317086",
+    "artifact": {
+      "version": "2.11.0",
+      "wheel_sha256": "sha256:40f03ff45bf4bcc979ffdd8a79a9ffe9221c0c1445ffe8f157fba8f8c5f4853e",
+      "source_tree_revision": "d5c2f1be0e386473bcc9ad177123b1c19dde4950",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 258,
+      "source_product_files_verified": 258
+    },
+    "schema_sha256": "sha256:0311529ca95451a99f4fd8a35127707310252c96324b42f3230e8c79fcfa6124",
+    "result": "FAIL",
+    "case_count": 0,
+    "cases": [],
+    "failure": {
+      "type": "AssertionError",
+      "stage": "positive-concept-replay",
+      "detail": "Declared concept producer qualification gate failed"
+    },
+    "expected_failure_control": true,
+    "external_fault": "REVOKED_POSITIVE_CONCEPT_GRANT",
+    "limitations": [
+      "Actual noneditable HTTP/auth/G001/context/provider adapter/validator/storage/approvals/Intake/worklist services.",
+      "External deterministic model executable, OS identity and repository transport only; live model quality not qualified.",
+      "Logical governed-activation readiness is distinct from unobserved execution resources; no controller/start/EP-submit.",
+      "Native consumer and UX acceptance are separately owned by L4."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "history_preserved": {
+    "predecessor_r41": "CLOSED",
+    "initial_review_head": "05a4a5a56a89fb7be226a002b3a2a43470e10799",
+    "initial_quality": "FAIL",
+    "initial_security": "PASS",
+    "budget_reset": false,
+    "second_writer": false
+  },
+  "delivery_state": "PROTECTED_IMPLEMENTATION_AND_IMPLEMENTATION_MAIN_PRODUCER_QUALIFIED_FINALIZATION_PENDING",
+  "physical_execution_resources": "NOT_OBSERVED",
+  "execution_started": false,
+  "native_acceptance": "LANE_4_PENDING",
+  "protected_implementation": {
+    "headRefOid": "481b2f6a5e55160f695498e2f8862a6d31317086",
+    "mergeCommit": {
+      "oid": "6963099cdc5623c011436ff8cb7f18899487fc78"
+    },
+    "mergedAt": "2026-10-09T07:25:47Z",
+    "state": "MERGED",
+    "url": "https://github.com/pcvantol/forge/pull/265",
+    "source_revision": "6963099cdc5623c011436ff8cb7f18899487fc78",
+    "tree_revision": "d5c2f1be0e386473bcc9ad177123b1c19dde4950",
+    "required_ci": {
+      "conclusion": "success",
+      "headSha": "481b2f6a5e55160f695498e2f8862a6d31317086",
+      "status": "completed",
+      "url": "https://github.com/pcvantol/forge/actions/runs/37895872247"
+    }
+  },
+  "implementation_main_producer": {
+    "qualification": "INSTALLED_CHAT_FIRST_MISSION_PRODUCER_V1",
+    "source_revision": "6963099cdc5623c011436ff8cb7f18899487fc78",
+    "artifact": {
+      "version": "2.11.0",
+      "wheel_sha256": "sha256:40f03ff45bf4bcc979ffdd8a79a9ffe9221c0c1445ffe8f157fba8f8c5f4853e",
+      "source_tree_revision": "d5c2f1be0e386473bcc9ad177123b1c19dde4950",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 258,
+      "source_product_files_verified": 258
+    },
+    "schema_sha256": "sha256:0311529ca95451a99f4fd8a35127707310252c96324b42f3230e8c79fcfa6124",
+    "result": "CHAT_FIRST_MISSION_PRODUCER_PASS",
+    "case_count": 22,
+    "cases": [
+      {
+        "case": "test_mission_concept_contract",
+        "test_count": 5,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_provider",
+        "test_count": 1,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_planning",
+        "test_count": 6,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_ready_http",
+        "test_count": 1,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_dependencies",
+        "test_count": 1,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_resolver",
+        "test_count": 2,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_recovery",
+        "test_count": 4,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_output_boundaries",
+        "test_count": 1,
+        "result": "PASS"
+      },
+      {
+        "case": "test_mission_concept_readiness",
+        "test_count": 1,
+        "result": "PASS"
+      }
+    ],
+    "failure": null,
+    "expected_failure_control": false,
+    "external_fault": null,
+    "limitations": [
+      "Actual noneditable HTTP/auth/G001/context/provider adapter/validator/storage/approvals/Intake/worklist services.",
+      "External deterministic model executable, OS identity and repository transport only; live model quality not qualified.",
+      "Logical governed-activation readiness is distinct from unobserved execution resources; no controller/start/EP-submit.",
+      "Native consumer and UX acceptance are separately owned by L4."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "implementation_main_failure_control": {
+    "qualification": "INSTALLED_CHAT_FIRST_MISSION_PRODUCER_V1",
+    "source_revision": "6963099cdc5623c011436ff8cb7f18899487fc78",
+    "artifact": {
+      "version": "2.11.0",
+      "wheel_sha256": "sha256:40f03ff45bf4bcc979ffdd8a79a9ffe9221c0c1445ffe8f157fba8f8c5f4853e",
+      "source_tree_revision": "d5c2f1be0e386473bcc9ad177123b1c19dde4950",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:ef3adb3709eb2e714206a219e77812452cbc58e515042bdf95d4f8e6704c8c28",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 258,
+      "source_product_files_verified": 258
+    },
+    "schema_sha256": "sha256:0311529ca95451a99f4fd8a35127707310252c96324b42f3230e8c79fcfa6124",
+    "result": "FAIL",
+    "case_count": 0,
+    "cases": [],
+    "failure": {
+      "type": "AssertionError",
+      "stage": "positive-concept-replay",
+      "detail": "Declared concept producer qualification gate failed"
+    },
+    "expected_failure_control": true,
+    "external_fault": "REVOKED_POSITIVE_CONCEPT_GRANT",
+    "limitations": [
+      "Actual noneditable HTTP/auth/G001/context/provider adapter/validator/storage/approvals/Intake/worklist services.",
+      "External deterministic model executable, OS identity and repository transport only; live model quality not qualified.",
+      "Logical governed-activation readiness is distinct from unobserved execution resources; no controller/start/EP-submit.",
+      "Native consumer and UX acceptance are separately owned by L4."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "finalization": {
+    "release_class": "NO_BUMP",
+    "operation_id": "L3-CHAT-FIRST-MISSION-READY-V1-20261008-FINALIZATION",
+    "event_lineage": "L3-r42-issue207-6066681753",
+    "exact_final_main": "PENDING_EXTERNAL_POST_MERGE_READBACK"
+  },
+  "tde_pr": {
+    "run": "https://github.com/pcvantol/forge/actions/runs/37895872250",
+    "workflow_conclusion": "success",
+    "assessment": "FAIL",
+    "policy": "FAIL",
+    "repository_qualification": "FAILED",
+    "assessment_exit": 2,
+    "qualification_exit": 2,
+    "mode": "observe_nonblocking"
+  },
+  "producer_samples": {
+    "source_revision": "481b2f6a5e55160f695498e2f8862a6d31317086",
+    "initial_manifest_sha256": "167ee17fec2a23576554ca096d9347fb3cddc0a83d87c0d01f10235569dfa828",
+    "coherent_a_b_manifest_sha256": "6fe6538f740ce241403c0862f39c464213c8cb981a1fdf0f8497a6447a183bff",
+    "synthetic_external_content": true,
+    "final_main_or_native_proof": false
+  },
+  "protected_merge_method": {
+    "repository_allows_only": "squash",
+    "actual_method": "squash",
+    "source_branch_history_preserved": true,
+    "admin_bypass": false,
+    "direct_main_push": false,
+    "ruleset_id": 21986307
+  }
+}
