@@ -2726,6 +2726,108 @@
           }
         ]
       }
+    },
+    "/v1/approved-workset-releases/capability": {
+      "get": {
+        "summary": "Scoped approved workset release capability",
+        "description": "Dedicated owner-issued release capability; no Candidate reapproval or direct scheduler/runtime invocation.",
+        "responses": {
+          "200": {
+            "description": "Exact scoped release contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./approved-workset-release-v1.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approved-workset-releases/prepare": {
+      "post": {
+        "summary": "Scoped approved workset release prepare",
+        "description": "Dedicated owner-issued release capability; no Candidate reapproval or direct scheduler/runtime invocation.",
+        "responses": {
+          "200": {
+            "description": "Exact scoped release contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./approved-workset-release-v1.json"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./approved-workset-release-v1.json"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approved-workset-releases/commands": {
+      "post": {
+        "summary": "Scoped approved workset release commands",
+        "description": "Dedicated owner-issued release capability; no Candidate reapproval or direct scheduler/runtime invocation.",
+        "responses": {
+          "200": {
+            "description": "Exact scoped release contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./approved-workset-release-v1.json"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./approved-workset-release-v1.json"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approved-workset-releases/operations/{operation_id}": {
+      "get": {
+        "summary": "Scoped approved workset release {operation_id}",
+        "description": "Dedicated owner-issued release capability; no Candidate reapproval or direct scheduler/runtime invocation.",
+        "responses": {
+          "200": {
+            "description": "Exact scoped release contract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./approved-workset-release-v1.json"
+                }
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "operation_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
     }
   },
   "components": {

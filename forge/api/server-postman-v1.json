@@ -1690,6 +1690,123 @@
         }
       },
       "description": "Closed candidate-decisions-v1 contract. Separate explicit owner-granted permissions; no admin token or Mission Intake."
+    },
+    {
+      "name": "GET /v1/approved-workset-releases/capability",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{release_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-releases/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-releases",
+            "capability"
+          ]
+        }
+      },
+      "description": "Scoped release contract approved-workset-release-v1.json; owner setup separate, original and current readback distinct."
+    },
+    {
+      "name": "POST /v1/approved-workset-releases/prepare",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{release_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-releases/prepare",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-releases",
+            "prepare"
+          ]
+        }
+      },
+      "description": "Scoped release contract approved-workset-release-v1.json; owner setup separate, original and current readback distinct."
+    },
+    {
+      "name": "POST /v1/approved-workset-releases/commands",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{release_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-releases/commands",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-releases",
+            "commands"
+          ]
+        }
+      },
+      "description": "Scoped release contract approved-workset-release-v1.json; owner setup separate, original and current readback distinct."
+    },
+    {
+      "name": "GET /v1/approved-workset-releases/operations/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{release_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-releases/operations/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-releases",
+            "operations",
+            "{operation_id}"
+          ]
+        }
+      },
+      "description": "Scoped release contract approved-workset-release-v1.json; owner setup separate, original and current readback distinct."
     }
   ]
 }

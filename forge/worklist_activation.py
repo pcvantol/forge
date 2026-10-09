@@ -50,6 +50,8 @@ class ApprovedWorklistActivation:
 
     def _current(self,key,candidate_id):
         value=self.service._get(key)
+        from .workset_release_grant import validate_activation_authority
+        validate_activation_authority(Path(self.runtime.data_root),value)
         operator=self.runtime.repository.operators
         if not operator.authorize(operator.context()):raise PermissionError('current operator required')
         read=projection(Path(self.runtime.data_root),self.runtime.database.runtime_identity.runtime_id,key,'forge-scheduler')
@@ -85,7 +87,8 @@ class ApprovedWorklistActivation:
             allocation=self.service.lifecycle.allocation_for_recommendation(candidate.recommendation_id)
             claim=value['claims'].get(candidate_id)
             own_id=(claim or {}).get('mission_id') or (allocation.mission_id if allocation else None)
-            if any(state.mission_id!=own_id and not _quiescent_failed_attempt(state) for state in self.runtime.states.resumable()):return None
+            if any(state.mission_id!=own_id and state.status.value!='APPROVED_PLANNABLE'
+                   and not _quiescent_failed_attempt(state) for state in self.runtime.states.resumable()):return None
             if own_id:
                 existing=self.service.db.execute('SELECT document FROM mission_state WHERE mission_id=?',(own_id,)).fetchone()
                 if existing and json.loads(existing[0])['status']!='APPROVED_PLANNABLE':return None
@@ -143,3 +146,26 @@ def activate_selected(runtime):
     if not any(json.loads(row[0])['release']=='AUTO_WHEN_ELIGIBLE' and not json.loads(row[0])['revoked'] for row in rows):return None
     with RecommendationLifecycleStore(candidate_source(Path(runtime.data_root))) as lifecycle:
         return ApprovedWorklistActivation(ApprovedWorklistService(runtime,lifecycle)).tick()
+
+
+def has_exact_activation_claim(runtime,mission_id):
+    """A real selected claim distinguishes admitted definitions from active work."""
+    state=runtime.states.get(mission_id)
+    for row in runtime.database._connection.execute('SELECT document FROM approved_worksets'):
+        value=json.loads(row[0])
+        if value['runtime_generation']!=runtime.database._connection.execute('SELECT dataset_generation FROM operational_reset_state WHERE singleton=1').fetchone()[0]:
+            continue
+        for member in value['definition']['members']:
+            claim=value['claims'].get(member['candidate_id'])
+            if not claim or claim.get('mission_id')!=mission_id:continue
+            expected=canonical_digest((value['authority_digest'],member['candidate_id'],member['subject_revision']))
+            if (claim['operation_id']!=expected or claim['subject_revision']!=member['subject_revision']
+                    or (state.admission_contract or {}).get('subject_revision')!=member['subject_revision']
+                    or (state.execution_policy or {}).get('assignment_id')!='workset-policy:'+expected[7:]):
+                raise ValueError('current runtime workset claim differs')
+            # Read validates canonical decisions and immutable definition, without
+            # requiring old released rights to remain active for ongoing work.
+            projection(Path(runtime.data_root),runtime.database.runtime_identity.runtime_id,
+                value['definition']['workset_id'],'forge-runtime')
+            return True
+    return False
