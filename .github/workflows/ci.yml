@@ -253,7 +253,7 @@ jobs:
           gate_exit=$?
           set -e
           test "$gate_exit" -eq 1
-          python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-workset-release-control/installed-workset-release.public.json").read_text()); assert d["result"]=="FAIL" and d["failure"]["stage"]=="positive-workset-activation" and d["external_fault"]=="REVOKED_POSITIVE_RELEASE_GRANT" and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
+          python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-workset-release-control/installed-workset-release.public.json").read_text()); assert d["result"]=="FAIL" and d["failure"]["type"]=="AssertionError" and d["failure_control_detected"] and d["failure"]["stage"]=="positive-workset-activation" and d["external_fault"]=="REVOKED_POSITIVE_RELEASE_GRANT" and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

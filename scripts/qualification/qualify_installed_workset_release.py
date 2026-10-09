@@ -47,7 +47,7 @@ def run(args):
         'source_revision':args.source_revision,'artifact':artifact,
         'schema_sha256':'sha256:'+sha256(schema.read_bytes()).hexdigest(),
         'result':'FAIL','case_count':0,'cases':[],'failure':None,
-        'expected_failure_control':args.failure_control,
+        'expected_failure_control':args.failure_control,'failure_control_detected':False,
         'external_fault':'REVOKED_POSITIVE_RELEASE_GRANT' if args.failure_control else None,
         'limitations':['Actual noneditable HTTP/auth/G001/context/provider adapter/validator/storage/approvals/Intake/worklist services.',
             'External deterministic model executable, OS identity and repository transport only; live model quality not qualified.',
@@ -75,7 +75,9 @@ def run(args):
         receipt['failure']={'type':type(error).__name__,'stage':stage,
                             'detail':'Declared workset release qualification gate failed'}
         if args.failure_control:
-            assert isinstance(error,AssertionError) and 'revoked-positive-workset-activation-detected' in str(error)
+            detected=isinstance(error,AssertionError) and 'revoked-positive-workset-activation-detected' in str(error)
+            receipt['failure_control_detected']=detected
+            if not detected:receipt['external_fault']=None
     finally:
         for name in ('home','scratch','config'):
             path=output/'isolated'/name
