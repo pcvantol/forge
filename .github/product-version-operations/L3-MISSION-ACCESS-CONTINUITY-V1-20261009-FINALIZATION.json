@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.12.1",
+  "classification_rationale": "L3-r44-issue207-6081582879",
+  "component": "product",
+  "event_lineage": "L3-r44-issue207-6081582879",
+  "expected_head": "9bc257f10537c34fe4413b6b99d0d1133a76d094",
+  "operation_id": "L3-MISSION-ACCESS-CONTINUITY-V1-20261009-FINALIZATION",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "NO_BUMP",
+  "requested_bump": "none",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.12.1"
+}
