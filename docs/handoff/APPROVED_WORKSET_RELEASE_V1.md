@@ -143,3 +143,31 @@ The required installed matrix minimum is27. Formal bounded repairround3 is
 consumed without reset. Fresh full owning/strictcoverage/installed27/control,
 complete exact-head Q/S, all existing required CI, protected delivery,
 nonemptyNO_BUMP finalization and fresh exact-final-main remain open.
+
+
+## Protected source and implementation-main completion snapshot
+
+PR267 was ordinarily protected squashmerged at966f24ecf9a7fcf17d28a552795569d0de4397ea
+from exact independently Quality/SecurityPASS bbad4934a748b3a9b51cbacf3f9769ae3b0cd34f.
+Required hostedCI37934063071 succeeded with every retained installed gate and
+the new27-case release/revocation detector. Wholeown1362PASS/oneexisting skip,
+all11changedproductionstrict>80.2%, freshcandidateinstalled27/control and
+legacyhold43 are exact current evidence. Allthree formal repairs and historical
+FAIL/PASS/aborted/cancelled attempts remain preserved, without reset.
+
+A NEW noneditable build/install on the actual committed implementation-main
+966f24ec passed27 again, with true original-grant revocation detection and
+cleanup. This snapshot is captured in the committed qualification JSON;
+implementation-mainCI37939524199 was still running at snapshot publication.
+Normal nonemptyNO_BUMP2.12.0 finalization retains the original event lineage.
+Actual FINAL-main readback, new clean-source build/install/27/control, current
+mainCI/TDE/artifacts and cleanup remain required AFTER protected finalization;
+the final SHA is not predicted or represented by this implementation snapshot.
+
+TDEPR37934063184 expired its unchanged15minute observe budget during coverage,
+before assessment: cancelled/NOT_ASSESSED, never policyPASS. The historical
+r42assessment/policyFAIL remains separate, with no broad remediation or relaxed
+budget/profile. L4 remains on2.11.0/1b00c735 and its old schema/wheel/GUI scope;
+no liveEP/model-quality/native-consumer/fullPRM claim is made. The separately
+selected access-continuity successor remains read-only until r43closure and
+its explicit budget disposition; it adds no r43corrective allowance.
