@@ -24,6 +24,10 @@ def run(args):
     output.mkdir(parents=True, exist_ok=True)
     if len(args.source_revision) != 40 or any(c not in '0123456789abcdef' for c in args.source_revision):
         raise ValueError('exact source revision required')
+    actual_source = subprocess.run(['git', '-C', str(SOURCE), 'rev-parse', 'HEAD'],
+        check=True, capture_output=True, text=True).stdout.strip()
+    if actual_source != args.source_revision:
+        raise ValueError('qualifier checkout does not match exact source revision')
     installed = Path(forge.__file__).resolve()
     if installed.is_relative_to(SOURCE / 'forge'):
         raise ValueError('qualification requires a noneditable installed product')
