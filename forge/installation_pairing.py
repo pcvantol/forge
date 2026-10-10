@@ -150,18 +150,18 @@ class InstallationPairingService:
         connection = sqlite3.connect((self.root/'forge.db').as_uri()+'?mode=ro',uri=True)
         try:
             revision = connection.execute("SELECT revision FROM installation_peer_generation WHERE singleton=1").fetchone()[0]
-            row = connection.execute('SELECT operation_id,document_digest,document FROM installation_peer_configuration WHERE singleton=1').fetchone()
+            row = connection.execute('SELECT operation_id,document_digest,document,binding_id FROM installation_peer_configuration WHERE singleton=1').fetchone()
         finally:
             connection.close()
         if row is None:
             return dict(status='NOT_CONFIGURED',configuration_revision=revision,execution_ready=False)
-        operation,digest,encoded = row
+        operation,digest,encoded,binding_id = row
         if 'sha256:'+sha256(encoded.encode()).hexdigest() != digest:
             raise InstallationPairingError('INSTALLATION_BINDING_CORRUPT')
         document = json.loads(encoded)
         peer_values = {key:document[key] for key in InstallationPeer.__dataclass_fields__}
         peer = InstallationPeer(**peer_values)
-        if set(document) != set(peer_values)|{'operation_id','installation_id','operator_binding_version'} or document['operation_id'] != operation or peer.forge_instance_id != readback.runtime_id:
+        if set(document) != set(peer_values)|{'operation_id','installation_id','operator_binding_version'} or document['operation_id'] != operation or peer.forge_instance_id != readback.runtime_id or peer.binding_id != binding_id:
             raise InstallationPairingError('INSTALLATION_BINDING_INSTANCE_MISMATCH')
         return dict(status='CONFIGURED',configuration=document,configuration_digest=digest,configuration_revision=revision,execution_ready=False)
 

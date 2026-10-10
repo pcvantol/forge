@@ -229,3 +229,12 @@ class InstallationDetachTests(unittest.TestCase):
                 receipt = service.detach(**self.request)
                 self.assertEqual(service.detach_status('detach-one'),receipt)
                 self.assertEqual(service.detach(**self.request),receipt)
+
+    def test_actual_binding_column_drift_cannot_detach(self):
+        with sqlite3.connect(self.root/'forge.db') as c:
+            c.execute("UPDATE installation_peer_configuration SET binding_id='foreign'")
+        with self.assertRaises(InstallationPairingError): self.service.detach(**self.request)
+        with self.assertRaises(InstallationPairingError): self.service.show()
+        with sqlite3.connect(self.root/'forge.db') as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM installation_peer_configuration').fetchone()[0],1)
+            self.assertEqual(c.execute('SELECT count(*) FROM installation_peer_detach_operations').fetchone()[0],0)
