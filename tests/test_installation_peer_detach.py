@@ -290,3 +290,34 @@ class InstallationDetachTests(unittest.TestCase):
         self.assertEqual(self.service.show(),self.before)
         with sqlite3.connect(self.root/'forge.db') as c:
             self.assertEqual(c.execute('SELECT count(*) FROM installation_peer_detach_operations').fetchone()[0],0)
+
+    def test_coherent_live_configuration_corruption_denied_before_any_effect(self):
+        original = dict(self.before['configuration'])
+        for fault in ('boolean-version','float-version','zero-version','noncanonical-json','noncanonical-endpoint',
+                      'extra-key','missing-key','invalid-operation','invalid-installation'):
+            with self.subTest(fault=fault):
+                doc = dict(original)
+                operation = 'configure-one'
+                if fault=='boolean-version': doc['operator_binding_version'] = True
+                if fault=='float-version': doc['operator_binding_version'] = 1.0
+                if fault=='zero-version': doc['operator_binding_version'] = 0
+                if fault=='noncanonical-endpoint': doc['endpoint'] += '/'
+                if fault=='extra-key': doc['extra'] = 'invalid'
+                if fault=='missing-key': del doc['consumer_id']
+                if fault=='invalid-operation': doc['operation_id'] = operation = 'invalid/id'
+                if fault=='invalid-installation': doc['installation_id'] = True
+                encoded = json.dumps(doc,indent=2) if fault=='noncanonical-json' else json.dumps(doc,sort_keys=True,separators=(',',':'))
+                digest = 'sha256:'+sha256(encoded.encode()).hexdigest()
+                with sqlite3.connect(self.root/'forge.db') as c:
+                    c.execute('UPDATE installation_peer_configuration SET document=?,document_digest=?,operation_id=?',(encoded,digest,operation))
+                with self.assertRaises(InstallationPairingError): self.service.detach(**self.request)
+                with self.assertRaises(InstallationPairingError): self.service.show()
+                with sqlite3.connect(self.root/'forge.db') as c:
+                    self.assertEqual(c.execute('SELECT count(*) FROM installation_peer_configuration').fetchone()[0],1)
+                    self.assertEqual(c.execute('SELECT revision FROM installation_peer_generation').fetchone()[0],1)
+                    self.assertEqual(c.execute('SELECT count(*) FROM installation_peer_detach_operations').fetchone()[0],0)
+        with sqlite3.connect(self.root/'forge.db') as c:
+            c.execute('UPDATE installation_peer_configuration SET document=?,document_digest=?,operation_id=?',
+                      (json.dumps(original,sort_keys=True,separators=(',',':')),self.before['configuration_digest'],'configure-one'))
+        receipt = self.service.detach(**self.request)
+        self.assertEqual(self.service.detach_status('detach-one'),receipt)

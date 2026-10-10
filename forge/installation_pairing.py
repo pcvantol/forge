@@ -159,9 +159,20 @@ class InstallationPairingService:
         if 'sha256:'+sha256(encoded.encode()).hexdigest() != digest:
             raise InstallationPairingError('INSTALLATION_BINDING_CORRUPT')
         document = json.loads(encoded)
+        expected = set(InstallationPeer.__dataclass_fields__) | {'operation_id','installation_id','operator_binding_version'}
+        if (not isinstance(document,dict) or set(document) != expected or
+            json.dumps(document,sort_keys=True,separators=(',',':'),allow_nan=False) != encoded or
+            not isinstance(operation,str) or re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}',operation) is None or
+            document['operation_id'] != operation or
+            not isinstance(document['installation_id'],str) or not document['installation_id'] or
+            type(document['operator_binding_version']) is not int or document['operator_binding_version'] < 1):
+            raise InstallationPairingError('INSTALLATION_BINDING_CORRUPT')
         peer_values = {key:document[key] for key in InstallationPeer.__dataclass_fields__}
         peer = InstallationPeer(**peer_values)
-        if set(document) != set(peer_values)|{'operation_id','installation_id','operator_binding_version'} or document['operation_id'] != operation or peer.forge_instance_id != readback.runtime_id or peer.binding_id != binding_id:
+        from dataclasses import asdict
+        if (json.dumps(asdict(peer),sort_keys=True,separators=(',',':'),allow_nan=False) !=
+            json.dumps(peer_values,sort_keys=True,separators=(',',':'),allow_nan=False) or
+            peer.forge_instance_id != readback.runtime_id or peer.binding_id != binding_id):
             raise InstallationPairingError('INSTALLATION_BINDING_INSTANCE_MISMATCH')
         return dict(status='CONFIGURED',configuration=document,configuration_digest=digest,configuration_revision=revision,execution_ready=False)
 
