@@ -62,15 +62,27 @@ def _receipt(request, context, configuration_digest):
 
 
 def _verified(row, request, context):
+    from .installation_pairing import InstallationPeer
     try:
-        saved_request, saved = json.loads(row[0]), json.loads(row[1])
-        if saved_request != request or _canonical(saved_request) != row[0]:
+        saved_request = _request(json.loads(row[0]))
+        saved, basis = json.loads(row[1]), json.loads(row[2])
+        if _canonical(saved_request) != _canonical(request) or _canonical(saved_request) != row[0]:
             raise InstallationPairingError('INSTALLATION_OPERATION_CONFLICT')
-        digest = saved['previous_configuration_digest']
-        if not isinstance(digest, str) or re.fullmatch(r'sha256:[0-9a-f]{64}', digest) is None:
-            raise ValueError('invalid digest')
-        expected = _receipt(request, context, digest)
-        if saved != expected or _canonical(expected) != row[1]:
+        if set(basis) != {'configuration', 'configuration_revision'} or _canonical(basis) != row[2]:
+            raise ValueError('invalid basis')
+        configuration = basis['configuration']
+        peer = InstallationPeer(**{key:configuration[key] for key in InstallationPeer.__dataclass_fields__})
+        if (set(configuration) != set(InstallationPeer.__dataclass_fields__) | {'operation_id', 'installation_id', 'operator_binding_version'} or
+            configuration['operation_id'] == request['operation_id'] or
+            peer.binding_id != request['expected_binding_id'] or peer.forge_instance_id != context['runtime_id'] or
+            configuration['installation_id'] != context['installation_id'] or
+            type(configuration['operator_binding_version']) is not int or
+            configuration['operator_binding_version'] != context['operator_binding_version'] or
+            type(basis['configuration_revision']) is not int or
+            basis['configuration_revision'] != request['expected_configuration_revision']):
+            raise ValueError('basis context mismatch')
+        expected = _receipt(request, context, _digest(configuration))
+        if _canonical(saved) != _canonical(expected) or _canonical(expected) != row[1]:
             raise ValueError('invalid receipt')
         return expected
     except (KeyError, TypeError, ValueError):
@@ -85,12 +97,12 @@ def detach(service, document):
         database = EngineeringPlatformPeerConfigurationService(service.root)._open_for_configuration()
         try:
             connection = database._connection
-            context = _context(connection, database.runtime_identity.runtime_id)
             with connection:
                 # One database transaction binds the preconditions, transition,
                 # durable receipt and audit. No intermediate operation survives.
                 connection.execute('BEGIN IMMEDIATE')
-                row = connection.execute('SELECT request,receipt FROM installation_peer_detach_operations WHERE operation_id=?', (request['operation_id'],)).fetchone()
+                context = _context(connection, database.runtime_identity.runtime_id)
+                row = connection.execute('SELECT request,receipt,basis FROM installation_peer_detach_operations WHERE operation_id=?', (request['operation_id'],)).fetchone()
                 if row is not None:
                     return _verified(row, request, context)
                 current = service.show()
@@ -106,8 +118,9 @@ def detach(service, document):
                 receipt = _receipt(request, context, current['configuration_digest'])
                 connection.execute('DELETE FROM installation_peer_configuration WHERE singleton=1')
                 connection.execute('UPDATE installation_peer_generation SET revision=revision+1 WHERE singleton=1')
-                connection.execute('INSERT INTO installation_peer_detach_operations VALUES (?,?,?)',
-                                   (request['operation_id'], _canonical(request), _canonical(receipt)))
+                connection.execute('INSERT INTO installation_peer_detach_operations VALUES (?,?,?,?)',
+                                   (request['operation_id'], _canonical(request), _canonical(receipt),
+                                    _canonical(dict(configuration=configuration, configuration_revision=current['configuration_revision']))))
                 database._append_operational_event(component='forge_execution_host', level='INFO',
                     event='installation_pairing_detached', operator_reference=context['operator_reference'],
                     details=dict(operation='detach_installation', outcome='accepted', new_state='NOT_CONFIGURED',
@@ -128,8 +141,9 @@ def detach_status(service, operation_id):
     connection = sqlite3.connect((service.root/'forge.db').as_uri()+'?mode=ro', uri=True)
     connection.row_factory = sqlite3.Row
     try:
+        connection.execute("BEGIN")
         context = _context(connection, readback.runtime_id)
-        row = connection.execute('SELECT request,receipt FROM installation_peer_detach_operations WHERE operation_id=?', (operation_id,)).fetchone()
+        row = connection.execute('SELECT request,receipt,basis FROM installation_peer_detach_operations WHERE operation_id=?', (operation_id,)).fetchone()
         if row is None:
             raise InstallationPairingError('INSTALLATION_DETACH_OPERATION_ABSENT')
         try:

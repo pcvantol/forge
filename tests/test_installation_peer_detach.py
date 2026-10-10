@@ -238,3 +238,55 @@ class InstallationDetachTests(unittest.TestCase):
         with sqlite3.connect(self.root/'forge.db') as c:
             self.assertEqual(c.execute('SELECT count(*) FROM installation_peer_configuration').fetchone()[0],1)
             self.assertEqual(c.execute('SELECT count(*) FROM installation_peer_detach_operations').fetchone()[0],0)
+
+    def test_corrupt_stored_typed_request_and_coherent_receipt_rehash_both_deny(self):
+        from forge.installation_peer_detach import _canonical, _digest
+        receipt = self.service.detach(**self.request)
+        with sqlite3.connect(self.root/'forge.db') as c:
+            original = tuple(c.execute('SELECT request,receipt FROM installation_peer_detach_operations').fetchone())
+            triggers = c.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND name LIKE 'installation_detach_receipt_immutable_%'").fetchall()
+        variants = [(dict(self.request,expected_configuration_revision=True),receipt),
+                    (dict(self.request,extra='invalid'),receipt),
+                    ({key:value for key,value in self.request.items() if key!='expected_binding_id'},receipt)]
+        changed = dict(receipt,previous_configuration_digest='sha256:'+'f'*64)
+        changed.pop('receipt_digest'); changed['receipt_digest'] = _digest(changed)
+        variants.append((self.request, changed))
+        for request, saved in variants:
+            with self.subTest(request=request, receipt=saved['previous_configuration_digest']):
+                with sqlite3.connect(self.root/'forge.db') as c:
+                    for name,sql in triggers: c.execute(f'DROP TRIGGER {name}')
+                    c.execute('UPDATE installation_peer_detach_operations SET request=?,receipt=?', (_canonical(request),_canonical(saved)))
+                    for name,sql in triggers: c.execute(sql)
+                with self.assertRaises(InstallationPairingError): self.service.detach(**self.request)
+                with self.assertRaises(InstallationPairingError): self.service.detach_status('detach-one')
+        with sqlite3.connect(self.root/'forge.db') as c:
+            for name,sql in triggers: c.execute(f'DROP TRIGGER {name}')
+            c.execute('UPDATE installation_peer_detach_operations SET request=?,receipt=?',original)
+            for name,sql in triggers: c.execute(sql)
+        self.assertEqual(self.service.detach_status('detach-one'),receipt)
+
+    def test_actual_canonical_revoke_before_effect_transaction_wins(self):
+        from forge.execution_host_configuration import EngineeringPlatformPeerConfigurationService
+        original = EngineeringPlatformPeerConfigurationService._open_for_configuration
+        identity, context, root = self.identity, self.context, self.root
+        class InterleavedConnection:
+            def __init__(self, connection): self.connection = connection; self.fired = False
+            def __getattr__(self, name): return getattr(self.connection,name)
+            def __enter__(self): return self.connection.__enter__()
+            def __exit__(self,*args): return self.connection.__exit__(*args)
+            def execute(self, statement, *args):
+                if statement == 'BEGIN IMMEDIATE' and not self.fired:
+                    self.fired = True
+                    other = RuntimeBootstrap(data_root=root, forge_version='test').open()
+                    try: InstallationOperatorService(other,lambda:identity).revoke(context)
+                    finally: other.close()
+                return self.connection.execute(statement,*args)
+        def scheduled_open(service):
+            db = original(service)
+            db._connection = InterleavedConnection(db._connection)
+            return db
+        with patch.object(EngineeringPlatformPeerConfigurationService, '_open_for_configuration',new=scheduled_open):
+            with self.assertRaises(PermissionError): self.service.detach(**self.request)
+        self.assertEqual(self.service.show(),self.before)
+        with sqlite3.connect(self.root/'forge.db') as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM installation_peer_detach_operations').fetchone()[0],0)

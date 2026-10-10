@@ -441,7 +441,7 @@ class RuntimeDatabase:
     def _require_installation_detach_structure(self) -> None:
         expected = {
             "installation_peer_generation": (("singleton", "INTEGER", 0, 1), ("revision", "INTEGER", 1, 0)),
-            "installation_peer_detach_operations": (("operation_id", "TEXT", 0, 1), ("request", "TEXT", 1, 0), ("receipt", "TEXT", 1, 0)),
+            "installation_peer_detach_operations": (("operation_id", "TEXT", 0, 1), ("request", "TEXT", 1, 0), ("receipt", "TEXT", 1, 0), ("basis", "TEXT", 1, 0)),
         }
         for table, shape in expected.items():
             columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
@@ -2138,7 +2138,7 @@ class RuntimeDatabase:
             with self._connection:
                 self._connection.execute("CREATE TABLE IF NOT EXISTS installation_peer_generation (singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision>=0))")
                 self._connection.execute("INSERT OR IGNORE INTO installation_peer_generation SELECT 1,COUNT(*) FROM installation_peer_configuration")
-                self._connection.execute("CREATE TABLE IF NOT EXISTS installation_peer_detach_operations (operation_id TEXT PRIMARY KEY,request TEXT NOT NULL,receipt TEXT NOT NULL)")
+                self._connection.execute("CREATE TABLE IF NOT EXISTS installation_peer_detach_operations (operation_id TEXT PRIMARY KEY,request TEXT NOT NULL,receipt TEXT NOT NULL,basis TEXT NOT NULL)")
                 for table in ("installation_peer_generation", "installation_peer_detach_operations"):
                     for operation in ("INSERT", "UPDATE", "DELETE"):
                         self._connection.execute(f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_{table}_{operation.lower()} BEFORE {operation} ON {table} WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END")
