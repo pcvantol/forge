@@ -455,8 +455,9 @@ class MissionStateStore:
                 if row is None:
                     raise MissionStateStoreError("final Business acceptance decision is absent")
                 canonical = json.loads(row["document"])
+                from forge.governance_authority import _digest as canonical_governance_digest
                 decision_evidence = canonical.get("evidence")
-                if (_digest(canonical) != row["digest"]
+                if (canonical_governance_digest(canonical) != row["digest"]
                         or row["digest"] != approval["decision_digest"]
                         or canonical.get("subject_id") != pending.get("requirement_id")
                         or canonical.get("subject_revision") != pending.get("subject_digest")

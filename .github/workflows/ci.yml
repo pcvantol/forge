@@ -338,6 +338,25 @@ jobs:
           name: forge-installed-action-authority-boundary-${{ github.sha }}
           path: installed-action-authority-boundary.public.json
           if-no-files-found: ignore
+      - name: Scoped Mission final acceptance (isolated installed HTTP CLI A to B)
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          wheel=("$RUNNER_TEMP"/forge-wheel/forge_autonomy-*.whl)
+          test "${#wheel[@]}" -eq 1
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/forge-installed/bin/python" -I \
+            "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_mission_final_acceptance.py" \
+            --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
+            --output-dir "$RUNNER_TEMP/forge-mission-final-acceptance"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: forge-mission-final-acceptance-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/forge-mission-final-acceptance/installed-mission-final-acceptance.public.json
+            ${{ runner.temp }}/forge-mission-final-acceptance/*.log
+          if-no-files-found: error
       - name: Exact published 2.7.39 to 2.8.1 preservation maintenance
         timeout-minutes: 3
         env:

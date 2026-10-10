@@ -1,0 +1,97 @@
+# Scoped Mission final acceptance V1
+
+Assignment: `L3-SCOPED-MISSION-FINAL-ACCEPTANCE-V1-20261010`.
+Lane revision r47/plan1; same ARCHITECT_3/LANE_3_WORK writer.
+Base `308888297796a2c50ff934922470cc167a36b629`; branch
+`codex/l3-scoped-mission-final-acceptance`. Formal correction admission
+consumed0/max3/remaining3; counting starts after the first complete independent
+Quality/Security pair. R43–r46 remain closed. L4 plan96, its Forge2.12.1 pin,
+and its budgets are unchanged.
+
+## Consumer contract
+
+`forge-mission-final-acceptance/v1` is a separate Business acceptance capability.
+It does not authorize Candidate approval, progression, workset release or a
+Mission start. Existing progression FINAL_ACCEPTANCE has no allowed outcomes.
+Business/G001 authority is derived from the actual current Solo operator.
+A consumer is a distinct typed principal, never a server administrator alias.
+
+| Route | Meaning | Required permission |
+| --- | --- | --- |
+| GET `/v1/mission-final-acceptances/capability` | Current bounded scope and support | READ |
+| GET `/v1/mission-final-acceptances/{mission_id}` | Real result, criteria, evidence and exact package | READ |
+| POST `/v1/mission-final-acceptances/{mission_id}/accept` | Explicit exact result acceptance | READ + ACCEPT + current Business/G001 |
+| GET `/v1/mission-final-acceptances/{mission_id}/operations/{operation_id}` | Original intent/outcome and separate current evidence/lifecycle | READ |
+
+Setup uses `forge-mission-final-acceptance-grant --data-root ROOT issue` with
+explicit repeated `--mission-id`, `--permission READ`, `--permission ACCEPT`,
+`--maximum-acceptances`, `--expires-at`, and `--token-file`. Instance/project/
+repository and subject revisions are derived from the actual installed root.
+Use inspect/identity/revoke for supported current readback and withdrawal.
+READ is mandatory; at most16 exact admitted Mission subjects,16 acceptances,
+and30 days of future validity. Private grants are closed, finite and revocable.
+A stable operator principal namespace retains original intents and consumed
+allowances across replacement keys; a new key cannot finish an old partial
+acceptance. This document grants no operational access.
+
+CLI `forge-mission-final-acceptance --data-root ROOT --token-file TOKEN` supports
+capability, show `--mission-id ID --output PACKAGE`, accept
+`--shown-package PACKAGE --operation-id ID --reason TEXT --confirm`, and
+operation `--mission-id ID --operation-id ID`. It derives mechanical fields
+from the shown package; consumers do not manually author approval JSON.
+The owning closed JSON schema, OpenAPI, Postman and72-route inventory bind the
+same HTTP/CLI semantics. Scope denial, stale/conflict, unavailable and pending
+outcomes stay explicit; pending is never reported as a completed original.
+
+## Evidence and recovery
+
+The readable package contains the actual Mission objective/summary, criteria
+assessments and receipt/action/report/repository-evidence references. The
+existing completion evaluator recomputes proof. The confirmation freezes exact
+instance/project/repository/Mission/subject/state/policy/completion/terminal
+lineage and actual Business actor. Action COMPLETE or green transport alone
+cannot establish the proof.
+
+A private original intent precedes canonical governance. Existing
+record_final_acceptance and accept_final_completion perform the canonical
+Business decision, terminal Mission transition and dispatcher release. Each
+actual effect has a current authority and exact evidence guard held through
+its mutation. Existing runtime serialization protects concurrent writers.
+Crash/restart, lost response and explicit replay retain the original decision
+and Mission IDs. GET/preview/reconnect do not finalize pending mutations.
+Canonical producer digests use the producer's own canonical encoding, including
+non-ASCII reasons. Original completed receipts remain separate from current
+lifecycle/evidence; altered canonical authority conflicts rather than rewriting
+history. Neither reads nor acceptance invoke a model or Execution Host.
+
+Only the existing runtime may subsequently start B, and its selection,
+predecessor evidence, hold, arm/revocation/expiry, capability and activation
+ceiling still apply. An un-released approved C remains outside selection.
+No scheduler, automatic acceptance, repair/reject/amend route, live deployment,
+user credential change, signing or public release is authorized here.
+
+## Qualification and delivery state
+
+Development probes cover actual chat/intake/workset/runtime/EP-HTTP-simulator
+A→B, zero calls during acceptance, wrong authority/scope/types, stale proof,
+canonical corruption, original/current readback, separate-process crash/lost
+response/concurrency/revocation, B blockers and approved un-released C.
+External model/EP/OS boundaries alone are deterministic fixtures; successful
+canonical governance and completion are generated by real product services.
+Removing the actual production effect guard makes the linked no-effect test
+fail on an unauthorized terminal state change.
+
+The new noneditable installed qualifier is an owning CI gate. It binds exact
+source, wheel digest, installed payload equality, contract files, actual cases,
+real guard-removal detection and owned scratch cleanup. Source tests alone are
+not installed evidence. Full validation, strict >80.2% coverage for each changed
+production file, independent exact-head Quality/Security, required CI, normal
+protected implementation merge, nonempty finalization, fresh exact-final-main
+installed proof and public evidence readback remain required until recorded.
+TDE assessment is separate from workflow completion.
+
+Future join `L3-L4-MISSION-FINAL-ACCEPTANCE-V1-20261010` covers this bounded
+PRM-F-CONTRACT/PROJECTION/ACTIVATION connection to PMT-05/09/10/11/13/15/20/22/
+25/28/31. It does not close an outer-loop/PRM-F-Q/delegation family or qualify a
+native Workspace consumer. Transfer qualified producer evidence only after the
+complete source DoD. No automatic successor.

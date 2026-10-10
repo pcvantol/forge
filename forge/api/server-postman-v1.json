@@ -1863,6 +1863,149 @@
           ]
         }
       }
+    },
+    {
+      "name": "GET /v1/mission-final-acceptances/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{missionFinalAcceptanceToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/mission-final-acceptances/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "mission-final-acceptances",
+            "capability"
+          ]
+        }
+      },
+      "description": "Read separate finite Mission-result authority. Separate exact READ/ACCEPT capability; no admin alias, provider effect or dependent start in this handler."
+    },
+    {
+      "name": "GET /v1/mission-final-acceptances/{mission_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{missionFinalAcceptanceToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/mission-final-acceptances/{{missionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "mission-final-acceptances",
+            "{{missionId}}"
+          ]
+        }
+      },
+      "description": "Read actual result and exact Business acceptance package. Separate exact READ/ACCEPT capability; no admin alias, provider effect or dependent start in this handler."
+    },
+    {
+      "name": "POST /v1/mission-final-acceptances/{mission_id}/accept",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{missionFinalAcceptanceToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/mission-final-acceptances/{{missionId}}/accept",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "mission-final-acceptances",
+            "{{missionId}}",
+            "accept"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contract_version\": \"forge-mission-final-acceptance/v1\",\n  \"operation_id\": \"{{acceptanceOperationId}}\",\n  \"instance_id\": \"{{instanceId}}\",\n  \"project_id\": \"{{projectId}}\",\n  \"repository_id\": \"{{repositoryId}}\",\n  \"mission_id\": \"{{missionId}}\",\n  \"package_digest\": \"{{shownAcceptancePackageDigest}}\",\n  \"reason\": \"Explicitly accept the exact displayed result.\",\n  \"confirm\": true\n}"
+        }
+      },
+      "description": "Explicitly accept the exact shown Mission result. Separate exact READ/ACCEPT capability; no admin alias, provider effect or dependent start in this handler."
+    },
+    {
+      "name": "GET /v1/mission-final-acceptances/{mission_id}/operations/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{missionFinalAcceptanceToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/mission-final-acceptances/{{missionId}}/operations/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "mission-final-acceptances",
+            "{{missionId}}",
+            "operations",
+            "{operation_id}"
+          ]
+        }
+      },
+      "description": "Read original acceptance outcome and current state without recovery writes. Separate exact READ/ACCEPT capability; no admin alias, provider effect or dependent start in this handler."
     }
   ]
 }

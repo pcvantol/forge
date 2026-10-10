@@ -79,6 +79,8 @@ from .candidate_decision_service import CandidateDecisionService
 from .worklist_control import WorklistControlService
 from .workset_release_grant import WorksetReleaseGrant
 from .workset_release_service import WorksetReleaseService
+from .mission_final_acceptance_grant import MissionFinalAcceptanceGrant
+from .mission_final_acceptance_service import MissionFinalAcceptanceService
 from .approved_worklist import projection as worklist_projection
 from .workspace_review_inbox import (
     OPERATION_VERSION as REVIEW_OPERATION_CONTRACT,
@@ -89,6 +91,10 @@ from .workspace_review_inbox import (
 SERVER_API_VERSION = "1"
 SERVER_RUNTIME_CONTRACT_VERSION = "1.0"
 SERVER_ROUTE_INVENTORY = (
+    ('GET', '/v1/mission-final-acceptances/capability'),
+    ('GET', '/v1/mission-final-acceptances/{mission_id}'),
+    ('POST', '/v1/mission-final-acceptances/{mission_id}/accept'),
+    ('GET', '/v1/mission-final-acceptances/{mission_id}/operations/{operation_id}'),
     ('GET', '/v1/candidate-decisions/capability'),
     ('GET', '/v1/candidate-decisions/{candidate_id}'),
     ('POST', '/v1/candidate-decisions/{candidate_id}/business'),
@@ -753,7 +759,8 @@ class ForgeServerAPI:
                  advisory_grant: AdvisoryGrant | None = None,
                  candidate_grant: AdvisoryCandidateGrant | None = None,
                  decision_grant: CandidateDecisionGrant | None = None,
-                 release_grant: WorksetReleaseGrant | None = None) -> None:
+                 release_grant: WorksetReleaseGrant | None = None,
+                 final_acceptance_grant: MissionFinalAcceptanceGrant | None = None) -> None:
         if not bearer_credential:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
@@ -769,6 +776,7 @@ class ForgeServerAPI:
         self.candidate_grant = candidate_grant
         self.decision_grant = decision_grant
         self.release_grant = release_grant
+        self.final_acceptance_grant = final_acceptance_grant or MissionFinalAcceptanceGrant(services.root, instance.instance_id)
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
 
     @staticmethod
@@ -790,6 +798,8 @@ class ForgeServerAPI:
     def _authentication_kind(self, authorization: str | None) -> str | None:
         if self._authenticated(authorization):
             return "ADMIN"
+        if self.final_acceptance_grant.authenticate(authorization):
+            return "MISSION_FINAL_ACCEPTANCE"
         if self.release_grant is not None and self.release_grant.authenticate(authorization):
             return "WORKSET_RELEASE"
         if self.read_grant is not None and self.read_grant.authenticate(authorization):
@@ -942,6 +952,13 @@ class ForgeServerAPI:
             return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
             }}, headers)
+        if kind == "MISSION_FINAL_ACCEPTANCE":
+            status, document = MissionFinalAcceptanceService(self.services.root, self.final_acceptance_grant).handle(
+                method, path, authorization, body)
+            return APIResponse(status, document, headers)
+        if path == "/v1/mission-final-acceptances" or path.startswith("/v1/mission-final-acceptances/"):
+            return APIResponse(403, {"contract_version": "forge-mission-final-acceptance/v1",
+                "error": {"code": "FINAL_ACCEPTANCE_SCOPE_DENIED"}}, headers)
         if kind == "WORKSET_RELEASE":
             status,document=WorksetReleaseService(self.services.root,self.release_grant).handle(method,path,authorization,body)
             return APIResponse(status,document,headers)
@@ -1204,7 +1221,7 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                     review_mission = api._review_mission_for_decision(
                         self.command, path, authorization,
                     ) if kind == "WORKSPACE_REVIEW" else None
-                    body = self._body() if kind in {"ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE", "CANDIDATE_DECISION", "WORKSET_RELEASE"} or review_mission is not None else None
+                    body = self._body() if kind in {"ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE", "CANDIDATE_DECISION", "WORKSET_RELEASE", "MISSION_FINAL_ACCEPTANCE"} or review_mission is not None else None
                     response = api.handle(self.command, target, authorization, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {

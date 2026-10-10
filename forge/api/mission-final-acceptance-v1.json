@@ -1,0 +1,772 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/api/mission-final-acceptance-v1.json",
+  "title": "Explicit scoped Business Mission-result acceptance; no progression or Candidate reapproval",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/capability"
+    },
+    {
+      "$ref": "#/$defs/detail"
+    },
+    {
+      "$ref": "#/$defs/operation"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mission_id",
+        "title",
+        "objective",
+        "criteria",
+        "completion_proven",
+        "completion_digest",
+        "terminal_evidence_digest",
+        "summary",
+        "criteria_results"
+      ],
+      "properties": {
+        "mission_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "objective": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "criteria": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "completion_proven": {
+          "type": "boolean"
+        },
+        "completion_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "terminal_evidence_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "criteria_results": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "criterion_id",
+              "criterion",
+              "status",
+              "reason",
+              "evidence_references"
+            ],
+            "properties": {
+              "criterion_id": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "criterion": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "status": {
+                "enum": [
+                  "PROVEN",
+                  "UNSATISFIED",
+                  "UNKNOWN"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "evidence_references": {
+                "type": "array",
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "receipt_id",
+                    "action_id",
+                    "report_id",
+                    "repository_evidence_digest"
+                  ],
+                  "properties": {
+                    "receipt_id": {
+                      "type": "string",
+                      "maxLength": 128
+                    },
+                    "action_id": {
+                      "type": "string",
+                      "maxLength": 128
+                    },
+                    "report_id": {
+                      "type": "string",
+                      "maxLength": 128
+                    },
+                    "repository_evidence_digest": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope_digest",
+        "mission_definition_digest",
+        "admission_digest",
+        "policy_digest",
+        "completion_digest",
+        "terminal_evidence_digest"
+      ],
+      "properties": {
+        "scope_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "mission_definition_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "admission_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "policy_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "completion_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "terminal_evidence_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "requirement_id",
+        "subject_digest",
+        "status",
+        "instance_id",
+        "project_id",
+        "mission_id",
+        "mission_subject_revision",
+        "mission_state_revision",
+        "completion_digest",
+        "terminal_evidence_digest",
+        "policy_revision",
+        "policy_digest",
+        "required_role",
+        "required_capability",
+        "reason"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "forge-final-acceptance-requirement/v1"
+        },
+        "requirement_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "subject_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "status": {
+          "const": "PENDING"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "mission_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "mission_subject_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "mission_state_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "completion_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "terminal_evidence_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "policy_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "policy_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "required_role": {
+          "const": "business_owner"
+        },
+        "required_capability": {
+          "const": "BUSINESS_APPROVAL"
+        },
+        "reason": {
+          "const": "mission_end_acceptance_required"
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "mission_id",
+        "principal_reference",
+        "mission_state_revision",
+        "requirement",
+        "source_basis",
+        "result",
+        "required_role",
+        "required_capability",
+        "decision",
+        "execution_started"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-mission-final-acceptance/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "repository_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "mission_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "principal_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "mission_state_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requirement": {
+          "$ref": "#/$defs/requirement"
+        },
+        "source_basis": {
+          "$ref": "#/$defs/basis"
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        },
+        "required_role": {
+          "const": "business_owner"
+        },
+        "required_capability": {
+          "const": "BUSINESS_APPROVAL"
+        },
+        "decision": {
+          "const": "accept"
+        },
+        "execution_started": {
+          "const": false
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "operation_id",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "mission_id",
+        "package_digest",
+        "reason",
+        "confirm"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-mission-final-acceptance/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "repository_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "mission_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "package_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "confirm": {
+          "const": true
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mission_id",
+        "subject_revision"
+      ],
+      "properties": {
+        "mission_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "subject_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "permissions",
+        "missions",
+        "maximum_acceptances",
+        "expires_at",
+        "acceptance_supported",
+        "required_role",
+        "read_only",
+        "additional_model_calls",
+        "execution_started"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-mission-final-acceptance/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "repository_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "permissions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "READ",
+              "ACCEPT"
+            ]
+          }
+        },
+        "missions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/scope"
+          }
+        },
+        "maximum_acceptances": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "acceptance_supported": {
+          "type": "boolean"
+        },
+        "required_role": {
+          "const": "business_owner"
+        },
+        "read_only": {
+          "const": true
+        },
+        "additional_model_calls": {
+          "const": 0
+        },
+        "execution_started": {
+          "const": false
+        }
+      }
+    },
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lifecycle",
+        "mission_state_revision",
+        "result"
+      ],
+      "properties": {
+        "lifecycle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "mission_state_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        }
+      }
+    },
+    "operation_current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lifecycle",
+        "mission_state_revision",
+        "result",
+        "canonical_decision_recorded",
+        "evidence_matches_original"
+      ],
+      "properties": {
+        "lifecycle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "mission_state_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        },
+        "canonical_decision_recorded": {
+          "type": "boolean"
+        },
+        "evidence_matches_original": {
+          "type": "boolean"
+        }
+      }
+    },
+    "detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "mission_id",
+        "package",
+        "package_digest",
+        "acceptance_supported",
+        "blocking_reasons",
+        "current",
+        "read_only",
+        "additional_model_calls",
+        "execution_started"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-mission-final-acceptance/v1"
+        },
+        "mission_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "package": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/package"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "package_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acceptance_supported": {
+          "type": "boolean"
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        "current": {
+          "$ref": "#/$defs/current"
+        },
+        "read_only": {
+          "const": true
+        },
+        "additional_model_calls": {
+          "const": 0
+        },
+        "execution_started": {
+          "const": false
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "mission_id",
+        "original_operation_id",
+        "principal_reference",
+        "grant_id",
+        "decision_id",
+        "decision_digest",
+        "requirement_id",
+        "package_digest",
+        "source_basis",
+        "accepted_at",
+        "lifecycle",
+        "dispatcher_released"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-mission-final-acceptance/v1"
+        },
+        "mission_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "original_operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "principal_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "grant_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "decision_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "decision_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "requirement_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "package_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "source_basis": {
+          "$ref": "#/$defs/basis"
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lifecycle": {
+          "const": "COMPLETED"
+        },
+        "dispatcher_released": {
+          "const": true
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "operation_id",
+        "mission_id",
+        "state",
+        "original_request",
+        "original_receipt",
+        "effects_observed_complete",
+        "current",
+        "read_only",
+        "additional_model_calls",
+        "execution_started"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-mission-final-acceptance/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "mission_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "COMPLETE"
+          ]
+        },
+        "original_request": {
+          "$ref": "#/$defs/request"
+        },
+        "original_receipt": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/receipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effects_observed_complete": {
+          "type": "boolean"
+        },
+        "current": {
+          "$ref": "#/$defs/operation_current"
+        },
+        "read_only": {
+          "const": true
+        },
+        "additional_model_calls": {
+          "const": 0
+        },
+        "execution_started": {
+          "const": false
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "error"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-mission-final-acceptance/v1"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

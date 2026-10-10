@@ -1,0 +1,46 @@
+{
+  "assignment_id": "L3-SCOPED-MISSION-FINAL-ACCEPTANCE-V1-20261010",
+  "base": "308888297796a2c50ff934922470cc167a36b629",
+  "branch": "codex/l3-scoped-mission-final-acceptance",
+  "delivery_state": "IMPLEMENTED_VALIDATION_IN_PROGRESS",
+  "focused_initial": {
+    "elapsed_seconds": 200.962,
+    "result": "PASS",
+    "tests": 18
+  },
+  "formal_corrections": {
+    "consumed": 0,
+    "first_independent_pair_complete": false,
+    "maximum": 3,
+    "remaining": 3
+  },
+  "l4": "plan96 Forge2.12.1/9875333acc4258a20fc0180a9ae09c980802d5b1 unchanged",
+  "lane_revision": "r47",
+  "live_EP": "NOT_USED",
+  "plan_revision": 1,
+  "predecessors": "r43/r44 CLOSED3/3; r45 CLOSED2/3; r46 CLOSED0/3",
+  "product_version": "2.13.0",
+  "public_release": "NOT_AUTHORIZED_OR_PERFORMED",
+  "qualification_scope": "PMT-05/09/10/11/13/15/20/22/25/28/31 bounded PRM-F-CONTRACT/PROJECTION/ACTIVATION connection",
+  "remaining": [
+    "full-validation-and-all-changed-production-coverage",
+    "fresh-exact-head-noneditable-installed-qualification",
+    "whole-independent-Quality-and-Security",
+    "all-required-CI",
+    "protected-implementation-merge",
+    "nonempty-finalization",
+    "fresh-exact-final-main-installed-proof",
+    "public-artifact-main-schema-readback",
+    "separate-TDE-status",
+    "owned-cleanup"
+  ],
+  "schema_version": 46,
+  "source_coverage_new_modules": {
+    "forge/mission_final_acceptance_cli.py": 96.61016949152543,
+    "forge/mission_final_acceptance_contract.py": 100.0,
+    "forge/mission_final_acceptance_grant.py": 93.78238341968913,
+    "forge/mission_final_acceptance_journal.py": 85.71428571428571,
+    "forge/mission_final_acceptance_package.py": 97.82608695652173,
+    "forge/mission_final_acceptance_service.py": 90.37433155080214
+  }
+}
