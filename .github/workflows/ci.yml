@@ -24,6 +24,15 @@ jobs:
       - run: bash scripts/validate.sh
         env:
           FORGE_WITH_COVERAGE: "1"
+      - name: Release repository context (delivered controller and restored defect)
+        timeout-minutes: 3
+        run: bash scripts/qualification/qualify_release_repository_context.sh "$RUNNER_TEMP/forge-release-repository-context"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: forge-release-repository-context-${{ github.sha }}
+          path: ${{ runner.temp }}/forge-release-repository-context/
+          if-no-files-found: error
       - name: Enforce changed Forge source coverage
         if: github.event_name == 'pull_request'
         env:

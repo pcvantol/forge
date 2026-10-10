@@ -41,7 +41,7 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("--mark-cleanup-pending", workflow)
         self.assertIn("--complete", workflow)
         self.assertIn("forge-release-$VERSION-$SOURCE_SHA", workflow)
-        self.assertIn('gh release create "$TAG" "$QUALIFIED" --draft --target "$SOURCE_SHA"', workflow)
+        self.assertIn('gh release create "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" "$QUALIFIED" --draft --target "$SOURCE_SHA"', workflow)
         self.assertIn("Existing PyPI publication has no durable original release receipt", workflow)
         publish_job = workflow[
             workflow.index("  publish-pypi:"):
@@ -49,7 +49,7 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         ]
         self.assertIn("contents: write", publish_job)
         self.assertIn(
-            'gh release download "$TAG" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"',
+            'gh release download "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"',
             publish_job,
         )
         self.assertIn("expected_digests_from_sha256sums(Path(sys.argv[3]), wanted)", publish_job)
@@ -57,7 +57,7 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("if: steps.existing.outputs.already_published != 'true'", publish_job)
         self.assertIn("forge-release-published-$VERSION-$SOURCE_SHA.json", workflow)
         self.assertIn("needs: [release-context, build-and-qualify, publish-pypi, registry-readback-and-published-evidence]", workflow)
-        self.assertIn("gh release download \"$TAG\" --pattern \"$PUBLISHED_RECEIPT\" --dir published-readback", workflow)
+        self.assertIn("gh release download \"$TAG\" --repo \"$FORGE_RELEASE_REPOSITORY\" --pattern \"$PUBLISHED_RECEIPT\" --dir published-readback", workflow)
         self.assertIn("CLEANUP_PENDING", workflow)
         self.assertIn("forge-pending-readback", workflow)
         self.assertIn("durable cleanup-pending receipt does not match PUBLISHED release identity", workflow)
@@ -100,7 +100,7 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertLess(workflow.index("durable cleanup-pending receipt"), workflow.index("--complete"))
         self.assertIn("--wheel-digest \"$WHEEL_DIGEST\"", workflow)
         self.assertIn('PENDING_READBACK="$(mktemp -d "$RUNNER_TEMP/forge-pending-readback-XXXXXX")"', workflow)
-        self.assertIn('PENDING_CONFIRMATION="$(mktemp -d "$RUNNER_TEMP/forge-pending-confirmation-XXXXXX")"', workflow)
+        self.assertIn('forge_retain_release_receipt "$TAG" "$PENDING"', workflow)
         self.assertIn('pending.qualification != published.qualification', workflow)
         self.assertIn("store.replace(current, pending)", workflow)
         self.assertNotIn("Path(published_path).write_bytes", workflow)
@@ -307,6 +307,9 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
                 test "$1" = release
                 action="$2"
                 shift 2
+                if test "${2:-}" = --repo; then
+                  tag="$1"; shift 3; set -- "$tag" "$@"
+                fi
                 case "$action" in
                   download)
                     tag="$1"
@@ -334,7 +337,11 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
                     cp -- "$artifact" "$FAKE_GH_ASSETS/$(basename "$artifact")"
                     ;;
                   view)
-                    echo false
+                    case "$*" in
+                      *targetCommitish*) echo "$SOURCE_SHA" ;;
+                      *assets*) for asset in "$FAKE_GH_ASSETS"/*; do test ! -f "$asset" || basename "$asset"; done ;;
+                      *) echo false ;;
+                    esac
                     ;;
                   edit)
                     exit 0
@@ -383,6 +390,9 @@ class ProductionReleaseWorkflowTests(unittest.TestCase):
                 "FAKE_GH_ASSETS": str(assets),
                 "FAKE_GH_UPLOAD_LOG": str(root / "uploads.log"),
                 "GH_TOKEN": "test-token",
+                "GITHUB_WORKSPACE": str(RELEASE_OPERATION.parent.parent.resolve()),
+                "GITHUB_REPOSITORY": "pcvantol/forge",
+                "GITHUB_SERVER_URL": "https://github.com",
                 "OPERATION_ID": operation_id,
                 "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
                 "RUNNER_TEMP": str(runner_temp),

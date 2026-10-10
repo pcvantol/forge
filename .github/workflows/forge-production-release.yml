@@ -177,13 +177,14 @@ jobs:
           VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           set -euo pipefail
+          source "$GITHUB_WORKSPACE/scripts/release_github_context.sh"
           TAG="forge-v$VERSION"
           QUALIFIED="forge-release-qualified-$VERSION-$SOURCE_SHA.json"
           cp "release-evidence/operations/$OPERATION_ID.json" "$QUALIFIED"
-          if gh release view "$TAG" --json targetCommitish >/dev/null 2>&1; then
-            test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
+          if gh release view "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --json targetCommitish >/dev/null 2>&1; then
+            test "$(gh release view "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
             mkdir "$RUNNER_TEMP/forge-qualified-readback"
-            if ! gh release download "$TAG" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"; then
+            if ! gh release download "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"; then
               echo 'Existing release lacks its original durable qualified-operation receipt.' >&2
               exit 1
             fi
@@ -194,7 +195,7 @@ jobs:
               exit 1
             }
             case "$status_code" in
-              404) gh release create "$TAG" "$QUALIFIED" --draft --target "$SOURCE_SHA" --title "Forge $VERSION" ;;
+              404) gh release create "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" "$QUALIFIED" --draft --target "$SOURCE_SHA" --title "Forge $VERSION" ;;
               200) echo 'Existing PyPI publication has no durable original release receipt.' >&2; exit 1 ;;
               *) echo "Unexpected PyPI identity lookup status: $status_code" >&2; exit 1 ;;
             esac
@@ -236,6 +237,7 @@ jobs:
           VERSION: ${{ needs.release-context.outputs.version }}
         run: |
           set -euo pipefail
+          source "$GITHUB_WORKSPACE/scripts/release_github_context.sh"
           python3 scripts/release_operation.py \
             --validate-qualified \
             --evidence-root release-input/release-evidence \
@@ -248,7 +250,7 @@ jobs:
           TAG="forge-v$VERSION"
           QUALIFIED="forge-release-qualified-$VERSION-$SOURCE_SHA.json"
           mkdir "$RUNNER_TEMP/forge-qualified-readback"
-          gh release download "$TAG" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"
+          gh release download "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --pattern "$QUALIFIED" --dir "$RUNNER_TEMP/forge-qualified-readback"
           cmp "release-input/release-evidence/operations/$OPERATION_ID.json" \
             "$RUNNER_TEMP/forge-qualified-readback/$QUALIFIED"
       - id: existing
@@ -410,6 +412,7 @@ jobs:
           SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
         run: |
           set -euo pipefail
+          source "$GITHUB_WORKSPACE/scripts/release_github_context.sh"
           cd "$RUNNER_TEMP/forge-registry-readback"
           TAG="forge-v$VERSION"
           RECEIPT="forge-release-published-$VERSION-$SOURCE_SHA.json"
@@ -437,13 +440,7 @@ jobs:
             --sdist "release-input/dist/forge_autonomy-$VERSION.tar.gz" \
             --evidence-file publication.json > published-operation.json
           cp "release-input/release-evidence/operations/$OPERATION_ID.json" "$RECEIPT"
-          test "$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
-          mkdir "$RUNNER_TEMP/forge-published-readback"
-          if gh release download "$TAG" --pattern "$RECEIPT" --dir "$RUNNER_TEMP/forge-published-readback"; then
-            cmp "$RECEIPT" "$RUNNER_TEMP/forge-published-readback/$RECEIPT"
-          else
-            gh release upload "$TAG" "$RECEIPT"
-          fi
+          forge_retain_release_receipt "$TAG" "$RECEIPT"
           rm -f publication.json published-operation.json "$RECEIPT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -473,19 +470,23 @@ jobs:
           SOURCE_SHA: ${{ needs.release-context.outputs.source_sha }}
         run: |
           set -euo pipefail
+          source "$GITHUB_WORKSPACE/scripts/release_github_context.sh"
           TAG="forge-v$VERSION"
+          test "$(gh release view "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --json targetCommitish --jq .targetCommitish)" = "$SOURCE_SHA"
           PUBLISHED_RECEIPT="forge-release-published-$VERSION-$SOURCE_SHA.json"
           PENDING="forge-cleanup-pending-$VERSION-$SOURCE_SHA.json"
           RECEIPT="forge-release-complete-$VERSION-$SOURCE_SHA.json"
           mkdir published-readback
-          gh release download "$TAG" --pattern "$PUBLISHED_RECEIPT" --dir published-readback
+          gh release download "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --pattern "$PUBLISHED_RECEIPT" --dir published-readback
           cmp "published-input/release-evidence/operations/$OPERATION_ID.json" "published-readback/$PUBLISHED_RECEIPT"
           # A failed scoped cleanup is durable release history.  A rerun may
           # advance only the exact retained pending operation, rather than
           # silently recreating a new PUBLISHED record from an action artifact.
           PENDING_READBACK="$(mktemp -d "$RUNNER_TEMP/forge-pending-readback-XXXXXX")"
           pending_receipt_present=0
-          if gh release download "$TAG" --pattern "$PENDING" --dir "$PENDING_READBACK"; then
+          PENDING_ASSETS="$(gh release view "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --json assets --jq '.assets[].name')"
+          if printf '%s\n' "$PENDING_ASSETS" | grep -Fxq -- "$PENDING"; then
+            gh release download "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --pattern "$PENDING" --dir "$PENDING_READBACK"
             python3 - "$OPERATION_ID" \
               "published-input/release-evidence/operations/$OPERATION_ID.json" \
               "$PENDING_READBACK/$PENDING" <<'PY'
@@ -578,21 +579,13 @@ jobs:
               --sdist-digest "$SDIST_DIGEST" \
               --evidence-file cleanup-pending.json > /dev/null
             cp "published-input/release-evidence/operations/$OPERATION_ID.json" "$PENDING"
-            PENDING_CONFIRMATION="$(mktemp -d "$RUNNER_TEMP/forge-pending-confirmation-XXXXXX")"
-            if gh release download "$TAG" --pattern "$PENDING" --dir "$PENDING_CONFIRMATION"; then
-              cmp "$PENDING" "$PENDING_CONFIRMATION/$PENDING"
-            else
-              gh release upload "$TAG" "$PENDING"
-            fi
-            rm -rf -- "$PENDING_CONFIRMATION"
-            test ! -e "$PENDING_CONFIRMATION"
-            test ! -L "$PENDING_CONFIRMATION"
+            forge_retain_release_receipt "$TAG" "$PENDING"
             exit 1
           fi
-          if test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true; then
-            gh release edit "$TAG" --draft=false
+          if test "$(gh release view "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --json isDraft --jq .isDraft)" = true; then
+            gh release edit "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --draft=false
           fi
-          test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = false
+          test "$(gh release view "$TAG" --repo "$FORGE_RELEASE_REPOSITORY" --json isDraft --jq .isDraft)" = false
           python3 - > cleanup-complete.json <<'PY'
           import json
           print(json.dumps({
@@ -612,12 +605,7 @@ jobs:
             --sdist-digest "$SDIST_DIGEST" \
             --evidence-file cleanup-complete.json > /dev/null
           cp "published-input/release-evidence/operations/$OPERATION_ID.json" "$RECEIPT"
-          mkdir "$RUNNER_TEMP/forge-complete-readback"
-          if gh release download "$TAG" --pattern "$RECEIPT" --dir "$RUNNER_TEMP/forge-complete-readback"; then
-            cmp "$RECEIPT" "$RUNNER_TEMP/forge-complete-readback/$RECEIPT"
-          else
-            gh release upload "$TAG" "$RECEIPT"
-          fi
+          forge_retain_release_receipt "$TAG" "$RECEIPT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: forge-release-evidence-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
