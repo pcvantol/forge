@@ -4,7 +4,7 @@ Assignment: `L3-SCOPED-MISSION-FINAL-ACCEPTANCE-V1-20261010`.
 Lane revision r47/plan1; same ARCHITECT_3/LANE_3_WORK writer.
 Base `308888297796a2c50ff934922470cc167a36b629`; branch
 `codex/l3-scoped-mission-final-acceptance`. Formal correction admission
-consumed0/max3/remaining3; counting starts after the first complete independent
+consumed1/max3/remaining2 after the first complete independent
 Quality/Security pair. R43–r46 remain closed. L4 plan96, its Forge2.12.1 pin,
 and its budgets are unchanged.
 
@@ -95,3 +95,22 @@ PRM-F-CONTRACT/PROJECTION/ACTIVATION connection to PMT-05/09/10/11/13/15/20/22/
 25/28/31. It does not close an outer-loop/PRM-F-Q/delegation family or qualify a
 native Workspace consumer. Transfer qualified producer evidence only after the
 complete source DoD. No automatic successor.
+
+## Independent review and integrated correction round1
+
+First whole exact-head review on03f5df756a3b3d67a04e6806f2742f12a0328352:
+Security PASS, Quality FAIL on one concrete crash-ready marker publication race.
+The earlier noneditable20-case qualification passed on that exact revision,
+but does not close the race. Both complete original reports remain retained.
+The own full validation on that rejected candidate was safely interrupted at
+exit130 before mutation; its log remains retained. The earlier full1414 run
+was FAIL solely on five old-admin route-fixture assertions; the72-route
+correction passed4 tests without broadening authority or expected outcomes.
+
+Round1 publishes the actual pid/stage marker through the existing atomic,
+private, fsynced packet writer. A linked interleaving test verifies the ready
+path is absent before replacement while the temporary packet is complete;
+after replacement the parent observes exactly that complete packet. Real
+SIGKILL boundary, restart, concurrency and authority tests remain unchanged.
+No product policy, provider/runtime grant, assertion or timeout is relaxed.
+Complete current-head Quality/Security and required delivery gates still apply.

@@ -62,6 +62,14 @@ def run(args):
     try:
         with tempfile.TemporaryDirectory(prefix='forge-scoped-final-acceptance-') as temporary:
             scratch = Path(temporary)
+            from forge.runtime.bootstrap import RuntimeBootstrap
+            from forge.runtime.database import RUNTIME_SCHEMA_VERSION
+            with RuntimeBootstrap(scratch / 'schema-proof', forge_version=canonical_version()).open() as database:
+                receipt['runtime_readback'] = {'schema_version': database.metadata['schema_version'],
+                    'product_version': database.metadata['forge_version']}
+                if (receipt['runtime_readback']['schema_version'] != str(RUNTIME_SCHEMA_VERSION)
+                        or receipt['runtime_readback']['product_version'] != artifact['version']):
+                    raise AssertionError('installed runtime schema/product readback mismatch')
             old_temp = tempfile.tempdir
             tempfile.tempdir = str(scratch)
             old_environment = os.environ.get('TMPDIR')

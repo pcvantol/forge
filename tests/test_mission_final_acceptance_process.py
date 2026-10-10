@@ -27,6 +27,30 @@ def child(root, action, stage='normal'):
 
 
 class MissionFinalAcceptanceProcessTests(unittest.TestCase):
+    def test_ready_boundary_is_invisible_until_complete_atomic_packet_publication(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+        from unittest.mock import patch
+        spec = spec_from_file_location('actual_acceptance_boundary_publication', DRIVER)
+        driver = module_from_spec(spec)
+        spec.loader.exec_module(driver)
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            marker = root / 'accept-boundary.ready.private'
+            observed = []
+            original_replace = os.replace
+            def at_publication(source, destination):
+                self.assertEqual(marker, Path(destination))
+                self.assertFalse(marker.exists())
+                packet = json.loads(Path(source).read_text())
+                self.assertEqual({'pid': os.getpid(), 'stage': 'after-canonical'}, packet)
+                observed.append(packet)
+                return original_replace(source, destination)
+            with patch('forge.workspace_review_grant.os.replace', side_effect=at_publication):
+                driver.publish_boundary(root, 'after-canonical')
+            self.assertEqual(1, len(observed))
+            self.assertEqual(observed[0], json.loads(marker.read_text()))
+            self.assertEqual(0, marker.stat().st_mode & 0o077)
+
     def test_real_process_crash_at_each_effect_boundary_and_lost_response_resume_original(self):
         for stage in ('before-canonical', 'after-canonical', 'after-terminal', 'after-dispatcher', 'lost-response'):
             with self.subTest(stage=stage), TemporaryDirectory() as temporary, pending_a(Path(temporary) / stage) as case:

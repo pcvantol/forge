@@ -13,6 +13,12 @@ if '--source-development' in sys.argv:
     sys.path.insert(0, str(SOURCE))
 
 
+def publish_boundary(root, stage):
+    from forge.workspace_review_grant import _write_private
+    _write_private(root / 'accept-boundary.ready.private',
+        json.dumps({'pid': os.getpid(), 'stage': stage}).encode())
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source-development', action='store_true')
@@ -47,7 +53,7 @@ def main():
         if paused:
             return
         paused = True
-        (root / 'accept-boundary.ready.private').write_text(json.dumps({'pid': os.getpid(), 'stage': args.stage}))
+        publish_boundary(root, args.stage)
         # Parent kills this owned process or explicitly releases the boundary.
         deadline = time.monotonic() + 20
         while not (root / 'accept-boundary.continue.private').exists():
