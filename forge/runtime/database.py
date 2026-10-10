@@ -22,7 +22,7 @@ from .bootstrap import (RUNTIME_INITIALIZATION_VERSION, RuntimeIdentity, Runtime
                         canonical_repository_root, repository_identity, repository_uuid)
 
 
-RUNTIME_SCHEMA_VERSION = 45
+RUNTIME_SCHEMA_VERSION = 46
 _REQUIRED_METADATA = frozenset((
     "schema_version", "migration_version", "forge_version", "created_at",
     "last_migration", "integrity_status",
@@ -39,7 +39,7 @@ _TABLES = frozenset((
     "governance_authority", "governance_capability_grants", "governance_decisions",
     "action_derivation_evidence_sets",
     "mission_amendments", "action_derivation_canary_closures", "execution_host_bindings", "execution_host_exchange_audit",
-    "execution_host_peer_configuration", "installation_peer_configuration", "forge_operational_logs",
+    "execution_host_peer_configuration", "installation_peer_configuration", "installation_peer_generation", "installation_peer_detach_operations", "forge_operational_logs",
     "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
     "operational_reset_tombstones", "operational_reset_artifact_steps",
 ))
@@ -57,6 +57,8 @@ def _tables_for_schema() -> frozenset[str]:
         tables = tables - {"approved_worksets"}
     if RUNTIME_SCHEMA_VERSION < 45:
         tables = tables - {"installation_peer_configuration"}
+    if RUNTIME_SCHEMA_VERSION < 46:
+        tables = tables - {"installation_peer_generation", "installation_peer_detach_operations"}
     return tables
 _OPERATIONAL_RESET_TABLES = frozenset((
     "operational_reset_state", "operational_reset_operations", "operational_reset_audit",
@@ -435,6 +437,24 @@ class RuntimeDatabase:
         sql = self._connection.execute("SELECT sql FROM sqlite_master WHERE name='installation_peer_configuration'").fetchone()
         if columns != expected or not {("binding_id",),("operation_id",)} <= unique or sql is None or "check(singleton=1)" not in "".join(sql[0].lower().split()):
             raise RuntimeIntegrityError("installation peer configuration structure is invalid")
+
+    def _require_installation_detach_structure(self) -> None:
+        expected = {
+            "installation_peer_generation": (("singleton", "INTEGER", 0, 1), ("revision", "INTEGER", 1, 0)),
+            "installation_peer_detach_operations": (("operation_id", "TEXT", 0, 1), ("request", "TEXT", 1, 0), ("receipt", "TEXT", 1, 0)),
+        }
+        for table, shape in expected.items():
+            columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
+                            for row in self._connection.execute(f"PRAGMA table_info({table})"))
+            if columns != shape:
+                raise RuntimeIntegrityError("installation detach storage structure is invalid")
+        for operation in ("UPDATE", "DELETE"):
+            row = self._connection.execute("SELECT tbl_name,sql FROM sqlite_master WHERE type='trigger' AND name=?", (f"installation_detach_receipt_immutable_{operation.lower()}",)).fetchone()
+            if row is None or row[0] != "installation_peer_detach_operations" or f"before {operation.lower()}" not in row[1].lower() or "raise(abort" not in "".join(row[1].lower().split()):
+                raise RuntimeIntegrityError("installation detach receipt immutability is invalid")
+        generation = self._connection.execute("SELECT singleton,revision FROM installation_peer_generation").fetchall()
+        if len(generation) != 1 or generation[0][0] != 1 or type(generation[0][1]) is not int or generation[0][1] < 0:
+            raise RuntimeIntegrityError("installation binding generation is invalid")
 
     def _require_peer_configuration_structure(self) -> None:
         columns = tuple((row["name"], row["type"].upper(), row["notnull"], row["pk"])
@@ -2111,6 +2131,22 @@ class RuntimeDatabase:
                 self._require_installation_peer_configuration_structure()
                 self._set_metadata({"schema_version":"45", "migration_version":"45", "last_migration":"45", "forge_version":forge_version})
                 self._connection.execute("PRAGMA user_version=45")
+        elif version == 45:
+            active = self._connection.execute("SELECT active_operation_id FROM operational_reset_state WHERE singleton=1").fetchone()
+            if active is not None and active[0] is not None:
+                raise RuntimeMaintenanceActive("cannot migrate during operational reset maintenance")
+            with self._connection:
+                self._connection.execute("CREATE TABLE IF NOT EXISTS installation_peer_generation (singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision>=0))")
+                self._connection.execute("INSERT OR IGNORE INTO installation_peer_generation SELECT 1,COUNT(*) FROM installation_peer_configuration")
+                self._connection.execute("CREATE TABLE IF NOT EXISTS installation_peer_detach_operations (operation_id TEXT PRIMARY KEY,request TEXT NOT NULL,receipt TEXT NOT NULL)")
+                for table in ("installation_peer_generation", "installation_peer_detach_operations"):
+                    for operation in ("INSERT", "UPDATE", "DELETE"):
+                        self._connection.execute(f"CREATE TRIGGER IF NOT EXISTS operational_reset_block_{table}_{operation.lower()} BEFORE {operation} ON {table} WHEN (SELECT active_operation_id FROM operational_reset_state WHERE singleton=1) IS NOT NULL BEGIN SELECT RAISE(ABORT, 'Forge operational reset maintenance is active'); END")
+                for operation in ("UPDATE", "DELETE"):
+                    self._connection.execute(f"CREATE TRIGGER IF NOT EXISTS installation_detach_receipt_immutable_{operation.lower()} BEFORE {operation} ON installation_peer_detach_operations BEGIN SELECT RAISE(ABORT, 'installation detach receipts are immutable'); END")
+                self._require_installation_detach_structure()
+                self._set_metadata({"schema_version":"46", "migration_version":"46", "last_migration":"46", "forge_version":forge_version})
+                self._connection.execute("PRAGMA user_version=46")
         elif version != RUNTIME_SCHEMA_VERSION:
             raise RuntimeIntegrityError("runtime database migration path is unavailable")
 
@@ -2254,6 +2290,8 @@ class RuntimeDatabase:
         self._require_peer_configuration_structure()
         self._require_execution_host_exchange_audit_structure()
         self._require_operational_log_structure()
+        if RUNTIME_SCHEMA_VERSION >= 46:
+            self._require_installation_detach_structure()
         if RUNTIME_SCHEMA_VERSION >= 45:
             self._require_installation_peer_configuration_structure()
         if RUNTIME_SCHEMA_VERSION >= 41:

@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.12.1",
+  "classification_rationale": "L3-r45-owner-approved-installation-detach-20261010",
+  "component": "product",
+  "event_lineage": "L3-r45-owner-approved-installation-detach-20261010",
+  "expected_head": "9875333acc4258a20fc0180a9ae09c980802d5b1",
+  "operation_id": "L3-INSTALLATION-PEER-DETACH-V1-20261010",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "PATCH",
+  "requested_bump": "patch",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.12.2"
+}

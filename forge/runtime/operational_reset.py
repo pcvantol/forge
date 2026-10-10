@@ -49,6 +49,8 @@ TABLE_CLASSIFICATION: Mapping[str, str] = {
     "runtime_metadata": "INSTALLATION_AND_CONFIGURATION",
     "execution_host_peer_configuration": "INSTALLATION_AND_CONFIGURATION",
     "installation_peer_configuration": "INSTALLATION_AND_CONFIGURATION",
+    "installation_peer_generation": "INSTALLATION_AND_CONFIGURATION",
+    "installation_peer_detach_operations": "INSTALLATION_AND_CONFIGURATION",
     "execution_host_peer_generation": "INSTALLATION_AND_CONFIGURATION",
     "execution_host_peer_detach_operations": "INSTALLATION_AND_CONFIGURATION",
     "planning_provider_security_config": "INSTALLATION_AND_CONFIGURATION",
@@ -500,6 +502,8 @@ class ForgeOperationalResetService:
         known_for_schema = set(TABLE_CLASSIFICATION)
         if schema == 37:
             known_for_schema -= set(MAINTENANCE_TABLES)
+        if schema < 46:
+            known_for_schema -= {"installation_peer_generation", "installation_peer_detach_operations"}
         if schema < 45:
             known_for_schema -= {"installation_peer_configuration"}
         if schema < 40:

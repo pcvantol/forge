@@ -243,6 +243,12 @@ def main(argv: list[str] | None = None) -> int:
     configure_installation.add_argument("--timeout-seconds",type=float,default=10.0)
     installation_commands.add_parser("show")
     installation_commands.add_parser("preflight")
+    detach_installation = installation_commands.add_parser("detach")
+    detach_installation.add_argument("--operation-id", required=True)
+    detach_installation.add_argument("--expected-binding-id", required=True)
+    detach_installation.add_argument("--expected-configuration-revision", type=int, required=True)
+    installation_detach_status = installation_commands.add_parser("detach-status")
+    installation_detach_status.add_argument("--operation-id", required=True)
     execution_host = subparsers.add_parser("execution-host", help="manage the selected Execution Host peer")
     execution_host_commands = execution_host.add_subparsers(dest="execution_host_command", required=True)
     configure = execution_host_commands.add_parser("configure", help="persist one explicit EP peer binding")
@@ -560,6 +566,11 @@ def main(argv: list[str] | None = None) -> int:
                     endpoint=args.endpoint,ep_instance_id=args.expected_instance_id,consumer_id=args.consumer_id,
                     credential_reference=args.credential_reference,allow_loopback_http=args.allow_loopback_http,
                     timeout_seconds=args.timeout_seconds)
+            elif args.installation_peer_command == "detach":
+                result = service.detach(operation_id=args.operation_id,
+                    expected_binding_id=args.expected_binding_id,
+                    expected_configuration_revision=args.expected_configuration_revision)
+            elif args.installation_peer_command == "detach-status": result = service.detach_status(args.operation_id)
             elif args.installation_peer_command == "show": result = service.show()
             else: result = service.preflight()
             print(json.dumps(result,sort_keys=True))

@@ -124,6 +124,9 @@ class InstallationPairingService:
                         if tuple(row) != (operation_id,digest,encoded):
                             raise InstallationPairingError('INSTALLATION_BINDING_REPLACEMENT_REQUIRES_SEPARATE_REVIEW')
                     else:
+                        if database._connection.execute("SELECT 1 FROM installation_peer_detach_operations WHERE operation_id=?", (operation_id,)).fetchone():
+                            raise InstallationPairingError("INSTALLATION_OPERATION_CONFLICT")
+                        database._connection.execute("UPDATE installation_peer_generation SET revision=revision+1 WHERE singleton=1")
                         database._connection.execute('INSERT INTO installation_peer_configuration VALUES(1,?,?,?,?)', (peer.binding_id,operation_id,digest,encoded))
                         database._append_operational_event(component='forge_execution_host',level='INFO',event='installation_pairing_configured',
                             operator_reference=sha256(context.generated_uid.encode()).hexdigest()[:16],
@@ -131,7 +134,8 @@ class InstallationPairingService:
                                          ep_instance_id=peer.ep_instance_id,ep_consumer_id=peer.consumer_id,
                                          operation='configure_installation',outcome='accepted',new_state='CONFIGURED',
                                          reason_code='INSTALLATION_READBACK_ONLY',peer_product='engineering-platform'))
-                return dict(status='CONFIGURED',configuration=document,configuration_digest=digest,execution_ready=False)
+                revision = database._connection.execute("SELECT revision FROM installation_peer_generation WHERE singleton=1").fetchone()[0]
+                return dict(status='CONFIGURED',configuration=document,configuration_digest=digest,configuration_revision=revision,execution_ready=False)
             finally:
                 database.close()
 
@@ -145,11 +149,12 @@ class InstallationPairingService:
             raise InstallationPairingError('INSTALLATION_SCHEMA_UPDATE_REQUIRED')
         connection = sqlite3.connect((self.root/'forge.db').as_uri()+'?mode=ro',uri=True)
         try:
+            revision = connection.execute("SELECT revision FROM installation_peer_generation WHERE singleton=1").fetchone()[0]
             row = connection.execute('SELECT operation_id,document_digest,document FROM installation_peer_configuration WHERE singleton=1').fetchone()
         finally:
             connection.close()
         if row is None:
-            return dict(status='NOT_CONFIGURED',execution_ready=False)
+            return dict(status='NOT_CONFIGURED',configuration_revision=revision,execution_ready=False)
         operation,digest,encoded = row
         if 'sha256:'+sha256(encoded.encode()).hexdigest() != digest:
             raise InstallationPairingError('INSTALLATION_BINDING_CORRUPT')
@@ -158,7 +163,7 @@ class InstallationPairingService:
         peer = InstallationPeer(**peer_values)
         if set(document) != set(peer_values)|{'operation_id','installation_id','operator_binding_version'} or document['operation_id'] != operation or peer.forge_instance_id != readback.runtime_id:
             raise InstallationPairingError('INSTALLATION_BINDING_INSTANCE_MISMATCH')
-        return dict(status='CONFIGURED',configuration=document,configuration_digest=digest,execution_ready=False)
+        return dict(status='CONFIGURED',configuration=document,configuration_digest=digest,configuration_revision=revision,execution_ready=False)
 
     def preflight(self) -> dict[str, object]:
         current = self.show()
@@ -167,3 +172,11 @@ class InstallationPairingService:
         document = current['configuration']
         peer = InstallationPeer(**{key:document[key] for key in InstallationPeer.__dataclass_fields__})
         return dict(check_installation_peer(peer), configuration_digest=current['configuration_digest'])
+
+    def detach(self, **request) -> dict[str, object]:
+        from .installation_peer_detach import detach
+        return detach(self, request)
+
+    def detach_status(self, operation_id: str) -> dict[str, object]:
+        from .installation_peer_detach import detach_status
+        return detach_status(self, operation_id)

@@ -14,7 +14,8 @@ Repeated exact configuration is idempotent. A changed operation or target is
 rejected pending separate reviewed replacement; it cannot rewrite the prior
 binding. Normal product reset preserves installation configuration.
 
-The `installation-peer` CLI supports configure, show and preflight. Equivalent
+The `installation-peer` CLI supports configure, show, preflight, detach and detach-status.
+[Own-installation detach v1](INSTALLATION_PEER_DETACH_V1.md) defines exact revision preconditions and durable recovery receipts. Equivalent
 Server routes use existing instance-admin authentication. No request can supply
 credential material, a project/repository scope or an operator/service UID.
 The existing Keychain resolver supplies the bearer only at the HTTP boundary.

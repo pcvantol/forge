@@ -2828,6 +2828,80 @@
           }
         }
       ]
+    },
+    "/v1/installation-peer/detach": {
+      "post": {
+        "summary": "Detach only this runtime installation peer",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "operation_id",
+                  "expected_binding_id",
+                  "expected_configuration_revision"
+                ],
+                "properties": {
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "expected_binding_id": {
+                    "type": "string"
+                  },
+                  "expected_configuration_revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "detachInstallationPeer",
+        "description": "Trusted local operator and instance-admin authorization. Exact revision precondition, atomic durable receipt. No credentials or project execution."
+      }
+    },
+    "/v1/installation-peer/detach/{operation_id}": {
+      "get": {
+        "summary": "Recover the exact installation detach receipt without mutation",
+        "responses": {
+          "200": {
+            "description": "Accepted JSON response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "409": {
+            "description": "Fail-closed application or runtime conflict"
+          }
+        },
+        "description": "Installation-only connectivity. Does not grant project access or execution readiness.",
+        "operationId": "readInstallationPeerDetach",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
