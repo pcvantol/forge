@@ -51,6 +51,8 @@ EXPECTED_ROUTES = frozenset({
     ("GET", "/v1/installation-peer"),
     ("GET", "/v1/installation-peer/preflight"),
     ("POST", "/v1/installation-peer/configure"),
+    ("POST", "/v1/installation-peer/detach"),
+    ("GET", "/v1/installation-peer/detach/{operation_id}"),
     ("GET", "/v1/instance"),
     ("GET", "/v1/version"),
     ("GET", "/v1/provider-context"),
@@ -105,6 +107,8 @@ SERVICE_ROUTES = {
     ("GET", "/v1/installation-peer"): "installation_peer",
     ("GET", "/v1/installation-peer/preflight"): "installation_peer_preflight",
     ("POST", "/v1/installation-peer/configure"): "configure_installation_peer",
+    ("POST", "/v1/installation-peer/detach"): "detach_installation_peer",
+    ("GET", "/v1/installation-peer/detach/{operation_id}"): "detach_installation_peer_status",
     ("GET", "/v1/instance"): "instance",
     ("GET", "/v1/provider-context"): "provider_context",
     ("POST", "/v1/provider-context"): "configure_provider_context",
@@ -168,7 +172,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 66)
+        self.assertEqual(len(EXPECTED_ROUTES), 68)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -206,6 +210,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
                     for name in (
                         "instance", "provider_context", "execution_host_preflight",
                         "installation_peer", "installation_peer_preflight", "configure_installation_peer",
+                        "detach_installation_peer", "detach_installation_peer_status",
                         "configure_provider_context", "configure_execution_host",
                         "detach_execution_host", "detach_execution_host_status",
                         "mission_document", "mission_start", "mission_reopen",

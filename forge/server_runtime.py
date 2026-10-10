@@ -115,6 +115,8 @@ SERVER_ROUTE_INVENTORY = (
     ("GET", "/v1/installation-peer"),
     ("GET", "/v1/installation-peer/preflight"),
     ("POST", "/v1/installation-peer/configure"),
+    ("POST", "/v1/installation-peer/detach"),
+    ("GET", "/v1/installation-peer/detach/{operation_id}"),
     ("GET", "/v1/instance"),
     ("GET", "/v1/version"),
     ("GET", "/v1/provider-context"),
@@ -532,6 +534,14 @@ class ForgeServerApplicationServices:
         if set(document) != required:
             raise ValueError("installation-peer request shape is invalid")
         return InstallationPairingService(self.root).configure(**document)
+
+    def detach_installation_peer(self, document: Mapping[str, Any]) -> dict[str, Any]:
+        from .installation_pairing import InstallationPairingService
+        return InstallationPairingService(self.root).detach(**document)
+
+    def detach_installation_peer_status(self, operation_id: str) -> dict[str, Any]:
+        from .installation_pairing import InstallationPairingService
+        return InstallationPairingService(self.root).detach_status(operation_id)
 
     def execution_host_preflight(self) -> dict[str, Any]:
         return EngineeringPlatformPeerConfigurationService(self.root).preflight()
@@ -1020,6 +1030,9 @@ class ForgeServerAPI:
         if path in {"/v1/installation-peer", "/v1/installation-peer/preflight"}:
             value = self.services.installation_peer() if path == "/v1/installation-peer" else self.services.installation_peer_preflight()
             return APIResponse(200, value, headers)
+        if path.startswith("/v1/installation-peer/detach/"):
+            operation_id = unquote(path.removeprefix("/v1/installation-peer/detach/"))
+            return APIResponse(200, self.services.detach_installation_peer_status(operation_id), headers)
         if path == "/v1/version":
             instance = existing_instance(self.services.root)
             return APIResponse(200, {
@@ -1052,6 +1065,8 @@ class ForgeServerAPI:
                 return APIResponse(200,self.services.workset_command(parts[3],parts[4],body),headers)
         if path == "/v1/provider-context":
             return APIResponse(200, self.services.configure_provider_context(body), headers)
+        if path == "/v1/installation-peer/detach":
+            return APIResponse(200, self.services.detach_installation_peer(body), headers)
         if path == "/v1/installation-peer/configure":
             return APIResponse(200, self.services.configure_installation_peer(body), headers)
         if path == "/v1/execution-host/configure":

@@ -1807,6 +1807,62 @@
         }
       },
       "description": "Scoped release contract approved-workset-release-v1.json; owner setup separate, original and current readback distinct."
+    },
+    {
+      "name": "/v1/installation-peer/detach",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"operation_id\": \"detach-example\",\n  \"expected_binding_id\": \"installation-example\",\n  \"expected_configuration_revision\": 1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/installation-peer/detach",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "installation-peer",
+            "detach"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/v1/installation-peer/detach/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/installation-peer/detach/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "installation-peer",
+            "detach",
+            "{operation_id}"
+          ]
+        }
+      }
     }
   ]
 }

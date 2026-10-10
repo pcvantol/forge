@@ -91,6 +91,8 @@ jobs:
           "$RUNNER_TEMP/forge-wheel/bin/pip" install 'jsonschema==4.26.0'
           cd "$RUNNER_TEMP"
           PYTHONNOUSERSITE=1 PYTHONSAFEPATH=1 "$RUNNER_TEMP/forge-wheel/bin/python" -I -c 'import forge, pathlib, tempfile; from importlib.metadata import version; from forge._version import canonical_version; from forge.qualification.installed_smoke import run, assert_runtime_persistence; assert version("forge-autonomy") == canonical_version() == __import__("os").environ["VERSION"]; assert "/site-packages/forge/" in str(pathlib.Path(forge.__file__).resolve()); run(); root=tempfile.TemporaryDirectory(); workspace=pathlib.Path(root.name)/"workspace"; workspace.mkdir(); assert_runtime_persistence(str(workspace), str(pathlib.Path(root.name)/"runtime"), canonical_version()); root.cleanup()'
+          "$RUNNER_TEMP/forge-wheel/bin/python" -I "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_installation_detach.py" --wheel "$GITHUB_WORKSPACE/dist/forge_autonomy-$VERSION-py3-none-any.whl" --source-revision "$SOURCE_SHA" --output-dir "$RUNNER_TEMP/forge-installation-detach-wheel"
+          cp "$RUNNER_TEMP/forge-installation-detach-wheel/installed-installation-detach.public.json" "$GITHUB_WORKSPACE/dist/installed-installation-detach-qualified.json"
           "$RUNNER_TEMP/forge-wheel/bin/forge" --help >/dev/null
           test "$("$RUNNER_TEMP/forge-wheel/bin/forge" --version)" = "$VERSION"
           "$RUNNER_TEMP/forge-wheel/bin/python" -I -m forge.qualification.criterion_completion --output-dir "$RUNNER_TEMP/forge-criterion-wheel"
