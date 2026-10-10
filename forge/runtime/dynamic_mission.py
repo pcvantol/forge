@@ -728,50 +728,94 @@ class InstalledDynamicMissionRuntime:
 
     def accept_final_completion(
         self, mission_id: str, document: Mapping[str, Any], *,
-        authenticated_principal_reference: str,
+        authenticated_principal_reference: str, consumer_principal=None,
+        consumer_intent=None, effect_guard=None,
     ) -> DynamicMissionRunResult:
-        """Apply one exact Business acceptance after evidence-derived completion.
+        """Apply the original Business acceptance, terminal transition and release.
 
-        The canonical decision is recorded before the terminal state change. A
-        process stop between either write or dispatcher release is recoverable
-        by replaying the same decision; no Host or provider call is made here.
+        Scoped consumers are separately authenticated, never admin aliases.
+        Their current authority is rechecked under the write transaction at
+        each existing effect boundary. A crash retains the canonical identity.
         """
-        with RuntimeServiceLock(self.database.path).acquire():
-            state = self.states.get(mission_id)
+        from contextlib import contextmanager
+        from pathlib import Path
+        from forge.advisory_grant import project_scope
+        from forge.mission_final_acceptance_grant import FinalAcceptancePrincipal
+        scoped = consumer_principal is not None
+        if scoped:
+            if not isinstance(consumer_principal, FinalAcceptancePrincipal) or not callable(effect_guard):
+                raise InstalledDynamicMissionError("current scoped final-acceptance authority required")
+            scope = project_scope(Path(self.data_root), self.database.runtime_identity.runtime_id)
+            if any(scope[key] != getattr(consumer_principal, key) for key in scope):
+                raise InstalledDynamicMissionError("foreign final-acceptance project/repository")
+            project_id = scope["project_id"]
+        else:
+            if consumer_intent is not None or effect_guard is not None:
+                raise InstalledDynamicMissionError("unexpected scoped final-acceptance context")
+            project_id = self.host.config.project_id
+
+        @contextmanager
+        def effect():
+            if not scoped:
+                yield
+                return
+            with self.database._connection:
+                self.database._connection.execute("BEGIN IMMEDIATE")
+                with effect_guard():
+                    yield
+
+        with RuntimeServiceLock(self.database.path).acquire(reuse_current=scoped):
             service = GovernedContinuationService(
                 self.database, self.repository, self.states, self.clock,
             )
-            try:
-                recorded = service.record_final_acceptance(
-                    mission_id, document, project_id=self.host.config.project_id,
-                    authenticated_principal_reference=authenticated_principal_reference,
-                )
-            except GovernedContinuationError as error:
-                raise InstalledDynamicMissionError(str(error)) from error
+            def canonical():
+                try:
+                    return service.record_final_acceptance(
+                        mission_id, document, project_id=project_id,
+                        authenticated_principal_reference=authenticated_principal_reference,
+                        consumer_principal=consumer_principal, consumer_intent=consumer_intent,
+                    )
+                except GovernedContinuationError as error:
+                    raise InstalledDynamicMissionError(str(error)) from error
+
+            with effect():
+                state = self.states.get(mission_id)
+                if scoped and state.status is MissionExecutionStatus.AWAITING_APPROVAL:
+                    active = self.database._connection.execute(
+                        "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton=1"
+                    ).fetchone()
+                    if active is None or active["status"] != "ACTIVE" or active["active_mission_id"] != mission_id:
+                        raise InstalledDynamicMissionError("pending acceptance dispatcher does not bind this Mission")
+                recorded = canonical()
+            state = self.states.get(mission_id)
             if state.status is MissionExecutionStatus.AWAITING_APPROVAL:
-                requirement = service.validate_final_acceptance(
-                    state, state.pause_reason or {}, project_id=self.host.config.project_id,
-                )
-                state = self.states.transition(
-                    mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self.clock(),
-                    reason="mission_final_business_acceptance_recorded",
-                    approval_record={
-                        "approval_id": recorded["decision_id"], "approved_by": "business_owner",
-                        "approved_at": self.clock(),
-                        "decision_reference": requirement["requirement_id"],
-                        "decision_digest": recorded["decision_digest"],
-                    },
-                    expected_revision=state.revision,
-                )
-            row = self.database._connection.execute(
-                "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton = 1"
-            ).fetchone()
-            if row is not None and row["status"] == "ACTIVE":
-                if row["active_mission_id"] != mission_id:
-                    raise InstalledDynamicMissionError("dispatcher points to another Mission")
-                _InstalledMissionDispatcher(
-                    self.database, self.states, mission_id, self.clock,
-                ).complete(mission_id)
+                with effect():
+                    recorded = canonical()
+                    state = self.states.get(mission_id)
+                    requirement = service.validate_final_acceptance(
+                        state, state.pause_reason or {}, project_id=project_id,
+                    )
+                    state = self.states.transition(
+                        mission_id, MissionExecutionStatus.COMPLETED, occurred_at=self.clock(),
+                        reason="mission_final_business_acceptance_recorded",
+                        approval_record={
+                            "approval_id": recorded["decision_id"], "approved_by": "business_owner",
+                            "approved_at": self.clock(),
+                            "decision_reference": requirement["requirement_id"],
+                            "decision_digest": recorded["decision_digest"],
+                        }, expected_revision=state.revision,
+                    )
+            with effect():
+                canonical()
+                state = self.states.get(mission_id)
+                row = self.database._connection.execute(
+                    "SELECT status, active_mission_id FROM dispatcher_state WHERE singleton=1"
+                ).fetchone()
+                if row is not None and row["status"] == "ACTIVE":
+                    if row["active_mission_id"] == mission_id:
+                        _InstalledMissionDispatcher(self.database, self.states, mission_id, self.clock).complete(mission_id)
+                    elif state.status is not MissionExecutionStatus.COMPLETED:
+                        raise InstalledDynamicMissionError("dispatcher points to another Mission")
             return self._result(state)
 
     def decide_progression_with_recording_status(

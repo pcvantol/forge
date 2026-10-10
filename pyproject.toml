@@ -42,6 +42,8 @@ forge-advisory-context = "forge.advisory_context:main"
 forge-advisory-grant = "forge.advisory_grant:main"
 forge-mission-concept-setup = "forge.mission_concept_setup:main"
 forge-workset-release = "forge.workset_release_cli:main"
+forge-mission-final-acceptance = "forge.mission_final_acceptance_cli:main"
+forge-mission-final-acceptance-grant = "forge.mission_final_acceptance_grant:main"
 forge-workset-release-grant = "forge.workset_release_grant:main"
 forge-workspace-worklist-control-grant = "forge.workspace_worklist_control_grant:main"
 

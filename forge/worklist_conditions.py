@@ -50,7 +50,7 @@ def completion_facts(db, state: dict[str,Any] | None) -> tuple[bool,str,list[dic
             or decision.get('capability')!='BUSINESS_APPROVAL'
             or decision.get('subject_id')!=record.get('decision_reference')
             or decision.get('installation_id')!=(state.get('admission_contract') or {}).get('installation_id')
-            or canonical_digest(decision)!=record.get('decision_digest')
+            or stored_governance_digest(decision)!=record.get('decision_digest')
             or evidence.get('mission_id')!=state['mission_id']
             or evidence.get('completion_digest')!=canonical_digest(completion)
             or evidence.get('terminal_evidence_digest')!=canonical_digest(terminal)):

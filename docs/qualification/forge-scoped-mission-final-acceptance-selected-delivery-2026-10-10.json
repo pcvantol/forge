@@ -1,0 +1,110 @@
+{
+  "assignment_id": "L3-SCOPED-MISSION-FINAL-ACCEPTANCE-V1-20261010",
+  "base": "308888297796a2c50ff934922470cc167a36b629",
+  "branch": "codex/l3-scoped-mission-final-acceptance",
+  "current_installed_cases": {
+    "expected_total": 23,
+    "expected_workers": [
+      14,
+      9
+    ],
+    "new_linked_regressions": 2,
+    "original_cases_retained": 21,
+    "timeout_minutes_unchanged": 8
+  },
+  "delivery_state": "IMPLEMENTED_VALIDATION_IN_PROGRESS",
+  "focused_initial": {
+    "elapsed_seconds": 200.962,
+    "result": "PASS",
+    "tests": 18
+  },
+  "formal_corrections": {
+    "consumed": 3,
+    "first_independent_pair_complete": true,
+    "maximum": 3,
+    "remaining": 0
+  },
+  "initial_full_validation": {
+    "cause": "route qualification used old admin on four distinct final-acceptance routes; corrected explicit403scope guard, focused4PASS",
+    "elapsed_seconds": 1008.737,
+    "failures": 5,
+    "result": "FAIL",
+    "skipped": 1,
+    "tests": 1414
+  },
+  "interrupted_validation": {
+    "exit": 130,
+    "reason": "freeze rejected source before integrated round1 correction",
+    "retained": true,
+    "source": "03f5df756a3b3d67a04e6806f2742f12a0328352"
+  },
+  "l4": "plan96 Forge2.12.1/9875333acc4258a20fc0180a9ae09c980802d5b1 unchanged",
+  "lane_revision": "r47",
+  "live_EP": "NOT_USED",
+  "plan_revision": 1,
+  "predecessors": "r43/r44 CLOSED3/3; r45 CLOSED2/3; r46 CLOSED0/3",
+  "prior_exact_installed": {
+    "does_not_close_quality_finding": true,
+    "elapsed_seconds": 331.888,
+    "result": "SCOPED_MISSION_FINAL_ACCEPTANCE_PASS",
+    "source": "03f5df756a3b3d67a04e6806f2742f12a0328352",
+    "tests": 20,
+    "wheel_sha256": "8197b120a6ff2a85bf6a95de6a1f38afa343af73d4c0093b06247b1f950a950c"
+  },
+  "product_version": "2.13.0",
+  "public_release": "NOT_AUTHORIZED_OR_PERFORMED",
+  "qualification_scope": "PMT-05/09/10/11/13/15/20/22/25/28/31 bounded PRM-F-CONTRACT/PROJECTION/ACTIVATION connection",
+  "remaining": [
+    "full-validation-and-all-changed-production-coverage",
+    "fresh-exact-head-noneditable-installed-qualification",
+    "whole-independent-Quality-and-Security",
+    "all-required-CI",
+    "protected-implementation-merge",
+    "nonempty-finalization",
+    "fresh-exact-final-main-installed-proof",
+    "public-artifact-main-schema-readback",
+    "separate-TDE-status",
+    "owned-cleanup"
+  ],
+  "required_ci_failures": [
+    {
+      "artifact_digest": "sha256:d27f0f93002ce1c353861756d9262e684a0ca4a32a9c9c09a076674534802dff",
+      "artifact_id": 11674523009,
+      "cause": "new sequential installed gate timed out at8min during last CLI test after20PASS",
+      "checkout_source": "6239c14699a6df666faafa97176a1016376f97bb",
+      "integrated_correction_round": 2,
+      "no_timeout_or_assertion_relaxation": true,
+      "result": "FAIL",
+      "reviewed_source": "925c56ea4894f029d357b4aae86d584c9f0ff9b3",
+      "run_id": 38061005962
+    }
+  ],
+  "review_history": [
+    {
+      "finding": "P2 crash-ready marker published before complete payload",
+      "integrated_correction_round": 1,
+      "quality": "FAIL",
+      "security": "PASS",
+      "source": "03f5df756a3b3d67a04e6806f2742f12a0328352"
+    },
+    {
+      "findings": [
+        "exitedworkerleader skipped live ownedprocessgroup cleanup",
+        "truthy malformed noneditable/cleanup proof accepted"
+      ],
+      "integrated_correction_round": 3,
+      "quality": "FAIL",
+      "security": "FAIL",
+      "source": "be68060914db8e899556727442b307658ef83746"
+    }
+  ],
+  "schema_version": 46,
+  "source_coverage_new_modules": {
+    "forge/mission_final_acceptance_cli.py": 96.61016949152543,
+    "forge/mission_final_acceptance_contract.py": 100.0,
+    "forge/mission_final_acceptance_grant.py": 93.78238341968913,
+    "forge/mission_final_acceptance_journal.py": 85.71428571428571,
+    "forge/mission_final_acceptance_package.py": 97.82608695652173,
+    "forge/mission_final_acceptance_service.py": 90.37433155080214
+  }
+}

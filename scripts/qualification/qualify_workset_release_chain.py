@@ -18,7 +18,7 @@ spec=spec_from_file_location('release_serial_fixture',SOURCE/'scripts/qualificat
 serial=module_from_spec(spec);spec.loader.exec_module(serial);utils=serial.utils
 
 
-def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2):
+def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2,approve_unreleased_c=False):
     sys.path.insert(0,str(SOURCE/'tests'))
     import test_mission_concept_ready_http as ready
     import test_mission_concept_contract as content
@@ -55,7 +55,7 @@ def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2):
         token=root/'chat-owner.private';issued=grant.issue(principal_id=operator,project_id=utils.PROJECT,
             repository_id=utils.fixture.SOURCE.repository_id,conversation_ids=['a','b','c'],maximum_turns=8,
             expires_at=(datetime.now(UTC)+timedelta(hours=2)).isoformat(),token_path=token)
-        MissionConceptSetup(root/'runtime',instance.instance_id).configure(grant_id=issued['grant_id'],profiles={kind:profile},maximum_missions=2)
+        MissionConceptSetup(root/'runtime',instance.instance_id).configure(grant_id=issued['grant_id'],profiles={kind:profile},maximum_missions=3 if approve_unreleased_c else 2)
         context=AdvisoryContext(root/'runtime',instance.instance_id);context.revoke('selected-context')
         revision=utils.fixture._read(root/'effect-target.private.json')['source_revision']
         with patch('forge.completion.repository_observer.GitHubRepositoryArtifactReader.read',return_value=(target/'docs/design.md').read_bytes()):
@@ -74,13 +74,14 @@ def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2):
             request.update(contract_version='forge-chat-first-mission/v1',conversation_id=conversation,turn_id='initial',
                 expected_revision=0,context_revision=current['context_revision'],selected_sources=[],advisor_kind='ARCHITECTURE',objective=definition['objective'])
             status,turn=ready.call(port,token,'POST','/v1/mission-concepts/'+conversation+'/turns',request);assert status==200,turn
-            if conversation=='c':continue  # Genuine unapproved concept remains outside.
+            if conversation=='c' and not approve_unreleased_c:continue  # Genuine unapproved concept remains outside.
             status,prepared=ready.call(port,token,'GET','/v1/mission-concepts/'+conversation+'/package');assert status==200 and prepared['approval_supported'],prepared
             status,result=ready.call(port,token,'POST','/v1/mission-concepts/'+conversation+'/approve',{
                 'contract_version':'forge-chat-first-mission/v1','operation_id':'approve-'+conversation,
                 'revision':prepared['revision'],'package_digest':prepared['package_digest'],'confirm':True});assert status==200,result
             approved.append(result)
-        subjects=[{'candidate_id':a['candidate_id'],'subject_revision':a['intake_subject_revision']} for a in approved]
+        selected=approved[:2]
+        subjects=[{'candidate_id':a['candidate_id'],'subject_revision':a['intake_subject_revision']} for a in selected]
         release_grant=WorksetReleaseGrant(root/'runtime',instance.instance_id)
         record=release_grant.issue(principal_id=operator,project_id=utils.PROJECT,repository_id=utils.fixture.SOURCE.repository_id,
             permissions=['READ','RELEASE','DISARM'],subjects=subjects,maximum_releases=1,maximum_activations=2,
@@ -102,9 +103,10 @@ def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2):
                 assert release_cli(prefix+['release','--prepared-file',str(prepared_path),'--operation-id','release-a-b','--confirm'])==0
             status,released=ready.call(port,root/'release.private','GET',BASE+'/operations/release-a-b');assert status==200,released
             assert 'DEPENDENCY_NOT_PROVEN' in released['current']['items'][1]['blocking_reasons']
-            assert [i['mission_id'] for i in released['current']['items']]==[a['mission_id'] for a in approved]
+            assert [i['mission_id'] for i in released['current']['items']]==[a['mission_id'] for a in selected]
         utils.fixture._write(root/'release-case.private.json',{'workset_id':released['workset_id'],
-            'grant_id':record['grant_id'],'mission_ids':[a['mission_id'] for a in approved]})
+            'grant_id':record['grant_id'],'mission_ids':[a['mission_id'] for a in selected],
+            **({'unreleased_mission_id':approved[2]['mission_id']} if approve_unreleased_c else {})})
         utils.fixture._write(root/'effect-scenario.private.json',{'scenario':scenario})
     return target,baseline,manifest
 

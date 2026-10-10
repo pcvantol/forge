@@ -2902,6 +2902,210 @@
           }
         ]
       }
+    },
+    "/v1/mission-final-acceptances/capability": {
+      "get": {
+        "summary": "Read separate finite Mission-result authority",
+        "description": "Closed mission-final-acceptance-v1 contract. Actual completion/evidence/current authority required; original intent/decision preserved across crash and restart. Read/confirm does not invoke providers/EP or start dependents.",
+        "security": [
+          {
+            "missionFinalAcceptanceBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact typed readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "mission-final-acceptance-v1.json#/$defs/capability"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, unavailable or conflicting acceptance"
+          },
+          "503": {
+            "description": "Owning state/evidence unavailable"
+          }
+        }
+      }
+    },
+    "/v1/mission-final-acceptances/{mission_id}": {
+      "get": {
+        "summary": "Read actual result and exact Business acceptance package",
+        "description": "Closed mission-final-acceptance-v1 contract. Actual completion/evidence/current authority required; original intent/decision preserved across crash and restart. Read/confirm does not invoke providers/EP or start dependents.",
+        "security": [
+          {
+            "missionFinalAcceptanceBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact typed readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "mission-final-acceptance-v1.json#/$defs/detail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, unavailable or conflicting acceptance"
+          },
+          "503": {
+            "description": "Owning state/evidence unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/mission-final-acceptances/{mission_id}/accept": {
+      "post": {
+        "summary": "Explicitly accept the exact shown Mission result",
+        "description": "Closed mission-final-acceptance-v1 contract. Actual completion/evidence/current authority required; original intent/decision preserved across crash and restart. Read/confirm does not invoke providers/EP or start dependents.",
+        "security": [
+          {
+            "missionFinalAcceptanceBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact typed readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "mission-final-acceptance-v1.json#/$defs/operation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, unavailable or conflicting acceptance"
+          },
+          "503": {
+            "description": "Owning state/evidence unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "mission-final-acceptance-v1.json#/$defs/request"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/mission-final-acceptances/{mission_id}/operations/{operation_id}": {
+      "get": {
+        "summary": "Read original acceptance outcome and current state without recovery writes",
+        "description": "Closed mission-final-acceptance-v1 contract. Actual completion/evidence/current authority required; original intent/decision preserved across crash and restart. Read/confirm does not invoke providers/EP or start dependents.",
+        "security": [
+          {
+            "missionFinalAcceptanceBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact typed readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "mission-final-acceptance-v1.json#/$defs/operation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, unavailable or conflicting acceptance"
+          },
+          "503": {
+            "description": "Owning state/evidence unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2944,6 +3148,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate owner-provisioned exact Candidate/revision READ and Business/Architecture permissions, bound to current existing G001 operator role; no Mission/admin/other namespace authority."
+      },
+      "missionFinalAcceptanceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separately owner-issued finite exact-Mission READ/ACCEPT capability. Current Business role/G001 required at actual effects. Prior read/progression/Candidate/hold/workset/admin credentials do not authorize this route."
       }
     },
     "schemas": {

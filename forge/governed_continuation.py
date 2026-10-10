@@ -16,7 +16,7 @@ from forge.governance import (
     ApprovalStage, CanonicalGovernanceProfile, ExecutionPolicy, ExecutionPolicyKind,
     GovernanceRole, execution_policy_for_profile, resolve_governance_profile,
 )
-from forge.governance_authority import GovernanceCapability, GovernanceDecision
+from forge.governance_authority import GovernanceCapability, GovernanceDecision, _digest as canonical_governance_digest
 from forge.state import MissionExecutionState, MissionExecutionStatus, MissionStateStore
 
 
@@ -435,13 +435,16 @@ class GovernedContinuationService:
 
     def _existing_decision(self, decision_id: str) -> dict[str, Any] | None:
         row = self.database._connection.execute(
-            "SELECT document,digest FROM governance_decisions WHERE decision_id=?", (decision_id,)
+            "SELECT * FROM governance_decisions WHERE decision_id=?", (decision_id,)
         ).fetchone()
         if row is None:
             return None
         value = json.loads(row["document"])
-        if _digest(value) != row["digest"]:
-            raise GovernedContinuationError("stored progression decision digest is invalid")
+        if (canonical_governance_digest(value) != row["digest"]
+                or any(value.get(key) != row[key] for key in (
+                    "decision_id", "installation_id", "subject_id", "subject_revision", "capability",
+                    "predecessor_digest", "occurred_at"))):
+            raise GovernedContinuationError("stored progression decision digest or row binding is invalid")
         return value
 
     def decision_operation_status(
@@ -511,6 +514,9 @@ class GovernedContinuationService:
             "policy_revision", "policy_digest", "required_role", "required_capability", "reason",
         }
         if (state.status is not MissionExecutionStatus.AWAITING_APPROVAL
+                or type(state.revision) is not int or state.revision < 1
+                or type(requirement.get("mission_state_revision")) is not int
+                or requirement.get("mission_state_revision", 0) < 1
                 or set(requirement) != subject_keys | {
                     "schema_version", "requirement_id", "subject_digest", "status",
                 }
@@ -541,7 +547,7 @@ class GovernedContinuationService:
 
     def record_final_acceptance(
         self, mission_id: str, document: Mapping[str, Any], *, project_id: str,
-        authenticated_principal_reference: str,
+        authenticated_principal_reference: str, consumer_principal=None, consumer_intent=None,
     ) -> dict[str, Any]:
         """Record one canonical Business acceptance without replaying an Action."""
         fields = {
@@ -551,7 +557,9 @@ class GovernedContinuationService:
         }
         if (set(document) != fields
                 or document.get("schema_version") != FINAL_ACCEPTANCE_DECISION_CONTRACT
-                or document.get("decision") != "accept"):
+                or document.get("decision") != "accept"
+                or type(document.get("mission_state_revision")) is not int
+                or document.get("mission_state_revision", 0) < 1):
             raise GovernedContinuationError("final acceptance decision request is invalid")
         decision_id = _text(document["decision_id"], "decision id")
         principal = _text(authenticated_principal_reference, "authenticated principal")
@@ -564,11 +572,34 @@ class GovernedContinuationService:
             raise GovernedContinuationError("current Business actor is not supported")
         context = self.repository.operators.context()
         operator_id = sha256(context.generated_uid.encode()).hexdigest()[:16]
-        if (not self.repository.operators.authorize(context)
-                or principal not in {
-                    "local-operator:v1:" + operator_id,
-                    "forge-server-admin-principal:v1:" + self.database.runtime_identity.runtime_id,
-                }):
+        if consumer_principal is not None:
+            from .mission_final_acceptance_grant import FinalAcceptancePrincipal
+            from .advisory_candidate_contract import hash_reference
+            if (not isinstance(consumer_principal, FinalAcceptancePrincipal)
+                    or principal != consumer_principal.reference
+                    or consumer_principal.operator_id != operator_id
+                    or consumer_principal.principal_id != operator_id
+                    or consumer_principal.installation_id != context.installation_id
+                    or consumer_principal.operator_binding_version != context.binding_version
+                    or consumer_principal.instance_id != self.database.runtime_identity.runtime_id
+                    or consumer_principal.project_id != project_id
+                    or consumer_principal.profile_id != policy["profile_id"]
+                    or "ACCEPT" not in consumer_principal.permissions
+                    or {"mission_id": mission_id, "subject_revision": _mission_subject_revision(state)}
+                    not in consumer_principal.missions
+                    or not isinstance(consumer_intent, dict)
+                    or set(consumer_intent) != {"grant_id", "operation_id", "request_digest", "package_digest"}
+                    or consumer_intent["grant_id"] != consumer_principal.grant_id):
+                raise GovernedContinuationError("scoped Business acceptance actor/intent is not current")
+            _text(consumer_intent["operation_id"], "consumer operation")
+            hash_reference(consumer_intent["request_digest"])
+            hash_reference(consumer_intent["package_digest"])
+        elif (consumer_intent is not None or principal not in {
+                "local-operator:v1:" + operator_id,
+                "forge-server-admin-principal:v1:" + self.database.runtime_identity.runtime_id,
+        }):
+            raise GovernedContinuationError("authenticated Business actor is not current")
+        if not self.repository.operators.authorize(context):
             raise GovernedContinuationError("authenticated Business actor is not current")
         capability = GovernanceCapability.BUSINESS_APPROVAL
         authority = self.database._connection.execute(
@@ -588,6 +619,9 @@ class GovernedContinuationService:
                     or not isinstance(evidence, Mapping)
                     or evidence.get("mission_id") != mission_id
                     or evidence.get("authenticated_principal_reference") != principal
+                    or evidence.get("consumer_intent") != consumer_intent
+                    or (consumer_principal is not None
+                        and evidence.get("consumer_repository_id") != consumer_principal.repository_id)
                     or any(evidence.get(key) != document[key] for key in fields)
                     or state.status not in {
                         MissionExecutionStatus.AWAITING_APPROVAL, MissionExecutionStatus.COMPLETED,
@@ -606,14 +640,14 @@ class GovernedContinuationService:
                 )):
                     raise GovernedContinuationError("replayed final acceptance is no longer current")
             elif (state.approval_record.get("decision_reference") != document["requirement_id"]
-                  or state.approval_record.get("decision_digest") != _digest(existing)
+                  or state.approval_record.get("decision_digest") != canonical_governance_digest(existing)
                   or state.completion is None
                   or _digest(state.completion) != document["completion_digest"]
                   or state.execution_evidence is None
                   or _digest(state.execution_evidence) != document["terminal_evidence_digest"]):
                 raise GovernedContinuationError("completed final acceptance evidence changed")
             return {"status": "REPLAYED", "decision_id": decision_id,
-                    "decision_digest": _digest(existing)}
+                    "decision_digest": canonical_governance_digest(existing)}
         requirement = self.validate_final_acceptance(
             state, state.pause_reason or {}, project_id=project_id,
         )
@@ -631,6 +665,9 @@ class GovernedContinuationService:
         evidence = {**document, "mission_id": mission_id,
                     "authenticated_principal_reference": principal,
                     "required_role": "business_owner", "required_role_actor": actors[0]}
+        if consumer_principal is not None:
+            evidence["consumer_intent"] = dict(consumer_intent)
+            evidence["consumer_repository_id"] = consumer_principal.repository_id
         canonical = GovernanceDecision(
             decision_id, requirement["requirement_id"], requirement["subject_digest"],
             capability, "accept", tuple(state.mission.get("scope", ())),

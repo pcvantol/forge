@@ -21,6 +21,11 @@ TOKEN = "route-qualification-bearer"
 # Versioned V1 acceptance inventory, independent of the production tuple and
 # contract files. A removed or silently omitted case must fail this gate.
 EXPECTED_ROUTES = frozenset({
+    ('GET', '/v1/mission-final-acceptances/capability'),
+    ('GET', '/v1/mission-final-acceptances/{mission_id}'),
+    ('POST', '/v1/mission-final-acceptances/{mission_id}/accept'),
+    ('GET', '/v1/mission-final-acceptances/{mission_id}/operations/{operation_id}'),
+
     ("GET", "/v1/approved-workset-releases/capability"),
     ("POST", "/v1/approved-workset-releases/prepare"),
     ("POST", "/v1/approved-workset-releases/commands"),
@@ -172,7 +177,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 68)
+        self.assertEqual(len(EXPECTED_ROUTES), 72)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -244,6 +249,11 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path.startswith('/v1/mission-final-acceptances/'):
+                                self.assertEqual(status, 403)
+                                self.assertEqual(body['error']['code'], 'FINAL_ACCEPTANCE_SCOPE_DENIED')
+                                observed.add((method, path))
+                                continue
                             if path.startswith('/v1/approved-workset-releases/'):
                                 self.assertEqual(status,403)
                                 self.assertEqual(body['error']['code'],'RELEASE_SCOPE_DENIED')
