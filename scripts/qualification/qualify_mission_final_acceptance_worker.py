@@ -15,7 +15,7 @@ SOURCE = Path(__file__).resolve().parents[2]
 MODULES = ('test_mission_final_acceptance_contract', 'test_mission_final_acceptance_grant',
     'test_mission_final_acceptance_http', 'test_mission_final_acceptance_denials',
     'test_mission_final_acceptance_process', 'test_mission_final_acceptance_dependencies',
-    'test_mission_final_acceptance_cli')
+    'test_mission_final_acceptance_cli', 'test_mission_final_acceptance_worker_cleanup')
 
 
 def main():

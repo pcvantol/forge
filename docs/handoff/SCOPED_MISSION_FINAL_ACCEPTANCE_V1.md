@@ -4,7 +4,7 @@ Assignment: `L3-SCOPED-MISSION-FINAL-ACCEPTANCE-V1-20261010`.
 Lane revision r47/plan1; same ARCHITECT_3/LANE_3_WORK writer.
 Base `308888297796a2c50ff934922470cc167a36b629`; branch
 `codex/l3-scoped-mission-final-acceptance`. Formal correction admission
-consumed2/max3/remaining1 after the first complete independent
+consumed3/max3/remaining0 after the first complete independent
 Quality/Security pair. R43–r46 remain closed. L4 plan96, its Forge2.12.1 pin,
 and its budgets are unchanged.
 
@@ -135,3 +135,30 @@ owned process groups; failure kills those owned groups before scratch cleanup.
 These are qualification processes, not source writers or live EP resources.
 Current budget consumed2/max3/remaining1; new complete exact-head reviews and
 all remaining delivery gates remain required. R43–r46 and L4 are unchanged.
+
+## Integrated correction round3 — complete own-group cleanup and typed proof
+
+Complete independent whole reviews onbe68060914db8e899556727442b307658ef83746
+returned Quality FAIL/Security FAIL. The actual21PASS/14+7workerproof remains
+valid prior execution evidence, but does not close the two qualifier findings.
+Security executed the actual cleanup loop against a harmless own exitedleader
+plus live child and verified the child survived; it then cleaned its own group.
+Quality verified truthy stringfalse fields could pass receipt aggregation.
+Both complete original reports and the public register6099493352 are retained.
+
+The parent now attempts termination of every registered own process group,
+including groups whose leader already exited, and reaps each leader. Closed
+workerreceipt validation requires exact typed True noneditable/cleanup flags,
+integer expected/actual counts, exact source/version/module/status and empty
+list errors/skips before aggregating any worker. Missing, extra or malformed
+fields fail closed. The linked actual exitedleader/livechild regression and
+malformed receipt/type/count/skip cases pass; no successful governance record
+is fabricated by these parser/process-boundary tests.
+
+All original21cases/assertions plus the two linked regressions now run as14+9
+installed cases. Same noneditable artifact and unique private roots, same
+actual production guard-removal control, worker/process deadlines and8minCI
+ceiling remain. Product/grant/runtime/contract/version bytes are unchanged.
+Budget consumed3/max3/remaining0; no fourth correction or reset is authorized.
+New complete exact-head Quality/Security/currentCI/protected/finalization and
+fresh-final-main installed/artifact/main/schema/cleanup evidence remain open.

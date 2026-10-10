@@ -18,6 +18,31 @@ import zipfile
 SOURCE = Path(__file__).resolve().parents[2]
 
 
+def stop_owned_worker(process):
+    """A terminated leader does not imply that its owned process group ended."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait(timeout=10)
+
+
+def validate_worker_receipt(value, *, source_revision, product_version, modules, expected):
+    fields = {'source_revision', 'product_version', 'modules', 'noneditable_product',
+        'expected_tests', 'tests', 'failures', 'skipped', 'owned_scratch_removed', 'result'}
+    if (type(value) is not dict or set(value) != fields
+            or value['source_revision'] != source_revision or value['product_version'] != product_version
+            or type(value['modules']) is not list or value['modules'] != modules
+            or value['noneditable_product'] is not True or value['owned_scratch_removed'] is not True
+            or type(value['expected_tests']) is not int or type(value['tests']) is not int
+            or type(expected) is not int or not 1 <= expected <= 64
+            or value['expected_tests'] != expected or value['tests'] != expected
+            or type(value['failures']) is not list or value['failures'] != []
+            or type(value['skipped']) is not list or value['skipped'] != []
+            or value['result'] != 'SCOPED_FINAL_ACCEPTANCE_WORKER_PASS'):
+        raise AssertionError('required isolated installed worker receipt malformed or incomplete')
+
+
 def run(args):
     import forge
     from forge._version import canonical_version
@@ -82,7 +107,7 @@ def run(args):
                     ['test_mission_final_acceptance_contract', 'test_mission_final_acceptance_grant',
                      'test_mission_final_acceptance_http', 'test_mission_final_acceptance_denials'],
                     ['test_mission_final_acceptance_process', 'test_mission_final_acceptance_dependencies',
-                     'test_mission_final_acceptance_cli'],
+                     'test_mission_final_acceptance_cli', 'test_mission_final_acceptance_worker_cleanup'],
                 ]
                 workers = []
                 streams = []
@@ -107,22 +132,16 @@ def run(args):
                         exit_code = process.wait(timeout=max(.1, deadline - time.monotonic()))
                         raw = prefix.with_suffix('.public.json').read_bytes()
                         completed = json.loads(raw)
+                        if exit_code != 0:
+                            raise AssertionError('required isolated installed worker process failed')
+                        validate_worker_receipt(completed, source_revision=args.source_revision,
+                            product_version=artifact['version'], modules=modules, expected=expected)
                         receipt['worker_receipts'].append({'sha256': sha256(raw).hexdigest(), 'receipt': completed})
                         receipt['tests'] += completed['tests']
                         receipt['failures'].extend(completed['failures'])
-                        if (exit_code != 0 or completed['result'] != 'SCOPED_FINAL_ACCEPTANCE_WORKER_PASS'
-                                or completed['source_revision'] != args.source_revision
-                                or completed['product_version'] != artifact['version']
-                                or completed['modules'] != modules or not completed['noneditable_product']
-                                or completed['expected_tests'] != expected or completed['tests'] != expected
-                                or completed['failures'] or completed['skipped']
-                                or not completed['owned_scratch_removed']):
-                            raise AssertionError('required isolated installed worker failed, skipped or incomplete')
                 finally:
                     for process, _, _, _ in workers:
-                        if process.poll() is None:
-                            os.killpg(process.pid, signal.SIGKILL)
-                        process.wait(timeout=10)
+                        stop_owned_worker(process)
                     for stream in streams:
                         stream.close()
                 control = subprocess.run([sys.executable, '-I', str(SOURCE / 'scripts/qualification/control_mission_final_acceptance_guard.py')],

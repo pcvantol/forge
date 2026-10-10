@@ -2,6 +2,16 @@
   "assignment_id": "L3-SCOPED-MISSION-FINAL-ACCEPTANCE-V1-20261010",
   "base": "308888297796a2c50ff934922470cc167a36b629",
   "branch": "codex/l3-scoped-mission-final-acceptance",
+  "current_installed_cases": {
+    "expected_total": 23,
+    "expected_workers": [
+      14,
+      9
+    ],
+    "new_linked_regressions": 2,
+    "original_cases_retained": 21,
+    "timeout_minutes_unchanged": 8
+  },
   "delivery_state": "IMPLEMENTED_VALIDATION_IN_PROGRESS",
   "focused_initial": {
     "elapsed_seconds": 200.962,
@@ -9,10 +19,10 @@
     "tests": 18
   },
   "formal_corrections": {
-    "consumed": 2,
+    "consumed": 3,
     "first_independent_pair_complete": true,
     "maximum": 3,
-    "remaining": 1
+    "remaining": 0
   },
   "initial_full_validation": {
     "cause": "route qualification used old admin on four distinct final-acceptance routes; corrected explicit403scope guard, focused4PASS",
@@ -76,6 +86,16 @@
       "quality": "FAIL",
       "security": "PASS",
       "source": "03f5df756a3b3d67a04e6806f2742f12a0328352"
+    },
+    {
+      "findings": [
+        "exitedworkerleader skipped live ownedprocessgroup cleanup",
+        "truthy malformed noneditable/cleanup proof accepted"
+      ],
+      "integrated_correction_round": 3,
+      "quality": "FAIL",
+      "security": "FAIL",
+      "source": "be68060914db8e899556727442b307658ef83746"
     }
   ],
   "schema_version": 46,
