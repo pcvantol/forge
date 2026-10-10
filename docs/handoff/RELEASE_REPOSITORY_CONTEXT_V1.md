@@ -55,3 +55,28 @@ independent Quality/Security review. Historical original release run38024005735
 remains FAIL and reconciliation38026475188 remains RELEASE_COMPLETE; no old
 release assets, tags, receipts or installed qualification are rewritten.
 L1/L4 checkouts, pins, credentials and test resources are unchanged.
+
+
+## Protected implementation and normal finalization
+
+[PR #273](https://github.com/pcvantol/forge/pull/273) protected-merged at
+`3846e12c14ba65e3c7754c7a3fb0728b69b72ab6`, reviewed head
+`6b912ff700fb37c37afb3f2388ed6fe466028073`.
+Independent whole-scope Quality and Security PASS bind that exact head.
+Full local validation: 1394 tests, one skip, 706.361s; version/projection PASS.
+[Required CI38042154103](https://github.com/pcvantol/forge/actions/runs/38042154103)
+passed all retained installed gates, 1394 hosted tests/five skips/1212.987s.
+Actual PR checkout `7d407bd3c41b2742c3707f437cd125d9b4be8d13` has the same
+`ed0964ba90e9c0a26d3f9d4f5aed914d4b82bf26` tree as reviewed/protected code.
+The [actual controller artifact](https://github.com/pcvantol/forge/actions/runs/38042154103/artifacts/11666069770)
+was downloaded and verified, with explicit merge-checkout rather than PR-head
+provenance. Fresh local runner also passed on actual implementation main.
+Real Bash tracing independently establishes 15/15 executable helper lines,
+100%; Python changed-product coverage correctly reports no changed files.
+
+This nonempty NO_BUMP finalization records the implementation evidence in
+[the selected delivery record](../qualification/forge-release-repository-context-selected-delivery-2026-10-10.json).
+Finalization approval/protected merge and fresh exact-final-main controller
+qualification remain open until their actual readbacks. No old installed PASS
+is substituted for that execution. Candidate TDE38042154107 was CANCELLED;
+no policy PASS is claimed. Correction rounds consumed0/max3/remaining3.
