@@ -4,7 +4,7 @@ Assignment: `L3-SCOPED-MISSION-FINAL-ACCEPTANCE-V1-20261010`.
 Lane revision r47/plan1; same ARCHITECT_3/LANE_3_WORK writer.
 Base `308888297796a2c50ff934922470cc167a36b629`; branch
 `codex/l3-scoped-mission-final-acceptance`. Formal correction admission
-consumed1/max3/remaining2 after the first complete independent
+consumed2/max3/remaining1 after the first complete independent
 Quality/Security pair. R43–r46 remain closed. L4 plan96, its Forge2.12.1 pin,
 and its budgets are unchanged.
 
@@ -114,3 +114,24 @@ after replacement the parent observes exactly that complete packet. Real
 SIGKILL boundary, restart, concurrency and authority tests remain unchanged.
 No product policy, provider/runtime grant, assertion or timeout is relaxed.
 Complete current-head Quality/Security and required delivery gates still apply.
+
+## Integrated correction round2 — bounded installed execution
+
+OwningCI38061005962 failed at the unchanged eight-minute new installed gate.
+The original partialartifact11674523009/d27f0f93002ce1c353861756d9262e684a0ca4a32a9c9c09a076674534802dff
+contains20passedtests and the still-running last CLI test. It has no combined
+PASS receipt or completed cleanup proof. Local21PASS and source reviews do not
+reinterpret this failure. All earlier required preservation gates passed.
+
+The same complete21-case suite now runs in two isolated installed processes:
+contract/grant/HTTP/denials and process/dependencies/CLI. Every case/assertion,
+finite test capability, per-process deadline, actual guard-removal detector and
+owning eight-minute ceiling is retained. Each worker has its own new private
+scratch and noneditable/source/version checks. Parent independently derives
+expected counts, checks both exact completed receipts/return codes/skips/
+failures/cleanup, aggregates every case and only then runs the actual control.
+No thread shares product monkeypatches or runtime/grants. Workers have distinct
+owned process groups; failure kills those owned groups before scratch cleanup.
+These are qualification processes, not source writers or live EP resources.
+Current budget consumed2/max3/remaining1; new complete exact-head reviews and
+all remaining delivery gates remain required. R43–r46 and L4 are unchanged.

@@ -9,10 +9,10 @@
     "tests": 18
   },
   "formal_corrections": {
-    "consumed": 1,
+    "consumed": 2,
     "first_independent_pair_complete": true,
     "maximum": 3,
-    "remaining": 2
+    "remaining": 1
   },
   "initial_full_validation": {
     "cause": "route qualification used old admin on four distinct final-acceptance routes; corrected explicit403scope guard, focused4PASS",
@@ -55,6 +55,19 @@
     "public-artifact-main-schema-readback",
     "separate-TDE-status",
     "owned-cleanup"
+  ],
+  "required_ci_failures": [
+    {
+      "artifact_digest": "sha256:d27f0f93002ce1c353861756d9262e684a0ca4a32a9c9c09a076674534802dff",
+      "artifact_id": 11674523009,
+      "cause": "new sequential installed gate timed out at8min during last CLI test after20PASS",
+      "checkout_source": "6239c14699a6df666faafa97176a1016376f97bb",
+      "integrated_correction_round": 2,
+      "no_timeout_or_assertion_relaxation": true,
+      "result": "FAIL",
+      "reviewed_source": "925c56ea4894f029d357b4aae86d584c9f0ff9b3",
+      "run_id": 38061005962
+    }
   ],
   "review_history": [
     {

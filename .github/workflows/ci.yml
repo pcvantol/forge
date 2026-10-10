@@ -354,7 +354,7 @@ jobs:
         with:
           name: forge-mission-final-acceptance-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/forge-mission-final-acceptance/installed-mission-final-acceptance.public.json
+            ${{ runner.temp }}/forge-mission-final-acceptance/*.public.json
             ${{ runner.temp }}/forge-mission-final-acceptance/*.log
           if-no-files-found: error
       - name: Exact published 2.7.39 to 2.8.1 preservation maintenance

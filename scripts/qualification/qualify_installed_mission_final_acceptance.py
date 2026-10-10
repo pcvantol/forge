@@ -8,9 +8,11 @@ import importlib
 import json
 import os
 import subprocess
+import signal
 import sys
 import tempfile
 import unittest
+import time
 import zipfile
 
 SOURCE = Path(__file__).resolve().parents[2]
@@ -76,20 +78,53 @@ def run(args):
             os.environ['TMPDIR'] = str(scratch) + os.sep
             try:
                 sys.path.insert(0, str(SOURCE / 'tests'))
-                suite = unittest.TestSuite()
-                modules = ['test_mission_final_acceptance_contract', 'test_mission_final_acceptance_grant',
-                           'test_mission_final_acceptance_http', 'test_mission_final_acceptance_denials',
-                           'test_mission_final_acceptance_process', 'test_mission_final_acceptance_dependencies',
-                           'test_mission_final_acceptance_cli']
-                with (output / 'installed-cases.log').open('w') as log, redirect_stdout(log), redirect_stderr(log):
-                    for name in modules:
-                        suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(importlib.import_module(name)))
-                    result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
-                receipt['tests'] = result.testsRun
-                receipt['failures'] = [{'test': str(test), 'traceback': details[-2000:]}
-                                       for test, details in result.failures + result.errors]
-                if not result.wasSuccessful() or result.skipped:
-                    raise AssertionError('required installed final-acceptance cases failed or skipped')
+                groups = [
+                    ['test_mission_final_acceptance_contract', 'test_mission_final_acceptance_grant',
+                     'test_mission_final_acceptance_http', 'test_mission_final_acceptance_denials'],
+                    ['test_mission_final_acceptance_process', 'test_mission_final_acceptance_dependencies',
+                     'test_mission_final_acceptance_cli'],
+                ]
+                workers = []
+                streams = []
+                receipt['worker_receipts'] = []
+                deadline = time.monotonic() + 390
+                try:
+                    for index, modules in enumerate(groups):
+                        owned = scratch / ('worker-' + str(index))
+                        owned.mkdir(mode=0o700)
+                        prefix = output / ('installed-worker-' + str(index))
+                        log = prefix.with_suffix('.controller.log').open('w')
+                        streams.append(log)
+                        expected = sum(unittest.defaultTestLoader.loadTestsFromModule(
+                            importlib.import_module(name)).countTestCases() for name in modules)
+                        command = [sys.executable, '-I', str(SOURCE / 'scripts/qualification/qualify_mission_final_acceptance_worker.py'),
+                            '--source-revision', args.source_revision, '--product-version', artifact['version'],
+                            '--scratch-root', str(owned), '--output-prefix', str(prefix)]
+                        for name in modules:
+                            command.extend(['--module', name])
+                        workers.append((subprocess.Popen(command, stdout=log, stderr=log, start_new_session=True), prefix, expected, modules))
+                    for process, prefix, expected, modules in workers:
+                        exit_code = process.wait(timeout=max(.1, deadline - time.monotonic()))
+                        raw = prefix.with_suffix('.public.json').read_bytes()
+                        completed = json.loads(raw)
+                        receipt['worker_receipts'].append({'sha256': sha256(raw).hexdigest(), 'receipt': completed})
+                        receipt['tests'] += completed['tests']
+                        receipt['failures'].extend(completed['failures'])
+                        if (exit_code != 0 or completed['result'] != 'SCOPED_FINAL_ACCEPTANCE_WORKER_PASS'
+                                or completed['source_revision'] != args.source_revision
+                                or completed['product_version'] != artifact['version']
+                                or completed['modules'] != modules or not completed['noneditable_product']
+                                or completed['expected_tests'] != expected or completed['tests'] != expected
+                                or completed['failures'] or completed['skipped']
+                                or not completed['owned_scratch_removed']):
+                            raise AssertionError('required isolated installed worker failed, skipped or incomplete')
+                finally:
+                    for process, _, _, _ in workers:
+                        if process.poll() is None:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        process.wait(timeout=10)
+                    for stream in streams:
+                        stream.close()
                 control = subprocess.run([sys.executable, '-I', str(SOURCE / 'scripts/qualification/control_mission_final_acceptance_guard.py')],
                     capture_output=True, text=True, timeout=30)
                 (output / 'actual-guard-removal.log').write_text(control.stdout + control.stderr)
@@ -107,7 +142,7 @@ def run(args):
                     os.environ['TMPDIR'] = old_environment
         receipt['owned_scratch_removed'] = not scratch.exists()
         receipt['result'] = 'SCOPED_MISSION_FINAL_ACCEPTANCE_PASS'
-    except (AssertionError, OSError, ValueError, RuntimeError) as error:
+    except (AssertionError, OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         receipt['error_type'] = type(error).__name__
     receipt['logs'] = {path.name: sha256(path.read_bytes()).hexdigest()
                        for path in output.glob('*.log')}
