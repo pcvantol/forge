@@ -1,0 +1,154 @@
+{
+  "schema_version": "forge-installation-peer-detach-selected-delivery/v1",
+  "assignment_id": "L3-INSTALLATION-PEER-DETACH-V1-20261010",
+  "registration_revision": 45,
+  "plan_revision": 1,
+  "product_version": "2.12.2",
+  "runtime_schema": 46,
+  "source_base": "9875333acc4258a20fc0180a9ae09c980802d5b1",
+  "reviewed_head": "398285d4c72c1ec9a443ff6281854bbe29b0933f",
+  "reviewed_tree": "bc13817ae4d94cba3e7818164c705f6f0880fb82",
+  "protected_implementation": {
+    "pull_request": "https://github.com/pcvantol/forge/pull/271",
+    "source_revision": "e359767e4f40ddd5bcc349451813430dca762dbc",
+    "merged_at": "2026-10-10T03:27:52Z"
+  },
+  "validation": {
+    "result": "PASS",
+    "source_revision": "398285d4c72c1ec9a443ff6281854bbe29b0933f",
+    "tests": 1384,
+    "seconds": 669.889,
+    "platform_skips": 1
+  },
+  "required_ci": {
+    "result": "SUCCESS",
+    "run_id": 38017652751,
+    "url": "https://github.com/pcvantol/forge/actions/runs/38017652751",
+    "checked_head": "398285d4c72c1ec9a443ff6281854bbe29b0933f",
+    "actual_checkout": "000a146650065e1b13392b8306ba2ef72b3c7af4",
+    "tree": "bc13817ae4d94cba3e7818164c705f6f0880fb82",
+    "tests": 1384,
+    "seconds": 1192.349,
+    "platform_skips": 5,
+    "all_retained_installed_gates": "PASS"
+  },
+  "changed_product_coverage_percent": {
+    "forge/__main__.py": 81.88,
+    "forge/installation_pairing.py": 98.53,
+    "forge/installation_peer_detach.py": 93.52,
+    "forge/runtime/database.py": 82.9,
+    "forge/runtime/operational_reset.py": 85.88,
+    "forge/server_runtime.py": 82.52
+  },
+  "independent_source_reviews": {
+    "quality": "PASS",
+    "security": "PASS",
+    "exact_head": "398285d4c72c1ec9a443ff6281854bbe29b0933f",
+    "initial_and_round1_fail_reports_preserved": true
+  },
+  "formal_corrective_budget": {
+    "authorized": 3,
+    "consumed": 2,
+    "remaining": 1,
+    "predecessors_r43_r44": "CLOSED_WITH_ORIGINAL_CONSUMED_BUDGETS"
+  },
+  "new_installed_implementation_main": {
+    "qualification": "INSTALLED_INSTALLATION_PEER_DETACH_V1",
+    "artifact": {
+      "version": "2.12.2",
+      "wheel_sha256": "sha256:ac9da819885a690ea55df97c8195d4702d8d8ebcd6295369a72a6d135141605f",
+      "source_tree_revision": "bc13817ae4d94cba3e7818164c705f6f0880fb82",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:607c7fa532b5a2aab00aab2bbb164db4a826fc9594684d1ed53c2eae8a138f3b",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 267,
+      "source_product_files_verified": 267
+    },
+    "source_revision": "e359767e4f40ddd5bcc349451813430dca762dbc",
+    "result": "INSTALLATION_DETACH_PASS",
+    "case_count": 16,
+    "failure_control_detected": false,
+    "expected_failure_control": false,
+    "failure": null,
+    "external_fault": null,
+    "limitations": [
+      "External portable OS identity fixture; native identity has separate source tests.",
+      "Real isolated CLI/HTTP/storage/restart receipts; no live instance or installer orchestration."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "genuine_revoked_positive_operator_control": {
+    "qualification": "INSTALLED_INSTALLATION_PEER_DETACH_V1",
+    "artifact": {
+      "version": "2.12.2",
+      "wheel_sha256": "sha256:ac9da819885a690ea55df97c8195d4702d8d8ebcd6295369a72a6d135141605f",
+      "source_tree_revision": "bc13817ae4d94cba3e7818164c705f6f0880fb82",
+      "module_sha256": {
+        "forge/__init__.py": "sha256:854c463d61bdcd89b489ec119098a264592f20928dd3863fa68a7564828646dc",
+        "forge/runtime/dynamic_mission.py": "sha256:607c7fa532b5a2aab00aab2bbb164db4a826fc9594684d1ed53c2eae8a138f3b",
+        "forge/scheduler/ep_http_adapter.py": "sha256:c839a92b009935df98948ef2b69a45995df28f5f98bc43d7b983b29aaaafb17a",
+        "forge/ep_simulator.py": "sha256:83cf062e24eb164c7b74475a62b95441be8763f8060ea1f2cadf625cef7c2bc9"
+      },
+      "installed_product_files_verified": 267,
+      "source_product_files_verified": 267
+    },
+    "source_revision": "e359767e4f40ddd5bcc349451813430dca762dbc",
+    "result": "FAIL",
+    "case_count": 1,
+    "failure_control_detected": true,
+    "expected_failure_control": true,
+    "failure": {
+      "type": "AssertionError",
+      "stage": "positive-installation-detach"
+    },
+    "external_fault": "REVOKED_POSITIVE_INSTALLATION_OPERATOR",
+    "limitations": [
+      "External portable OS identity fixture; native identity has separate source tests.",
+      "Real isolated CLI/HTTP/storage/restart receipts; no live instance or installer orchestration."
+    ],
+    "cleanup": {
+      "owned_runtime_home_credentials_scratch_removed": true
+    }
+  },
+  "ci_detach_artifact": {
+    "artifact_id": 11658040893,
+    "url": "https://github.com/pcvantol/forge/actions/runs/38017652751/artifacts/11658040893",
+    "digest": "sha256:6a562bb21321ca8c7375c802152bc5f2aad1079a24a2d7a263f39e19bd82f46b",
+    "downloaded_and_verified": true
+  },
+  "nonblocking_tde": {
+    "run_id": 38017652722,
+    "workflow": "CANCELLED",
+    "assessment": "SKIPPED",
+    "policy": "NOT_ASSESSED",
+    "existing_timeout_unchanged": true
+  },
+  "finalization": {
+    "release_class": "NO_BUMP",
+    "event_lineage": "L3-r45-owner-approved-installation-detach-20261010",
+    "status": "PENDING_PROTECTED_MERGE",
+    "final_source_revision": null,
+    "new_exact_final_main_installed_proof": "REQUIRED"
+  },
+  "official_product_release": {
+    "status": "REQUIRED_OPEN",
+    "exact_current_final_main_source": "REQUIRED",
+    "registry_digests_receipts_and_published_artifact_installed_proof": "REQUIRED"
+  },
+  "implementation_main_ci": {
+    "run_id": 38020643933,
+    "status": "RUNNING_AT_SNAPSHOT"
+  },
+  "consumer_boundary": "LANE_1 owns subsequent installer receipt orchestration and physical lifecycle qualification; L3 performs no live instance or helper credential mutation.",
+  "preservation": [
+    "Same Work session and sole Forge writer",
+    "Primary and iCloud checkouts/history/previous artifacts and budgets",
+    "No L4 pin/data/adoption mutation",
+    "No project execution host or Mission authorization changes"
+  ]
+}
