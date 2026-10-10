@@ -1,7 +1,124 @@
 {
+  "TDE": {
+    "policy_pass": false,
+    "run": 38066593531,
+    "workflow": "CANCELLED"
+  },
   "assignment_id": "L3-SCOPED-MISSION-FINAL-ACCEPTANCE-V1-20261010",
   "base": "308888297796a2c50ff934922470cc167a36b629",
   "branch": "codex/l3-scoped-mission-final-acceptance",
+  "coverage_changed_product_files": {
+    "forge/governed_continuation.py": {
+      "covered_lines": 291,
+      "excluded_lines": 0,
+      "missing_lines": 43,
+      "num_statements": 334,
+      "percent_covered": 87.12574850299401,
+      "percent_covered_display": "87",
+      "percent_statements_covered": 87.12574850299401,
+      "percent_statements_covered_display": "87"
+    },
+    "forge/mission_final_acceptance_cli.py": {
+      "covered_lines": 57,
+      "excluded_lines": 0,
+      "missing_lines": 2,
+      "num_statements": 59,
+      "percent_covered": 96.61016949152543,
+      "percent_covered_display": "97",
+      "percent_statements_covered": 96.61016949152543,
+      "percent_statements_covered_display": "97"
+    },
+    "forge/mission_final_acceptance_contract.py": {
+      "covered_lines": 31,
+      "excluded_lines": 0,
+      "missing_lines": 0,
+      "num_statements": 31,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "forge/mission_final_acceptance_grant.py": {
+      "covered_lines": 181,
+      "excluded_lines": 0,
+      "missing_lines": 12,
+      "num_statements": 193,
+      "percent_covered": 93.78238341968913,
+      "percent_covered_display": "94",
+      "percent_statements_covered": 93.78238341968913,
+      "percent_statements_covered_display": "94"
+    },
+    "forge/mission_final_acceptance_journal.py": {
+      "covered_lines": 24,
+      "excluded_lines": 0,
+      "missing_lines": 4,
+      "num_statements": 28,
+      "percent_covered": 85.71428571428571,
+      "percent_covered_display": "86",
+      "percent_statements_covered": 85.71428571428571,
+      "percent_statements_covered_display": "86"
+    },
+    "forge/mission_final_acceptance_package.py": {
+      "covered_lines": 46,
+      "excluded_lines": 0,
+      "missing_lines": 0,
+      "num_statements": 46,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "forge/mission_final_acceptance_service.py": {
+      "covered_lines": 170,
+      "excluded_lines": 0,
+      "missing_lines": 17,
+      "num_statements": 187,
+      "percent_covered": 90.9090909090909,
+      "percent_covered_display": "91",
+      "percent_statements_covered": 90.9090909090909,
+      "percent_statements_covered_display": "91"
+    },
+    "forge/runtime/dynamic_mission.py": {
+      "covered_lines": 684,
+      "excluded_lines": 0,
+      "missing_lines": 96,
+      "num_statements": 780,
+      "percent_covered": 87.6923076923077,
+      "percent_covered_display": "88",
+      "percent_statements_covered": 87.6923076923077,
+      "percent_statements_covered_display": "88"
+    },
+    "forge/server_runtime.py": {
+      "covered_lines": 671,
+      "excluded_lines": 2,
+      "missing_lines": 140,
+      "num_statements": 811,
+      "percent_covered": 82.73736128236744,
+      "percent_covered_display": "83",
+      "percent_statements_covered": 82.73736128236744,
+      "percent_statements_covered_display": "83"
+    },
+    "forge/state/mission_state.py": {
+      "covered_lines": 283,
+      "excluded_lines": 0,
+      "missing_lines": 30,
+      "num_statements": 313,
+      "percent_covered": 90.41533546325878,
+      "percent_covered_display": "90",
+      "percent_statements_covered": 90.41533546325878,
+      "percent_statements_covered_display": "90"
+    },
+    "forge/worklist_conditions.py": {
+      "covered_lines": 41,
+      "excluded_lines": 0,
+      "missing_lines": 0,
+      "num_statements": 41,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    }
+  },
   "current_installed_cases": {
     "expected_total": 23,
     "expected_workers": [
@@ -12,7 +129,13 @@
     "original_cases_retained": 21,
     "timeout_minutes_unchanged": 8
   },
-  "delivery_state": "IMPLEMENTED_VALIDATION_IN_PROGRESS",
+  "current_whole_reviews": {
+    "quality": "PASS",
+    "security": "PASS",
+    "source": "6a941a48d32a3da7e0f7551b15fb797a1bf870ad",
+    "url": "https://github.com/pcvantol/forge/issues/207#issuecomment-6099595337"
+  },
+  "delivery_state": "PROTECTED_IMPLEMENTATION_COMPLETE_FINALIZATION_AND_FINAL_INSTALLED_PENDING",
   "focused_initial": {
     "elapsed_seconds": 200.962,
     "result": "PASS",
@@ -23,6 +146,13 @@
     "first_independent_pair_complete": true,
     "maximum": 3,
     "remaining": 0
+  },
+  "full_local_current": {
+    "elapsed_seconds": 892.055,
+    "result": "PASS",
+    "skipped": 1,
+    "source": "6a941a48d32a3da7e0f7551b15fb797a1bf870ad",
+    "tests": 1417
   },
   "initial_full_validation": {
     "cause": "route qualification used old admin on four distinct final-acceptance routes; corrected explicit403scope guard, focused4PASS",
@@ -41,6 +171,13 @@
   "l4": "plan96 Forge2.12.1/9875333acc4258a20fc0180a9ae09c980802d5b1 unchanged",
   "lane_revision": "r47",
   "live_EP": "NOT_USED",
+  "normal_finalization": {
+    "base": "c06132638fcfb7172dc6f3af585ba42ad2d20f09",
+    "feature_correction_consumed": 3,
+    "state": "SOURCE_PREPARED_REQUIRED_REVIEW_CI_PROTECTED_MERGE_PENDING",
+    "version": "2.13.0",
+    "version_class": "NO_BUMP"
+  },
   "plan_revision": 1,
   "predecessors": "r43/r44 CLOSED3/3; r45 CLOSED2/3; r46 CLOSED0/3",
   "prior_exact_installed": {
@@ -52,20 +189,53 @@
     "wheel_sha256": "8197b120a6ff2a85bf6a95de6a1f38afa343af73d4c0093b06247b1f950a950c"
   },
   "product_version": "2.13.0",
+  "protected_implementation": {
+    "main": "c06132638fcfb7172dc6f3af585ba42ad2d20f09",
+    "merged_at": "2026-10-10T17:15:26Z",
+    "normal_match_head": true,
+    "pull_request": 275,
+    "reviewed_head": "6a941a48d32a3da7e0f7551b15fb797a1bf870ad",
+    "tree": "d21ccb89ddb3be1caf124b3a4a95556404521017"
+  },
+  "public_installed_implementation": {
+    "actual_guard_control_detected": true,
+    "actual_source": "791047be0c0601cc8f882bb0f24fc9a6e5d913a8",
+    "artifact_id": 11676108922,
+    "download_hashes_receipts_readback_verified": true,
+    "own_scratch_removed": true,
+    "result": "SCOPED_MISSION_FINAL_ACCEPTANCE_PASS",
+    "runtime_schema": "46",
+    "runtime_version": "2.13.0",
+    "tests": 23,
+    "url": "https://github.com/pcvantol/forge/actions/runs/38066593537/artifacts/11676108922",
+    "wheel_sha256": "096ad4cf11807fa9f586dd842ac6e51250bd6999dae284ff6d903bbcd14925c7",
+    "workers": [
+      14,
+      9
+    ],
+    "zip_digest": "sha256:b31b1b86cd9549a918ade04537e435da5256fd1da4fadd485427d5fc2220a74a"
+  },
   "public_release": "NOT_AUTHORIZED_OR_PERFORMED",
   "qualification_scope": "PMT-05/09/10/11/13/15/20/22/25/28/31 bounded PRM-F-CONTRACT/PROJECTION/ACTIVATION connection",
   "remaining": [
-    "full-validation-and-all-changed-production-coverage",
-    "fresh-exact-head-noneditable-installed-qualification",
-    "whole-independent-Quality-and-Security",
-    "all-required-CI",
-    "protected-implementation-merge",
-    "nonempty-finalization",
-    "fresh-exact-final-main-installed-proof",
-    "public-artifact-main-schema-readback",
-    "separate-TDE-status",
-    "owned-cleanup"
+    "finalization-complete-independent-exact-head-Quality-Security",
+    "finalization-requiredCI-protectedmerge",
+    "NEWexact-final-main-wheel-noneditable-installed23",
+    "actual-final-mainCI-public-artifact-version-schema-readback",
+    "separate-finalTDE-status",
+    "safe-owned-cleanup",
+    "terminal-register-and-checkpoint"
   ],
+  "required_ci": {
+    "all_preservation_gates": "PASS",
+    "checkout": "791047be0c0601cc8f882bb0f24fc9a6e5d913a8",
+    "elapsed_seconds": 1695.809,
+    "run": 38066593537,
+    "same_reviewed_tree": true,
+    "skipped": 5,
+    "status": "SUCCESS",
+    "tests": 1417
+  },
   "required_ci_failures": [
     {
       "artifact_digest": "sha256:d27f0f93002ce1c353861756d9262e684a0ca4a32a9c9c09a076674534802dff",

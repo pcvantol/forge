@@ -162,3 +162,47 @@ ceiling remain. Product/grant/runtime/contract/version bytes are unchanged.
 Budget consumed3/max3/remaining0; no fourth correction or reset is authorized.
 New complete exact-head Quality/Security/currentCI/protected/finalization and
 fresh-final-main installed/artifact/main/schema/cleanup evidence remain open.
+
+## Protected implementation and normal finalization
+
+Implementation PR [275](https://github.com/pcvantol/forge/pull/275) merged normally
+with exact reviewedhead6a941a48d32a3da7e0f7551b15fb797a1bf870ad on2026-10-10T17:15:26Z.
+Protected implementationmain: c06132638fcfb7172dc6f3af585ba42ad2d20f09.
+Reviewed/source-CI/implementation tree: d21ccb89ddb3be1caf124b3a4a95556404521017.
+Source-CI actual PRmergecheckout791047be0c0601cc8f882bb0f24fc9a6e5d913a8
+has that same tree; it is not presented as the branchhead or finalmain.
+Complete exact-head Quality/Security reports are retained publicly in
+[register6099595337](https://github.com/pcvantol/forge/issues/207#issuecomment-6099595337).
+
+Required [CI38066593537](https://github.com/pcvantol/forge/actions/runs/38066593537)
+is SUCCESS, full1417tests/1695.809s/5existingLinuxskips, changedproduct coverage
+82.74–100% perfile, all controller/innerloop/worklist/advisory/chat/workset/
+Candidate preservation gates and new installed23casegate passed.
+[Public installedartifact11676108922](https://github.com/pcvantol/forge/actions/runs/38066593537/artifacts/11676108922)
+was downloaded and read back: zipdigest
+b31b1b86cd9549a918ade04537e435da5256fd1da4fadd485427d5fc2220a74a;
+noneditable23PASS/14+9, worker/log/product-source hashes verified, actual
+guard-removal detector and own cleanupPASS, Forge2.13.0/schema46readback.
+That CI wheel digest is096ad4cf11807fa9f586dd842ac6e51250bd6999dae284ff6d903bbcd14925c7.
+The separate local exact6a941 wheel8197b120.../23PASS and1417test892.055s
+are retained separately; neither substitutes for new exact-final-main proof.
+
+The source-side MINOR2.13.0 capability is qualified; no public release or user
+installation is performed. The existing public2.12.2 publication and L4's
+2.12.1/9875333pin remain different immutable identities. TDEsource run38066593531
+is CANCELLED and is not a policyPASS. Productactor/permission/runtime boundaries,
+old closed budgets/history and the future consumer join remain unchanged.
+
+This nonempty normal finalization records a separate NO_BUMP2.13.0 event bound
+to exact protectedimplementationc0613263. Formalfeaturebudget stays3/3consumed,
+remaining0; finalization is the selected lifecycle, not a fourthcorrection.
+Only handoff/delivery evidence and that NO_BUMP receipt change; product and
+qualification/test/CI bytes remain unchanged. It must receive its own complete
+exact-head Quality/Security and requiredCI/protectedmerge.
+
+Still pending: finalizationprotectedmerge, NEWexact-final-main wheel build,
+noneditableinstalledHTTP/CLI/A→B/negative/process23casequalification, actual
+finalmainCI/artifact/schema/version/readback, TDEassessment and safe owncleanup.
+The owning register will bind finalmainSHA and fresh public artifact only after
+those real effects. No self-referential final SHA or assignmentcompletion is
+invented in advance; no automatic successor or full PRM/outer-loop closure.

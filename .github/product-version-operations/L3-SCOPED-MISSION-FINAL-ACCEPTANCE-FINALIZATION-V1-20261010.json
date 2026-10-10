@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.13.0",
+  "classification_rationale": "L3-r47-scoped-mission-final-acceptance-finalization-20261010",
+  "component": "product",
+  "event_lineage": "L3-r47-scoped-mission-final-acceptance-finalization-20261010",
+  "expected_head": "c06132638fcfb7172dc6f3af585ba42ad2d20f09",
+  "operation_id": "L3-SCOPED-MISSION-FINAL-ACCEPTANCE-FINALIZATION-V1-20261010",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "NO_BUMP",
+  "requested_bump": "none",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.13.0"
+}
