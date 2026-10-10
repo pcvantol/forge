@@ -249,6 +249,11 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path.startswith('/v1/mission-final-acceptances/'):
+                                self.assertEqual(status, 403)
+                                self.assertEqual(body['error']['code'], 'FINAL_ACCEPTANCE_SCOPE_DENIED')
+                                observed.add((method, path))
+                                continue
                             if path.startswith('/v1/approved-workset-releases/'):
                                 self.assertEqual(status,403)
                                 self.assertEqual(body['error']['code'],'RELEASE_SCOPE_DENIED')
