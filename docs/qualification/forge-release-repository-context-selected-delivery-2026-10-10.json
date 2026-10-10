@@ -1,0 +1,140 @@
+{
+  "artifact": {
+    "digest": "sha256:c9383cb109150ecd9a469dc0ad16f9a0cc168eb4eb227eac94782d50fa3fd000",
+    "id": 11666069770,
+    "url": "https://github.com/pcvantol/forge/actions/runs/38042154103/artifacts/11666069770"
+  },
+  "assignment_id": "L3-RELEASE-REPOSITORY-CONTEXT-V1-20261010",
+  "base": "d824d729e12e6aafed7b38f7f99cdffd6ef89f34",
+  "budget": {
+    "consumed": 0,
+    "historical": {
+      "r43": "CLOSED3/3",
+      "r44": "CLOSED3/3",
+      "r45": "CLOSED2/3"
+    },
+    "max": 3,
+    "remaining": 3
+  },
+  "changed_production_python": "NOT_APPLICABLE_NONE_CHANGED",
+  "changed_production_shell_coverage": {
+    "covered_lines": [
+      3,
+      4,
+      5,
+      7,
+      8,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      19,
+      20,
+      21,
+      22
+    ],
+    "executable_lines": [
+      3,
+      4,
+      5,
+      7,
+      8,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      19,
+      20,
+      21,
+      22
+    ],
+    "file": "scripts/release_github_context.sh",
+    "method": "real Bash xtrace with BASH_SOURCE and LINENO; only structural/comment/blank lines excluded",
+    "percent": 100.0,
+    "source_sha256": "3b52d31d7e2d44f3458dd9822c5ae89cabfb7375b7fcaf2b6a6226ba674e87cf",
+    "uncovered_lines": []
+  },
+  "completion_gate": "new exact-final-main delivered-controller execution, current required CI and normal final receipts remain mandatory",
+  "controller_qualification": {
+    "assignment_id": "L3-RELEASE-REPOSITORY-CONTEXT-V1-20261010",
+    "boundary": "delivered-controller-local-GitHub-fixture; no live publication",
+    "files": {
+      ".github/workflows/forge-production-release.yml": "910008ed7917e2885206a9fe37ca2c6d6070d4c44ad9872c2bb6820a39a92aab",
+      "scripts/qualification/qualify_release_repository_context.sh": "af765baf50f467a903d6eb046e2af635eaa5859872f8ed095f401005d41c65c6",
+      "scripts/release_github_context.sh": "3b52d31d7e2d44f3458dd9822c5ae89cabfb7375b7fcaf2b6a6226ba674e87cf",
+      "scripts/release_operation.py": "2780bb65a2b2f74f9ca6698774aa7953ca7bcbd718164a2e47dee27049dd8983",
+      "tests/test_production_release_workflow.py": "0838e60c8010be0cfda2fb057ab54d409236dfa7a38a1a635817a6b99f2a7387",
+      "tests/test_release_repository_context.py": "cec0210c41f72351a4809f40975dd2cf5f658104f98dc21fcf6872c14d327b71"
+    },
+    "logs": {
+      "positive.log": "000c2e3395e93230b2f39e9832332ee25f98210724ac13e0d814fceb908ec71f",
+      "restored-defect.log": "3e849ba7a25a3e9c928fbd4c82ebdba126c18a09bdc93ff2392ff3f8aea3d002",
+      "retained-cleanup.log": "71f733a83d4bd18f43f49d16898c3bc7df90e4134b924ad7159fb3c06e2c3f18"
+    },
+    "owned_control_cleanup": true,
+    "restored_defect": {
+      "ambient_context": "WRONG_REPOSITORY_TARGET",
+      "exit": 1,
+      "failures": 2,
+      "outside_git": "not a git repository"
+    },
+    "result": "RELEASE_REPOSITORY_CONTEXT_PASS",
+    "source_revision": "7d407bd3c41b2742c3707f437cd125d9b4be8d13",
+    "source_tree": "ed0964ba90e9c0a26d3f9d4f5aed914d4b82bf26"
+  },
+  "existing_reconciliation_38026475188": "RELEASE_COMPLETE_PRESERVED",
+  "implementation_main": "3846e12c14ba65e3c7754c7a3fb0728b69b72ab6",
+  "implementation_pr": "https://github.com/pcvantol/forge/pull/273",
+  "implementation_tree": "ed0964ba90e9c0a26d3f9d4f5aed914d4b82bf26",
+  "independent_reviews": {
+    "quality": {
+      "exact_head": "6b912ff700fb37c37afb3f2388ed6fe466028073",
+      "report_sha256": "c042211a360f5312ee9e388728150b59aa62d0a4dd6a25fe7336897b1e23bf6e",
+      "result": "PASS"
+    },
+    "security": {
+      "exact_head": "6b912ff700fb37c37afb3f2388ed6fe466028073",
+      "report_sha256": "62678a48e70634b9990ee0495d9d6c7225ca92e74f17652307d4d90f0c18bf4a",
+      "result": "PASS"
+    }
+  },
+  "lane_revision": "r46",
+  "local_validation": {
+    "projection": "PASS",
+    "result": "OK",
+    "seconds": 706.361,
+    "skips": 1,
+    "tests": 1394,
+    "version": "PASS"
+  },
+  "no_live_publication": true,
+  "original_release_run_38024005735": "FAIL_PRESERVED",
+  "plan_revision": 1,
+  "required_ci": {
+    "actual_checkout": "7d407bd3c41b2742c3707f437cd125d9b4be8d13",
+    "actual_tree": "ed0964ba90e9c0a26d3f9d4f5aed914d4b82bf26",
+    "full_tests": 1394,
+    "result": "SUCCESS",
+    "run": 38042154103,
+    "seconds": 1212.987,
+    "skips": 5
+  },
+  "reviewed_head": "6b912ff700fb37c37afb3f2388ed6fe466028073",
+  "state": "IMPLEMENTATION_PROTECTED_MERGED_FINAL_MAIN_QUALIFICATION_PENDING",
+  "tde": {
+    "blocking": false,
+    "candidate_run": 38042154107,
+    "history": "preserved",
+    "policy_assessment": "NOT_CLAIMED",
+    "workflow": "CANCELLED"
+  },
+  "version_decision": {
+    "class": "NO_BUMP",
+    "reason": "repository controller maintenance; packaged Forge source/metadata/schema/API bytes unchanged; no new publication",
+    "version": "2.12.2"
+  }
+}
