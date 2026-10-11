@@ -1,7 +1,7 @@
 # Scoped workset activity read V1 — r49 active
 
 Selected L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011, same writer/base091ec16.
-No source delivery claimed; implementation, qualification/reviews/CI/merges and NEWfinal-main installed evidence remain open.
+Implementation delivered through protected PR279 on f819196 (Forge2.15.0/schema46). Normal finalization and NEW exact-final-main installed evidence remain open.
 
 ## Source → fact → identity → original time/sequence matrix
 
@@ -18,7 +18,7 @@ No source delivery claimed; implementation, qualification/reviews/CI/merges and 
 
 Current state uses the existing worklist v1/v2 effective-order/completion/condition projection separately. Missing historic portions are PARTIAL, not invented backfill. No migration, eventbus, materialized history writer or generations from reads.
 
-## Cursor contract under development
+## Cursor contract contract
 
 Bounded signed checkpoint, fixed16 events/page, maximum128 offered events and32768-byte page/cursor. Cursors bind actual instance, dataset generation, original workset and current reader context. Every call rechecks READ scope. Changed source snapshot during an unfinished page sequence requires explicit RESYNC_REQUIRED; no quietly mixed pages. Completed checkpoints preserve event identities/digests and pick up newly visible older facts regardless of presentation timestamp. Removed/changed known facts require explicit resync. Duplicate requests reproduce event IDs; caller can identify replay. No read creates cursor-key/authority/storage.
 
@@ -77,4 +77,27 @@ A product-created receipt corruption test exercises both pages and event detail
 for cancellation/effect/release/identity/package/revision/time damage, restores
 exact original bytes and checks unchanged runtime/provider/EP effects.
 Original failed review and old successful candidate proofs remain retained.
-Fresh corrected-head full/installed qualification and COMPLETE reviews are open.
+At the correction-preparation checkpoint, fresh corrected-head full/installed qualification and COMPLETE reviews were open; their later PASS readbacks follow below.
+
+## Protected source delivery and normal finalization
+
+[PR279](https://github.com/pcvantol/forge/pull/279) delivered the complete selected
+producer on f819196e9c025163be40c8e71693a3def4b78bc2, tree e63469554e99358f283c263b3d55c97f7db40d72.
+Fresh COMPLETE independent whole-head Quality/Security PASS on5467adf:
+[owning review register](https://github.com/pcvantol/forge/issues/207#issuecomment-6111174967).
+Owning CI38153761850 SUCCESS:1460 tests/2497.395s/5 platform skips; all seven
+changed production files strictly above80.2% and all preservation gates PASS.
+The CI checkout6c4b6ece has the exact reviewed tree.
+[Public installed activity proof](https://github.com/pcvantol/forge/actions/runs/38153761850/artifacts/11709389684):
+20 PASS, original worker/log hashes, official ZIP digest, all287 payload files,
+2.15.0/schema46 and own cleanup independently read back. Local corrected-head
+installed20 PASS is separate retained evidence. TDE38153761814 CANCELLED is
+unavailable policy evidence, not policy PASS.
+
+This nonempty normal finalization is NO_BUMP on protected implementation main.
+Its own independent reviews, CI and protected merge remain required, followed
+by NEW exact-final-main installed HTTP/CLI/negative/process evidence and actual
+main CI/public artifact/current readback/cleanup/terminal record. The selected
+delivery JSON records existing facts and explicitly open future gates. No
+future final-main SHA, qualification or assignment completion is fabricated.
+Formal correction1/max3 is retained; closed predecessors and L4 pin remain unchanged.
