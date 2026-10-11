@@ -173,6 +173,7 @@ def effective_order(value, db):
                           'decisions', 'consumed_activations', 'applied_at'}
         if (type(receipt) is not dict or set(receipt) != receipt_fields
                 or receipt['contract_version'] != CONTRACT
+                or type(receipt['applied_at']) is not str or len(receipt['applied_at']) > 1000
                 or type(receipt['order_revision']) is not int
                 or type(receipt['consumed_activations']) is not int
                 or type(receipt['fixed_prefix']) is not int

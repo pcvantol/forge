@@ -39,6 +39,8 @@ class WorksetOrderIntegrityTests(unittest.TestCase):
                 coherent_receipt(value, 'applied_at', {'not': 'timestamp'})
             def receipt_time_invalid(value):
                 coherent_receipt(value, 'applied_at', 'not-a-timestamp')
+            def receipt_time_overlength(value):
+                coherent_receipt(value, 'applied_at', '2026-10-11T12:00:00.' + '1' * 1100 + '+00:00')
             def receipt_time_naive(value):
                 coherent_receipt(value, 'applied_at', '2026-10-11T12:00:00')
             def coherent_receipt(value, field, replacement):
@@ -50,7 +52,7 @@ class WorksetOrderIntegrityTests(unittest.TestCase):
                 value['revision'] = True
             for mutation in (changed_reason, lost_intents, fake_pending, bool_receipt, bool_revision,
                              receipt_contract, receipt_time_boolean, receipt_time_object,
-                             receipt_time_invalid, receipt_time_naive):
+                             receipt_time_invalid, receipt_time_naive, receipt_time_overlength):
                 with self.subTest(mutation=mutation.__name__):
                     value = deepcopy(original); mutation(value)
                     with db:
