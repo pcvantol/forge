@@ -81,12 +81,24 @@ The shared worker deadline remains390 seconds and the actual defect control30
 seconds. The same27 cases are balanced across groups; no case or assertion is
 dropped, and historical final-acceptance gates keep their original defaults.
 
-Source implementation is pending complete validation/coverage, fresh complete
-independent exact-head Quality/Security, required CI and normal protected
-match-head merge. Canonical selected capability is MINOR2.14.0/schema46.
-Normal nonempty finalization and NEW exact-final-main noneditable installed
-proof/public artifact/main/schema/TDE/cleanup remain mandatory. Development
-logs do not claim those later gates or completed source delivery.
+Implementation is protected-merged as PR277 on exact main
+`fb9709439fa52f24e0cbd878e36fae5a05880f47` (2.14.0/schema46), matching the
+complete independently reviewed tree. Whole Quality/Security PASS reviewed
+`8d794a9dbb3683f3df153ba2cf2f360b8e9dfc4f`; formal corrections consumed2/max3,
+remaining1, with original FAIL reports retained. Owning CI38124732686 passed
+1442 tests (five existing Linux skips), strict >80.2% on all eleven changed
+product files and every existing installed preservation gate. Its new order
+artifact proves27 PASS, actual prefix-guard defect detection and owned cleanup:
+[public CI proof](https://github.com/pcvantol/forge/actions/runs/38124732686/artifacts/11698791511).
+
+Normal nonempty NO_BUMP finalization is prepared here; its fresh independent
+whole exact-head reviews, required CI and protected merge remain pending.
+NEW exact-final-main noneditable installed27, actual final-main CI/public
+artifact/main/version/schema readback and safe own cleanup are still required.
+This source record does not invent the future final-main SHA or claim terminal
+source delivery. TDE38124732513 was CANCELLED; no assessment or policy PASS is
+inferred from it. See the selected-delivery qualification record for exact
+wheel/receipt/ZIP hashes, review history and remaining gates.
 
 Scope is the selected bounded PRM-F-PRIORITY/CONTRACT/ACTIVATION connection,
 PMT-08/10/11/15/20/21/22/30/31/34. Broader project-loop families stay open.

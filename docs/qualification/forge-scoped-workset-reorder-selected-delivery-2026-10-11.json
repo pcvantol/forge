@@ -1,0 +1,407 @@
+{
+  "TDE": {
+    "assessment": "UNAVAILABLE; cancelled observe job is not policy PASS",
+    "policy_pass": false,
+    "run": 38124732513,
+    "workflow": "CANCELLED"
+  },
+  "assignment_id": "L3-SCOPED-WORKSET-REORDER-V1-20261011",
+  "base": "5875b4214f332d1a1a346978c3c94e17480f2a38",
+  "branch": "codex/l3-scoped-workset-reorder",
+  "coverage_baseline_changed_product_files": {
+    "forge/approved_worklist.py": {
+      "covered_lines": 283,
+      "excluded_lines": 0,
+      "missing_lines": 18,
+      "num_statements": 301,
+      "percent_covered": 94.01993355481727,
+      "percent_covered_display": "94",
+      "percent_statements_covered": 94.01993355481727,
+      "percent_statements_covered_display": "94"
+    },
+    "forge/server_runtime.py": {
+      "covered_lines": 682,
+      "excluded_lines": 2,
+      "missing_lines": 142,
+      "num_statements": 824,
+      "percent_covered": 82.76699029126213,
+      "percent_covered_display": "83",
+      "percent_statements_covered": 82.76699029126213,
+      "percent_statements_covered_display": "83"
+    },
+    "forge/worklist_activation.py": {
+      "covered_lines": 137,
+      "excluded_lines": 0,
+      "missing_lines": 11,
+      "num_statements": 148,
+      "percent_covered": 92.56756756756756,
+      "percent_covered_display": "93",
+      "percent_statements_covered": 92.56756756756756,
+      "percent_statements_covered_display": "93"
+    },
+    "forge/worklist_conditions.py": {
+      "covered_lines": 44,
+      "excluded_lines": 0,
+      "missing_lines": 0,
+      "num_statements": 44,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "forge/worklist_control.py": {
+      "covered_lines": 183,
+      "excluded_lines": 0,
+      "missing_lines": 9,
+      "num_statements": 192,
+      "percent_covered": 95.3125,
+      "percent_covered_display": "95",
+      "percent_statements_covered": 95.3125,
+      "percent_statements_covered_display": "95"
+    },
+    "forge/workset_order.py": {
+      "covered_lines": 90,
+      "excluded_lines": 0,
+      "missing_lines": 10,
+      "num_statements": 100,
+      "percent_covered": 90.0,
+      "percent_covered_display": "90",
+      "percent_statements_covered": 90.0,
+      "percent_statements_covered_display": "90"
+    },
+    "forge/workset_order_cli.py": {
+      "covered_lines": 67,
+      "excluded_lines": 0,
+      "missing_lines": 4,
+      "num_statements": 71,
+      "percent_covered": 94.36619718309859,
+      "percent_covered_display": "94",
+      "percent_statements_covered": 94.36619718309859,
+      "percent_statements_covered_display": "94"
+    },
+    "forge/workset_order_contract.py": {
+      "covered_lines": 81,
+      "excluded_lines": 0,
+      "missing_lines": 8,
+      "num_statements": 89,
+      "percent_covered": 91.01123595505618,
+      "percent_covered_display": "91",
+      "percent_statements_covered": 91.01123595505618,
+      "percent_statements_covered_display": "91"
+    },
+    "forge/workset_order_grant.py": {
+      "covered_lines": 184,
+      "excluded_lines": 0,
+      "missing_lines": 11,
+      "num_statements": 195,
+      "percent_covered": 94.35897435897436,
+      "percent_covered_display": "94",
+      "percent_statements_covered": 94.35897435897436,
+      "percent_statements_covered_display": "94"
+    },
+    "forge/workset_order_service.py": {
+      "covered_lines": 185,
+      "excluded_lines": 0,
+      "missing_lines": 23,
+      "num_statements": 208,
+      "percent_covered": 88.9423076923077,
+      "percent_covered_display": "89",
+      "percent_statements_covered": 88.9423076923077,
+      "percent_statements_covered_display": "89"
+    },
+    "forge/workset_release_service.py": {
+      "covered_lines": 160,
+      "excluded_lines": 0,
+      "missing_lines": 8,
+      "num_statements": 168,
+      "percent_covered": 95.23809523809524,
+      "percent_covered_display": "95",
+      "percent_statements_covered": 95.23809523809524,
+      "percent_statements_covered_display": "95"
+    }
+  },
+  "current_changed_resolver_coverage": {
+    "covered_lines": 87,
+    "excluded_lines": 0,
+    "missing_lines": 15,
+    "num_statements": 102,
+    "percent_covered": 85.29411764705883,
+    "percent_covered_display": "85",
+    "percent_statements_covered": 85.29411764705883,
+    "percent_statements_covered_display": "85"
+  },
+  "current_ci_changed_product_coverage": {
+    "forge/approved_worklist.py": {
+      "covered_lines": 283,
+      "num_statements": 301,
+      "percent": 94.01993355481727
+    },
+    "forge/server_runtime.py": {
+      "covered_lines": 682,
+      "num_statements": 824,
+      "percent": 82.76699029126213
+    },
+    "forge/worklist_activation.py": {
+      "covered_lines": 137,
+      "num_statements": 148,
+      "percent": 92.56756756756756
+    },
+    "forge/worklist_conditions.py": {
+      "covered_lines": 44,
+      "num_statements": 44,
+      "percent": 100.0
+    },
+    "forge/worklist_control.py": {
+      "covered_lines": 183,
+      "num_statements": 192,
+      "percent": 95.3125
+    },
+    "forge/workset_order.py": {
+      "covered_lines": 92,
+      "num_statements": 102,
+      "percent": 90.19607843137256
+    },
+    "forge/workset_order_cli.py": {
+      "covered_lines": 67,
+      "num_statements": 71,
+      "percent": 94.36619718309859
+    },
+    "forge/workset_order_contract.py": {
+      "covered_lines": 81,
+      "num_statements": 89,
+      "percent": 91.01123595505618
+    },
+    "forge/workset_order_grant.py": {
+      "covered_lines": 184,
+      "num_statements": 195,
+      "percent": 94.35897435897436
+    },
+    "forge/workset_order_service.py": {
+      "covered_lines": 185,
+      "num_statements": 208,
+      "percent": 88.9423076923077
+    },
+    "forge/workset_release_service.py": {
+      "covered_lines": 160,
+      "num_statements": 168,
+      "percent": 95.23809523809524
+    }
+  },
+  "current_installed": {
+    "actual_guard_control": {
+      "actual_production_guard_removed": true,
+      "detected": true,
+      "exit": 1,
+      "failure_stage": "claimed-prefix-preview-accepted"
+    },
+    "artifact": {
+      "filename": "forge_autonomy-2.14.0-py3-none-any.whl",
+      "sha256": "a775fa78dc663cd1ff7f2b43174c5be0bbe8da6af0389e59ed410be1df03cd51",
+      "version": "2.14.0"
+    },
+    "boundary": "real product governance/intake/runtime/HTTP/CLI/durable state; only external model/EP/OS boundaries fixtured; no live release or user installation",
+    "console_scripts": {
+      "forge-workset-order": "forge.workset_order_cli:main",
+      "forge-workset-order-grant": "forge.workset_order_grant:main"
+    },
+    "failures": [],
+    "logs": {
+      "actual-guard-removal.log": "45f7ceb1b1153b1ba78e98b9c88dea2e5560d90a0904997d842c21a7e23b1eba",
+      "installed-worker-0.controller.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installed-worker-0.log": "34c967f9f5ac4ef2997de52eb41e417610569101cdfe1af6ab4f6ea45a47f9d1",
+      "installed-worker-1.controller.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installed-worker-1.log": "23cba556895ea3e4f3a84dd2f8dde68e4c57f545c950d54bd6c1c808192f2bae",
+      "installed-worker-2.controller.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installed-worker-2.log": "7e0b1ea641e74bc907bea1dac6a799fe984037cab929e5131fa4e4d669b4f85b"
+    },
+    "noneditable_product": true,
+    "owned_scratch_removed": true,
+    "product_files": {
+      "api/server-openapi-v1.json": "334f81d576156e8ddeae3331604246d34fa88aadf6b9870ec7c0cfb34c4ae51f",
+      "api/server-postman-v1.json": "6f6c33a4f1889ddd861d1260d4d4a3941951a792bd648fdad995af6b401ff922",
+      "api/workset-order-v1.json": "1e7b6f134fbf59a504a098d237fd6ff54f59faf76484a3485e334244075602ac",
+      "api/workspace-worklist-v2.json": "5e36c67879a8aba2f90d87d6692801d502d83ce8c56c21243731d28def4f8767",
+      "approved_worklist.py": "82741c5e07b172d60a29294dba9d7863d6b67515836d7fe016484788dbb9e1c9",
+      "server_runtime.py": "0f4253bdd4d9e04491283b1059bd8f68c526183ff3323c7290ddfb9f88d921b8",
+      "worklist_activation.py": "11289b8d3315ac8c64aad622064930a33351b06908bd0dacf7d634255110e4b9",
+      "worklist_conditions.py": "0fc39e8c42e551dd5260d8aad29e092e47da7d796f5dd90b35be3fdc5e74e297",
+      "worklist_control.py": "dfd832170952a2cf647f63b9586cf9acf9aa2b34f82505c4b7b3c1acedcd4e44",
+      "workset_order.py": "16d08e2fc58ddde61db5a9500982fde7fee60e820e7b191b39357451d4b3115e",
+      "workset_order_cli.py": "9e24d22bdd7e94b56d9ab70a7f4d4434fa07409c7ca546021dce618f0eb2342d",
+      "workset_order_contract.py": "8c2aaee6aec47a2dd7e9277116ca757f8b5d6038f4e39866ed45c71a87d7881d",
+      "workset_order_grant.py": "3f40603a06c7eb8b2214b1f1025c37fe317fbc34d1ef3db2a767f2f2f54272f4",
+      "workset_order_service.py": "d36c1c4a4065ae237f18db2dd8450b29cfad45b1ed6efa291a6c74a9c180572a",
+      "workset_release_service.py": "e0deb064051236c8ed2b8cdaf4668a8763ce628361573a9117e85ddd207fb1bc"
+    },
+    "qualification": "INSTALLED_SCOPED_WORKSET_ORDER_V1",
+    "result": "SCOPED_WORKSET_ORDER_PASS",
+    "runtime_readback": {
+      "product_version": "2.14.0",
+      "schema_version": "46"
+    },
+    "source_revision": "8d794a9dbb3683f3df153ba2cf2f360b8e9dfc4f",
+    "tests": 27,
+    "wheel_payload_files_verified": 281,
+    "worker_receipts": [
+      {
+        "receipt": {
+          "expected_tests": 12,
+          "failures": [],
+          "modules": [
+            "test_workset_order_contract",
+            "test_workset_order_cli_grant",
+            "test_workset_order_vectors",
+            "test_mission_final_acceptance_worker_cleanup"
+          ],
+          "noneditable_product": true,
+          "owned_scratch_removed": true,
+          "product_version": "2.14.0",
+          "result": "SCOPED_WORKSET_ORDER_WORKER_PASS",
+          "skipped": [],
+          "source_revision": "8d794a9dbb3683f3df153ba2cf2f360b8e9dfc4f",
+          "tests": 12
+        },
+        "sha256": "e5fc8b1644bab971660010b02b5166e6517c93c0060b2c4debbe8e2f8b7472b7"
+      },
+      {
+        "receipt": {
+          "expected_tests": 7,
+          "failures": [],
+          "modules": [
+            "test_workset_order_http",
+            "test_workset_order_denials",
+            "test_workset_order_integrity"
+          ],
+          "noneditable_product": true,
+          "owned_scratch_removed": true,
+          "product_version": "2.14.0",
+          "result": "SCOPED_WORKSET_ORDER_WORKER_PASS",
+          "skipped": [],
+          "source_revision": "8d794a9dbb3683f3df153ba2cf2f360b8e9dfc4f",
+          "tests": 7
+        },
+        "sha256": "5a9120fb6f4560d36ba54b7eb528f8a0a2b2b4876cdc0ab4f3f1d459933ecbd5"
+      },
+      {
+        "receipt": {
+          "expected_tests": 8,
+          "failures": [],
+          "modules": [
+            "test_workset_order_chain",
+            "test_workset_order_process"
+          ],
+          "noneditable_product": true,
+          "owned_scratch_removed": true,
+          "product_version": "2.14.0",
+          "result": "SCOPED_WORKSET_ORDER_WORKER_PASS",
+          "skipped": [],
+          "source_revision": "8d794a9dbb3683f3df153ba2cf2f360b8e9dfc4f",
+          "tests": 8
+        },
+        "sha256": "355bb82b60c86ac925342b945b8945506f354d9aa58e39086cd8d269e1ecca05"
+      }
+    ]
+  },
+  "current_linked_corruption_regressions": {
+    "elapsed_seconds": 18.667,
+    "result": "PASS",
+    "tests": 2
+  },
+  "current_whole_reviews": {
+    "quality": "PASS",
+    "quality_sha256": "a7c8dce9a8af496d2a1ea393428b04e64cbd348fab7c0ec59eb79f0305325bad",
+    "register": "https://github.com/pcvantol/forge/issues/207#issuecomment-6107145128",
+    "security": "PASS",
+    "security_sha256": "3e7812d27a7ef9ce830959f50dd0705586189742ee195b34cb32561dbf71000f",
+    "source": "8d794a9dbb3683f3df153ba2cf2f360b8e9dfc4f"
+  },
+  "delivery_state": "PROTECTED_IMPLEMENTATION_COMPLETE_FINALIZATION_AND_FINAL_INSTALLED_PENDING",
+  "formal_corrections": {
+    "consumed": 2,
+    "first_independent_pair_complete": true,
+    "maximum": 3,
+    "remaining": 1
+  },
+  "full_local_baseline": {
+    "elapsed_seconds": 1145.473,
+    "result": "PASS",
+    "skipped": 1,
+    "source": "cb58f49f105d97fbec434c705bf547a20535676c",
+    "tests": 1442
+  },
+  "l4": "plan96/Forge2.12.1/9875333acc4258a20fc0180a9ae09c980802d5b1/pin/budget/GUI scope unchanged; future consumption separately selected",
+  "lane_revision": "r48",
+  "live_EP": "NOT_USED",
+  "normal_finalization": {
+    "base": "fb9709439fa52f24e0cbd878e36fae5a05880f47",
+    "feature_correction_consumed": 2,
+    "state": "SOURCE_PREPARED_REQUIRED_REVIEW_CI_PROTECTED_MERGE_PENDING",
+    "version": "2.14.0",
+    "version_class": "NO_BUMP"
+  },
+  "plan_revision": 1,
+  "predecessors": "r43-r47 and read-only canonicalization handoff CLOSED",
+  "product_version": "2.14.0",
+  "protected_implementation": {
+    "main": "fb9709439fa52f24e0cbd878e36fae5a05880f47",
+    "merged_at": "2026-10-11T09:41:54Z",
+    "normal_match_head": true,
+    "pull_request": 277,
+    "reviewed_head": "8d794a9dbb3683f3df153ba2cf2f360b8e9dfc4f",
+    "tree": "8b9edd231836180fa998792c73dd35fde524a081"
+  },
+  "public_installed_implementation": {
+    "actual_guard_control_detected": true,
+    "artifact_id": 11698791511,
+    "download_hashes_receipts_readback_verified": true,
+    "own_scratch_removed": true,
+    "receipt_sha256": "5b8b1f687f86780054c46a55464f96d8d69a0a5efd0c7ddad076df1c0e04bd9d",
+    "result": "SCOPED_WORKSET_ORDER_PASS",
+    "runtime_schema": "46",
+    "runtime_version": "2.14.0",
+    "source": "58b83c6b6841d4f5ce7c745133e29ce439ca38b3",
+    "tests": 27,
+    "url": "https://github.com/pcvantol/forge/actions/runs/38124732686/artifacts/11698791511",
+    "wheel_sha256": "73f31df31a117af896d434f96fc5b95dc36b1267853efadcdb50bee1b59da034",
+    "zip_digest": "sha256:964cbf8092fe4b0844ac0a0a6357850ef13b5eb8494d7b5c3832a3d9b0bc341e"
+  },
+  "public_release": "NOT_AUTHORIZED_OR_PERFORMED",
+  "qualification_scope": "bounded PRM-F-PRIORITY/CONTRACT/ACTIVATION; PMT-08/10/11/15/20/21/22/30/31/34, broader families open",
+  "remaining": [
+    "normal-nonempty-finalization-fresh-QS-CI-protectedmerge",
+    "NEW-exact-final-main-noneditable-installed27",
+    "actual-final-main-CI-public-artifact-version-schema-readback",
+    "separate-TDE-status",
+    "safe-owned-cleanup",
+    "terminal-register-and-checkpoint"
+  ],
+  "required_ci": {
+    "all_preservation_gates": "PASS",
+    "checkout": "58b83c6b6841d4f5ce7c745133e29ce439ca38b3",
+    "elapsed_seconds": 2172.076,
+    "run": 38124732686,
+    "same_reviewed_tree": true,
+    "skipped": 5,
+    "status": "SUCCESS",
+    "tests": 1442
+  },
+  "review_history": [
+    {
+      "booking": "https://github.com/pcvantol/forge/issues/207#issuecomment-6107053757",
+      "finding": "original receipt contract and typed timestamp semantics unchecked",
+      "integrated_correction_round": 1,
+      "quality": "FAIL",
+      "security": "FAIL",
+      "source": "cb58f49f105d97fbec434c705bf547a20535676c"
+    },
+    {
+      "booking": "https://github.com/pcvantol/forge/issues/207#issuecomment-6107096368",
+      "finding": "original receipt timestamp maxLength1000 unchecked",
+      "integrated_correction_round": 2,
+      "quality": "FAIL",
+      "security": "FAIL",
+      "source": "70e79d5775e0f17d6050ae84f135abe4ae8ffdfa"
+    }
+  ],
+  "schema_version": 46
+}
