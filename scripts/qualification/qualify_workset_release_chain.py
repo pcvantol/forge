@@ -18,7 +18,8 @@ spec=spec_from_file_location('release_serial_fixture',SOURCE/'scripts/qualificat
 serial=module_from_spec(spec);spec.loader.exec_module(serial);utils=serial.utils
 
 
-def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2,approve_unreleased_c=False):
+def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2,approve_unreleased_c=False,
+               order_population=False,c_depends_on_b=False):
     sys.path.insert(0,str(SOURCE/'tests'))
     import test_mission_concept_ready_http as ready
     import test_mission_concept_contract as content
@@ -52,44 +53,47 @@ def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2,appro
     approved=[]
     with ready.qual.http(root) as port:
         instance=existing_instance(root/'runtime');operator=sha256(utils.fixture.IDENTITY.generated_uid.encode()).hexdigest()[:16]
+        conversations=['a','b','c','d'] if order_population else ['a','b','c']
         token=root/'chat-owner.private';issued=grant.issue(principal_id=operator,project_id=utils.PROJECT,
-            repository_id=utils.fixture.SOURCE.repository_id,conversation_ids=['a','b','c'],maximum_turns=8,
+            repository_id=utils.fixture.SOURCE.repository_id,conversation_ids=conversations,maximum_turns=8,
             expires_at=(datetime.now(UTC)+timedelta(hours=2)).isoformat(),token_path=token)
-        MissionConceptSetup(root/'runtime',instance.instance_id).configure(grant_id=issued['grant_id'],profiles={kind:profile},maximum_missions=3 if approve_unreleased_c else 2)
+        MissionConceptSetup(root/'runtime',instance.instance_id).configure(grant_id=issued['grant_id'],profiles={kind:profile},maximum_missions=4 if order_population else 3 if approve_unreleased_c else 2)
         context=AdvisoryContext(root/'runtime',instance.instance_id);context.revoke('selected-context')
         revision=utils.fixture._read(root/'effect-target.private.json')['source_revision']
         with patch('forge.completion.repository_observer.GitHubRepositoryArtifactReader.read',return_value=(target/'docs/design.md').read_bytes()):
             context.publish(source_id='execution-source',revision=revision,path='docs/design.md')
-        for conversation in ('a','b','c'):
+        for conversation in conversations:
+            dependency = (approved[1] if c_depends_on_b else approved[0]) if conversation=='c' and order_population else approved[0] if conversation=='b' else None
             definition={**content.MissionConceptContractTests().output()['definition'],
                 'title':'Assessment '+conversation.upper(),'objective':'Assess the approved deployment boundary '+conversation.upper()+'.',
                 'work_kind':kind,'components':['Deployment boundary'],'scope':['Deployment boundary'],
                 'acceptance_criteria':['Explain the deployment boundary with source evidence.'],
                 'risks':['scope-drift'],'exclusions':['Do not perform effects outside the approved mode.'],
-                'dependencies':[approved[0]['candidate_id']] if conversation=='b' else [],
-                'dependency_reasons':{approved[0]['candidate_id']:'B requires the accepted source evidence from A.'} if conversation=='b' else {}}
+                'dependencies':[dependency['candidate_id']] if dependency else [],
+                'dependency_reasons':{dependency['candidate_id']:('Requires the accepted source evidence from the predecessor.'
+                    if order_population else 'B requires the accepted source evidence from A.')} if dependency else {}}
             ready.model_output(root,definition)
             status,current=ready.call(port,token,'GET','/v1/mission-concepts/'+conversation+'/context');assert status==200,current
             request={k:current['context'][k] for k in ('instance_id','project_id','repository_id')}
             request.update(contract_version='forge-chat-first-mission/v1',conversation_id=conversation,turn_id='initial',
                 expected_revision=0,context_revision=current['context_revision'],selected_sources=[],advisor_kind='ARCHITECTURE',objective=definition['objective'])
             status,turn=ready.call(port,token,'POST','/v1/mission-concepts/'+conversation+'/turns',request);assert status==200,turn
-            if conversation=='c' and not approve_unreleased_c:continue  # Genuine unapproved concept remains outside.
+            if conversation=='c' and not approve_unreleased_c and not order_population:continue  # Genuine unapproved concept remains outside.
             status,prepared=ready.call(port,token,'GET','/v1/mission-concepts/'+conversation+'/package');assert status==200 and prepared['approval_supported'],prepared
             status,result=ready.call(port,token,'POST','/v1/mission-concepts/'+conversation+'/approve',{
                 'contract_version':'forge-chat-first-mission/v1','operation_id':'approve-'+conversation,
                 'revision':prepared['revision'],'package_digest':prepared['package_digest'],'confirm':True});assert status==200,result
             approved.append(result)
-        selected=approved[:2]
+        selected=approved[:3] if order_population else approved[:2]
         subjects=[{'candidate_id':a['candidate_id'],'subject_revision':a['intake_subject_revision']} for a in selected]
         release_grant=WorksetReleaseGrant(root/'runtime',instance.instance_id)
         record=release_grant.issue(principal_id=operator,project_id=utils.PROJECT,repository_id=utils.fixture.SOURCE.repository_id,
-            permissions=['READ','RELEASE','DISARM'],subjects=subjects,maximum_releases=1,maximum_activations=2,
+            permissions=['READ','RELEASE','DISARM'],subjects=subjects,maximum_releases=1,maximum_activations=len(selected),
             expires_at=(datetime.now(UTC)+timedelta(hours=2)).isoformat(),token_path=root/'release.private')
         prefix=['--data-root',str(root/'runtime'),'--token-file',str(root/'release.private')]
         prepared_path=root/'prepared.private.json'
         with patch('sys.stdout',new_callable=StringIO):
-            assert release_cli(prefix+['prepare','--mission-id',approved[0]['mission_id'],'--mission-id',approved[1]['mission_id'],
+            assert release_cli(prefix+['prepare',*[arg for a in selected for arg in ('--mission-id',a['mission_id'])],
                 '--expires-at',(datetime.now(UTC)+timedelta(hours=1)).isoformat(),'--maximum-activations',str(maximum_activations),
                 '--progression-mode','continuous','--output',str(prepared_path)])==0
         package=json.loads(prepared_path.read_text());assert package['release_supported'],package
@@ -106,12 +110,12 @@ def chat_setup(root,endpoint,scenario,*,release=True,maximum_activations=2,appro
             assert [i['mission_id'] for i in released['current']['items']]==[a['mission_id'] for a in selected]
         utils.fixture._write(root/'release-case.private.json',{'workset_id':released['workset_id'],
             'grant_id':record['grant_id'],'mission_ids':[a['mission_id'] for a in selected],
-            **({'unreleased_mission_id':approved[2]['mission_id']} if approve_unreleased_c else {})})
+            **({'unreleased_mission_id':approved[3]['mission_id']} if order_population else {'unreleased_mission_id':approved[2]['mission_id']} if approve_unreleased_c else {})})
         utils.fixture._write(root/'effect-scenario.private.json',{'scenario':scenario})
     return target,baseline,manifest
 
 
-def phase(root,scenario,name,endpoint):
+def phase(root,scenario,name,endpoint,*,include_order=False):
     from forge.approved_worklist import ApprovedWorklistService,candidate_source,projection
     from forge.lifecycle import RecommendationLifecycleStore
     from forge.runtime.service import ForgeRuntimeService
@@ -140,9 +144,19 @@ def phase(root,scenario,name,endpoint):
         with RecommendationLifecycleStore(candidate_source(root/'runtime')) as store:
             service=ApprovedWorklistService(runtime,store)
             if name=='tick':ForgeRuntimeService(_ResumeOnlyLoop(runtime),runtime.states,runtime_database=runtime.database).tick()
-            elif name=='pause-claim':
+            elif name in ('pause-claim', 'pause-next-claim'):
                 def identity():
-                    if at_boundary(root,'crash-after-claim'):
+                    if name == 'pause-next-claim':
+                        value = service._get(key)
+                        hit = len(value['claims']) == 2 and any(c['mission_id'] is None for c in value['claims'].values())
+                        if hit:
+                            from forge.workspace_review_grant import _write_private
+                            _write_private(root/'order-boundary.ready.private', json.dumps({'pid':os.getpid(),'stage':'after-runtime-claim'}).encode())
+                            deadline = time.monotonic() + 20
+                            while not (root/'order-boundary.continue.private').exists():
+                                if time.monotonic() > deadline:raise TimeoutError('own runtime claim boundary was not released')
+                                time.sleep(.02)
+                    elif at_boundary(root,'crash-after-claim'):
                         (root/'boundary.ready.private').write_text(str(os.getpid()))
                         while not (root/'boundary.continue.private').exists():time.sleep(0.02)
                     return utils.fixture.IDENTITY
@@ -185,7 +199,7 @@ def phase(root,scenario,name,endpoint):
                         'disarm','--original-operation-id','release-a-b','--operation-id','withdraw','--confirm'])==0,output.getvalue()
             elif name!='read':raise ValueError('unknown qualification phase')
             states=[runtime.database.get_document('mission_state',m) for m in data['mission_ids']]
-            value=service._get(key);read=projection(root/'runtime',runtime.database.runtime_identity.runtime_id,key,'qualification')
+            value=service._get(key);read=projection(root/'runtime',runtime.database.runtime_identity.runtime_id,key,'qualification',include_order=include_order)
             return {'phase':name,'states':states,'workset':value,'read':read,
                 'allocations':runtime.database._connection.execute('SELECT count(*) FROM mission_id_allocations').fetchone()[0],
                 'governance_decisions':runtime.database._connection.execute('SELECT count(*) FROM governance_decisions').fetchone()[0],

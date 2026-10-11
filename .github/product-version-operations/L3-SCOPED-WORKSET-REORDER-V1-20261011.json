@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.13.0",
+  "classification_rationale": "L3-r48-selected-scoped-workset-reorder-20261011",
+  "component": "product",
+  "event_lineage": "L3-r48-selected-scoped-workset-reorder-20261011",
+  "expected_head": "5875b4214f332d1a1a346978c3c94e17480f2a38",
+  "operation_id": "L3-SCOPED-WORKSET-REORDER-V1-20261011",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.14.0"
+}
