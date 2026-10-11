@@ -1,0 +1,1723 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forge.local/api/workset-order-v1.json",
+  "title": "Explicit finite remaining-order amendment; immutable original release and claims",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/preview_request"
+    },
+    {
+      "$ref": "#/$defs/capability"
+    },
+    {
+      "$ref": "#/$defs/current"
+    },
+    {
+      "$ref": "#/$defs/preview"
+    },
+    {
+      "$ref": "#/$defs/operation"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "legacy_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "committed_order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "mission_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mission_state_revision": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "released": {
+          "type": "boolean"
+        },
+        "eligibility": {
+          "enum": [
+            "ELIGIBLE",
+            "BLOCKED",
+            "UNKNOWN"
+          ]
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "execution_state": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+        },
+        "engineering_result": {
+          "enum": [
+            "PROVEN",
+            "UNPROVEN",
+            "UNKNOWN"
+          ]
+        },
+        "review_state": {
+          "enum": [
+            "WAITING",
+            "ACCEPTED",
+            "NONE",
+            "UNKNOWN"
+          ]
+        },
+        "final_acceptance": {
+          "enum": [
+            "WAITING",
+            "ACCEPTED",
+            "NOT_REQUIRED",
+            "UNKNOWN"
+          ]
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "effect_mode": {
+          "enum": [
+            "READ_ONLY_ASSESSMENT",
+            "DOCUMENTATION_ONLY",
+            "ARCHITECTURE_DESIGN_ONLY",
+            "BOUNDED_REPOSITORY_CHANGE",
+            "UNKNOWN"
+          ]
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "detail_reference": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "mission_id"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "MISSION_REVIEW"
+                },
+                "mission_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                }
+              }
+            }
+          ]
+        },
+        "allocation_binding": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "candidate_id",
+                "subject_revision",
+                "mission_id",
+                "installation_id",
+                "envelope_digest"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "CANONICAL_CANDIDATE_INTAKE"
+                },
+                "candidate_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "subject_revision": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "mission_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "installation_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "envelope_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          ]
+        },
+        "evidence_references": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "subject_id",
+              "digest"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "MISSION_COMPLETION",
+                  "FINAL_BUSINESS_ACCEPTANCE"
+                ]
+              },
+              "subject_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "candidate_id",
+        "subject_revision",
+        "committed_order",
+        "title",
+        "mission_id",
+        "mission_state_revision",
+        "approved",
+        "released",
+        "eligibility",
+        "blocking_reasons",
+        "active",
+        "execution_state",
+        "engineering_result",
+        "review_state",
+        "final_acceptance",
+        "completed",
+        "effect_mode",
+        "dependencies",
+        "detail_reference",
+        "allocation_binding",
+        "evidence_references"
+      ]
+    },
+    "legacy_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-workspace-worklist/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "principal_id",
+            "workset_id",
+            "project_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "EXPLICIT_WORKSET"
+            },
+            "principal_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "workset_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "project_id": {
+              "type": "null"
+            }
+          }
+        },
+        "membership_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "selector_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "workset_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snapshot_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "freshness": {
+          "const": "CURRENT_READBACK"
+        },
+        "completeness": {
+          "enum": [
+            "COMPLETE_WITHIN_SCOPE",
+            "PARTIAL"
+          ]
+        },
+        "activation_support": {
+          "enum": [
+            "NOT_YET_QUALIFIED",
+            "QUALIFIED_SERIAL_APPROVED_WORKLIST"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/legacy_item"
+          }
+        },
+        "read_only": {
+          "const": true
+        },
+        "installation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "continuation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "candidate_id",
+            "mission_id",
+            "committed_order",
+            "reason_codes"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "READY",
+                "BLOCKED",
+                "IDLE",
+                "UNKNOWN"
+              ]
+            },
+            "candidate_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "mission_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "committed_order": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 63
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              },
+              "maxItems": 64,
+              "uniqueItems": true
+            }
+          }
+        }
+      },
+      "required": [
+        "contract_version",
+        "instance_id",
+        "scope",
+        "membership_revision",
+        "selector_revision",
+        "workset_revision",
+        "snapshot_revision",
+        "observed_at",
+        "freshness",
+        "completeness",
+        "activation_support",
+        "items",
+        "read_only",
+        "installation_id",
+        "continuation"
+      ]
+    },
+    "legacy_scopes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "instance_id",
+        "principal_id",
+        "workset_ids",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workspace-worklist-scopes/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "principal_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workset_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "ordered_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "committed_order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "mission_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mission_state_revision": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "released": {
+          "type": "boolean"
+        },
+        "eligibility": {
+          "enum": [
+            "ELIGIBLE",
+            "BLOCKED",
+            "UNKNOWN"
+          ]
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "execution_state": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+        },
+        "engineering_result": {
+          "enum": [
+            "PROVEN",
+            "UNPROVEN",
+            "UNKNOWN"
+          ]
+        },
+        "review_state": {
+          "enum": [
+            "WAITING",
+            "ACCEPTED",
+            "NONE",
+            "UNKNOWN"
+          ]
+        },
+        "final_acceptance": {
+          "enum": [
+            "WAITING",
+            "ACCEPTED",
+            "NOT_REQUIRED",
+            "UNKNOWN"
+          ]
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "effect_mode": {
+          "enum": [
+            "READ_ONLY_ASSESSMENT",
+            "DOCUMENTATION_ONLY",
+            "ARCHITECTURE_DESIGN_ONLY",
+            "BOUNDED_REPOSITORY_CHANGE",
+            "UNKNOWN"
+          ]
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "detail_reference": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "mission_id"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "MISSION_REVIEW"
+                },
+                "mission_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                }
+              }
+            }
+          ]
+        },
+        "allocation_binding": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "candidate_id",
+                "subject_revision",
+                "mission_id",
+                "installation_id",
+                "envelope_digest"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "CANONICAL_CANDIDATE_INTAKE"
+                },
+                "candidate_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "subject_revision": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "mission_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "installation_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "envelope_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          ]
+        },
+        "evidence_references": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "subject_id",
+              "digest"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "MISSION_COMPLETION",
+                  "FINAL_BUSINESS_ACCEPTANCE"
+                ]
+              },
+              "subject_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "candidate_id",
+        "subject_revision",
+        "committed_order",
+        "title",
+        "mission_id",
+        "mission_state_revision",
+        "approved",
+        "released",
+        "eligibility",
+        "blocking_reasons",
+        "active",
+        "execution_state",
+        "engineering_result",
+        "review_state",
+        "final_acceptance",
+        "completed",
+        "effect_mode",
+        "dependencies",
+        "detail_reference",
+        "allocation_binding",
+        "evidence_references"
+      ]
+    },
+    "ordered_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "forge-workspace-worklist/v2"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "principal_id",
+            "workset_id",
+            "project_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "EXPLICIT_WORKSET"
+            },
+            "principal_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "workset_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "project_id": {
+              "type": "null"
+            }
+          }
+        },
+        "membership_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "selector_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "workset_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snapshot_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "freshness": {
+          "const": "CURRENT_READBACK"
+        },
+        "completeness": {
+          "enum": [
+            "COMPLETE_WITHIN_SCOPE",
+            "PARTIAL"
+          ]
+        },
+        "activation_support": {
+          "enum": [
+            "NOT_YET_QUALIFIED",
+            "QUALIFIED_SERIAL_APPROVED_WORKLIST"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/ordered_item"
+          }
+        },
+        "read_only": {
+          "const": true
+        },
+        "installation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "continuation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "candidate_id",
+            "mission_id",
+            "committed_order",
+            "reason_codes"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "READY",
+                "BLOCKED",
+                "IDLE",
+                "UNKNOWN"
+              ]
+            },
+            "candidate_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "mission_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "committed_order": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 63
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              },
+              "maxItems": 64,
+              "uniqueItems": true
+            }
+          }
+        },
+        "order_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "order_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "original_order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "effective_order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "order_blocking_reasons": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "required": [
+        "contract_version",
+        "instance_id",
+        "scope",
+        "membership_revision",
+        "selector_revision",
+        "workset_revision",
+        "snapshot_revision",
+        "observed_at",
+        "freshness",
+        "completeness",
+        "activation_support",
+        "items",
+        "read_only",
+        "installation_id",
+        "continuation",
+        "order_revision",
+        "order_digest",
+        "original_order",
+        "effective_order",
+        "order_blocking_reasons"
+      ]
+    },
+    "ordered_scopes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "instance_id",
+        "principal_id",
+        "workset_ids",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workspace-worklist-scopes/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "principal_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workset_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "subject_revision"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "subject_revision": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "workset_id",
+        "definition_digest",
+        "authority_digest",
+        "workset_revision",
+        "order_revision",
+        "previous_order_digest",
+        "current_order",
+        "proposed_order",
+        "fixed_prefix",
+        "subjects",
+        "expires_at",
+        "maximum_activations",
+        "consumed_activations"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "repository_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "definition_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "authority_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "workset_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "order_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "previous_order_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "current_order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "proposed_order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "fixed_prefix": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "subjects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/subject"
+          }
+        },
+        "expires_at": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "maximum_activations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "consumed_activations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "operation_id",
+        "instance_id",
+        "project_id",
+        "repository_id",
+        "workset_id",
+        "package_digest",
+        "package",
+        "reason",
+        "confirm"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "repository_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "package_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "package": {
+          "$ref": "#/$defs/package"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "confirm": {
+          "const": true
+        }
+      }
+    },
+    "preview_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "proposed_order"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "proposed_order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "operation_id",
+        "workset_id",
+        "package_digest",
+        "order_revision",
+        "original_order",
+        "applied_order",
+        "fixed_prefix",
+        "decisions",
+        "consumed_activations",
+        "applied_at"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "package_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "order_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "original_order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "applied_order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "fixed_prefix": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "decisions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "business",
+            "architecture"
+          ],
+          "properties": {
+            "business": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "architecture": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        },
+        "consumed_activations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "applied_at": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "title",
+        "mission_id",
+        "dependencies",
+        "claimed",
+        "position",
+        "remaining_position"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "mission_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dependencies": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          }
+        },
+        "claimed": {
+          "type": "boolean"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "remaining_position": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "workset_id",
+        "current",
+        "order_revision",
+        "order_digest",
+        "current_order",
+        "fixed_prefix",
+        "members",
+        "read_only",
+        "additional_model_calls",
+        "execution_started"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "workset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "current": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/legacy_projection"
+            },
+            {
+              "$ref": "#/$defs/ordered_projection"
+            }
+          ]
+        },
+        "order_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "order_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "current_order": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "fixed_prefix": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/member"
+          }
+        },
+        "read_only": {
+          "const": true
+        },
+        "additional_model_calls": {
+          "const": 0
+        },
+        "execution_started": {
+          "const": false
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "scope",
+        "worksets",
+        "permissions",
+        "maximum_amendments",
+        "consumed_amendments",
+        "remaining_amendments",
+        "expires_at",
+        "reorder_supported",
+        "required_roles",
+        "read_only"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instance_id",
+            "project_id",
+            "repository_id"
+          ],
+          "properties": {
+            "instance_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "project_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "repository_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        },
+        "worksets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "workset_id",
+              "definition_digest"
+            ],
+            "properties": {
+              "workset_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "definition_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "permissions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "enum": [
+              "READ",
+              "REORDER"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "maximum_amendments": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "consumed_amendments": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1024
+        },
+        "remaining_amendments": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16
+        },
+        "expires_at": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "reorder_supported": {
+          "type": "boolean"
+        },
+        "required_roles": {
+          "const": [
+            "business_owner",
+            "platform_architect"
+          ]
+        },
+        "read_only": {
+          "const": true
+        }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "package",
+        "package_digest",
+        "current",
+        "reorder_supported",
+        "blocking_reasons",
+        "consequences",
+        "read_only",
+        "additional_model_calls",
+        "execution_started",
+        "display_orders"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "package": {
+          "$ref": "#/$defs/package"
+        },
+        "package_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "current": {
+          "$ref": "#/$defs/current"
+        },
+        "reorder_supported": {
+          "type": "boolean"
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "consequences": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "read_only": {
+          "const": true
+        },
+        "additional_model_calls": {
+          "const": 0
+        },
+        "execution_started": {
+          "const": false
+        },
+        "display_orders": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "current",
+            "proposed"
+          ],
+          "properties": {
+            "current": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "position",
+                  "candidate_id",
+                  "title"
+                ],
+                "properties": {
+                  "position": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 64
+                  },
+                  "candidate_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                }
+              }
+            },
+            "proposed": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "position",
+                  "candidate_id",
+                  "title"
+                ],
+                "properties": {
+                  "position": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 64
+                  },
+                  "candidate_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "operation_id",
+        "state",
+        "original_request",
+        "original_receipt",
+        "current",
+        "read_only",
+        "additional_model_calls",
+        "execution_started",
+        "canonical_decisions_observed"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "APPLIED"
+          ]
+        },
+        "original_request": {
+          "$ref": "#/$defs/request"
+        },
+        "original_receipt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/receipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current": {
+          "$ref": "#/$defs/current"
+        },
+        "read_only": {
+          "const": true
+        },
+        "additional_model_calls": {
+          "const": 0
+        },
+        "execution_started": {
+          "const": false
+        },
+        "canonical_decisions_observed": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "business": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "architecture": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "error"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "forge-workset-order/v1"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        }
+      }
+    }
+  }
+}

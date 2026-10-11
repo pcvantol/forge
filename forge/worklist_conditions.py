@@ -74,4 +74,7 @@ SNAPSHOT_FIELDS=('contract_version','instance_id','installation_id','scope','mem
                  'workset_revision','activation_support','completeness','items','continuation')
 
 def snapshot_revision(document: dict[str,Any]) -> str:
-    return canonical_digest({key:document[key] for key in SNAPSHOT_FIELDS})
+    fields = SNAPSHOT_FIELDS
+    if document['contract_version'] == 'forge-workspace-worklist/v2':
+        fields += ('order_revision', 'order_digest', 'original_order', 'effective_order', 'order_blocking_reasons')
+    return canonical_digest({key:document[key] for key in fields})

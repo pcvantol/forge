@@ -54,14 +54,14 @@ class ApprovedWorklistActivation:
         validate_activation_authority(Path(self.runtime.data_root),value)
         operator=self.runtime.repository.operators
         if not operator.authorize(operator.context()):raise PermissionError('current operator required')
-        read=projection(Path(self.runtime.data_root),self.runtime.database.runtime_identity.runtime_id,key,'forge-scheduler')
+        read=projection(Path(self.runtime.data_root),self.runtime.database.runtime_identity.runtime_id,key,'forge-scheduler',include_order=True)
         item=next((item for item in read['items'] if not item['completed']),None)
         if item is None or item['candidate_id']!=candidate_id:raise ValueError('committed selector changed')
         reasons=set(item['blocking_reasons'])-{'ACTIVATION_NOT_YET_QUALIFIED'}
         claim=value['claims'].get(candidate_id)
         if claim and claim.get('mission_id') is None:reasons.discard('MISSION_STATE_UNAVAILABLE')
         if reasons:raise ValueError('workset activation blocked')
-        member=value['definition']['members'][item['committed_order']]
+        member=next(m for m in value['definition']['members'] if m['candidate_id']==candidate_id)
         validate_activation_inputs(value,member)
         bridge=GovernedCandidateIntake(self.service.lifecycle,self.runtime,resolve_governance_profile(value['definition']['profile_id']))
         preview=ArchitectureMission.from_dict(member['mission'])
@@ -72,12 +72,27 @@ class ApprovedWorklistActivation:
 
     def tick(self):
         with RuntimeServiceLock(self.runtime.database.path).acquire(reuse_current=True):
+            selected = [json.loads(row[0]) for row in self.service.db.execute('SELECT document FROM approved_worksets')
+                        if json.loads(row[0])['release'] == 'AUTO_WHEN_ELIGIBLE' and not json.loads(row[0])['revoked']]
+            if not selected:
+                return None
+            if len(selected) != 1:
+                raise ValueError('ambiguous armed workset')
+            from .workset_order_grant import activation_order_lease
+            try:
+                with activation_order_lease(self.runtime.data_root, selected[0]):
+                    return self._tick()
+            except PermissionError:
+                return None
+
+    def _tick(self):
+        with RuntimeServiceLock(self.runtime.database.path).acquire(reuse_current=True):
             records=[json.loads(row[0]) for row in self.service.db.execute('SELECT document FROM approved_worksets')]
             selected=[value for value in records if value['release']=='AUTO_WHEN_ELIGIBLE' and not value['revoked']]
             if not selected:return None
             if len(selected)!=1:raise ValueError('ambiguous armed workset')
             key=selected[0]['definition']['workset_id']
-            read=projection(Path(self.runtime.data_root),self.runtime.database.runtime_identity.runtime_id,key,'forge-scheduler')
+            read=projection(Path(self.runtime.data_root),self.runtime.database.runtime_identity.runtime_id,key,'forge-scheduler',include_order=True)
             head=next((item for item in read['items'] if not item['completed']),None)
             if head is None:return None
             candidate_id=head['candidate_id']
@@ -166,6 +181,6 @@ def has_exact_activation_claim(runtime,mission_id):
             # Read validates canonical decisions and immutable definition, without
             # requiring old released rights to remain active for ongoing work.
             projection(Path(runtime.data_root),runtime.database.runtime_identity.runtime_id,
-                value['definition']['workset_id'],'forge-runtime')
+                value['definition']['workset_id'],'forge-runtime',include_order=True)
             return True
     return False

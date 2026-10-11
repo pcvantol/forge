@@ -81,6 +81,9 @@ from .workset_release_grant import WorksetReleaseGrant
 from .workset_release_service import WorksetReleaseService
 from .mission_final_acceptance_grant import MissionFinalAcceptanceGrant
 from .mission_final_acceptance_service import MissionFinalAcceptanceService
+from .workset_order_grant import WorksetOrderGrant
+from .workset_order_service import WorksetOrderService
+from .workset_order_contract import OrderVersionRequired
 from .approved_worklist import projection as worklist_projection
 from .workspace_review_inbox import (
     OPERATION_VERSION as REVIEW_OPERATION_CONTRACT,
@@ -95,6 +98,11 @@ SERVER_ROUTE_INVENTORY = (
     ('GET', '/v1/mission-final-acceptances/{mission_id}'),
     ('POST', '/v1/mission-final-acceptances/{mission_id}/accept'),
     ('GET', '/v1/mission-final-acceptances/{mission_id}/operations/{operation_id}'),
+    ('GET', '/v1/approved-workset-orders/capability'),
+    ('GET', '/v1/approved-workset-orders/{workset_id}'),
+    ('POST', '/v1/approved-workset-orders/{workset_id}/preview'),
+    ('POST', '/v1/approved-workset-orders/{workset_id}/confirm'),
+    ('GET', '/v1/approved-workset-orders/{workset_id}/operations/{operation_id}'),
     ('GET', '/v1/candidate-decisions/capability'),
     ('GET', '/v1/candidate-decisions/{candidate_id}'),
     ('POST', '/v1/candidate-decisions/{candidate_id}/business'),
@@ -760,7 +768,8 @@ class ForgeServerAPI:
                  candidate_grant: AdvisoryCandidateGrant | None = None,
                  decision_grant: CandidateDecisionGrant | None = None,
                  release_grant: WorksetReleaseGrant | None = None,
-                 final_acceptance_grant: MissionFinalAcceptanceGrant | None = None) -> None:
+                 final_acceptance_grant: MissionFinalAcceptanceGrant | None = None,
+                 order_grant: WorksetOrderGrant | None = None) -> None:
         if not bearer_credential:
             raise ValueError("Forge Server bearer credential is required")
         self.services = services
@@ -777,6 +786,7 @@ class ForgeServerAPI:
         self.decision_grant = decision_grant
         self.release_grant = release_grant
         self.final_acceptance_grant = final_acceptance_grant or MissionFinalAcceptanceGrant(services.root, instance.instance_id)
+        self.order_grant = order_grant or WorksetOrderGrant(services.root, instance.instance_id)
         self._read_api = OperationsReadAPI(InstalledOperationsReadService(services.root), bearer_credential)
 
     @staticmethod
@@ -800,6 +810,8 @@ class ForgeServerAPI:
             return "ADMIN"
         if self.final_acceptance_grant.authenticate(authorization):
             return "MISSION_FINAL_ACCEPTANCE"
+        if self.order_grant.authenticate(authorization):
+            return "WORKSET_ORDER"
         if self.release_grant is not None and self.release_grant.authenticate(authorization):
             return "WORKSET_RELEASE"
         if self.read_grant is not None and self.read_grant.authenticate(authorization):
@@ -845,6 +857,8 @@ class ForgeServerAPI:
             return APIResponse(200,value,self._headers())
         except PermissionError:
             return APIResponse(403,{'error':{'code':'WORKLIST_SCOPE_DENIED'}},self._headers())
+        except OrderVersionRequired:
+            return APIResponse(409,{'error':{'code':'WORKSET_ORDER_V2_REQUIRED'}},self._headers())
         except (ValueError,OSError,sqlite3.Error,RuntimeError,TypeError,KeyError,AttributeError):
             return APIResponse(503,{'error':{'code':'WORKLIST_SOURCE_UNAVAILABLE'}},self._headers())
 
@@ -952,6 +966,12 @@ class ForgeServerAPI:
             return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
             }}, headers)
+        if kind == "WORKSET_ORDER":
+            status, document = WorksetOrderService(self.services.root, self.order_grant).handle(method, path, authorization, body)
+            return APIResponse(status, document, headers)
+        if path == '/v1/approved-workset-orders' or path.startswith('/v1/approved-workset-orders/'):
+            return APIResponse(403, {'contract_version': 'forge-workset-order/v1',
+                'error': {'code': 'ORDER_SCOPE_DENIED'}}, headers)
         if kind == "MISSION_FINAL_ACCEPTANCE":
             status, document = MissionFinalAcceptanceService(self.services.root, self.final_acceptance_grant).handle(
                 method, path, authorization, body)
@@ -1221,7 +1241,7 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                     review_mission = api._review_mission_for_decision(
                         self.command, path, authorization,
                     ) if kind == "WORKSPACE_REVIEW" else None
-                    body = self._body() if kind in {"ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE", "CANDIDATE_DECISION", "WORKSET_RELEASE", "MISSION_FINAL_ACCEPTANCE"} or review_mission is not None else None
+                    body = self._body() if kind in {"ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE", "CANDIDATE_DECISION", "WORKSET_RELEASE", "MISSION_FINAL_ACCEPTANCE", "WORKSET_ORDER"} or review_mission is not None else None
                     response = api.handle(self.command, target, authorization, body)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {

@@ -224,6 +224,7 @@ class WorksetReleaseService:
         except RuntimeServiceBusy:return 503,{'contract_version':CONTRACT,'error':{'code':'RELEASE_BUSY'}}
         except (ValueError,KeyError,TypeError) as error:
             codes={'current owner-published observation receipt required':'RELEASE_SOURCE_OBSERVATION_REQUIRED',
+                'WORKSET_ORDER_V2_REQUIRED':'WORKSET_ORDER_V2_REQUIRED',
                 'one current owner-published repository revision required':'RELEASE_REPOSITORY_CONTEXT_REQUIRED',
                 'retained release/activation allowance exhausted':'RELEASE_ALLOWANCE_EXHAUSTED',
                 'original workset is held':'RELEASE_WORKSET_HELD'}

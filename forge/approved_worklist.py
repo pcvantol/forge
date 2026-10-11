@@ -129,6 +129,17 @@ class ApprovedWorklistService:
                 if old['definition_digest'] != value['definition_digest']:
                     raise ValueError('workset identity is immutable; amendment requires new exact decisions')
                 return old
+            subjects = {(m['candidate_id'], m['subject_revision']) for m in members}
+            for row in self.db.execute('SELECT workset_id,document FROM approved_worksets'):
+                other = json.loads(row[1])
+                overlap = subjects.intersection((m['candidate_id'], m['subject_revision'])
+                                                for m in other['definition']['members'])
+                if not overlap:
+                    continue
+                canonical_order = self.db.execute('SELECT 1 FROM governance_decisions WHERE subject_id=?',
+                                                  ('workset-order:' + row[0],)).fetchone()
+                if other.get('order_intents') or other.get('order_amendments') or canonical_order:
+                    raise ValueError('order amendment lineage cannot move to another workset identity')
             self.db.execute('INSERT INTO approved_worksets VALUES (?,?,?)',(key,1,json.dumps(value,sort_keys=True)))
         return value
 
@@ -226,7 +237,7 @@ class ApprovedWorklistService:
 
 
 
-def projection(data_root: Path, instance_id: str, workset_id: str, principal_id: str) -> dict[str,Any]:
+def projection(data_root: Path, instance_id: str, workset_id: str, principal_id: str, *, include_order=False) -> dict[str,Any]:
     from .operations_read_api import _redact
     from .operations_read_api import InstalledOperationsReadService
     with InstalledOperationsReadService(data_root)._runtime_snapshot() as (db,metadata):
@@ -249,8 +260,24 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
                     or decision['decision']!='approved'
                     or decision['capability']!= {'business':'BUSINESS_APPROVAL','architecture':'ARCHITECTURE_APPROVAL'}.get(role)):
                 raise ValueError('workset approval mismatch')
+        from .workset_order import effective_order
+        effective, order_revision, order_digest = effective_order(value, db)
+        if (order_revision or value.get('order_intents')) and not include_order:
+            from .workset_order_contract import OrderVersionRequired
+            raise OrderVersionRequired()
+        order_blocked = []
+        if any(i['state'] != 'APPLIED' for i in value.get('order_intents', {}).values()):
+            order_blocked.append('ORDER_AMENDMENT_PENDING')
+        if order_revision:
+            from .workset_order_grant import activation_authority
+            try:
+                activation_authority(data_root, value)
+            except (PermissionError, ValueError, OSError, KeyError, TypeError):
+                order_blocked.append('ORDER_AUTHORITY_NOT_CURRENT')
+        by_id = {m['candidate_id']: m for m in definition['members']}
         items=[]
-        for order,member in enumerate(definition['members']):
+        for order,candidate_id in enumerate(effective):
+            member = by_id[candidate_id]
             claim=value['claims'].get(member['candidate_id']);state=None
             if claim is None or claim.get('mission_id') is None:
                 allocation=db.execute('SELECT document FROM candidates.allocations WHERE candidate_id=?',(member['candidate_id'],)).fetchone()
@@ -276,6 +303,8 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             final_wait=pause.get('schema_version')==FINAL_ACCEPTANCE_REQUIREMENT_CONTRACT
 
             reasons=[]
+            if candidate_id not in value['claims']:
+                reasons.extend(order_blocked)
             current=db.execute('SELECT document FROM candidates.candidates WHERE candidate_id=?',(member['candidate_id'],)).fetchone()
             candidate_approved=False
             if current is None:reasons.append('SUBJECT_UNAVAILABLE')
@@ -352,5 +381,10 @@ def projection(data_root: Path, instance_id: str, workset_id: str, principal_id:
             'freshness':'CURRENT_READBACK','completeness':'COMPLETE_WITHIN_SCOPE','activation_support':'QUALIFIED_SERIAL_APPROVED_WORKLIST',
             'items':items,'continuation':continuation(items),'read_only':True}
         if any(item['execution_state']=='UNAVAILABLE' for item in items):document['completeness']='PARTIAL'
+        if include_order and (order_revision or value.get('order_intents')):
+            document.update(contract_version='forge-workspace-worklist/v2',
+                            order_revision=order_revision, order_digest=order_digest,
+                            original_order=[m['candidate_id'] for m in definition['members']],
+                            effective_order=effective, order_blocking_reasons=order_blocked)
         document['snapshot_revision']=snapshot_revision(document)
         return document

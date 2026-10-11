@@ -27,7 +27,8 @@ def stop_owned_worker(process):
     process.wait(timeout=10)
 
 
-def validate_worker_receipt(value, *, source_revision, product_version, modules, expected):
+def validate_worker_receipt(value, *, source_revision, product_version, modules, expected,
+                            result_label='SCOPED_FINAL_ACCEPTANCE_WORKER_PASS'):
     fields = {'source_revision', 'product_version', 'modules', 'noneditable_product',
         'expected_tests', 'tests', 'failures', 'skipped', 'owned_scratch_removed', 'result'}
     if (type(value) is not dict or set(value) != fields
@@ -39,7 +40,7 @@ def validate_worker_receipt(value, *, source_revision, product_version, modules,
             or value['expected_tests'] != expected or value['tests'] != expected
             or type(value['failures']) is not list or value['failures'] != []
             or type(value['skipped']) is not list or value['skipped'] != []
-            or value['result'] != 'SCOPED_FINAL_ACCEPTANCE_WORKER_PASS'):
+            or value['result'] != result_label):
         raise AssertionError('required isolated installed worker receipt malformed or incomplete')
 
 

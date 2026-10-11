@@ -274,6 +274,9 @@ class WorklistControlService:
             return 403,{'contract_version':ERROR,'error':{'code':'CONTROL_SCOPE_DENIED'}}
         except PermissionError:return 403,{'contract_version':ERROR,'error':{'code':'CONTROL_AUTHORITY_DENIED'}}
         except (ControlConflict,RuntimeServiceBusy):return 409,{'contract_version':ERROR,'error':{'code':'CONTROL_CONFLICT'}}
-        except ValueError:return 400,{'contract_version':ERROR,'error':{'code':'CONTROL_REQUEST_INVALID'}}
+        except ValueError as error:
+            if str(error) == 'WORKSET_ORDER_V2_REQUIRED':
+                return 409,{'contract_version':ERROR,'error':{'code':'WORKSET_ORDER_V2_REQUIRED'}}
+            return 400,{'contract_version':ERROR,'error':{'code':'CONTROL_REQUEST_INVALID'}}
         except (OSError,RuntimeError,sqlite3.Error,KeyError,TypeError,AttributeError):
             return 503,{'contract_version':ERROR,'error':{'code':'CONTROL_SOURCE_UNAVAILABLE'}}

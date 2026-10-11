@@ -35,6 +35,10 @@
     {
       "key": "candidateDecisionToken",
       "value": ""
+    },
+    {
+      "key": "worksetOrderToken",
+      "value": ""
     }
   ],
   "auth": {
@@ -2006,6 +2010,180 @@
         }
       },
       "description": "Read original acceptance outcome and current state without recovery writes. Separate exact READ/ACCEPT capability; no admin alias, provider effect or dependent start in this handler."
+    },
+    {
+      "name": "GET /v1/approved-workset-orders/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetOrderToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-orders/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-orders",
+            "capability"
+          ]
+        }
+      },
+      "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects."
+    },
+    {
+      "name": "GET /v1/approved-workset-orders/{workset_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetOrderToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-orders/{workset_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-orders",
+            "{workset_id}"
+          ]
+        }
+      },
+      "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects."
+    },
+    {
+      "name": "POST /v1/approved-workset-orders/{workset_id}/preview",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetOrderToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-orders/{workset_id}/preview",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-orders",
+            "{workset_id}",
+            "preview"
+          ]
+        }
+      },
+      "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects."
+    },
+    {
+      "name": "POST /v1/approved-workset-orders/{workset_id}/confirm",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetOrderToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-orders/{workset_id}/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-orders",
+            "{workset_id}",
+            "confirm"
+          ]
+        }
+      },
+      "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects."
+    },
+    {
+      "name": "GET /v1/approved-workset-orders/{workset_id}/operations/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetOrderToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-orders/{workset_id}/operations/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-orders",
+            "{workset_id}",
+            "operations",
+            "{operation_id}"
+          ]
+        }
+      },
+      "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects."
     }
   ]
 }

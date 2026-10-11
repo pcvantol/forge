@@ -3106,6 +3106,270 @@
           }
         ]
       }
+    },
+    "/v1/approved-workset-orders/capability": {
+      "get": {
+        "summary": "Scoped remaining-order capability",
+        "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects.",
+        "security": [
+          {
+            "worksetOrderBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed typed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-order-v1.json#/$defs/capability"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, incompatible or conflicting order"
+          },
+          "503": {
+            "description": "Owning state unavailable"
+          }
+        },
+        "parameters": []
+      }
+    },
+    "/v1/approved-workset-orders/{workset_id}": {
+      "get": {
+        "summary": "Current exact order and fixed claims",
+        "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects.",
+        "security": [
+          {
+            "worksetOrderBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed typed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-order-v1.json#/$defs/current"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, incompatible or conflicting order"
+          },
+          "503": {
+            "description": "Owning state unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "workset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/approved-workset-orders/{workset_id}/preview": {
+      "post": {
+        "summary": "Preview an exact remaining-order permutation",
+        "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects.",
+        "security": [
+          {
+            "worksetOrderBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed typed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-order-v1.json#/$defs/preview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, incompatible or conflicting order"
+          },
+          "503": {
+            "description": "Owning state unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "workset-order-v1.json#/$defs/preview_request"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/approved-workset-orders/{workset_id}/confirm": {
+      "post": {
+        "summary": "Original intent and reliable current readback",
+        "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects.",
+        "security": [
+          {
+            "worksetOrderBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed typed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-order-v1.json#/$defs/operation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, incompatible or conflicting order"
+          },
+          "503": {
+            "description": "Owning state unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "workset-order-v1.json#/$defs/request"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/approved-workset-orders/{workset_id}/operations/{operation_id}": {
+      "get": {
+        "summary": "Original intent and reliable current readback",
+        "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects.",
+        "security": [
+          {
+            "worksetOrderBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed typed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-order-v1.json#/$defs/operation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scope/authority denied"
+          },
+          "404": {
+            "description": "Original operation unknown"
+          },
+          "409": {
+            "description": "Stale, partial, incompatible or conflicting order"
+          },
+          "503": {
+            "description": "Owning state unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "workset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3153,6 +3417,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separately owner-issued finite exact-Mission READ/ACCEPT capability. Current Business role/G001 required at actual effects. Prior read/progression/Candidate/hold/workset/admin credentials do not authorize this route."
+      },
+      "worksetOrderBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Distinct finite owner-issued READ/REORDER for exact original worksets; actual current Solo Business and Architecture roles required."
       }
     },
     "schemas": {
