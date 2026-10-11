@@ -73,10 +73,13 @@ TCP response loss and audit-integrity negatives accompany the positive chain.
 Removing the actual production prefix guard makes the linked actual claimed-B
 HTTP preview test fail. Only external model/EP/OS boundaries use fixtures.
 
-The installed adapter reuses the existing isolated workers, closed typed
+The installed adapter reuses three finite isolated workers (12/7/8 cases), closed typed
 receipts and owned process-group cleanup. Original final-acceptance worker
 family/default behavior remains intact. The new owning CI gate retains an
 eight-minute limit and preserves raw worker/control logs and public receipts.
+The shared worker deadline remains390 seconds and the actual defect control30
+seconds. The same27 cases are balanced across groups; no case or assertion is
+dropped, and historical final-acceptance gates keep their original defaults.
 
 Source implementation is pending complete validation/coverage, fresh complete
 independent exact-head Quality/Security, required CI and normal protected

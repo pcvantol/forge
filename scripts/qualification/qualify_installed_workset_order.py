@@ -98,9 +98,10 @@ def run(args):
             try:
                 sys.path.insert(0, str(SOURCE / 'tests'))
                 groups = [
-                    ['test_workset_order_contract', 'test_workset_order_cli_grant', 'test_workset_order_http',
-                     'test_workset_order_denials', 'test_workset_order_vectors', 'test_mission_final_acceptance_worker_cleanup'],
-                    ['test_workset_order_chain', 'test_workset_order_process', 'test_workset_order_integrity'],
+                    ['test_workset_order_contract', 'test_workset_order_cli_grant',
+                     'test_workset_order_vectors', 'test_mission_final_acceptance_worker_cleanup'],
+                    ['test_workset_order_http', 'test_workset_order_denials', 'test_workset_order_integrity'],
+                    ['test_workset_order_chain', 'test_workset_order_process'],
                 ]
                 workers = []
                 streams = []
