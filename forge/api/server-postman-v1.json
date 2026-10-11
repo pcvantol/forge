@@ -39,6 +39,10 @@
     {
       "key": "worksetOrderToken",
       "value": ""
+    },
+    {
+      "key": "worksetActivityToken",
+      "value": ""
     }
   ],
   "auth": {
@@ -2184,6 +2188,146 @@
         }
       },
       "description": "Finite existing workset only; immutable original release/subjects/claims/consumption. Explicit separate Business and Architecture order decisions. No provider/EP or runtime start. Legacy changed-workset consumers fail closed; pending reads never recover effects."
+    },
+    {
+      "name": "GET /v1/approved-workset-activity",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetActivityToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-activity",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-activity"
+          ]
+        }
+      },
+      "description": "Scoped workset activity capability; current scoped READ only; no model/EP/write; original time or UNKNOWN; resync explicit."
+    },
+    {
+      "name": "GET /v1/approved-workset-activity/{workset_id}/pages",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetActivityToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-activity/{workset_id}/pages",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-activity",
+            "{workset_id}",
+            "pages"
+          ]
+        }
+      },
+      "description": "First bounded retained-history page; current scoped READ only; no model/EP/write; original time or UNKNOWN; resync explicit."
+    },
+    {
+      "name": "GET /v1/approved-workset-activity/{workset_id}/pages/{cursor}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetActivityToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-activity/{workset_id}/pages/{cursor}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-activity",
+            "{workset_id}",
+            "pages",
+            "{cursor}"
+          ]
+        }
+      },
+      "description": "Same-context checkpoint continuation; current scoped READ only; no model/EP/write; original time or UNKNOWN; resync explicit."
+    },
+    {
+      "name": "GET /v1/approved-workset-activity/{workset_id}/events/{event_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{worksetActivityToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/approved-workset-activity/{workset_id}/events/{event_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "approved-workset-activity",
+            "{workset_id}",
+            "events",
+            "{event_id}"
+          ]
+        }
+      },
+      "description": "Original scoped public source fact; current scoped READ only; no model/EP/write; original time or UNKNOWN; resync explicit."
     }
   ]
 }

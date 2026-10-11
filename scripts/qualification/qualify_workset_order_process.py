@@ -19,8 +19,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source-development', action='store_true')
     parser.add_argument('--root', required=True)
-    parser.add_argument('--action', choices=['confirm', 'read', 'tick'], required=True)
+    parser.add_argument('--action', choices=['confirm', 'read', 'tick', 'activity', 'activity-cli'], required=True)
     parser.add_argument('--endpoint')
+    parser.add_argument('--activity-path')
+    parser.add_argument('--cursor-file')
     parser.add_argument('--stage', default='normal', choices=['normal', 'before-intent', 'after-intent',
         'after-business', 'after-architecture', 'after-apply', 'lost-response', 'after-runtime-claim'])
     parser.add_argument('--token-file', default='order.private')
@@ -37,6 +39,18 @@ def main():
     grant = WorksetOrderGrant(instance.data_root, instance.instance_id)
     service = WorksetOrderService(instance.data_root, grant)
     token = 'Bearer ' + _private_bytes(root / args.token_file).decode().strip()
+    if args.action in ('activity', 'activity-cli'):
+        from forge.workset_activity_service import WorksetActivityService
+        from forge.workset_activity_cli import main as activity_cli
+        with patch.object(chain.utils.composition.MacOSGeneratedUIDIdentityAdapter, 'resolve', return_value=chain.utils.fixture.IDENTITY):
+            if args.action == 'activity-cli':
+                command = ['--data-root', instance.data_root, '--token-file', str(root / args.token_file), 'pages']
+                if args.cursor_file:
+                    command += ['--cursor-file', args.cursor_file]
+                return activity_cli(command)
+            status, output = WorksetActivityService(instance.data_root, grant).handle('GET', args.activity_path, token)
+            print(json.dumps({'pid': os.getpid(), 'status': status, 'output': output}))
+            return 0 if status == 200 else 1
     request = json.loads(_private_bytes(root / 'order-command.private.json'))
     if args.action == 'tick':
         if not args.endpoint:

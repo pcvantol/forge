@@ -21,6 +21,11 @@ TOKEN = "route-qualification-bearer"
 # Versioned V1 acceptance inventory, independent of the production tuple and
 # contract files. A removed or silently omitted case must fail this gate.
 EXPECTED_ROUTES = frozenset({
+    ('GET', '/v1/approved-workset-activity'),
+    ('GET', '/v1/approved-workset-activity/{workset_id}/pages'),
+    ('GET', '/v1/approved-workset-activity/{workset_id}/pages/{cursor}'),
+    ('GET', '/v1/approved-workset-activity/{workset_id}/events/{event_id}'),
+
     ('GET', '/v1/approved-workset-orders/capability'),
     ('GET', '/v1/approved-workset-orders/{workset_id}'),
     ('POST', '/v1/approved-workset-orders/{workset_id}/preview'),
@@ -182,7 +187,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 77)
+        self.assertEqual(len(EXPECTED_ROUTES), 81)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -254,6 +259,11 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path == '/v1/approved-workset-activity' or path.startswith('/v1/approved-workset-activity/'):
+                                self.assertEqual(status, 403)
+                                self.assertEqual(body['error']['code'], 'ACTIVITY_SCOPE_DENIED')
+                                observed.add((method, path))
+                                continue
                             if path.startswith('/v1/mission-final-acceptances/'):
                                 self.assertEqual(status, 403)
                                 self.assertEqual(body['error']['code'], 'FINAL_ACCEPTANCE_SCOPE_DENIED')

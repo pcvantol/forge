@@ -14,7 +14,7 @@ chain = module_from_spec(spec); spec.loader.exec_module(chain)
 utils = chain.utils
 
 
-def flow(root, *, ceiling=3, revoke_order=False):
+def flow(root, *, ceiling=3, revoke_order=False, observe=None):
     sys.path.insert(0, str(SOURCE / 'tests'))
     from test_workset_order_http import provision, command
     from test_mission_concept_readiness import driver
@@ -30,7 +30,10 @@ def flow(root, *, ceiling=3, revoke_order=False):
     ready, _ = driver.cases(); records = []
     def phase(name):
         record = chain.phase(root, scenario, name, server.base_url, include_order=True)
-        records.append(record); return record
+        records.append(record)
+        if observe is not None:
+            observe(name, record)
+        return record
     with server:
         target, baseline, manifest = chain.chat_setup(root, server.base_url, scenario,
             order_population=True, maximum_activations=ceiling)
@@ -53,6 +56,8 @@ def flow(root, *, ceiling=3, revoke_order=False):
                 status, receipt = ready.call(port, root / 'order.private', 'POST', BASE + '/' + key + '/confirm', command(shown))
                 assert status == 200, receipt
                 assert (len(ep_requests), (root / 'provider-requests.private.jsonl').read_bytes()) == before
+            if observe is not None:
+                observe('order-confirmed', initial)
             if revoke_order:
                 grant.revoke(grant_record['grant_id'])
         for started, index in enumerate((1, 3, 2), 1):
