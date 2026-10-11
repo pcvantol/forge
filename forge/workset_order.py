@@ -1,8 +1,9 @@
 """One effective selector over immutable original members and audited amendments."""
+from .approved_worklist import timestamp
 from .advisory_contract import digest
 from .governance_authority import _digest as governance_digest
 from .models.criterion_observation import canonical_digest
-from .workset_order_contract import (PACKAGE_FIELDS, OrderConflict, exact_order, permutation,
+from .workset_order_contract import (CONTRACT, PACKAGE_FIELDS, OrderConflict, exact_order, permutation,
                                      validate_package, confirm_request)
 
 
@@ -171,6 +172,7 @@ def effective_order(value, db):
                           'order_revision', 'original_order', 'applied_order', 'fixed_prefix',
                           'decisions', 'consumed_activations', 'applied_at'}
         if (type(receipt) is not dict or set(receipt) != receipt_fields
+                or receipt['contract_version'] != CONTRACT
                 or type(receipt['order_revision']) is not int
                 or type(receipt['consumed_activations']) is not int
                 or type(receipt['fixed_prefix']) is not int
@@ -185,6 +187,7 @@ def effective_order(value, db):
                 or receipt['order_revision'] != revision
                 or receipt['decisions'] != amendment['decisions']):
             raise ValueError('original order receipt changed')
+        timestamp(receipt['applied_at'])
         order = new
         previous = canonical_digest(order)
     return order, len(amendments), previous

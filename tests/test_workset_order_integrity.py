@@ -31,9 +31,26 @@ class WorksetOrderIntegrityTests(unittest.TestCase):
                 amendment['receipt']['fixed_prefix'] = True
                 amendment['receipt_digest'] = canonical_digest(amendment['receipt'])
                 value['order_intents'][request['operation_id']]['receipt'] = deepcopy(amendment['receipt'])
+            def receipt_contract(value):
+                coherent_receipt(value, 'contract_version', 'unsupported-contract/v9')
+            def receipt_time_boolean(value):
+                coherent_receipt(value, 'applied_at', True)
+            def receipt_time_object(value):
+                coherent_receipt(value, 'applied_at', {'not': 'timestamp'})
+            def receipt_time_invalid(value):
+                coherent_receipt(value, 'applied_at', 'not-a-timestamp')
+            def receipt_time_naive(value):
+                coherent_receipt(value, 'applied_at', '2026-10-11T12:00:00')
+            def coherent_receipt(value, field, replacement):
+                amendment = value['order_amendments'][0]
+                amendment['receipt'][field] = replacement
+                amendment['receipt_digest'] = canonical_digest(amendment['receipt'])
+                value['order_intents'][request['operation_id']]['receipt'] = deepcopy(amendment['receipt'])
             def bool_revision(value):
                 value['revision'] = True
-            for mutation in (changed_reason, lost_intents, fake_pending, bool_receipt, bool_revision):
+            for mutation in (changed_reason, lost_intents, fake_pending, bool_receipt, bool_revision,
+                             receipt_contract, receipt_time_boolean, receipt_time_object,
+                             receipt_time_invalid, receipt_time_naive):
                 with self.subTest(mutation=mutation.__name__):
                     value = deepcopy(original); mutation(value)
                     with db:
@@ -42,6 +59,8 @@ class WorksetOrderIntegrityTests(unittest.TestCase):
                     status, _ = call(case, 'GET', '/operations/' + request['operation_id'])
                     self.assertIn(status, (409, 503))
                     status, _ = call(case, 'GET')
+                    self.assertIn(status, (409, 503))
+                    status, _ = call(case, 'POST', '/confirm', request)
                     self.assertIn(status, (409, 503))
                     self.assertEqual(counts(case), before)
             with db:
