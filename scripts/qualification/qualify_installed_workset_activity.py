@@ -71,7 +71,7 @@ def run(args):
                 raise ValueError('installed product differs from exact wheel payload')
         receipt['wheel_payload_files_verified'] = len(payload)
     for name in ('server_runtime.py', 'workset_activity_cursor.py', 'workset_activity_projection.py',
-                 'workset_activity_grant.py', 'workset_activity_service.py', 'workset_activity_cli.py',
+                 'workset_activity_grant.py', 'workset_activity_service.py', 'workset_activity_cli.py', 'workset_release_service.py',
                  'api/workset-activity-v1.json', 'api/server-openapi-v1.json', 'api/server-postman-v1.json'):
         path = installed.parent / name
         if path.read_bytes() != (SOURCE / 'forge' / name).read_bytes():

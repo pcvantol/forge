@@ -34,6 +34,43 @@ class ActivityRetainedTests(unittest.TestCase):
                 self.assertIn('ORDER_AMENDMENT_PENDING', page['current']['order_blocking_reasons'])
             self.assertEqual(all_counts(case), before)
 
+    def test_actual_release_receipt_tamper_page_event_and_revoked_original_authority(self):
+        with TemporaryDirectory() as tmp, order_case(Path(tmp) / 'release-proof') as case:
+            setup(case)
+            db = case['runtime'].database._connection
+            original_raw = db.execute('SELECT document FROM approved_worksets WHERE workset_id=?', (case['key'],)).fetchone()[0]
+            original = json.loads(original_raw)
+            before = all_counts(case); status, page = call(case)
+            self.assertEqual(status, 200, page); self.assertEqual(all_counts(case), before)
+            event = next(e for e in page['events'] if e['fact'] == 'RELEASE_APPLIED')
+            key = event['source_reference']['record_id']
+            changes = {'ongoing_work_cancelled': True, 'effect_boundary': 'CANCEL_ONGOING',
+                       'original_release': 'DISARMED', 'candidate_mission_ids': [],
+                       'principal_reference': 'foreign-original-owner', 'package_digest': 'sha256:' + '0' * 64,
+                       'applied_revision': True, 'observed_at': 'not-a-time'}
+            for field, replacement in changes.items():
+                with self.subTest(field=field):
+                    changed = deepcopy(original); changed['release_commands'][key][field] = replacement
+                    with db:
+                        db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?', (json.dumps(changed), case['key']))
+                    try:
+                        mutated = all_counts(case)
+                        for route in ('/pages', '/events/' + event['event_id']):
+                            status, output = call(case, route)
+                            self.assertEqual(status, 503, output); self.assertEqual(output['completeness'], 'PARTIAL')
+                            self.assertEqual(all_counts(case), mutated)
+                    finally:
+                        with db:
+                            db.execute('UPDATE approved_worksets SET document=? WHERE workset_id=?', (original_raw, case['key']))
+                    self.assertEqual(all_counts(case), before)
+            from forge.workset_release_grant import WorksetReleaseGrant
+            original_grant = WorksetReleaseGrant(case['grant'].root, case['grant'].instance_id)
+            original_grant.revoke(original['release_capability']['grant_id'])
+            after_revoke = all_counts(case)
+            status, output = call(case, '/events/' + event['event_id'])
+            self.assertEqual(status, 200, output); self.assertEqual(output['event'], event)
+            self.assertEqual(all_counts(case), after_revoke)
+
     def test_actual_hold_unhold_receipts_unknown_intent_time_and_coherent_tamper(self):
         with TemporaryDirectory() as tmp, order_case(Path(tmp) / 'control') as case:
             setup(case)

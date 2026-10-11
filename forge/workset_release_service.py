@@ -27,6 +27,30 @@ def original_intent_authority(root,intent,reference):
 
 
 
+def validate_original_release_receipt(original,value,request,package_digest,reference,mission_ids):
+    """Pure immutable evidence verification, without current mutation authority."""
+    required={'operation_id','intent','package_digest','principal_reference','definition_digest',
+        'workset_id','candidate_mission_ids','workset_decisions','effect_boundary',
+        'ongoing_work_cancelled','applied_revision','original_release','observed_at'}
+    if (not isinstance(original,dict) or set(original)!=required
+            or original['operation_id']!=request['canonical_operation_id']
+            or original['intent']!=request['intent']
+            or original['package_digest']!=package_digest
+            or original['principal_reference']!=reference
+            or original['definition_digest']!=value['definition_digest']
+            or original['workset_id']!=value['definition']['workset_id']
+            or original['candidate_mission_ids']!=mission_ids
+            or original['workset_decisions']!=value['decisions']
+            or original['effect_boundary']!='FUTURE_SELECTION_ONLY'
+            or original['ongoing_work_cancelled'] is not False
+            or type(original['applied_revision']) is not int
+            or not 1<original['applied_revision']<=value['revision']
+            or original['original_release']!=('AUTO_WHEN_ELIGIBLE' if original['intent']=='release' else 'DISARMED')):
+        raise RuntimeError('original release receipt integrity failed')
+    from .approved_worklist import timestamp
+    timestamp(original['observed_at'])
+
+
 class WorksetReleaseService:
     def __init__(self,root,grant):self.root=Path(root);self.grant=grant
 
@@ -79,26 +103,8 @@ class WorksetReleaseService:
             if value['definition_digest']!=canonical_digest(package['definition']):
                 raise RuntimeError('release workset definition changed')
         if original is not None:
-            required={'operation_id','intent','package_digest','principal_reference','definition_digest',
-                'workset_id','candidate_mission_ids','workset_decisions','effect_boundary',
-                'ongoing_work_cancelled','applied_revision','original_release','observed_at'}
-            if (not isinstance(original,dict) or set(original)!=required
-                    or original['operation_id']!=o['request']['canonical_operation_id']
-                    or original['intent']!=o['request']['intent']
-                    or original['package_digest']!=intent['package_digest']
-                    or original['principal_reference']!=p.reference
-                    or original['definition_digest']!=value['definition_digest']
-                    or original['workset_id']!=key
-                    or original['candidate_mission_ids']!=[s['mission_id'] for s in package['subjects']]
-                    or original['workset_decisions']!=value['decisions']
-                    or original['effect_boundary']!='FUTURE_SELECTION_ONLY'
-                    or original['ongoing_work_cancelled'] is not False
-                    or type(original['applied_revision']) is not int
-                    or not 1<original['applied_revision']<=value['revision']
-                    or original['original_release']!=('AUTO_WHEN_ELIGIBLE' if original['intent']=='release' else 'DISARMED')):
-                raise RuntimeError('original release receipt integrity failed')
-            from .approved_worklist import timestamp
-            timestamp(original['observed_at'])
+            validate_original_release_receipt(original,value,o['request'],intent['package_digest'],
+                p.reference,[s['mission_id'] for s in package['subjects']])
         current=projection(self.root,p.instance_id,key,p.principal_id) if value else None
         self.grant.authorize(token)
         return {'contract_version':CONTRACT,'operation_id':operation_id,

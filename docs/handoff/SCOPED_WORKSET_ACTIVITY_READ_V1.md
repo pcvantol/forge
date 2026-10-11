@@ -48,7 +48,7 @@ The scan bound is 2 MiB, each source document 256 KiB, each page/cursor 32 KiB.
 ## Qualification boundary and remaining delivery
 
 The installed gate reuses the existing typed owning-worker receipt validation and
-process-group cleanup. Its 19 tests run in three isolated workers (9/5/5), with a
+process-group cleanup. Its 20 tests run in three isolated workers (9/5/6), with a
 390-second shared deadline. A separate isolated control removes the actual
 snapshot guard and must fail the linked race test. Public receipts bind exact
 source revision, noneditable wheel, every installed payload file, supported CLI
@@ -61,5 +61,20 @@ submission exchanges and original acceptance evidence. This is development
 progress, not final delivery: exact-head full validation, per-file coverage,
 independent complete Quality/Security, protected implementation and nonempty
 finalization merges, and a new exact-final-main installed qualification remain
-mandatory. The formal correction admission remains 0/3 until the first formal
+mandatory. The formal correction admission started at 0/3 before the first formal
 review pair and any correction booking.
+
+## Formal correction 1
+
+First COMPLETE independent pair on82118a4: Quality PASS / Security FAIL P2.
+Before source correction, one integrated round booked (consumed1/max3/remaining2).
+Historical release/disarm facts now reuse the owning pure immutable receipt
+validator. Expected operation, original intent, exact package/principal/member
+Mission bindings come from the retained validated private release journal, with
+its watermark included in the bounded read snapshot. No original mutation is
+reauthorized: revocation of the old release grant does not revoke current READ.
+A product-created receipt corruption test exercises both pages and event detail
+for cancellation/effect/release/identity/package/revision/time damage, restores
+exact original bytes and checks unchanged runtime/provider/EP effects.
+Original failed review and old successful candidate proofs remain retained.
+Fresh corrected-head full/installed qualification and COMPLETE reviews are open.

@@ -145,12 +145,33 @@ def collect(root, principal, workset_id):
         for role, decision_id in value['decisions'].items():
             decision_event('WORKSET_DECISION', decision_id, 'WORKSET', workset_id,
                            'WORKSET_' + role.upper() + '_APPROVED')
+        journals = {}
         for key, receipt in value.get('release_commands', {}).items():
-            if (key != receipt['operation_id'] or receipt['workset_id'] != workset_id
-                    or receipt['definition_digest'] != value['definition_digest']
-                    or receipt['intent'] not in ('release', 'disarm')
-                    or receipt['workset_decisions'] != value['decisions']):
+            from .workset_release_journal import ReleaseJournal
+            from .workset_release_service import validate_original_release_receipt
+            authority = value.get('release_capability') or {}
+            reference = authority['principal_reference']
+            if type(reference) is not str or len(reference) > 512:
                 raise ActivityUnavailable('HISTORY_SOURCE_INVALID')
+            if reference not in journals:
+                journal = ReleaseJournal(Path(root), reference).read()
+                raw = canonical(journal); sources.bytes += len(raw)
+                if sources.bytes > MAX_SCAN_BYTES:
+                    raise ActivityUnavailable('HISTORY_PARTIAL_CAPACITY')
+                sources.watermarks['release-journal:' + sha256(reference.encode()).hexdigest()] = sha256(raw).hexdigest()
+                journals[reference] = journal
+            journal = journals[reference]
+            operation = journal['operations'][key]
+            intent = journal['intents'][operation['release_key']]
+            package = intent['package']
+            if (authority['package_digest'] != intent['package_digest']
+                    or package['scope'] != {k: getattr(principal, k) for k in ('instance_id', 'project_id', 'repository_id')}
+                    or package['operator_binding']['installation_id'] != principal.installation_id
+                    or canonical_digest(package['definition']) != value['definition_digest']
+                    or [s['candidate_id'] for s in package['subjects']] != [m['candidate_id'] for m in members]):
+                raise ActivityUnavailable('HISTORY_SOURCE_INVALID')
+            validate_original_release_receipt(receipt, value, operation['request'], intent['package_digest'],
+                                              reference, [s['mission_id'] for s in package['subjects']])
             event('RELEASE_RECEIPT', 'WORKSET', workset_id, key, receipt,
                   'RELEASE_APPLIED' if receipt['intent'] == 'release' else 'DISARM_APPLIED',
                   sequence=receipt['applied_revision'], occurred=receipt.get('observed_at'),
