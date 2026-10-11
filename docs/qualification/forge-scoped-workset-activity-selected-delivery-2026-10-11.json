@@ -1,0 +1,177 @@
+{
+  "TDE": {
+    "assessment": "UNAVAILABLE; cancelled observe job is not policy PASS",
+    "policy_pass": false,
+    "run": 38153761814,
+    "workflow": "CANCELLED"
+  },
+  "assignment_id": "L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011",
+  "base": "091ec16f71bccd0da92365e5466f98af2f4927ba",
+  "boundary": "real product governance/runtime/HTTP/CLI/durable state; explicit external model/EP HTTP/OS fixtures; no user installation/live EP/native GUI qualification",
+  "branch": "codex/l3-scoped-workset-activity-read",
+  "ci_changed_product_coverage": {
+    "forge/server_runtime.py": {
+      "covered_lines": 688,
+      "num_statements": 830,
+      "percent": 82.89156626506023
+    },
+    "forge/workset_activity_cli.py": {
+      "covered_lines": 50,
+      "num_statements": 54,
+      "percent": 92.5925925925926
+    },
+    "forge/workset_activity_cursor.py": {
+      "covered_lines": 55,
+      "num_statements": 55,
+      "percent": 100.0
+    },
+    "forge/workset_activity_grant.py": {
+      "covered_lines": 48,
+      "num_statements": 53,
+      "percent": 90.56603773584905
+    },
+    "forge/workset_activity_projection.py": {
+      "covered_lines": 196,
+      "num_statements": 223,
+      "percent": 87.89237668161435
+    },
+    "forge/workset_activity_service.py": {
+      "covered_lines": 75,
+      "num_statements": 79,
+      "percent": 94.9367088607595
+    },
+    "forge/workset_release_service.py": {
+      "covered_lines": 162,
+      "num_statements": 170,
+      "percent": 95.29411764705883
+    }
+  },
+  "consumer_contract": "forge-workset-activity/v1",
+  "delivery_state": "PROTECTED_IMPLEMENTATION_COMPLETE_FINALIZATION_AND_FINAL_INSTALLED_PENDING",
+  "directive_id": "L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011",
+  "formal_corrections": {
+    "consumed": 1,
+    "first_independent_pair_complete": true,
+    "maximum": 3,
+    "remaining": 2
+  },
+  "full_local_corrected_candidate": {
+    "elapsed_seconds": 1415.216,
+    "result": "PASS",
+    "skipped": 1,
+    "source": "5467adf95377d8896bf8f95f877c512e3b166b1e",
+    "tests": 1460
+  },
+  "future_consumer_join": "L3-L4-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011",
+  "l4": "plan96/Forge2.12.1/9875333acc4258a20fc0180a9ae09c980802d5b1/pin/budget/GUI scope unchanged; future native activity consumption separately selected",
+  "lane": "LANE_3_WORK",
+  "lane_revision": "r49",
+  "live_EP": "NOT_USED",
+  "local_installed_corrected_candidate": {
+    "all_payload": 287,
+    "artifact": {
+      "filename": "forge_autonomy-2.15.0-py3-none-any.whl",
+      "sha256": "af2a39bf3990690dd406409704a5a9384a03aebe0b29ff47b30e03536fcb904e",
+      "version": "2.15.0"
+    },
+    "cleanup": true,
+    "public_receipt_sha256": "c352599594da137f5b9352d455cc972be87d2a374cb36e2aa8a122ef73fc0bec",
+    "result": "SCOPED_WORKSET_ACTIVITY_PASS",
+    "runtime": {
+      "product_version": "2.15.0",
+      "schema_version": "46"
+    },
+    "source_revision": "5467adf95377d8896bf8f95f877c512e3b166b1e",
+    "tests": 20
+  },
+  "normal_finalization": {
+    "base": "f819196e9c025163be40c8e71693a3def4b78bc2",
+    "branch": "codex/l3-scoped-workset-activity-finalization",
+    "feature_correction_consumed": 1,
+    "state": "SOURCE_PREPARED_REQUIRED_REVIEW_CI_PROTECTED_MERGE_PENDING",
+    "version": "2.15.0",
+    "version_class": "NO_BUMP"
+  },
+  "owning_ci": {
+    "all_preservation_gates": "PASS",
+    "checkout": "6c4b6ece9ad19a9006a5eb1d0df9e13945adb0e9",
+    "elapsed_seconds": 2497.395,
+    "run": 38153761850,
+    "same_reviewed_tree": true,
+    "skipped": 5,
+    "status": "SUCCESS",
+    "tests": 1460
+  },
+  "plan_revision": 1,
+  "predecessors": "r43-r48 and read-only L4 handoff CLOSED; r48 unused reserve retained closed",
+  "primary_checkouts_history_and_prior_evidence": "preserved; no relocation or cleanup of historical data",
+  "product_version": "2.15.0",
+  "protected_implementation": {
+    "main": "f819196e9c025163be40c8e71693a3def4b78bc2",
+    "merged_at": "2026-10-11T17:29:39Z",
+    "method": "repository-supported protected squash; no bypass",
+    "normal_match_head": true,
+    "pull_request": 279,
+    "reviewed_head": "5467adf95377d8896bf8f95f877c512e3b166b1e",
+    "tree": "e63469554e99358f283c263b3d55c97f7db40d72"
+  },
+  "public_installed_corrected_candidate": {
+    "actual_guard_control_detected": true,
+    "all_payload": 287,
+    "artifact_id": 11709389684,
+    "cleanup": true,
+    "raw_worker_and_log_hashes_verified": true,
+    "receipt_sha256": "5cadc9c91e2a0bc7dd99676192c5a179150a667455c8b5f4d1cdf4f30a0c9123",
+    "result": "SCOPED_WORKSET_ACTIVITY_PASS",
+    "run": 38153761850,
+    "runtime": {
+      "product_version": "2.15.0",
+      "schema_version": "46"
+    },
+    "same_reviewed_tree": true,
+    "source": "6c4b6ece9ad19a9006a5eb1d0df9e13945adb0e9",
+    "tests": 20,
+    "url": "https://github.com/pcvantol/forge/actions/runs/38153761850/artifacts/11709389684",
+    "wheel_sha256": "d80ec58a75720840ddc6a8fef05d0a68ed6f0ebe27ed85faa71e602c32250b2c",
+    "zip_digest": "sha256:31bba5ce6733bf365de3c54fde6db7c45a9fc7e582b00660ce32a90276416f97"
+  },
+  "public_release": "NOT_AUTHORIZED_OR_PERFORMED",
+  "qualification_scope": "bounded PRM-F-CHANGES/PROJECTION retained activity and current conditions; broader roadmap families remain open",
+  "remaining": [
+    "fresh-complete-independent-finalization-Quality-Security",
+    "normal-finalization-owning-CI-protected-match-head-merge",
+    "NEW-exact-final-main-noneditable-installed-HTTP-CLI-negative-process",
+    "actual-final-main-CI-public-artifact-version-schema-readback",
+    "separate-TDE-status",
+    "safe-own-cleanup-terminal-register-checkpoint"
+  ],
+  "review_history": [
+    {
+      "booking": "https://github.com/pcvantol/forge/issues/207#issuecomment-6110870373",
+      "finding": "historical release receipts lacked owning immutable semantic validation",
+      "integrated_correction_round": 1,
+      "original_reports_and_preformal_failures": "retained without overwrite",
+      "quality": "COMPLETE_PASS",
+      "security": "COMPLETE_FAIL_P2",
+      "source": "82118a44705f0993c2a01844768c42f61b2e727e"
+    }
+  ],
+  "schema_version": 46,
+  "source_types": 12,
+  "version_operation": "L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011",
+  "whole_source_reviews": {
+    "quality": {
+      "register": "https://github.com/pcvantol/forge/issues/207#issuecomment-6111174967",
+      "report_sha256": "47229335510b15b16cab2dfbb46c0839b10a0047d1813be03048d625767fbfe3",
+      "result": "COMPLETE_PASS",
+      "source": "5467adf95377d8896bf8f95f877c512e3b166b1e"
+    },
+    "security": {
+      "register": "https://github.com/pcvantol/forge/issues/207#issuecomment-6111174967",
+      "report_sha256": "fadcdda2ef9eaa8ce587c2daf74d4f6b11439326ab51d162ec3f53c63c0da6a4",
+      "result": "COMPLETE_PASS",
+      "source": "5467adf95377d8896bf8f95f877c512e3b166b1e"
+    }
+  },
+  "writer": "same existing sole Forge source writer and Work session"
+}
