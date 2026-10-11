@@ -20,20 +20,23 @@ ORDER_MODULES = ('test_workset_order_contract', 'test_workset_order_cli_grant', 
     'test_workset_order_denials', 'test_workset_order_chain', 'test_workset_order_process',
     'test_workset_order_integrity', 'test_workset_order_vectors', 'test_mission_final_acceptance_worker_cleanup')
 
+ACTIVITY_MODULES = ('test_workset_activity_cursor', 'test_workset_activity_bounds',
+    'test_workset_activity_http', 'test_workset_activity_edges', 'test_workset_activity_process',
+    'test_workset_activity_retained', 'test_workset_activity_chain', 'test_mission_final_acceptance_worker_cleanup')
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--module', action='append', choices=set(MODULES) | set(ORDER_MODULES), required=True)
-    parser.add_argument('--case-family', choices=['mission-final-acceptance', 'workset-order'], default='mission-final-acceptance')
+    parser.add_argument('--module', action='append', choices=set(MODULES) | set(ORDER_MODULES) | set(ACTIVITY_MODULES), required=True)
+    parser.add_argument('--case-family', choices=['mission-final-acceptance', 'workset-order', 'workset-activity'], default='mission-final-acceptance')
     parser.add_argument('--source-revision', required=True)
     parser.add_argument('--product-version', required=True)
     parser.add_argument('--scratch-root', required=True)
     parser.add_argument('--output-prefix', required=True)
     args = parser.parse_args()
-    allowed = ORDER_MODULES if args.case_family == 'workset-order' else MODULES
+    allowed = {'workset-order': ORDER_MODULES, 'workset-activity': ACTIVITY_MODULES, 'mission-final-acceptance': MODULES}[args.case_family]
     if any(name not in allowed for name in args.module):
         raise ValueError('worker module outside its selected case family')
-    result_label = 'SCOPED_WORKSET_ORDER_WORKER_PASS' if args.case_family == 'workset-order' else 'SCOPED_FINAL_ACCEPTANCE_WORKER_PASS'
+    result_label = {'workset-order': 'SCOPED_WORKSET_ORDER_WORKER_PASS', 'workset-activity': 'SCOPED_WORKSET_ACTIVITY_WORKER_PASS', 'mission-final-acceptance': 'SCOPED_FINAL_ACCEPTANCE_WORKER_PASS'}[args.case_family]
     import forge
     from forge._version import canonical_version
     if Path(forge.__file__).resolve().is_relative_to(SOURCE / 'forge'):

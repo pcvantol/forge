@@ -83,6 +83,7 @@ from .mission_final_acceptance_grant import MissionFinalAcceptanceGrant
 from .mission_final_acceptance_service import MissionFinalAcceptanceService
 from .workset_order_grant import WorksetOrderGrant
 from .workset_order_service import WorksetOrderService
+from .workset_activity_service import WorksetActivityService, BASE as ACTIVITY_BASE
 from .workset_order_contract import OrderVersionRequired
 from .approved_worklist import projection as worklist_projection
 from .workspace_review_inbox import (
@@ -94,6 +95,11 @@ from .workspace_review_inbox import (
 SERVER_API_VERSION = "1"
 SERVER_RUNTIME_CONTRACT_VERSION = "1.0"
 SERVER_ROUTE_INVENTORY = (
+    ('GET', '/v1/approved-workset-activity'),
+    ('GET', '/v1/approved-workset-activity/{workset_id}/pages'),
+    ('GET', '/v1/approved-workset-activity/{workset_id}/pages/{cursor}'),
+    ('GET', '/v1/approved-workset-activity/{workset_id}/events/{event_id}'),
+
     ('GET', '/v1/mission-final-acceptances/capability'),
     ('GET', '/v1/mission-final-acceptances/{mission_id}'),
     ('POST', '/v1/mission-final-acceptances/{mission_id}/accept'),
@@ -966,6 +972,12 @@ class ForgeServerAPI:
             return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
             }}, headers)
+        if path == ACTIVITY_BASE or path.startswith(ACTIVITY_BASE + '/'):
+            if kind != "WORKSET_ORDER":
+                return APIResponse(403, {'contract_version': 'forge-workset-activity/v1',
+                    'error': {'code': 'ACTIVITY_SCOPE_DENIED'}}, headers)
+            status, document = WorksetActivityService(self.services.root, self.order_grant).handle(method, target, authorization)
+            return APIResponse(status, document, headers)
         if kind == "WORKSET_ORDER":
             status, document = WorksetOrderService(self.services.root, self.order_grant).handle(method, path, authorization, body)
             return APIResponse(status, document, headers)

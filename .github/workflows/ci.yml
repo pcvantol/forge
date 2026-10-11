@@ -376,6 +376,27 @@ jobs:
             ${{ runner.temp }}/forge-workset-order/*.public.json
             ${{ runner.temp }}/forge-workset-order/*.log
           if-no-files-found: error
+      - name: Scoped workset activity (isolated installed HTTP CLI history checkpoints)
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/forge-workset-activity-env"
+          "$RUNNER_TEMP/forge-workset-activity-env/bin/python" -m pip install --no-index --find-links "$RUNNER_TEMP/forge-wheel" forge-autonomy
+          "$RUNNER_TEMP/forge-workset-activity-env/bin/python" -m pip install jsonschema==4.26.0
+          "$RUNNER_TEMP/forge-workset-activity-env/bin/python" -I \
+            "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_workset_activity.py" \
+            --wheel "$(find "$RUNNER_TEMP/forge-wheel" -name '*.whl' -print -quit)" \
+            --source-revision "$(git rev-parse HEAD)" \
+            --output-dir "$RUNNER_TEMP/forge-workset-activity-installed"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: forge-workset-activity-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/forge-workset-activity-installed/*.public.json
+            ${{ runner.temp }}/forge-workset-activity-installed/*.log
+          if-no-files-found: error
+
       - name: Exact published 2.7.39 to 2.8.1 preservation maintenance
         timeout-minutes: 3
         env:

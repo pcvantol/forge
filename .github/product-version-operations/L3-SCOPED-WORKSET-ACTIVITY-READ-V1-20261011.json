@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.14.0",
+  "classification_rationale": "L3-r49-scoped-workset-activity-read-20261011",
+  "component": "product",
+  "event_lineage": "L3-r49-scoped-workset-activity-read-20261011",
+  "expected_head": "091ec16f71bccd0da92365e5466f98af2f4927ba",
+  "operation_id": "L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.15.0"
+}

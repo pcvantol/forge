@@ -3370,6 +3370,222 @@
           }
         ]
       }
+    },
+    "/v1/approved-workset-activity": {
+      "get": {
+        "summary": "Scoped workset activity capability",
+        "description": "No effects by reading. Original retained facts separate from current v1/v2 conditions; partial legacy extent. Fixed16-event page; drift requires resync. Current scope rechecked each call; cursor grants no access.",
+        "security": [
+          {
+            "worksetActivityBearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Closed bounded source-backed read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-activity-v1.json#/$defs/capability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid closed read target"
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scoped READ denied"
+          },
+          "404": {
+            "description": "Scoped event absent"
+          },
+          "409": {
+            "description": "RESYNC_REQUIRED; changed snapshot"
+          },
+          "503": {
+            "description": "Explicit partial/unavailable source or capacity"
+          }
+        }
+      }
+    },
+    "/v1/approved-workset-activity/{workset_id}/pages": {
+      "get": {
+        "summary": "First bounded retained-history page",
+        "description": "No effects by reading. Original retained facts separate from current v1/v2 conditions; partial legacy extent. Fixed16-event page; drift requires resync. Current scope rechecked each call; cursor grants no access.",
+        "security": [
+          {
+            "worksetActivityBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed bounded source-backed read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-activity-v1.json#/$defs/page"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid closed read target"
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scoped READ denied"
+          },
+          "404": {
+            "description": "Scoped event absent"
+          },
+          "409": {
+            "description": "RESYNC_REQUIRED; changed snapshot"
+          },
+          "503": {
+            "description": "Explicit partial/unavailable source or capacity"
+          }
+        }
+      }
+    },
+    "/v1/approved-workset-activity/{workset_id}/pages/{cursor}": {
+      "get": {
+        "summary": "Same-context checkpoint continuation",
+        "description": "No effects by reading. Original retained facts separate from current v1/v2 conditions; partial legacy extent. Fixed16-event page; drift requires resync. Current scope rechecked each call; cursor grants no access.",
+        "security": [
+          {
+            "worksetActivityBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 32768
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed bounded source-backed read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-activity-v1.json#/$defs/page"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid closed read target"
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scoped READ denied"
+          },
+          "404": {
+            "description": "Scoped event absent"
+          },
+          "409": {
+            "description": "RESYNC_REQUIRED; changed snapshot"
+          },
+          "503": {
+            "description": "Explicit partial/unavailable source or capacity"
+          }
+        }
+      }
+    },
+    "/v1/approved-workset-activity/{workset_id}/events/{event_id}": {
+      "get": {
+        "summary": "Original scoped public source fact",
+        "description": "No effects by reading. Original retained facts separate from current v1/v2 conditions; partial legacy extent. Fixed16-event page; drift requires resync. Current scope rechecked each call; cursor grants no access.",
+        "security": [
+          {
+            "worksetActivityBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Closed bounded source-backed read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "workset-activity-v1.json#/$defs/detail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid closed read target"
+          },
+          "401": {
+            "description": "Authentication unavailable"
+          },
+          "403": {
+            "description": "Scoped READ denied"
+          },
+          "404": {
+            "description": "Scoped event absent"
+          },
+          "409": {
+            "description": "RESYNC_REQUIRED; changed snapshot"
+          },
+          "503": {
+            "description": "Explicit partial/unavailable source or capacity"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3422,6 +3638,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Distinct finite owner-issued READ/REORDER for exact original worksets; actual current Solo Business and Architecture roles required."
+      },
+      "worksetActivityBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Finite current scoped READ; explicit workset grant pattern and owner-provisioned private cursor capability; no mutation permission."
       }
     },
     "schemas": {
