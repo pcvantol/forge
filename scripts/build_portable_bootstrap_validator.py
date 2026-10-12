@@ -8,7 +8,7 @@ root=Path(__file__).resolve().parents[1];p=root/'forge/project_bootstrap/assets'
 blocks=[]
 for src in [root/'forge/project_bootstrap/schema.py',p/'safe_io.py',p/'render_core.py']:
  blocks.append('\n'.join(x for x in src.read_text().splitlines() if not x.startswith(('from __future__','from ..schema'))))
-files={x.name:hashlib.sha256(x.read_bytes()).hexdigest() for x in p.iterdir() if x.name not in {'catalog.json','validate.py'} and x.is_file()}
+files={x.name:hashlib.sha256(x.read_bytes()).hexdigest() for x in sorted(p.iterdir()) if x.name not in {'catalog.json','validate.py'} and x.is_file()}
 c=json.loads((p/'catalog.json').read_text());c['assets']=files.copy();projection=json.dumps(c,sort_keys=True,separators=(',',':'))+'\n'
 validator='"""Self-contained portable validator; trusted entrypoint pinned by generated wrapper."""\nimport sys\nimport hashlib\nsys.dont_write_bytecode = True\n'+'\n\n'.join(blocks)
 validator+='\n\nEXPECTED_ASSETS = '+repr(files)+'\nEXPECTED_CATALOG_PROJECTION = '+repr(hashlib.sha256(projection.encode()).hexdigest())+'\n'

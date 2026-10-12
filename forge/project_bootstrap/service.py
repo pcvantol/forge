@@ -16,7 +16,7 @@ from .assets.safe_io import read_regular, finite_tree
 
 BASELINE = "portable-docs/1.0.0"
 CONTRACT = CONTRACT_VERSION
-CATALOG_DIGEST = "31ae0d207a88d83765e22c8300ea9e162a481601861352d15b16493391b8b294"
+CATALOG_DIGEST = "757e9c0bc8a7c646badb5c0ae0c6dd024174f4d079b7390a6517ee78da0f375f"
 BASE_PATH = "engineering/baselines/portable-docs/1.0.0"
 
 
