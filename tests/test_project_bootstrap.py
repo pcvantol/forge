@@ -212,3 +212,19 @@ class BootstrapTests(unittest.TestCase):
         with self.assertRaises(schema.ContractError):service.export(self.value,child/'proposal')
         self.assertEqual((repo/'README.md').read_text(),'existing product')
         self.assertFalse((repo/'proposal').exists());self.assertFalse((child/'proposal').exists())
+
+
+    def test_canonical_artifact_metadata_preserved(self):
+        inventory=json.loads(Path('docs/architecture/project-bootstrap-artifact-manifest-v1.json').read_text())
+        expected={e['id']:e for e in inventory['entries']}
+        manifest=json.loads(service.render(self.value)['engineering/bootstrap-manifest.json'])
+        for entry in manifest['artifacts']:
+            if entry['artifact_id'] in expected:
+                row=expected[entry['artifact_id']]
+                self.assertEqual(entry['semantic_owner'],row['owner'])
+                self.assertEqual(entry['condition'],row['condition'])
+                self.assertEqual(entry['update_class'],row['update_class'])
+            else:self.assertEqual(entry['artifact_id'],'PB-INPUT')
+        classes={e['relative_path']:e['update_class'] for e in manifest['artifacts']}
+        self.assertEqual(classes['engineering/baseline.lock.json'],'PINNED_BASELINE')
+        self.assertEqual(classes['docs/roadmap/capability-dag.json'],'DERIVED_PROJECTION')

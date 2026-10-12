@@ -233,13 +233,15 @@ def render(value: Any, registry: dict[str, Any], selected: dict[str, bytes], ren
         if folded in names:
             raise ContractError("artifact path collision")
         names.add(folded)
-        entries.append({"artifact_id": artifact_ids.get(name, "PB-A07" if name.startswith(BASE_PATH) else "PB-INPUT"),
-                        "condition": "SELECTED_BASELINE" if name.startswith(BASE_PATH) else "MANAGED_GITHUB" if name.startswith(".github/") else "COMMON_AUTHORITY" if name in registry["authority_paths"] else "COMMON_REPOSITORY",
-                        "semantic_owner": "project-governance", "physical_writer": "engineering-platform",
+        artifact_id = artifact_ids.get(name, "PB-A07" if name.startswith(BASE_PATH) else "PB-INPUT")
+        metadata = registry["artifact_metadata"][artifact_id]
+        entries.append({"artifact_id": artifact_id, "condition": metadata["condition"],
+                        "semantic_owner": metadata["semantic_owner"], "physical_writer": metadata["physical_writer"],
                         "schema_or_template_version": CONTRACT, "source_digest": renderer_digest,
                         "input_digest": binding, "maximum_bytes": 131072,
-                        "validation_requirements": ["PORTABLE_HASH_SCHEMA_PROFILE"], "relative_path": name, "expected_before": "ABSENT", "expected_after_digest": digest(raw),
-                        "bytes": len(raw), "file_mode": "0644", "encoding": "UTF-8", "update_class": "PINNED_BASELINE" if name.startswith(BASE_PATH) else "PROJECT_OWNED"})
+                        "validation_requirements": ["PORTABLE_HASH_SCHEMA_PROFILE"], "relative_path": name,
+                        "expected_before": "ABSENT", "expected_after_digest": digest(raw),
+                        "bytes": len(raw), "file_mode": "0644", "encoding": "UTF-8", "update_class": metadata["update_class"]})
     manifest = {"contract_version": CONTRACT, "renderer_version": "1.0.0", "baseline": BASELINE,
                 "input_digest": binding, "renderer_source_digest": renderer_digest, "state": "RENDERED_PROPOSAL", "artifacts": entries,
                 "self_reference": "manifest excluded from artifact hashes; digest excludes manifest_digest"}
@@ -248,8 +250,8 @@ def render(value: Any, registry: dict[str, Any], selected: dict[str, bytes], ren
     return result
 
 
-EXPECTED_ASSETS = {'validation.yml': 'd0644592ae5d9ef31a041854755349541deb98e18ffbb3cda6b3ee1579947cab', 'input.schema.json': '8e35d9761676001ff252e8eb41bc2a3edc62c0b318f13b56ee416a795c4bffa2', 'operation-proposal.schema.json': '8697674152adb2d1222f71d3288edd7e1d76c8c79e105d3d564ea64c531b3ee9', 'capability.json': '5b10efd1b2c00b61f5229dcc94a70638fe7be68b4654a6ef03cbb74e2fce6bd8', 'governance.schema.json': '6280520ab0924481b758b68afbc8d1217f6d8641c3f817e7d1521f463afeb86a', 'catalog.schema.json': 'd0646361d861b7cce3d91f4010fc7a9c1d3b6415e339386b694c7ed2cc182811', 'safe_io.py': '14f42246d37e888759eb561443ed5e053cdf5daa5866b1e5aae99f99c9f00324', 'baseline-lock.schema.json': '977646e0e6a1f265ed737fc88c6a27b54616359ba77dbe3a35beaf8c90ec0a8c', 'project.schema.json': '6041405ef97b6b22d0c92a2275dbcd8a11906b95857fae6a191946b059d1f66f', 'capability.schema.json': '090d889386568006aa3c8d60d5ec4907b22a25ded1f11f99c6dd0b61e58c1708', 'render_core.py': '56568dc2a8456edcefc98eaa014b10f230e6600d0a19e37525677afa824db1c9', 'manifest.schema.json': '70c9691350081309074a336775a686978faca239fc622cec4b8fe7ef6ef8efff', 'project-contract.schema.json': 'e2d43fad5b139b73914b7853cef3c9d68c129a3f945b3b96f57571c7dbd066a8', 'dag.schema.json': '25149423d7b7861c174648b70f8c49d5d8e246db4c82faac56f5b5bf3063e4cb', 'schema.py': 'df6e407b8604d69db8403143e749c78680f2b7458b95950aa404b0c15d14f7f3'}
-EXPECTED_CATALOG_PROJECTION = '649f71d7fa8ecd8d5168d54a8f52766099f3071f06a679d2f5bee4d185c3d63c'
+EXPECTED_ASSETS = {'validation.yml': 'd0644592ae5d9ef31a041854755349541deb98e18ffbb3cda6b3ee1579947cab', 'input.schema.json': '8e35d9761676001ff252e8eb41bc2a3edc62c0b318f13b56ee416a795c4bffa2', 'operation-proposal.schema.json': '8697674152adb2d1222f71d3288edd7e1d76c8c79e105d3d564ea64c531b3ee9', 'capability.json': '5b10efd1b2c00b61f5229dcc94a70638fe7be68b4654a6ef03cbb74e2fce6bd8', 'governance.schema.json': '6280520ab0924481b758b68afbc8d1217f6d8641c3f817e7d1521f463afeb86a', 'catalog.schema.json': '45c42e79959a3f1b270c82c248cded311dac7df92242dc0101a1aee5c0d45785', 'safe_io.py': '14f42246d37e888759eb561443ed5e053cdf5daa5866b1e5aae99f99c9f00324', 'baseline-lock.schema.json': '977646e0e6a1f265ed737fc88c6a27b54616359ba77dbe3a35beaf8c90ec0a8c', 'project.schema.json': '6041405ef97b6b22d0c92a2275dbcd8a11906b95857fae6a191946b059d1f66f', 'capability.schema.json': '090d889386568006aa3c8d60d5ec4907b22a25ded1f11f99c6dd0b61e58c1708', 'render_core.py': 'a7a16db4d735d9411ff3a3c7997d8aff82be2d4b6f2059aa56bf250b7e104536', 'manifest.schema.json': 'b2dc213b977e370cc265980380b2f83c607943f1fecb204c7ccc851432ad3c14', 'project-contract.schema.json': 'e2d43fad5b139b73914b7853cef3c9d68c129a3f945b3b96f57571c7dbd066a8', 'dag.schema.json': '25149423d7b7861c174648b70f8c49d5d8e246db4c82faac56f5b5bf3063e4cb', 'schema.py': 'df6e407b8604d69db8403143e749c78680f2b7458b95950aa404b0c15d14f7f3'}
+EXPECTED_CATALOG_PROJECTION = '9c59274f8745bd221cc1d86b1c621d5b8286f97abd6866676ae30bda097dbe66'
 
 
 def check(root):

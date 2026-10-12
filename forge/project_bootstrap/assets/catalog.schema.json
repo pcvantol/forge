@@ -19,7 +19,9 @@
     "roles",
     "source_base_revision",
     "source_assignment",
-    "profile_checks"
+    "profile_checks",
+    "artifact_metadata",
+    "artifact_inventory_source_digest"
   ],
   "properties": {
     "assets": {
@@ -308,6 +310,859 @@
           }
         }
       }
+    },
+    "artifact_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "PB-A01",
+        "PB-A02",
+        "PB-A03",
+        "PB-A04",
+        "PB-A05",
+        "PB-A06",
+        "PB-A07",
+        "PB-A08",
+        "PB-A09",
+        "PB-A10",
+        "PB-A11",
+        "PB-A12",
+        "PB-A13",
+        "PB-A14",
+        "PB-A15",
+        "PB-A16",
+        "PB-A17",
+        "PB-A18",
+        "PB-A19",
+        "PB-A20",
+        "PB-A21",
+        "PB-A22",
+        "PB-A23",
+        "PB-A24",
+        "PB-A25",
+        "PB-A26",
+        "PB-A27",
+        "PB-A28",
+        "PB-INPUT"
+      ],
+      "properties": {
+        "PB-A01": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "ep-attachment-schema/project-declaration"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A02": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_AUTHORITY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "forge/project"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A03": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-governance"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A04": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-governance"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PINNED_BASELINE"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A05": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "forge/bootstrap-plan"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "DERIVED_PROJECTION"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A06": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-governance"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A07": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "SELECTED_BASELINE"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "released-baseline/project-pin"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PINNED_BASELINE"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A08": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A09": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A10": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A11": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A12": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A13": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_AUTHORITY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "business"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A14": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_AUTHORITY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "architecture"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A15": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_AUTHORITY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "architecture"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A16": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_AUTHORITY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-direction-governance"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A17": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_AUTHORITY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "forge/roadmap-projector"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "DERIVED_PROJECTION"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A18": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-engineering-contract"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A19": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "COMMON_REPOSITORY"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "forge/evidence-projector"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "DERIVED_PROJECTION"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A20": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "POSIX_VALIDATION"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-engineering-contract"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A21": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "MANAGED_GITHUB"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-engineering-contract"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A22": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "SECURITY_PROFILE"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-security"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A23": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "CODEQL_PROFILE"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-security"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A24": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "OWNERSHIP_PROFILE"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-ownership"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A25": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "MANAGED_GITHUB"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A26": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "DEPENDENCY_PROFILE"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project-dependency-policy"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A27": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "EXPLICIT_LICENSE"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "business/legal-owner"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-A28": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "EXPLICIT_STACK_TEMPLATE"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "project"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "PROJECT_OWNED"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        },
+        "PB-INPUT": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "condition",
+            "semantic_owner",
+            "update_class",
+            "physical_writer"
+          ],
+          "properties": {
+            "condition": {
+              "type": "string",
+              "const": "RENDER_INPUT"
+            },
+            "semantic_owner": {
+              "type": "string",
+              "const": "forge/bootstrap-plan"
+            },
+            "update_class": {
+              "type": "string",
+              "const": "DERIVED_PROJECTION"
+            },
+            "physical_writer": {
+              "type": "string",
+              "const": "engineering-platform"
+            }
+          }
+        }
+      }
+    },
+    "artifact_inventory_source_digest": {
+      "type": "string",
+      "const": "5db1b2efa2e40902cdeed9b3bee85854e291e5d59b335c1263c090e00c42e5f1"
     }
   }
 }

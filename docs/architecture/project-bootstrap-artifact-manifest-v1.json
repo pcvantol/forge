@@ -63,6 +63,16 @@
     "baseline": "portable-docs/1.0.0",
     "scope": "authority/child documents and finite Github document template",
     "state": "PROPOSAL_ONLY",
-    "full_inventory_execution_implemented": false
+    "full_inventory_execution_implemented": false,
+    "additional_artifacts": [
+      {
+        "id": "PB-INPUT",
+        "path": "engineering/render-input.json",
+        "condition": "RENDER_INPUT",
+        "owner": "forge/bootstrap-plan",
+        "update_class": "DERIVED_PROJECTION",
+        "meaning": "Frozen proposal input; no operation or approval evidence"
+      }
+    ]
   }
 }

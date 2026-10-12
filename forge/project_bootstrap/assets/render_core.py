@@ -76,13 +76,15 @@ def render(value: Any, registry: dict[str, Any], selected: dict[str, bytes], ren
         if folded in names:
             raise ContractError("artifact path collision")
         names.add(folded)
-        entries.append({"artifact_id": artifact_ids.get(name, "PB-A07" if name.startswith(BASE_PATH) else "PB-INPUT"),
-                        "condition": "SELECTED_BASELINE" if name.startswith(BASE_PATH) else "MANAGED_GITHUB" if name.startswith(".github/") else "COMMON_AUTHORITY" if name in registry["authority_paths"] else "COMMON_REPOSITORY",
-                        "semantic_owner": "project-governance", "physical_writer": "engineering-platform",
+        artifact_id = artifact_ids.get(name, "PB-A07" if name.startswith(BASE_PATH) else "PB-INPUT")
+        metadata = registry["artifact_metadata"][artifact_id]
+        entries.append({"artifact_id": artifact_id, "condition": metadata["condition"],
+                        "semantic_owner": metadata["semantic_owner"], "physical_writer": metadata["physical_writer"],
                         "schema_or_template_version": CONTRACT, "source_digest": renderer_digest,
                         "input_digest": binding, "maximum_bytes": 131072,
-                        "validation_requirements": ["PORTABLE_HASH_SCHEMA_PROFILE"], "relative_path": name, "expected_before": "ABSENT", "expected_after_digest": digest(raw),
-                        "bytes": len(raw), "file_mode": "0644", "encoding": "UTF-8", "update_class": "PINNED_BASELINE" if name.startswith(BASE_PATH) else "PROJECT_OWNED"})
+                        "validation_requirements": ["PORTABLE_HASH_SCHEMA_PROFILE"], "relative_path": name,
+                        "expected_before": "ABSENT", "expected_after_digest": digest(raw),
+                        "bytes": len(raw), "file_mode": "0644", "encoding": "UTF-8", "update_class": metadata["update_class"]})
     manifest = {"contract_version": CONTRACT, "renderer_version": "1.0.0", "baseline": BASELINE,
                 "input_digest": binding, "renderer_source_digest": renderer_digest, "state": "RENDERED_PROPOSAL", "artifacts": entries,
                 "self_reference": "manifest excluded from artifact hashes; digest excludes manifest_digest"}

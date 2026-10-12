@@ -88,8 +88,10 @@
           "update_class": {
             "type": "string",
             "enum": [
+              "PROJECT_OWNED",
               "PINNED_BASELINE",
-              "PROJECT_OWNED"
+              "DERIVED_PROJECTION",
+              "APPEND_ONLY_EVIDENCE_REFERENCE"
             ]
           },
           "artifact_id": {

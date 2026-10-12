@@ -29,7 +29,7 @@ journal. `--data-root` remains installation storage and is not an export option.
 
 Use the [authority input](../../examples/project-bootstrap/authority-input.json)
 or [child input](../../examples/project-bootstrap/child-input.json) as a synthetic
-example. Edit explicit product facts and reference bindings rather than deriving
+example. Exact inspectable [authority bundle](../../examples/project-bootstrap/authority-bundle.json) and [child bundle](../../examples/project-bootstrap/child-bundle.json) include every UTF-8 payload and SHA256; they are proposals, not qualified target effects. Edit explicit product facts and reference bindings rather than deriving
 IDs from names/paths/URLs. `OWNER_REGISTERED_REFERENCE` records the caller's
 supplied reference, not independent verification or registration by this renderer.
 Do not place secrets or private operational data in an export proposal.
@@ -66,7 +66,7 @@ and wheel qualification are separate records. An upgrade never rewrites old pins
 
 Canonical JSON is sorted UTF-8 with LF, duplicate keys/nonfinite values reject.
 Paths are finite ASCII POSIX paths, modes0644, text UTF-8; no user-supplied path
-inventory or include resolver. The manifest binds frozen input, renderer source,
+inventory or include resolver. The catalog pins the original canonical PB-A01..28 metadata: actual semantic owners, conditions and update classes are preserved. `PB-INPUT` is the explicitly declared frozen-input portable artifact, not a roadmap node or Mission. The manifest binds frozen input, renderer source,
 artifact IDs/conditions/owners/classes/versions, ABSENT preconditions, sizes,
 maximums and after hashes. It excludes its own bytes; `manifest_digest` is omitted
 when computing that digest. Full artifact bytes are bound separately by receipts.
