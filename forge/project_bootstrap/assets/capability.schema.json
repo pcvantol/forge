@@ -1,0 +1,58 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "capability",
+    "state",
+    "implemented",
+    "effect",
+    "network",
+    "provisioning",
+    "mission"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "pb-render/1.0"
+    },
+    "capability": {
+      "type": "string",
+      "const": "PROJECT_BASELINE_RENDER"
+    },
+    "state": {
+      "type": "string",
+      "const": "PROPOSAL_ONLY"
+    },
+    "implemented": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "enum": [
+          "catalog",
+          "validate-input",
+          "render",
+          "check-bundle"
+        ]
+      }
+    },
+    "effect": {
+      "type": "string",
+      "const": "OWN_NEW_EXPORT_ONLY"
+    },
+    "network": {
+      "type": "boolean",
+      "const": false
+    },
+    "provisioning": {
+      "type": "boolean",
+      "const": false
+    },
+    "mission": {
+      "type": "boolean",
+      "const": false
+    }
+  }
+}

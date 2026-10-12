@@ -1,0 +1,37 @@
+{
+  "authority_contract_reference": "sample-core:engineering/project-contract.json",
+  "baseline": "portable-docs/1.0.0",
+  "contract_version": "pb-render/1.0",
+  "document_language": "en",
+  "host_profile": "LOCAL_POSIX",
+  "identity": {
+    "authority_repository_id": "sample-core",
+    "owner_reference": "synthetic-user-reference-1",
+    "project_id": "sample-product",
+    "repository_id": "sample-core",
+    "status": "PROVISIONAL_REFERENCE"
+  },
+  "license_profile": "UNDECIDED",
+  "mode": "GENESIS",
+  "product": {
+    "constraints": "Offline document proposal only.",
+    "name": "Sample product",
+    "non_goals": "No application feature implementation.",
+    "open_questions": [
+      "Which data must remain private?",
+      "Which components and technology are suitable?"
+    ],
+    "purpose": "Help teams discuss an explicitly supplied project goal.",
+    "users": "Small project teams."
+  },
+  "role": "authority",
+  "security_profile": "DOCUMENT_ONLY",
+  "source_references": [
+    {
+      "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "owner": "USER_DECLARED",
+      "reference": "synthetic-product-description-1"
+    }
+  ],
+  "stack_profile": "NO_PRODUCT_CODE"
+}

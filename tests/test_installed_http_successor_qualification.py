@@ -19,11 +19,26 @@ from forge.qualification.producer_fixture_conformance import (
     validate_identity_fixture,
 )
 from scripts.qualification.qualify_installed_http_successor import (
-    _child_env, _count_ep_http_requests, _installed_runtime_storage_negatives, _loopback_only,
+    _expected_product_inventory, _child_env, _count_ep_http_requests, _installed_runtime_storage_negatives, _loopback_only,
 )
 
 
 class InstalledHttpSuccessorQualificationTests(unittest.TestCase):
+    def test_committed_package_inventory_includes_declared_portable_assets_only(self) -> None:
+        tracked = {"forge/core.py", "forge/schemas/input.json",
+                   "forge/project_bootstrap/assets/validation.yml",
+                   "forge/project_bootstrap/assets/validate.sh",
+                   "forge/not_packaged.json", "docs/unrelated.py", ""}
+        manifest = {"tool": {"setuptools": {"package-data": {"forge": [
+            "schemas/*.json", "project_bootstrap/assets/*"]}}}}
+        expected = {"forge/core.py", "forge/schemas/input.json",
+                    "forge/project_bootstrap/assets/validation.yml",
+                    "forge/project_bootstrap/assets/validate.sh"}
+        self.assertEqual(_expected_product_inventory(tracked, manifest), expected)
+        with self.assertRaises(RuntimeError):
+            _expected_product_inventory(tracked, {"tool": {"setuptools": {
+                "package-data": {"forge": "*"}}}})
+
     def test_installed_runtime_marker_storage_and_schema_fail_without_new_identity(self) -> None:
         with TemporaryDirectory() as directory:
             cases = _installed_runtime_storage_negatives(Path(directory) / "runtime")

@@ -57,5 +57,22 @@
   "prohibited": ["runtime databases","credentials","server URLs","absolute host paths","raw provider transcripts","implicit executable hooks","fabricated approvals","fake Mission state"],
   "child_rule": "Child repositories retain their own common repository artifacts and reference authority-owned product/roadmap documents; do not duplicate product authority.",
   "genesis_rule": "No remote effects or automatic GitHub assets; remote-only requirements explicitly NOT_APPLICABLE_GENESIS.",
-  "managed_rule": "Host assets selected by provider/profile and actual governance readback mandatory before Managed readiness."
+  "managed_rule": "Host assets selected by provider/profile and actual governance readback mandatory before Managed readiness.",
+  "portable_render_subset": {
+    "contract": "pb-render/1.0",
+    "baseline": "portable-docs/1.0.0",
+    "scope": "authority/child documents and finite Github document template",
+    "state": "PROPOSAL_ONLY",
+    "full_inventory_execution_implemented": false,
+    "additional_artifacts": [
+      {
+        "id": "PB-INPUT",
+        "path": "engineering/render-input.json",
+        "condition": "RENDER_INPUT",
+        "owner": "forge/bootstrap-plan",
+        "update_class": "DERIVED_PROJECTION",
+        "meaning": "Frozen proposal input; no operation or approval evidence"
+      }
+    ]
+  }
 }

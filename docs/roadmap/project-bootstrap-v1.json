@@ -19,5 +19,15 @@
     {"id":"PB-F6","status":"PLANNED","depends_on":["PB-F4","PB-F5"],"external_evidence":["engineering-platform:PB-E4"],"deliverable":"History-preserving Managed promotion"},
     {"id":"PB-F7","status":"PLANNED","depends_on":["PB-F3"],"external_evidence":["forge:FH-SERVICES","forge:FH-HTTP","forge:FH-CLI"],"deliverable":"Qualified shared-service CLI and HTTP adapters"},
     {"id":"PB-FQ","status":"PLANNED","depends_on":["PB-F1","PB-F2","PB-F3","PB-F4","PB-F5","PB-F6","PB-F7"],"external_evidence":["engineering-platform:PB-EQ"],"deliverable":"Installed Genesis, Managed and promotion qualification"}
-  ]
+  ],
+  "selected_subset": {
+    "assignment": "L3-PROJECT-BOOTSTRAP-BASELINE-RENDER-V1-20261012",
+    "nodes": [
+      "PB-F0",
+      "PB-F1"
+    ],
+    "scope": "portable proposal renderer only",
+    "delivery_status": "IMPLEMENTATION_PENDING_QUALIFICATION",
+    "full_pb_f1_closed": false
+  }
 }

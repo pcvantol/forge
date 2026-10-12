@@ -15,6 +15,8 @@ from hashlib import sha256
 from importlib.metadata import distribution
 from io import BytesIO
 import json
+import fnmatch
+import tomllib
 import os
 from pathlib import Path
 import shutil
@@ -503,6 +505,16 @@ class _PreflightCredentialResolver(_SyntheticCredentialResolver):
         return super().resolve(reference)
 
 
+def _expected_product_inventory(tracked: set[str], manifest: dict[str, Any]) -> set[str]:
+    """Enumerate committed Python modules and explicitly declared package assets."""
+    patterns = manifest["tool"]["setuptools"]["package-data"]["forge"]
+    if not isinstance(patterns, list) or not all(isinstance(item, str) for item in patterns):
+        raise RuntimeError("invalid committed Forge package-data inventory")
+    return {name for name in tracked if name.startswith("forge/")
+            and (name.endswith(".py") or any(fnmatch.fnmatchcase(
+                name.removeprefix("forge/"), pattern) for pattern in patterns))}
+
+
 def _installed_wheel(wheel: Path, *, source_revision: str | None = None,
                      verify_source: bool = False) -> dict[str, Any]:
     if sys.version_info[:2] != (3, 14) or not sys.flags.isolated or sys.flags.optimize:
@@ -550,7 +562,9 @@ def _installed_wheel(wheel: Path, *, source_revision: str | None = None,
         tracked = set(subprocess.check_output(
             ["git", "-C", str(source_root), "ls-files", "-z", "--", "forge"],
         ).decode("utf-8").split("\0"))
-        expected_product_files = {name for name in tracked if Path(name).suffix in {".py", ".json"}}
+        manifest = tomllib.loads(subprocess.check_output(
+            ["git", "-C", str(source_root), "show", "HEAD:pyproject.toml"], text=True))
+        expected_product_files = _expected_product_inventory(tracked, manifest)
     wheel_product_files = set()
     with ZipFile(BytesIO(wheel_bytes)) as archive:
         for name in archive.namelist():

@@ -29,4 +29,5 @@ for directory in (Path("schemas"), Path("examples")):
         json.loads(path.read_text(encoding="utf-8"))
 PY
 
+python3 scripts/build_portable_bootstrap_validator.py
 git diff --check

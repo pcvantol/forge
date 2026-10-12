@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "status",
+    "operation",
+    "subject_digest",
+    "caller_reference",
+    "authority"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "pb-operation-proposal/1.0"
+    },
+    "status": {
+      "type": "string",
+      "const": "PLANNED_NOT_IMPLEMENTED"
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "InspectProjectTarget",
+        "PrepareProjectBootstrap",
+        "ApproveBootstrapPlan",
+        "ApplyProjectBootstrap",
+        "ReadBootstrapOperation",
+        "ReconcileBootstrapOperation",
+        "PrepareManagedPromotion"
+      ]
+    },
+    "subject_digest": {
+      "type": "string",
+      "pattern": "[0-9a-f]{64}"
+    },
+    "caller_reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "authority": {
+      "type": "string",
+      "const": "NOT_GRANTED_BY_CONTRACT"
+    }
+  }
+}
