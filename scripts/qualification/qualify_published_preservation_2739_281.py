@@ -59,13 +59,15 @@ class Diagnostics:
         # No free-form strings, paths, payloads, stdout/stderr or exception messages.
         permitted = {'expected', 'observed', 'exit_code', 'pid', 'pgid',
                      'signal', 'signal_waited', 'durable_phase', 'requested_phase',
-                     'status', 'line', 'bytes', 'truncated', 'sha256'}
+                     'status', 'line', 'bytes', 'truncated', 'sha256', 'outcome'}
         if set(values) - permitted:
             raise ValueError('unsupported diagnostic field')
         row = {'case': self.case, 'substage': substage, 'observed_at_ns': time.time_ns()}
         for key, value in values.items():
             if key in {'durable_phase', 'requested_phase'}:
                 value = value if value in CRASH_PHASES else 'OTHER_OR_ABSENT'
+            elif key == 'outcome':
+                value = value if value in {'COMMAND_TIMEOUT', 'COMMAND_SUCCESS', 'COMMAND_NONZERO'} else 'UNKNOWN'
             elif key == 'status':
                 value = value if value in {'COMPLETE', 'ERROR', 'UPDATE_AVAILABLE'} else 'OTHER_OR_ABSENT'
             elif key == 'sha256':
@@ -106,9 +108,14 @@ class Diagnostics:
             self.retain('secondary-failure' if secondary else 'primary-failure',
                         ''.join(traceback.format_exception(error)))
             self.write()
-        except OSError:
+        except OSError as retention_error:
             self.document['complete'] = False
             self.document['retention_error'] = 'EVIDENCE_WRITE_FAILED'
+            # Keep the first observed command failure in memory even when its
+            # private traceback cannot be written. Retention is a separate cause.
+            self.document.setdefault('secondary_failure', {
+                'case': self.case, 'substage': self.substage,
+                'category': 'OS_ERROR', 'line': None})
         return row
 
     def write(self):
@@ -168,24 +175,44 @@ def command(request):
     return result
 
 
+def retain_command_evidence(label, data):
+    if ACTIVE_DIAGNOSTIC is None:
+        return
+    try:
+        ACTIVE_DIAGNOSTIC.retain(label, data)
+    except OSError as error:
+        ACTIVE_DIAGNOSTIC.document['complete'] = False
+        ACTIVE_DIAGNOSTIC.document['retention_error'] = 'EVIDENCE_WRITE_FAILED'
+        ACTIVE_DIAGNOSTIC.failure(error, secondary=True)
+
+
 def run(argv, root, *, env, check=True):
     try:
         done = subprocess.run(argv, cwd=root, env=env, capture_output=True, text=True, timeout=60)
     except subprocess.TimeoutExpired as error:
         if ACTIVE_DIAGNOSTIC is not None:
-            ACTIVE_DIAGNOSTIC.retain('command-timeout', (error.stdout or b'') + (error.stderr or b''))
+            # The observed timeout is primary, with no invented child exitcode.
+            ACTIVE_DIAGNOSTIC.failure(error)
+            checkpoint(ACTIVE_DIAGNOSTIC.substage, outcome='COMMAND_TIMEOUT', exit_code=None)
+            retain_command_evidence('command-timeout', (error.stdout or b'') + (error.stderr or b''))
         raise
+    original_failure = None
+    if check and done.returncode != 0:
+        original_failure = AssertionError('owned product command failed: ' + done.stderr[-600:] + done.stdout[-600:])
+        if ACTIVE_DIAGNOSTIC is not None:
+            ACTIVE_DIAGNOSTIC.failure(original_failure)
     if ACTIVE_DIAGNOSTIC is not None:
         stage = ACTIVE_DIAGNOSTIC.substage
         try:
             status = json.loads(done.stdout).get('status') or json.loads(done.stdout).get('state')
         except (ValueError, AttributeError):
             status = None
-        ACTIVE_DIAGNOSTIC.retain('command-' + str(len(ACTIVE_DIAGNOSTIC.document['events'])),
-                                 done.stdout + '\n' + done.stderr)
-        checkpoint(stage, exit_code=done.returncode, status=status)
-    if check and done.returncode != 0:
-        raise AssertionError('owned product command failed: ' + done.stderr[-600:] + done.stdout[-600:])
+        checkpoint(stage, exit_code=done.returncode, status=status,
+                   outcome='COMMAND_SUCCESS' if done.returncode == 0 else 'COMMAND_NONZERO')
+        retain_command_evidence('command-' + str(len(ACTIVE_DIAGNOSTIC.document['events'])),
+                                done.stdout + '\n' + done.stderr)
+    if original_failure is not None:
+        raise original_failure
     return done
 
 

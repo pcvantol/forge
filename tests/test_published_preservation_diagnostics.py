@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -171,6 +172,77 @@ class PreservationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(receipt['diagnostic_retention'],'INCOMPLETE')
         self.assertFalse(diagnostic['complete'])
         self.assertTrue(receipt['cleanup']['owned_runtime_home_credentials_scratch_removed'])
+
+    def _retention_fault(self, label, data):
+        if label.startswith('command-'):
+            raise OSError('SECRET /Users/private retention fault')
+        return self.original_retain(label, data)
+
+    def test_real_timeout_retention_failure_preserves_primary_and_gate_red(self):
+        # Real run timeout remains60 seconds. Only evidence-retention is injected.
+        m.ACTIVE_DIAGNOSTIC=None
+        output=self.root/'real-timeout-gate'
+        args=SimpleNamespace(source_revision='a'*40,output_dir=output,inputs=self.root,fetch_inputs=False)
+        original_retain=m.Diagnostics.retain
+        def retain(d,label,data):
+            if label.startswith('command-'):raise OSError('SECRET retention')
+            return original_retain(d,label,data)
+        def source(cmd,**kw):
+            if cmd[1]=='show':return (m.CONTROLLER if cmd[-1].endswith('update_installed_forge.py') else Path(m.__file__)).read_bytes()
+            return 'b'*40+'\n'
+        def timeout_case(*unused):
+            m.checkpoint('resume-command')
+            return m.run([sys.executable,'-I','-c','import time; print("SECRET",flush=True); time.sleep(61)'],output,env={'PATH':'/usr/bin:/bin'})
+        with patch.object(m.subprocess,'check_output',side_effect=source),patch.object(m,'case',side_effect=timeout_case),patch.object(m.Diagnostics,'retain',retain):
+            self.assertEqual(m.qualify(args),1)
+        receipt=json.loads((output/'published-preservation.public.json').read_text())
+        diagnostic=json.loads((output/'published-preservation-diagnostics.public.json').read_text())
+        self.assertEqual(receipt['failure']['category'],'COMMAND_TIMEOUT')
+        self.assertEqual(diagnostic['primary_failure']['category'],'COMMAND_TIMEOUT')
+        self.assertEqual(diagnostic['secondary_failure']['category'],'OS_ERROR')
+        event=next(e for e in diagnostic['events'] if e.get('outcome')=='COMMAND_TIMEOUT')
+        self.assertIsNone(event['exit_code'])
+        self.assertFalse(diagnostic['complete'])
+        self.assertTrue(receipt['cleanup']['owned_runtime_home_credentials_scratch_removed'])
+        self.assertNotIn('SECRET',json.dumps(diagnostic)+json.dumps(receipt))
+
+    def test_real_nonzero_retention_failure_preserves_primary_and_gate_red(self):
+        m.ACTIVE_DIAGNOSTIC=None
+        output=self.root/'real-nonzero-gate'
+        args=SimpleNamespace(source_revision='a'*40,output_dir=output,inputs=self.root,fetch_inputs=False)
+        original_retain=m.Diagnostics.retain
+        def retain(d,label,data):
+            if label.startswith('command-'):raise OSError('SECRET retention')
+            return original_retain(d,label,data)
+        def source(cmd,**kw):
+            if cmd[1]=='show':return (m.CONTROLLER if cmd[-1].endswith('update_installed_forge.py') else Path(m.__file__)).read_bytes()
+            return 'b'*40+'\n'
+        def failed_case(*unused):
+            m.checkpoint('resume-command')
+            return m.run([sys.executable,'-I','-c','print(\'{"status":"ERROR","token":"SECRET"}\'); raise SystemExit(7)'],output,env={'PATH':'/usr/bin:/bin'})
+        with patch.object(m.subprocess,'check_output',side_effect=source),patch.object(m,'case',side_effect=failed_case),patch.object(m.Diagnostics,'retain',retain):
+            self.assertEqual(m.qualify(args),1)
+        receipt=json.loads((output/'published-preservation.public.json').read_text())
+        diagnostic=json.loads((output/'published-preservation-diagnostics.public.json').read_text())
+        self.assertEqual(receipt['failure']['category'],'ASSERTION_FAILED')
+        self.assertEqual(diagnostic['primary_failure']['category'],'ASSERTION_FAILED')
+        self.assertEqual(diagnostic['secondary_failure']['category'],'OS_ERROR')
+        event=next(e for e in diagnostic['events'] if e.get('outcome')=='COMMAND_NONZERO')
+        self.assertEqual(event['exit_code'],7);self.assertEqual(event['status'],'ERROR')
+        self.assertFalse(diagnostic['complete'])
+        self.assertTrue(receipt['cleanup']['owned_runtime_home_credentials_scratch_removed'])
+        self.assertNotIn('SECRET',json.dumps(diagnostic)+json.dumps(receipt))
+
+    def test_success_and_expected_negative_keep_check_semantics_with_retention_fault(self):
+        self.original_retain=self.d.retain
+        for check,code in ((True,0),(False,7)):
+            m.checkpoint('resume-command')
+            with patch.object(self.d,'retain',side_effect=self._retention_fault):
+                done=m.run([sys.executable,'-I','-c','print(\'{"status":"ERROR","token":"SECRET"}\'); raise SystemExit('+str(code)+')'],self.root,env={'PATH':'/usr/bin:/bin'},check=check)
+            self.assertEqual(done.returncode,code)
+            self.assertIsNone(self.d.document['primary_failure'])
+            self.assertEqual(self.d.document['secondary_failure']['category'],'OS_ERROR')
+            self.assertFalse(self.d.document['complete'])
 
     def test_workflow_upload_only_explicit_public_files(self):
         workflow=(SOURCE/'.github/workflows/ci.yml').read_text()

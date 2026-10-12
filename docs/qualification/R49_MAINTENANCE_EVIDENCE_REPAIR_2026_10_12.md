@@ -1,12 +1,16 @@
 # R49 bounded maintenance evidence repair
 
-Decision: `L3-R49-MAINTENANCE-EVIDENCE-REQUALIFICATION-20261012`.
-Assignment: `L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011`, r49 plan2.
-Formal correction budget: consumed3/max3/remaining0, each booked before source edits.
+Decision: `L3-R49-MAINTENANCE-EVIDENCE-REQUALIFICATION-20261012`;
+continuation `L3-R49-CORRECTION-ROUND4-PRIMARY-ERROR-RETENTION-20261012`.
+Assignment: `L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011`, r49 plan3.
+Formal correction budget: consumed4/max4/remaining0, each booked before edits.
 Round2 exact f54d6d2e4030f182bd4a3cfab63caba17bf5f1bf received full
-independent Quality/Security FAIL for post-cleanup capacity and write failure
-before child try/finally. Those reports remain preserved. Round3 is confined to
-closing these diagnostic findings; no fourth round or controller change.
+independent Quality/Security FAIL for cleanup capacity and pre-try write failure.
+Round3 exact08e7b1bd9f79941175a3603370acfcbee8c3d7b2 closed those two
+findings but received full independent FAIL for primary command failure lost
+when private output retention fails. All original reports remain preserved.
+Explicit round4 fixes only that remaining retention boundary; no automatic
+round5, controller correction or extra candidate matrix is authorized.
 R48 and earlier maintenance deliveries remain closed.
 
 ## Historical facts remain independent
@@ -47,10 +51,19 @@ No public release, user migration, signing, peer installation or live EP.
 Targeted fault controls execute the real diagnostic path and missed-boundary
 assertion, distinguish resume/preservation errors, verify red exit/cleanup,
 private retention/redaction/permissions/capacity, and preserve primary errors.
-Twelve focused regressions pass, including actual own process-group stop after
+Fifteen focused regressions pass, including actual own process-group stop after
 diagnostic acquisition write failure and qualifier-level cleanup overflow
 remaining red. Final completeness is checked after cleanup; diagnostic writes
 do not obstruct best-effort owned cleanup.
+
+The coupled new controls fail on the exact rejected round3 driver and pass on
+the repaired driver: actual nonzero command and actual unchanged60-second
+timeout plus injected output-retention failure retain the original primary
+category, safe actual exit/status (unknown exit for timeout), secondary OS_ERROR,
+red qualifier exit and owned cleanup. Success and check=False expected-negative
+commands keep their original result while missing evidence remains incomplete.
+Only the retention boundary is fault-injected; no raw payload crosses public
+JSON. Already observed primary failure is recorded before fallible persistence.
 
 Fresh full independent Quality/Security, one frozen candidate seven-case matrix,
 owning required CI, protected delivery and final readback remain open until
