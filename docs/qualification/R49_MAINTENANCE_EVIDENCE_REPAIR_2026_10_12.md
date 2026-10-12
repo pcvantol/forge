@@ -70,3 +70,37 @@ owning required CI, protected delivery and final readback remain open until
 actual results are recorded. Missing historic logs are not a reconstruction
 prerequisite under the decision. A new actual product/controller failure must
 retain the fault chain and stop for its exact owning scope; no retry-until-green.
+
+## Protected repair and observed hosted qualification
+
+Normal protected match-head squash PR281 delivered main
+`0527af93f7279fea6e512ab77d8e368fb6593bfc` (treec9d9b70d0215b34793756f6f77b4755f5198f0dd).
+The original repair branch/history remains retained.
+
+Actual hosted run38208948078/attempt1/job114678581033 SUCCESS on ubuntu24.04
+/Python3.14:1475 tests/2523.651s/five platform skips, all owning gates PASS.
+Checkout log proves testmergeee1b06668da60fcfe22625c70e4692d632eca3bf,
+head a44c34b801be7c28532e640556655f782678c518/base8547f5dcefde86715bbc4f95650d7a5c24f850d4,
+entire reviewed tree unchanged. The second and last candidate matrix is
+PRESERVATION_PRODUCER_PASS:all seven cases, four real durable crash boundaries
+/SIGKILL waits, expected tampered-positive FAIL, complete sanitized diagnostics
+and owned cleanup. [Original maintenance artifact](https://github.com/pcvantol/forge/actions/runs/38208948078/artifacts/11731487637).
+
+New hosted activity20PASS/all287 payload/version2.15/schema46/actual guard
+control/cleanup is a separately bound proof.
+[Original activity artifact](https://github.com/pcvantol/forge/actions/runs/38208948078/artifacts/11732197262).
+Official ZIPdigests, original typed workers/logs, parent receipts, source/tree,
+controller/driver and input bindings were downloaded and verified.
+
+The [machine-readable delivery record](forge-r49-maintenance-evidence-repair-delivery-2026-10-12.json)
+preserves exact observed facts, source4/4 and candidate matrix2/2, historical
+FAILs and TDE CANCELLED/UNAVAILABLE. No additional local matrix is run.
+Necessary ordinary merge/finalization/main CI is separately authorized under
+decisionL3-R49-MATRIX2-HOSTED-EXECUTION-CONTEXT-20261012.
+
+This nonempty NO_BUMP finalization still needs its own complete independent
+reviews, required CI and protected merge, followed by new exact-final-main
+maintenance/activity artifacts and current readback. Full R49 DoD remains open
+until those actual facts are recorded in the final external register. Original
+CI failure and closed predecessors stay unchanged; no historical cause is
+reconstructed or former evidence renamed to new main.
