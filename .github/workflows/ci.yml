@@ -420,5 +420,7 @@ jobs:
         if: always()
         with:
           name: forge-published-preservation-${{ github.sha }}
-          path: ${{ runner.temp }}/forge-published-preservation/published-preservation.public.json
+          path: |
+            ${{ runner.temp }}/forge-published-preservation/published-preservation.public.json
+            ${{ runner.temp }}/forge-published-preservation/published-preservation-diagnostics.public.json
           if-no-files-found: ignore
