@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "assignment_id": "L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011",
+  "revision": "r49/plan3",
+  "decision_id": "L3-R49-MATRIX2-HOSTED-EXECUTION-CONTEXT-20261012",
+  "version_selection": {
+    "classification": "NO_BUMP",
+    "product_version": "2.15.0",
+    "runtime_schema": 46,
+    "reason": "qualification/CI/tests/documentary delta; all292 wheel members byte-identical"
+  },
+  "budgets": {
+    "source_corrections": {
+      "consumed": 4,
+      "max": 4,
+      "remaining": 0
+    },
+    "repair_candidate_matrices": {
+      "consumed": 2,
+      "max": 2,
+      "remaining": 0
+    },
+    "ordinary_delivery_CI": "Authorized distinct standard merge/finalization/main runs; no extra diagnostic retries"
+  },
+  "protected_repair": {
+    "pr": 281,
+    "reviewed_head": "a44c34b801be7c28532e640556655f782678c518",
+    "reviewed_tree": "c9d9b70d0215b34793756f6f77b4755f5198f0dd",
+    "protected_main": "0527af93f7279fea6e512ab77d8e368fb6593bfc",
+    "merged_at": "2026-10-12T07:08:25Z",
+    "method": "normal protected match-head squash; no bypass"
+  },
+  "independent_reviews": {
+    "scope": "COMPLETE entire four-file repair delta",
+    "quality": "PASS",
+    "security": "PASS",
+    "private_original_reports": "retained with hashmanifest; not published"
+  },
+  "qualification": {
+    "run": 38208948078,
+    "attempt": 1,
+    "job": 114678581033,
+    "runner": "ubuntu-24.04",
+    "python": "3.14",
+    "head": "a44c34b801be7c28532e640556655f782678c518",
+    "base": "8547f5dcefde86715bbc4f95650d7a5c24f850d4",
+    "actual_checkout": "ee1b06668da60fcfe22625c70e4692d632eca3bf",
+    "actual_tree": "c9d9b70d0215b34793756f6f77b4755f5198f0dd",
+    "checkout_log_and_entire_reviewed_tree_verified": true,
+    "CI": "SUCCESS",
+    "suite": {
+      "tests": 1475,
+      "seconds": 2523.651,
+      "platform_skips": 5
+    },
+    "maintenance_regressions": {
+      "tests": 88,
+      "seconds": 13.562
+    },
+    "maintenance": {
+      "run": 38208948078,
+      "artifact_id": 11731487637,
+      "url": "https://github.com/pcvantol/forge/actions/runs/38208948078/artifacts/11731487637",
+      "source": "ee1b06668da60fcfe22625c70e4692d632eca3bf",
+      "tree": "c9d9b70d0215b34793756f6f77b4755f5198f0dd",
+      "result": "PRESERVATION_PRODUCER_PASS",
+      "cases": 7,
+      "expected_negative_FAIL": 1,
+      "all_four_actual_boundaries_and_signals_verified": true,
+      "diagnostic_complete": true,
+      "original_controller_driver_hashes_verified": true,
+      "cleanup": true,
+      "zip_digest": "sha256:5d22726ef01ee4036dd1800fcef1206051d938e64a2acdc8ae0c778c4b628c68",
+      "receipt_sha256": "e5443a86491f37a4c0ceee400ecee58b4944ff4ab3a64e8ecbe92505d32823e5",
+      "diagnostic_sha256": "3095c7d023c46e05f04f2e65b85c0ba183074848ec731e5ea7558a57f39a1546",
+      "immutable_artifact_binding": {
+        "installed_source": "ebc43dc12da27353f85c991a26da9852aa790f05",
+        "installed_artifact_digest": "sha256:b62bf5f7a1d937f5224ef941a3dea3e961d28b67d9206fd89b644153aea502f1",
+        "product_source": "c8833ffa4754800de451cce94b109ef1ad07123f",
+        "wheel_sha256": "sha256:7e4b6cf2bd4544865ca980ff9c5c0f7e4b104cd9a47f11dc6d1e3e944e1942c0",
+        "qualification_receipt_sha256": "sha256:51017bb17faa3d2568e457360d54b873deddbf59eeedb86310b4cb56e1345a76"
+      }
+    },
+    "activity": {
+      "run": 38208948078,
+      "artifact_id": 11732197262,
+      "url": "https://github.com/pcvantol/forge/actions/runs/38208948078/artifacts/11732197262",
+      "zip_digest": "sha256:2904d28fa2446f1a8152598cf0d1a8aaed0502630dfc998b1cc8469151c936e4",
+      "receipt_sha256": "ed706ee78e18e8202e76209bd83668cde7fea4ed19c2cffaea99733d39d89237",
+      "source": "ee1b06668da60fcfe22625c70e4692d632eca3bf",
+      "tree": "c9d9b70d0215b34793756f6f77b4755f5198f0dd",
+      "same_reviewed_tree": true,
+      "result": "SCOPED_WORKSET_ACTIVITY_PASS",
+      "tests": 20,
+      "wheel_sha256": "09257d8ef23e4b6daacbdf43110473bb06622fbf4755eda6d86c34dfe030005c",
+      "runtime": {
+        "product_version": "2.15.0",
+        "schema_version": "46"
+      },
+      "all_payload": 287,
+      "actual_guard_control_detected": true,
+      "cleanup": true,
+      "raw_worker_and_log_hashes_verified": true
+    }
+  },
+  "history_preserved": [
+    {
+      "run": 38166079653,
+      "result": "FAILED",
+      "cause": "UNESTABLISHED; private historical diagnostic not retained"
+    },
+    {
+      "local_diagnostic": "LOCAL_ONECASE_PASS_NOT_CI_RECOVERY"
+    },
+    {
+      "first_candidate_matrix": "FAILED_PROCESS_INVENTORY_DENIED",
+      "receipt_sha256": "2e22d9fb9ab28968779aa7a786893bcd71465d6e5636521a60ca9ab57c83fb77",
+      "public_diagnostic_sha256": "bdd3350a875b1ad77b172a86df2bb9dd83c9ee6daeed169fbd48fad01d2498c1"
+    },
+    {
+      "round2_head": "f54d6d2e4030f182bd4a3cfab63caba17bf5f1bf",
+      "full_independent_pair": "FAIL; original reports retained"
+    },
+    {
+      "round3_head": "08e7b1bd9f79941175a3603370acfcbee8c3d7b2",
+      "full_independent_pair": "FAIL; original reports retained"
+    }
+  ],
+  "unchanged_boundaries": {
+    "controller_sha256": "1b27fa4b985b3f731f4e169b56d9ca880a6aefe0acbc8f734f628ab02df9daf1",
+    "driver_sha256": "a6a38fbc887d36d90be768e0d45e46afebdd30d011b2187d6063313c4657dd00",
+    "original_assertions_AST_identical": 22,
+    "product_and_package_source_files_identical": 298,
+    "R48_and_predecessors": "CLOSED",
+    "peer_scopes_pins_budgets": "UNCHANGED",
+    "live_EP_user_installation_signing_public_release": "NOT_AUTHORIZED"
+  },
+  "TDE": {
+    "run": 38208948205,
+    "status": "CANCELLED_UNAVAILABLE",
+    "policy_PASS": false
+  },
+  "completion_boundary": {
+    "normal_nonempty_finalization": "this documentary candidate; independent reviews/CI/protected merge still required",
+    "new_exact_final_main_gate_artifact_readback": "required after protected finalization; actual facts recorded in final external register",
+    "R49_full_DoD": "OPEN; no future SHA/PASS/closure fabricated"
+  }
+}
