@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "assignment_id": "L3-PROJECT-BOOTSTRAP-BASELINE-RENDER-V1-20261012",
+  "revision": "R50/plan1",
+  "state": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
+  "source": {
+    "base": "989132660997909e74800ddc8648be11262be8d4",
+    "reviewed_head": "3f2df68b9ca37e2b3a2f2916b85857d14f15c26a",
+    "reviewed_tree": "19eaee0286a0f721baa4827203f1b3e0db180613",
+    "pr": 283,
+    "protected_main": "c5a249cca8e0aff2a38cac542b0f739becdb8b5a",
+    "merged_at": "2026-10-12T18:14:24Z"
+  },
+  "version": {
+    "product": "2.16.0",
+    "runtime_schema": 46,
+    "operation": "forge-r50-project-bootstrap-20261012",
+    "finalization": "NO_BUMP"
+  },
+  "reviews": {
+    "quality": {
+      "verdict": "CONTENT_PASS",
+      "source": "3f2df68b9ca37e2b3a2f2916b85857d14f15c26a",
+      "sha256": "ffddca82a2205e28a86ed9be727e4f45252e7f23b0bdc85bb748fe806cbec310",
+      "scope": "complete selected delta including existing qualifier integration"
+    },
+    "security": {
+      "verdict": "CONTENT_PASS",
+      "source": "3f2df68b9ca37e2b3a2f2916b85857d14f15c26a",
+      "sha256": "94f3227013fc8bb2b877543ecc98651eb814f4897e227d34e6818c74add47726",
+      "scope": "complete selected delta including existing qualifier integration"
+    }
+  },
+  "counters": {
+    "corrections": 10,
+    "candidate_cycles": 8,
+    "maximum": "CONTENT_BOUNDED_NO_ADMINISTRATIVE_CAP",
+    "predecessors": "CLOSED unchanged"
+  },
+  "historical_failure": {
+    "run": 38266259991,
+    "result": "FAIL",
+    "tests": 1496,
+    "skips": 5,
+    "offline": "NOT_STARTED",
+    "reason": "filesystem enumeration embedded mapping order; causal RED/GREEN retained"
+  },
+  "open": [
+    "nonempty independently reviewed finalization, own required CI and protected merge",
+    "NEW exact-final-main CI/installed/offline artifact proof",
+    "different effective environment replay",
+    "current readback and owned cleanup; terminal CLOSED external register"
+  ],
+  "candidate_installed": {
+    "run": 38279274827,
+    "artifact_id": 11762738681,
+    "url": "https://github.com/pcvantol/forge/actions/runs/38279274827/artifacts/11762738681",
+    "source": "fb8fcc5e4d4ab21c62a4e953ffae31e4afb7c59e",
+    "tree": "19eaee0286a0f721baa4827203f1b3e0db180613",
+    "result": "PROJECT_BOOTSTRAP_OFFLINE_PASS",
+    "tests": 41,
+    "wheel_sha256": "0112065acccb4611e94585f6c3183474265809d5bd18658807b88c99d32fb3b2",
+    "version": "2.16.0",
+    "committed_source_wheel_installed_payloads": 308,
+    "source_entrypoints_bound": true,
+    "diagnostic_complete": true,
+    "owned_groups_readers_waited": true,
+    "cleanup": true,
+    "artifact_zip_digest": "sha256:869657d7f9a8c0da05eee4a06b484afcd4676128c4999e45cd837df93be96172",
+    "receipt_sha256": "04606d1f4100b4abeb77df28499ffe1ec8af38bdec8e49d7c24c0bb12936305d",
+    "bootstrap_payload": {
+      "forge/project_bootstrap/__init__.py": "f355434545b8c72aaf39917d0ca79c3adae54cbed8b77cd384ff848d6e8080d8",
+      "forge/project_bootstrap/assets/baseline-lock.schema.json": "977646e0e6a1f265ed737fc88c6a27b54616359ba77dbe3a35beaf8c90ec0a8c",
+      "forge/project_bootstrap/assets/capability.json": "5b10efd1b2c00b61f5229dcc94a70638fe7be68b4654a6ef03cbb74e2fce6bd8",
+      "forge/project_bootstrap/assets/capability.schema.json": "090d889386568006aa3c8d60d5ec4907b22a25ded1f11f99c6dd0b61e58c1708",
+      "forge/project_bootstrap/assets/catalog.json": "757e9c0bc8a7c646badb5c0ae0c6dd024174f4d079b7390a6517ee78da0f375f",
+      "forge/project_bootstrap/assets/catalog.schema.json": "45c42e79959a3f1b270c82c248cded311dac7df92242dc0101a1aee5c0d45785",
+      "forge/project_bootstrap/assets/dag.schema.json": "25149423d7b7861c174648b70f8c49d5d8e246db4c82faac56f5b5bf3063e4cb",
+      "forge/project_bootstrap/assets/governance.schema.json": "6280520ab0924481b758b68afbc8d1217f6d8641c3f817e7d1521f463afeb86a",
+      "forge/project_bootstrap/assets/input.schema.json": "8e35d9761676001ff252e8eb41bc2a3edc62c0b318f13b56ee416a795c4bffa2",
+      "forge/project_bootstrap/assets/manifest.schema.json": "b2dc213b977e370cc265980380b2f83c607943f1fecb204c7ccc851432ad3c14",
+      "forge/project_bootstrap/assets/operation-proposal.schema.json": "8697674152adb2d1222f71d3288edd7e1d76c8c79e105d3d564ea64c531b3ee9",
+      "forge/project_bootstrap/assets/project-contract.schema.json": "e2d43fad5b139b73914b7853cef3c9d68c129a3f945b3b96f57571c7dbd066a8",
+      "forge/project_bootstrap/assets/project.schema.json": "6041405ef97b6b22d0c92a2275dbcd8a11906b95857fae6a191946b059d1f66f",
+      "forge/project_bootstrap/assets/render_core.py": "a7a16db4d735d9411ff3a3c7997d8aff82be2d4b6f2059aa56bf250b7e104536",
+      "forge/project_bootstrap/assets/safe_io.py": "14f42246d37e888759eb561443ed5e053cdf5daa5866b1e5aae99f99c9f00324",
+      "forge/project_bootstrap/assets/schema.py": "df6e407b8604d69db8403143e749c78680f2b7458b95950aa404b0c15d14f7f3",
+      "forge/project_bootstrap/assets/validate.py": "3ce4eca67c659d65ea2df70439d7f61bc8e4eb16b3d4b64b397d7fc3bdc16ae2",
+      "forge/project_bootstrap/assets/validation.yml": "d0644592ae5d9ef31a041854755349541deb98e18ffbb3cda6b3ee1579947cab",
+      "forge/project_bootstrap/cli.py": "84e34dfcc2aafe653eb8efcf948ea2a2c14b202321208df78fe9a3957a42b441",
+      "forge/project_bootstrap/schema.py": "df6e407b8604d69db8403143e749c78680f2b7458b95950aa404b0c15d14f7f3",
+      "forge/project_bootstrap/service.py": "b1f7d55aafae3b7ebfeaf1ec6e4c4c0f9edfcb1e1708665e459573f35ca7cd79"
+    },
+    "network_measurement_scope": "audited installed product entrypoint workers; trusted portable/console source has no network code"
+  },
+  "hosted_followup_failure": {
+    "run": 38273178088,
+    "result": "FAIL",
+    "tests": 1497,
+    "skips": 5,
+    "seconds": 2570.512,
+    "offline": "NOT_STARTED",
+    "cause": "old expected inventory excluded declared validation.yml; committed package-profile exact inventory fix and causal controls retained"
+  },
+  "candidate_CI": {
+    "run": 38279274827,
+    "attempt": 1,
+    "job": 114912289304,
+    "conclusion": "SUCCESS",
+    "actual_checkout": "fb8fcc5e4d4ab21c62a4e953ffae31e4afb7c59e",
+    "tree": "19eaee0286a0f721baa4827203f1b3e0db180613",
+    "suite": {
+      "tests": 1498,
+      "seconds": 2697.385,
+      "platform_skips": 5
+    },
+    "owning_gates": "all completed SUCCESS",
+    "coverage": "all8 new executable product files strictly >80.2%",
+    "CodeQL": "SUCCESS",
+    "canonical_versioning": "SUCCESS",
+    "TDE": "CANCELLED_UNAVAILABLE_NOT_PASS; observe-only nonblocking"
+  },
+  "consumer_boundary": {
+    "contract": "pb-render/1.0",
+    "baseline": "portable-docs/1.0.0",
+    "renderer": "1.0.0",
+    "state": "RENDERED_PROPOSAL or VALIDATED_PROPOSAL only",
+    "profiles": [
+      "authority or child",
+      "GENESIS LOCAL_POSIX",
+      "MANAGED GITHUB_DOCUMENTS"
+    ],
+    "language": "en",
+    "product_code": "NO_PRODUCT_CODE DOCUMENT_ONLY",
+    "license": "UNDECIDED",
+    "no_effects": [
+      "target repository mutation",
+      "provisioning",
+      "identity reservation or remote owner verification",
+      "Business or Architecture approval",
+      "automatic Mission",
+      "EP or Workspace invocation"
+    ],
+    "parent_scope": "PB-F0 plus first portable PB-F1 subset; all future profiles/PB-F2..FQ remain open"
+  },
+  "handoff": {
+    "mapping": "docs/architecture/PROJECT_BOOTSTRAP_PORTABLE_RENDER_V1.md",
+    "examples": [
+      "examples/project-bootstrap/authority-bundle.json",
+      "examples/project-bootstrap/child-bundle.json"
+    ],
+    "L2_L4": "concrete mapping and complete bundle links supplied; no general ACK or peer implementation gate; peer pins/scopes/budgets unchanged"
+  }
+}
