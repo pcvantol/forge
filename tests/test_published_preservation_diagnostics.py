@@ -128,6 +128,50 @@ class PreservationDiagnosticsTests(unittest.TestCase):
                 self.assertTrue(list((output/'retained-private').glob('*primary-failure*')))
                 self.assertNotIn('SECRET',json.dumps(receipt)+json.dumps(diagnostic))
 
+    def test_actual_owned_child_stopped_when_acquisition_write_fails(self):
+        case=self.root/'running-child';case.mkdir()
+        children=[]
+        original=m.subprocess.Popen
+        def launch(*a,**kw):
+            child=original(*a,**kw);children.append(child);return child
+        try:
+            with patch.object(m.subprocess,'Popen',side_effect=launch), patch.object(self.d,'write',side_effect=OSError('SECRET')), patch.object(m.time,'monotonic',side_effect=[0,31]):
+                with self.assertRaises(AssertionError):m.crash(['/bin/sleep','30'],case,'BACKED_UP',{'PATH':'/usr/bin:/bin'})
+            self.assertEqual(len(children),1)
+            self.assertIsNotNone(children[0].poll())
+            self.assertEqual(children[0].returncode,-9)
+            with self.assertRaises(ProcessLookupError):os.killpg(children[0].pid,0)
+            self.assertFalse(self.d.document['complete'])
+            self.assertEqual(self.d.document['primary_failure']['substage'],'crash-acquisition')
+            self.assertTrue(list(self.d.private.glob('*interrupted-child*')))
+        finally:
+            for child in children:
+                if child.poll() is None:os.killpg(child.pid,9);child.wait(timeout=5)
+
+    def test_final_cleanup_capacity_exhaustion_returns_red(self):
+        m.ACTIVE_DIAGNOSTIC=None
+        output=self.root/'capacity-qualifier'
+        args=SimpleNamespace(source_revision='a'*40,output_dir=output,inputs=self.root,fetch_inputs=False)
+        for version in ('2.7.39','2.8.1'):
+            (self.root/('forge_autonomy-'+version+'-py3-none-any.whl')).write_bytes(b'pin')
+        binding=dict(m.controller().PRESERVATION_ARTIFACT_BINDING)
+        binding['installed_artifact_digest']=binding['wheel_sha256']='sha256:'+m.digest(self.root/'forge_autonomy-2.8.1-py3-none-any.whl')
+        def fake_source(cmd,**kw):
+            if cmd[1]=='show':return (m.CONTROLLER if cmd[-1].endswith('update_installed_forge.py') else Path(m.__file__)).read_bytes()
+            return 'b'*40+'\n'
+        def fixture_case(*args):
+            # Only qualifier capacity fault injection; no actual matrix product effects.
+            m.ACTIVE_DIAGNOSTIC.document['events']=[{}]*(m.MAX_DIAGNOSTIC_EVENTS-2)
+            return {'result':'PASS'}
+        with patch.object(m.subprocess,'check_output',side_effect=fake_source), patch.object(m,'controller',return_value=SimpleNamespace(PRESERVATION_ARTIFACT_BINDING=binding)), patch.object(m,'case',side_effect=fixture_case), patch.object(m,'denials',side_effect=fixture_case):
+            self.assertEqual(m.qualify(args),1)
+        receipt=json.loads((output/'published-preservation.public.json').read_text())
+        diagnostic=json.loads((output/'published-preservation-diagnostics.public.json').read_text())
+        self.assertEqual(receipt['result'],'FAIL')
+        self.assertEqual(receipt['diagnostic_retention'],'INCOMPLETE')
+        self.assertFalse(diagnostic['complete'])
+        self.assertTrue(receipt['cleanup']['owned_runtime_home_credentials_scratch_removed'])
+
     def test_workflow_upload_only_explicit_public_files(self):
         workflow=(SOURCE/'.github/workflows/ci.yml').read_text()
         section=workflow.split('name: forge-published-preservation-${{ github.sha }}')[1]

@@ -123,7 +123,12 @@ class Diagnostics:
 
 def checkpoint(substage, **values):
     if ACTIVE_DIAGNOSTIC is not None:
-        ACTIVE_DIAGNOSTIC.record(substage, **values)
+        try:
+            ACTIVE_DIAGNOSTIC.record(substage, **values)
+        except OSError as error:
+            ACTIVE_DIAGNOSTIC.document['complete'] = False
+            ACTIVE_DIAGNOSTIC.document['retention_error'] = 'EVIDENCE_WRITE_FAILED'
+            ACTIVE_DIAGNOSTIC.failure(error, secondary=ACTIVE_DIAGNOSTIC.document['primary_failure'] is not None)
 
 
 def fetch_inputs(root):
@@ -239,8 +244,8 @@ def crash(argv, root, phase, env):
     with (root/'interrupted-child.private.log').open('w') as log:
         child = subprocess.Popen(argv, cwd=root, env=env, stdout=log, stderr=log, start_new_session=True)
         hit = None
-        checkpoint('crash-acquisition', requested_phase=phase, pid=child.pid, pgid=child.pid)
         try:
+            checkpoint('crash-acquisition', requested_phase=phase, pid=child.pid, pgid=child.pid)
             deadline = time.monotonic() + 30
             while child.poll() is None and time.monotonic() < deadline:
                 try:
@@ -278,8 +283,12 @@ def crash(argv, root, phase, env):
                 checkpoint('crash-controlled-stop', signal=int(signal.SIGKILL), signal_waited=True, exit_code=child.returncode, pid=child.pid, pgid=child.pid)
             if ACTIVE_DIAGNOSTIC is not None:
                 log.flush()
-                with (root/'interrupted-child.private.log').open('rb') as evidence:
-                    ACTIVE_DIAGNOSTIC.retain('interrupted-child', evidence.read(MAX_PRIVATE_LOG + 1))
+                try:
+                    with (root/'interrupted-child.private.log').open('rb') as evidence:
+                        ACTIVE_DIAGNOSTIC.retain('interrupted-child', evidence.read(MAX_PRIVATE_LOG + 1))
+                except OSError as error:
+                    ACTIVE_DIAGNOSTIC.document['complete'] = False
+                    ACTIVE_DIAGNOSTIC.failure(error, secondary=ACTIVE_DIAGNOSTIC.document['primary_failure'] is not None)
     return hit
 
 
@@ -450,6 +459,11 @@ def qualify(args):
         except OSError:
             receipt['result'] = 'FAIL'
             receipt['diagnostic_retention'] = 'INCOMPLETE'
+        if not diagnostic.document['complete']:
+            receipt['result'] = 'FAIL'
+            receipt['diagnostic_retention'] = 'INCOMPLETE'
+            if diagnostic.document['primary_failure'] is not None:
+                receipt.setdefault('failure', diagnostic.document['primary_failure'])
         ACTIVE_DIAGNOSTIC = None
     (root/'published-preservation.public.json').write_text(json.dumps(receipt,indent=2)+'\n')
     print(json.dumps({'result':receipt['result'],'case_count':len(receipt['cases']),'failure':receipt.get('failure')}))

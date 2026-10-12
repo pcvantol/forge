@@ -2,7 +2,11 @@
 
 Decision: `L3-R49-MAINTENANCE-EVIDENCE-REQUALIFICATION-20261012`.
 Assignment: `L3-SCOPED-WORKSET-ACTIVITY-READ-V1-20261011`, r49 plan2.
-Formal correction budget: consumed2/max3/remaining1, booked before source edits.
+Formal correction budget: consumed3/max3/remaining0, each booked before source edits.
+Round2 exact f54d6d2e4030f182bd4a3cfab63caba17bf5f1bf received full
+independent Quality/Security FAIL for post-cleanup capacity and write failure
+before child try/finally. Those reports remain preserved. Round3 is confined to
+closing these diagnostic findings; no fourth round or controller change.
 R48 and earlier maintenance deliveries remain closed.
 
 ## Historical facts remain independent
@@ -43,7 +47,12 @@ No public release, user migration, signing, peer installation or live EP.
 Targeted fault controls execute the real diagnostic path and missed-boundary
 assertion, distinguish resume/preservation errors, verify red exit/cleanup,
 private retention/redaction/permissions/capacity, and preserve primary errors.
-Full independent Quality/Security, one frozen candidate seven-case matrix,
+Twelve focused regressions pass, including actual own process-group stop after
+diagnostic acquisition write failure and qualifier-level cleanup overflow
+remaining red. Final completeness is checked after cleanup; diagnostic writes
+do not obstruct best-effort owned cleanup.
+
+Fresh full independent Quality/Security, one frozen candidate seven-case matrix,
 owning required CI, protected delivery and final readback remain open until
 actual results are recorded. Missing historic logs are not a reconstruction
 prerequisite under the decision. A new actual product/controller failure must
