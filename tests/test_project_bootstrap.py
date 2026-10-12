@@ -17,7 +17,7 @@ from forge.project_bootstrap import cli, schema, service
 class BootstrapTests(unittest.TestCase):
     def setUp(self):
         self.value = schema.load_json(Path('examples/project-bootstrap/authority-input.json').read_bytes())
-        self.tmp = tempfile.TemporaryDirectory(prefix='forge-pb-test-', dir='/private/tmp')
+        self.tmp = tempfile.TemporaryDirectory(prefix='forge-pb-test-', dir=str(Path(tempfile.gettempdir()).resolve()))
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
 
