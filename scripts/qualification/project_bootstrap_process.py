@@ -56,11 +56,13 @@ def capture(args: list[str], *, case: str, output: Path, cwd: Path, env: dict[st
             primary = {'category':'COMMAND_NONZERO' if process.returncode else 'UNEXPECTED_SUCCESS',
                        'observed_exit':process.returncode}
     finally:
+        # The process group is ours even when its session leader has already exited.
+        # Stop inherited-pipe descendants before joining readers; leader-only wait is insufficient.
+        try:
+            os.killpg(process.pid,signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         if process.poll() is None:
-            try:
-                os.killpg(process.pid,signal.SIGKILL)
-            except ProcessLookupError:
-                pass
             process.wait(timeout=5)
         for worker in workers:
             worker.join(timeout=5)
@@ -68,6 +70,8 @@ def capture(args: list[str], *, case: str, output: Path, cwd: Path, env: dict[st
               'primary_failure':primary,'secondary_failures':[],
               'capture_complete':not any(truncated) and not read_errors and not any(w.is_alive() for w in workers),
               'owned_process_waited':process.poll() is not None,
+              'owned_process_group_stop_requested':True,
+              'reader_threads_joined':not any(w.is_alive() for w in workers),
               'log_bytes':[len(b) for b in buffers],'truncated':any(truncated)}
     if read_errors:
         report['secondary_failures'].append({'stage':'capture','category':'READ_ERROR'})

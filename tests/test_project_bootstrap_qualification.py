@@ -66,3 +66,30 @@ class QualificationProcessTests(unittest.TestCase):
         (installed/'forge/core.py').write_bytes(b'changed install')
         with zipfile.ZipFile(self.root/'positive.whl') as archive:
             with self.assertRaises(ValueError):qualifier.verify_payload(archive,expected,installed)
+
+
+    def test_exited_leader_inherited_pipe_descendant_is_stopped(self):
+        import json
+        import signal
+        import time
+        marker=self.root/'owned-descendant.json'
+        code=("import json,os,subprocess,sys;from pathlib import Path; "
+              "p=subprocess.Popen([sys.executable,'-I','-c','import time;time.sleep(60)']); "
+              f"Path({str(marker)!r}).write_text(json.dumps({{'pid':p.pid,'pgid':os.getpgrp()}})); "
+              "print('leader exits',flush=True)")
+        started=time.monotonic()
+        try:
+            report,stdout,stderr=self.run_command(code,'owned-descendant')
+            self.assertLess(time.monotonic()-started,5)
+            self.assertTrue(report['capture_complete'])
+            self.assertTrue(report['owned_process_waited'])
+            self.assertTrue(report['reader_threads_joined'])
+            self.assertTrue(report['owned_process_group_stop_requested'])
+            self.assertIsNone(report['primary_failure']);self.assertEqual(report['actual_exit'],0)
+            self.assertIn(b'leader exits',stdout)
+        finally:
+            # Causal RED against the historical helper must also stop only its own fixture group.
+            if marker.exists():
+                identity=json.loads(marker.read_text())
+                try:os.killpg(identity['pgid'],signal.SIGKILL)
+                except ProcessLookupError:pass
