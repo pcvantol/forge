@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "mode",
+    "host_profile",
+    "actual_compliance",
+    "desired_checks",
+    "remote_controls"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "pb-render/1.0"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "GENESIS",
+        "MANAGED"
+      ]
+    },
+    "host_profile": {
+      "type": "string",
+      "enum": [
+        "LOCAL_POSIX",
+        "GITHUB_DOCUMENTS"
+      ]
+    },
+    "actual_compliance": {
+      "type": "string",
+      "const": "NOT_ASSESSED"
+    },
+    "desired_checks": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "type": "string",
+        "const": "portable-documents"
+      }
+    },
+    "remote_controls": {
+      "type": "string",
+      "enum": [
+        "NOT_APPLICABLE_GENESIS",
+        "PROPOSED_ONLY"
+      ]
+    }
+  }
+}

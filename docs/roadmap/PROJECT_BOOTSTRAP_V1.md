@@ -1,6 +1,6 @@
 # Project bootstrap V1 — Forge implementation roadmap
 
-**Owner:** Forge. **Status:** all implementation/qualification nodes PLANNED. **NO_BUMP.**
+**Owner:** Forge. **Status:** R50 selects PB-F0 plus portable PB-F1 proposal subset; remaining execution/qualification nodes PLANNED. **NO_BUMP.**
 This scoped roadmap concretizes L1/L1-R in the [canonical strategic roadmap](../../knowledge/bootstrap/10_ROADMAP.md), consumes L0 baseline enforcement and F2/FH services, and does not replace those programmes. Design closure is not implementation closure of FWV1-G002/G003/G004/G010.
 
 Read the [architecture and artifact contract](../architecture/PROJECT_BOOTSTRAP_AND_ARTIFACT_MANIFEST_V1.md) and [40 qualification families](../architecture/PROJECT_BOOTSTRAP_QUALIFICATION_V1.md). The [JSON DAG](project-bootstrap-v1.json) is a non-executable delivery index. It contains only Forge work; peer nodes below are evidence requirements owned and scheduled by peers.
@@ -24,3 +24,7 @@ EP PB-EQ consumes Forge request fixtures/contracts, not PB-FQ; Workspace PB-WQ c
 Parallel lanes: PB-F1 deterministic rendering and EP inventory/ledger can advance after their contract alignment. Genesis PB-F4 and Managed PB-F5 independently qualify their modes. Promotion joins both; Workspace is optional for headless qualification. Full GitHub provisioning remains online, while installed baseline availability is proven without access to development repositories.
 
 No runtime, package version, active policy, existing project, executable programme graph or current Mission-3 acceptance is changed by this design. Next work must be a separately authorized bounded implementation increment with fresh source/installed capability evidence.
+
+## R50 portable proposal implementation
+
+[Portable render contract](../architecture/PROJECT_BOOTSTRAP_PORTABLE_RENDER_V1.md) maps the selected PB-F0/PB-F1 subset and actual CLI. Full PB-F1/remote profiles and PB-F2..FQ remain open. Protected delivery and exact-final-main installed/offline proof are recorded by the owning R50 delivery receipt; source availability alone is not installed PASS.

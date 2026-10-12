@@ -1,0 +1,15 @@
+{
+  "contract_version": "pb-render/1.0",
+  "capability": "PROJECT_BASELINE_RENDER",
+  "state": "PROPOSAL_ONLY",
+  "implemented": [
+    "catalog",
+    "validate-input",
+    "render",
+    "check-bundle"
+  ],
+  "effect": "OWN_NEW_EXPORT_ONLY",
+  "network": false,
+  "provisioning": false,
+  "mission": false
+}

@@ -1,0 +1,151 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "baseline",
+    "catalog_digest",
+    "assets",
+    "redistribution",
+    "qualification",
+    "upgrade"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "pb-render/1.0"
+    },
+    "baseline": {
+      "type": "string",
+      "const": "portable-docs/1.0.0"
+    },
+    "catalog_digest": {
+      "type": "string",
+      "pattern": "[0-9a-f]{64}"
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline-lock.schema.json",
+        "capability.json",
+        "capability.schema.json",
+        "catalog.schema.json",
+        "dag.schema.json",
+        "governance.schema.json",
+        "input.schema.json",
+        "manifest.schema.json",
+        "operation-proposal.schema.json",
+        "project-contract.schema.json",
+        "project.schema.json",
+        "render_core.py",
+        "safe_io.py",
+        "schema.py",
+        "validate.py",
+        "validation.yml"
+      ],
+      "properties": {
+        "baseline-lock.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "capability.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "capability.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "catalog.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "dag.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "governance.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "input.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "manifest.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "operation-proposal.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "project-contract.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "project.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "render_core.py": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "safe_io.py": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "schema.py": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "validate.py": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "validation.yml": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        }
+      }
+    },
+    "redistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "license",
+        "owner",
+        "scope",
+        "source"
+      ],
+      "properties": {
+        "license": {
+          "type": "string",
+          "const": "Apache-2.0"
+        },
+        "owner": {
+          "type": "string",
+          "const": "Forge maintainers"
+        },
+        "scope": {
+          "type": "string",
+          "const": "original portable-docs assets only; no product license selected"
+        },
+        "source": {
+          "type": "string",
+          "const": "pcvantol/forge"
+        }
+      }
+    },
+    "qualification": {
+      "type": "string",
+      "const": "CANDIDATE_BASELINE"
+    },
+    "upgrade": {
+      "type": "string",
+      "const": "EXPLICIT_ADOPTION_ONLY"
+    }
+  }
+}

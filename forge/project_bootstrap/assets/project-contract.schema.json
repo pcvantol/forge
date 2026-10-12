@@ -1,0 +1,107 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "baseline",
+    "input_digest",
+    "state",
+    "identity_reference",
+    "role",
+    "authority_contract_reference",
+    "validation",
+    "product_code_coverage",
+    "license_profile",
+    "approval"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "pb-render/1.0"
+    },
+    "baseline": {
+      "type": "string",
+      "const": "portable-docs/1.0.0"
+    },
+    "input_digest": {
+      "type": "string",
+      "pattern": "[0-9a-f]{64}"
+    },
+    "state": {
+      "type": "string",
+      "const": "RENDERED_PROPOSAL"
+    },
+    "identity_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "project_id",
+        "repository_id",
+        "authority_repository_id",
+        "owner_reference"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "PROVISIONAL_REFERENCE",
+            "OWNER_REGISTERED_REFERENCE"
+          ]
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "[a-z0-9][a-z0-9._-]*"
+        },
+        "repository_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "[a-z0-9][a-z0-9._-]*"
+        },
+        "authority_repository_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "[a-z0-9][a-z0-9._-]*"
+        },
+        "owner_reference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]+"
+        }
+      }
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "authority",
+        "child"
+      ]
+    },
+    "authority_contract_reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "validation": {
+      "type": "string",
+      "const": "bash scripts/validate.sh"
+    },
+    "product_code_coverage": {
+      "type": "string",
+      "const": "NOT_APPLICABLE_NO_PRODUCT_CODE"
+    },
+    "license_profile": {
+      "type": "string",
+      "const": "UNDECIDED"
+    },
+    "approval": {
+      "type": "string",
+      "const": "NOT_GRANTED"
+    }
+  }
+}

@@ -1,0 +1,313 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assets",
+    "authority_paths",
+    "baseline",
+    "common_paths",
+    "compatibility",
+    "contract_version",
+    "document_languages",
+    "implemented",
+    "managed_paths",
+    "planned",
+    "profiles",
+    "qualification",
+    "redistribution",
+    "renderer_version",
+    "roles",
+    "source_base_revision",
+    "source_assignment",
+    "profile_checks"
+  ],
+  "properties": {
+    "assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline-lock.schema.json",
+        "capability.json",
+        "capability.schema.json",
+        "catalog.schema.json",
+        "dag.schema.json",
+        "governance.schema.json",
+        "input.schema.json",
+        "manifest.schema.json",
+        "operation-proposal.schema.json",
+        "project-contract.schema.json",
+        "project.schema.json",
+        "render_core.py",
+        "safe_io.py",
+        "schema.py",
+        "validate.py",
+        "validation.yml"
+      ],
+      "properties": {
+        "baseline-lock.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "capability.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "capability.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "catalog.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "dag.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "governance.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "input.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "manifest.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "operation-proposal.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "project-contract.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "project.schema.json": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "render_core.py": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "safe_io.py": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "schema.py": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "validate.py": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        },
+        "validation.yml": {
+          "type": "string",
+          "pattern": "[0-9a-f]{64}"
+        }
+      }
+    },
+    "authority_paths": {
+      "type": "array",
+      "const": [
+        "engineering/project.json",
+        "docs/product/VISION.md",
+        "docs/architecture/ARCHITECTURE.md",
+        "docs/architecture/decisions/README.md",
+        "docs/roadmap/ROADMAP.md",
+        "docs/roadmap/capability-dag.json"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "baseline": {
+      "type": "string",
+      "const": "portable-docs/1.0.0"
+    },
+    "common_paths": {
+      "type": "array",
+      "const": [
+        "engineering/render-input.json",
+        ".engineering-platform/repository.json",
+        "engineering/project-contract.json",
+        "engineering/baseline.lock.json",
+        "engineering/repository-governance.json",
+        "README.md",
+        "BOOTSTRAP.md",
+        "AGENTS.md",
+        ".gitignore",
+        ".gitattributes",
+        "docs/engineering/VALIDATION.md",
+        "docs/engineering/HANDOFF.md",
+        "scripts/validate.sh"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "EP_B8R",
+        "Forge_F2_FH",
+        "HOB_F02"
+      ],
+      "properties": {
+        "EP_B8R": {
+          "type": "string",
+          "const": "repository-attachment/1.0 unchanged; references not registration"
+        },
+        "Forge_F2_FH": {
+          "type": "string",
+          "const": "own local application service; no HTTP provisioning capability"
+        },
+        "HOB_F02": {
+          "type": "string",
+          "const": "proposed preview adapter; no binding or approval"
+        }
+      }
+    },
+    "contract_version": {
+      "type": "string",
+      "const": "pb-render/1.0"
+    },
+    "document_languages": {
+      "type": "array",
+      "const": [
+        "en"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "implemented": {
+      "type": "array",
+      "const": [
+        "catalog",
+        "validate-input",
+        "render",
+        "check-bundle"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "managed_paths": {
+      "type": "array",
+      "const": [
+        ".github/workflows/validation.yml",
+        ".github/PULL_REQUEST_TEMPLATE.md"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "planned": {
+      "type": "array",
+      "const": [
+        "InspectProjectTarget",
+        "ApproveBootstrapPlan",
+        "ApplyProjectBootstrap",
+        "ReconcileBootstrapOperation"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "const": [
+        "LOCAL_POSIX",
+        "GITHUB_DOCUMENTS"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "qualification": {
+      "type": "string",
+      "const": "CANDIDATE_BASELINE"
+    },
+    "redistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "license",
+        "owner",
+        "scope",
+        "source"
+      ],
+      "properties": {
+        "license": {
+          "type": "string",
+          "const": "Apache-2.0"
+        },
+        "owner": {
+          "type": "string",
+          "const": "Forge maintainers"
+        },
+        "scope": {
+          "type": "string",
+          "const": "original portable-docs assets only; no product license selected"
+        },
+        "source": {
+          "type": "string",
+          "const": "pcvantol/forge"
+        }
+      }
+    },
+    "renderer_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "roles": {
+      "type": "array",
+      "const": [
+        "authority",
+        "child"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_base_revision": {
+      "type": "string",
+      "const": "989132660997909e74800ddc8648be11262be8d4"
+    },
+    "source_assignment": {
+      "type": "string",
+      "const": "L3-PROJECT-BOOTSTRAP-BASELINE-RENDER-V1-20261012"
+    },
+    "profile_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "LOCAL_POSIX",
+        "GITHUB_DOCUMENTS"
+      ],
+      "properties": {
+        "LOCAL_POSIX": {
+          "type": "array",
+          "const": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "GITHUB_DOCUMENTS": {
+          "type": "array",
+          "const": [
+            "portable-documents"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
