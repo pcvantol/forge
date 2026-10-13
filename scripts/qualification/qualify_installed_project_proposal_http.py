@@ -4,6 +4,8 @@ from datetime import UTC,datetime,timedelta
 from hashlib import sha256
 from pathlib import Path
 import argparse
+import importlib.util
+import sys
 import json
 import os
 import secrets
@@ -17,12 +19,17 @@ from urllib.error import HTTPError,URLError
 
 CONTRACT='forge-project-proposal-http/v1'
 SOURCE=Path(__file__).resolve().parents[2]
+spec=importlib.util.spec_from_file_location('proposal_capture',Path(__file__).with_name('project_bootstrap_process.py'))
+CAPTURE=importlib.util.module_from_spec(spec);spec.loader.exec_module(CAPTURE)
+COMMAND_COUNTER=0
 
 
 def command(python,args,root):
-    value=subprocess.run([str(python),'-I',*args],cwd=root,capture_output=True,timeout=20)
-    if value.returncode:raise RuntimeError('trusted setup command failed: '+value.stderr.decode()[:100])
-    return json.loads(value.stdout)
+    global COMMAND_COUNTER
+    COMMAND_COUNTER+=1
+    report,stdout,stderr=CAPTURE.capture([str(python),'-I',*args],case='setup-'+str(COMMAND_COUNTER),output=root.parent,cwd=root,env={'PATH':str(python.parent)+':/usr/bin:/bin','HOME':str(root)},expected=0)
+    if not report['capture_complete'] or report['primary_failure']:raise RuntimeError('trusted setup command or capture failed')
+    return json.loads(stdout)
 
 
 def call(port,token,method,path,body=None):
@@ -56,6 +63,10 @@ def server(python,root):
             process.terminate()
             try:process.wait(timeout=5)
             except subprocess.TimeoutExpired:process.kill();process.wait(timeout=5)
+            log.flush()
+            raw=(root/'server.private.log').read_bytes()
+            if len(raw)>65536:raise RuntimeError('private server log exceeds finite capture')
+            (root.parent/('private-server-'+str(process.pid)+'.log')).write_bytes(raw)
 
 
 def run(python,output):
