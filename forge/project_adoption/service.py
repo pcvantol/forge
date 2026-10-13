@@ -114,7 +114,7 @@ def preview(value: Any) -> dict[str, Any]:
             same_identity = False
         declared_identity_conflict = not same_identity
         source_conflict = source_conflict or declared_identity_conflict
-    context_paths = set().union(*(inv["context"][key] for key in ["staged_paths", "dirty_paths", "untracked_paths", "ignored_paths"]))
+    context_paths = {path.casefold() for key in ["staged_paths", "dirty_paths", "untracked_paths", "ignored_paths"] for path in inv["context"][key]}
     if identity_bytes_missing:
         decisions.append("EXISTING_IDENTITY_BYTES_NOT_SUPPLIED")
     if source_conflict:
@@ -148,7 +148,7 @@ def preview(value: Any) -> dict[str, Any]:
         if source_conflict or stale:
             stop(("EXISTING_IDENTITY_CONFLICT" if declared_identity_conflict else "IDENTITY_REFERENCE_CONFLICT") if source_conflict else "STALE_SUPPLIED_REVISION", True)
             continue
-        if path in context_paths and before["status"] == "ABSENT":
+        if path.casefold() in context_paths and before["status"] == "ABSENT":
             stop("ABSENCE_CONFLICTS_WITH_SUPPLIED_WORKTREE", True)
             continue
         if mapping and mapping["choice"] == "LINK_EXISTING":

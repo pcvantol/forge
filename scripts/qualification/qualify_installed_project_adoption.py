@@ -78,6 +78,26 @@ def sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def retain_receipt(output: Path, receipt: dict, primary: BaseException | None) -> None:
+    """Keep the primary qualification failure when secondary evidence I/O fails."""
+    try:
+        (output/'installed-project-adoption.public.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
+    except OSError as error:
+        receipt['diagnostic_complete'] = False
+        receipt['receipt_write_failure'] = {'category': type(error).__name__}
+        try:
+            _tool._process.retain(output/'installed-project-adoption.retention-failure.private.json',
+                                  (json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+        except OSError as secondary:
+            receipt['fallback_write_failure'] = {'category': type(secondary).__name__}
+            print(json.dumps({'qualification':receipt.get('qualification'), 'result':'FAIL',
+                              'primary_category':type(primary).__name__ if primary else None,
+                              'retention_failure':type(error).__name__, 'fallback_failure':type(secondary).__name__}),file=sys.stderr)
+        if primary is None:
+            raise
+        primary.add_note('Qualification receipt write failed: '+type(error).__name__)
+
+
 def run(args: argparse.Namespace) -> int:
     import forge
     from forge._version import canonical_version
@@ -113,6 +133,8 @@ def run(args: argparse.Namespace) -> int:
              'result':'FAIL','cases':[],'diagnostic_complete':True,'cleanup':False,'network_attempts':0,
              'guard_controls':'real socket, direct source and directory-descriptor source opens rejected before each installed worker',
              'boundary':'supplied synthetic observations only; no live EP inspection, target effects or Mission'}
+    primary = None
+    root = None
     try:
         with tempfile.TemporaryDirectory(prefix='forge-adoption-offline-',dir=output) as directory:
             root=Path(directory);input_file=root/'input.json'
@@ -161,7 +183,7 @@ def run(args: argparse.Namespace) -> int:
                 put(bind(case));target=root/status;child(status.lower()+'-preview',['preview','--input',str(input_file),'--export',str(target)])
                 row=next(x for x in json.loads((target/'proposal.json').read_text())['entries'] if x['artifact_path']=='docs/architecture/ARCHITECTURE.md')
                 assert row['operation']=='INSUFFICIENT_INFORMATION' and row['after']=={}
-            for label in ['existing-change','identical-keep','excluded-source','dirty-absence','ambiguous-vision','identity-bytes-missing','code-quality-claim']:
+            for label in ['existing-change','identical-keep','excluded-source','dirty-absence','casefold-dirty-absence','ambiguous-vision','identity-bytes-missing','code-quality-claim']:
                 case=copy.deepcopy(value)
                 doc=next(x for x in case['inventory']['documents'] if x['path']=='docs/architecture/ARCHITECTURE.md')
                 expected_operation='CONFLICT'
@@ -173,7 +195,7 @@ def run(args: argparse.Namespace) -> int:
                     expected_operation='PROPOSE_CHANGE' if label=='existing-change' else 'KEEP'
                 elif label=='excluded-source':
                     case['inventory']['coverage']['excluded_paths']=[inspect_path];expected_operation='INSUFFICIENT_INFORMATION'
-                elif label=='dirty-absence':case['inventory']['context']['untracked_paths']=[inspect_path]
+                elif label in {'dirty-absence','casefold-dirty-absence'}:case['inventory']['context']['untracked_paths']=[inspect_path.upper() if label=='casefold-dirty-absence' else inspect_path]
                 elif label=='ambiguous-vision':
                     inspect_path='docs/product/VISION.md';case['mappings']=[]
                     extra={'path':'docs/OTHER_VISION.md','status':'PRESENT','content':'Other supplied vision','sha256':sha(b'Other supplied vision'),'mode':0o644,'artifact_hint':'PB-A13'}
@@ -218,9 +240,11 @@ def run(args: argparse.Namespace) -> int:
             receipt['supplied_input_unchanged']=True;receipt['disposable_target_unchanged']=True;receipt['previous_proposal_and_pin_preserved']=True
         receipt['cleanup']=not root.exists();receipt['result']='PROJECT_ADOPTION_OFFLINE_PASS'
     except BaseException as error:
+        primary = error
         receipt['failure']={'category':type(error).__name__};raise
     finally:
-        (output/'installed-project-adoption.public.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
+        receipt['cleanup'] = root is not None and not root.exists()
+        retain_receipt(output, receipt, primary)
     print('PROJECT_ADOPTION_OFFLINE_PASS',len(receipt['cases']))
     return 0
 

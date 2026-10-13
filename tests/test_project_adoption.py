@@ -323,3 +323,13 @@ class AdoptionTests(unittest.TestCase):
         with patch('sys.stdout',new_callable=io.StringIO) as output:
             self.assertEqual(cli.main(["preview","--input",str(path)]),1)
             self.assertEqual(json.loads(output.getvalue())["error"],"INPUT_OR_PROPOSAL_REJECTED")
+
+    def test_casefold_context_alias_blocks_absence_in_each_context_group(self):
+        for name in ["staged_paths", "dirty_paths", "untracked_paths", "ignored_paths"]:
+            with self.subTest(name=name):
+                value = document(supplied(), ARCH, status="ABSENT")
+                value["inventory"]["context"][name] = [ARCH.upper()]
+                row = next(row for row in service.preview(bind(value))["entries"] if row["artifact_path"] == ARCH)
+                self.assertEqual(row["operation"], "CONFLICT")
+                self.assertEqual(row["reason"], "ABSENCE_CONFLICTS_WITH_SUPPLIED_WORKTREE")
+                self.assertEqual(row["after"], {})
