@@ -162,9 +162,14 @@
         "PB-F7"
       ],
       "scope": "finite authenticated private proposal PREPARE/READ over qualified R50/R51",
-      "delivery_status": "IMPLEMENTATION_IN_PROGRESS",
+      "delivery_status": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
       "full_pb_f7_closed": false,
-      "architecture": "docs/architecture/PROJECT_PROPOSAL_HTTP_V1.md"
+      "architecture": "docs/architecture/PROJECT_PROPOSAL_HTTP_V1.md",
+      "implementation_main": "9736bbbd96d451f9035dbf8a988a2ec4f85331e8",
+      "delivery_record": "docs/qualification/R52_PROJECT_PROPOSAL_HTTP_DELIVERY_2026_10_13.md",
+      "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38432837870/artifacts/11834371606",
+      "finalization_effect": "NO_BUMP",
+      "closure_gate": "NEW exact-final-main current CI and installed HTTP/recovery/readback/cleanup, owning terminal register"
     }
   ]
 }
