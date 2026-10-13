@@ -60,18 +60,54 @@ def server(python,root):
                     time.sleep(0.05)
             yield port,process.pid
         finally:
-            process.terminate()
-            try:process.wait(timeout=5)
-            except subprocess.TimeoutExpired:process.kill();process.wait(timeout=5)
-            log.flush()
-            raw=(root/'server.private.log').read_bytes()
-            if len(raw)>65536:raise RuntimeError('private server log exceeds finite capture')
-            (root.parent/('private-server-'+str(process.pid)+'.log')).write_bytes(raw)
+            primary = sys.exc_info()[1]
+            secondary = []
+            try:
+                process.terminate()
+                try: process.wait(timeout=5)
+                except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=5)
+            except Exception as error: secondary.append(error)
+            try:
+                log.flush()
+                raw=(root/'server.private.log').read_bytes()
+                if len(raw)>65536: raise RuntimeError('private server log exceeds finite capture')
+                (root.parent/('private-server-'+str(process.pid)+'.log')).write_bytes(raw)
+            except Exception as error: secondary.append(error)
+            if secondary:
+                if primary is not None:
+                    primary.add_note('diagnostics incomplete; secondary cleanup/capture: '+','.join(type(x).__name__ for x in secondary))
+                else: raise secondary[0]
 
 
-def run(python,output):
+def installed_binding(python, wheel, revision):
+    # Reuse qualified payload verification; this checks installation, not services.
+    spec=importlib.util.spec_from_file_location('proposal_payload',Path(__file__).with_name('qualify_installed_project_bootstrap.py'))
+    tool=importlib.util.module_from_spec(spec);spec.loader.exec_module(tool)
+    import fnmatch, tomllib, zipfile, configparser
+    def git(*args):return subprocess.check_output(['git','-C',str(SOURCE),*args])
+    if git('rev-parse','HEAD').decode().strip()!=revision or git('status','--porcelain').strip():raise ValueError('exact clean committed source required')
+    manifest=tomllib.loads(git('show','HEAD:pyproject.toml').decode())
+    patterns=manifest['tool']['setuptools']['package-data']['forge']
+    expected={n:git('show','HEAD:'+n) for n in git('ls-tree','-r','--name-only','HEAD','--','forge').decode().splitlines() if n.endswith('.py') or any(fnmatch.fnmatchcase(n.removeprefix('forge/'),p) for p in patterns)}
+    probe="import forge,json,importlib.metadata;from pathlib import Path;d=importlib.metadata.distribution('forge-autonomy');print(json.dumps({'package':str(Path(forge.__file__).resolve().parent),'version':d.version,'direct':json.loads(d.read_text('direct_url.json')),'entries':{e.name:e.value for e in d.entry_points if e.group=='console_scripts'}}))"
+    actual=json.loads(subprocess.check_output([str(python),'-I','-c',probe],cwd=wheel.parent))
+    product=Path(actual['package'])
+    if product.is_relative_to(SOURCE) or actual['direct'].get('dir_info',{}).get('editable') or actual['direct'].get('archive_info',{}).get('hashes',{}).get('sha256')!=sha256(wheel.read_bytes()).hexdigest():raise ValueError('noneditable exact wheel required')
+    with zipfile.ZipFile(wheel) as archive:
+        payload=tool.verify_payload(archive,expected,product.parent)
+        entries=[x for x in archive.namelist() if x.endswith('.dist-info/entry_points.txt')]
+        if len(entries)!=1:raise ValueError('entrypoint ambiguity')
+        parser=configparser.ConfigParser();parser.read_string(archive.read(entries[0]).decode())
+        if dict(parser['console_scripts'])!=manifest['project']['scripts'] or actual['entries']!=manifest['project']['scripts']:raise ValueError('entrypoint mismatch')
+    installed={str(p.relative_to(product.parent)) for p in product.rglob('*') if p.is_file() and '__pycache__' not in p.parts}
+    if installed!=set(expected) or actual['version']!=json.loads(git('show','HEAD:product-version.json'))['version']:raise ValueError('installed inventory/version mismatch')
+    return {'source_revision':revision,'source_tree':git('rev-parse','HEAD^{tree}').decode().strip(),'version':actual['version'],'wheel_sha256':sha256(wheel.read_bytes()).hexdigest(),'payload_files_verified':len(payload),'entrypoints_source_wheel_installed_verified':True}
+
+
+def run(python,output,wheel=None,revision=None):
     output.mkdir(mode=0o700)
-    receipt={'qualification':'INSTALLED_PROJECT_PROPOSAL_HTTP_COMPACT_V1','result':'FAIL','cases':[],'cleanup':False}
+    binding=installed_binding(python,wheel,revision) if wheel is not None else {}
+    receipt={'qualification':'INSTALLED_PROJECT_PROPOSAL_HTTP_COMPACT_V1','result':'FAIL','cases':[],'cleanup':False,**binding}
     try:
         with tempfile.TemporaryDirectory(prefix='forge-proposal-http-',dir=output) as name:
             root=Path(name); (root/'admin.private').write_text(secrets.token_urlsafe(48));(root/'admin.private').chmod(0o600)
@@ -129,14 +165,18 @@ def run(python,output):
             receipt.update(result='PROJECT_PROPOSAL_HTTP_COMPACT_PASS',stored_records=3,no_canonical_project=True,no_ep_model_mission_effects=True,separate_server_processes=True)
         receipt['cleanup']=not root.exists()
     except BaseException as error:
-        receipt['failure']={'category':type(error).__name__};raise
+        receipt['failure']={'category':type(error).__name__,'diagnostics':getattr(error,'__notes__',[])};raise
     finally:
         try:(output/'installed-project-proposal-http.public.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
-        except OSError:
+        except OSError as error:
+            primary = sys.exc_info()[1]
+            # The original active run failure is recorded by the except block above.
+            sys.stderr.write('diagnostics incomplete: public receipt retention '+type(error).__name__+'; primary '+receipt.get('failure',{}).get('category','none')+'\n')
             if receipt['result']=='PROJECT_PROPOSAL_HTTP_COMPACT_PASS':raise
     print(receipt['result'],len(receipt['cases']))
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--python',required=True,type=Path);parser.add_argument('--output-dir',required=True,type=Path)
-    args=parser.parse_args();run(args.python,args.output_dir)
+    parser.add_argument('--wheel',required=True,type=Path);parser.add_argument('--source-revision',required=True)
+    args=parser.parse_args();run(args.python,args.output_dir,args.wheel,args.source_revision)

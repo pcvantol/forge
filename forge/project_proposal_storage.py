@@ -53,7 +53,10 @@ def write(path, value, *, create=False):
             if (os.fstat(current).st_dev, os.fstat(current).st_ino) != (os.fstat(parent).st_dev, os.fstat(parent).st_ino):
                 raise ValueError('proposal directory changed')
         finally: os.close(current)
-        os.replace(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent)
+        if create:
+            os.link(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False)
+        else:
+            os.replace(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent)
         os.fsync(parent)
     finally:
         try: os.unlink(temporary, dir_fd=parent)

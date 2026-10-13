@@ -7,6 +7,8 @@ import argparse
 import json
 from pathlib import Path
 import secrets
+import sqlite3
+import hmac
 from .approved_worklist import identifier, timestamp
 from .project_bootstrap.schema import canonical
 from .workspace_review_grant import _locked, _new_token, _private_bytes, _write_private
@@ -43,6 +45,7 @@ class ProjectProposalGrant:
         self.root = Path(root); self.instance_id = identifier(instance_id)
         self.path = self.root / 'credentials' / 'project-proposal' / 'grants.json'
         self.store = self.root / 'onboarding' / 'proposals' / 'store.json'
+        self.witness = self.store.parent / 'initialized.json'
 
     def _records(self, missing=False):
         if missing and not self.path.exists() and not self.path.is_symlink(): return []
@@ -68,15 +71,41 @@ class ProjectProposalGrant:
             seen.add(r['grant_id'])
         return value['records']
 
+    @contextmanager
+    def boundary(self):
+        """Grant lock then canonical SQLite writer reservation; no render/client wait."""
+        with _locked(self.path):
+            # The existing read composition first verifies this initialized runtime.
+            operator_binding(self.root, self.instance_id)
+            connection = sqlite3.connect((self.root / 'forge.db').resolve().as_uri() + '?mode=rw', uri=True, timeout=3)
+            try:
+                connection.execute('BEGIN IMMEDIATE')
+                operator_binding(self.root, self.instance_id)
+                yield
+            finally:
+                connection.rollback(); connection.close()
+
+    def integrity(self, record):
+        witness = read(self.witness, 4096)
+        if set(witness) != {'contract_version','instance_id','key'} or witness['contract_version'] != CONTRACT or witness['instance_id'] != self.instance_id:
+            raise ValueError('proposal initialization witness invalid')
+        key = bytes.fromhex(witness['key'])
+        if len(key) != 32: raise ValueError('proposal integrity key invalid')
+        return hmac.new(key, canonical(record), sha256).hexdigest()
+
     def initialize(self):
-        operator_binding(self.root,self.instance_id)
-        if self.store.exists() or self.store.is_symlink():
-            self._store(); return
-        if self.path.exists() or self.path.is_symlink(): raise ValueError('initialized proposal storage lost')
-        self.store.parent.mkdir(parents=True,mode=0o700,exist_ok=True)
-        write(self.store,{'contract_version':CONTRACT,'instance_id':self.instance_id,'dossiers':{},'records':{}},create=True)
+        with self.boundary():
+            if self.witness.exists() or self.witness.is_symlink():
+                self.integrity({}); self._store(); return
+            if self.store.exists() or self.store.is_symlink() or self.path.exists() or self.path.is_symlink():
+                raise ValueError('initialized proposal storage incomplete')
+            self.store.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+            # Witness first: any uncertain/missing subsequent store fails closed.
+            write(self.witness, {'contract_version':CONTRACT,'instance_id':self.instance_id,'key':secrets.token_hex(32)}, create=True)
+            write(self.store, {'contract_version':CONTRACT,'instance_id':self.instance_id,'dossiers':{},'records':{}}, create=True)
 
     def _store(self):
+        self.integrity({})
         value = read(self.store)
         if not isinstance(value,dict) or set(value) != {'contract_version','instance_id','dossiers','records'} or value['contract_version'] != CONTRACT or value['instance_id'] != self.instance_id or not isinstance(value['dossiers'],dict) or len(value['dossiers']) > 32 or not isinstance(value['records'],dict) or len(value['records']) > 64:
             raise ValueError('proposal store invalid')
@@ -91,7 +120,7 @@ class ProjectProposalGrant:
         if not datetime.now(UTC) < timestamp(expires_at) <= datetime.now(UTC) + timedelta(days=30): raise ValueError('finite expiry required')
         token_path = Path(token_path)
         if token_path.resolve().is_relative_to(self.store.parent.resolve()) or token_path.resolve() == self.path.resolve(): raise ValueError('token storage collision')
-        with _locked(self.path):
+        with self.boundary():
             binding = operator_binding(self.root,self.instance_id); records = self._records(True); store = self._store()
             if len(records) >= 32: raise ValueError('grant capacity exhausted')
             for key in dossier_ids:
@@ -129,7 +158,7 @@ class ProjectProposalGrant:
 
     @contextmanager
     def publication(self, authorization, audience, body):
-        with _locked(self.path):
+        with self.boundary():
             p = self.authorize(authorization,audience=audience)
             if body.get('dossier_id') is not None:
                 self.authorize(authorization,audience=audience,dossier_id=body['dossier_id'],kind=body.get('proposal_kind'))
@@ -138,7 +167,7 @@ class ProjectProposalGrant:
 
     def revoke(self, grant_id):
         identifier(grant_id)
-        with _locked(self.path):
+        with self.boundary():
             operator_binding(self.root,self.instance_id); records = self._records()
             r = next((r for r in records if r['grant_id'] == grant_id),None)
             if r is None: raise ValueError('unknown proposal grant')

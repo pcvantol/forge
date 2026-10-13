@@ -1240,7 +1240,8 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 length = int(length_text)
             except ValueError as error:
                 raise ValueError("request Content-Length is invalid") from error
-            if length < 0 or length > _MAX_BODY:
+            limit = 262144 if self.path.startswith('/v1/onboarding/') else _MAX_BODY
+            if length < 0 or length > limit:
                 raise ValueError("request body exceeds Forge Server limit")
             raw = self.rfile.read(length)
             if len(raw) != length:
