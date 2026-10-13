@@ -104,10 +104,24 @@ def installed_binding(python, wheel, revision):
     return {'source_revision':revision,'source_tree':git('rev-parse','HEAD^{tree}').decode().strip(),'version':actual['version'],'wheel_sha256':sha256(wheel.read_bytes()).hexdigest(),'payload_files_verified':len(payload),'entrypoints_source_wheel_installed_verified':True}
 
 
+def retain_receipt(output, receipt, primary):
+    try:
+        (output/'installed-project-proposal-http.public.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
+    except OSError as error:
+        receipt['diagnostic_complete']=False
+        receipt['receipt_write_failure']={'category':type(error).__name__}
+        try: CAPTURE.retain(output/'installed-project-proposal-http.retention-failure.private.json',(json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+        except OSError as secondary:
+            sys.stderr.write(json.dumps({'result':'FAIL','primary_category':type(primary).__name__ if primary else None,'retention_failure':type(error).__name__,'fallback_failure':type(secondary).__name__})+'\n')
+        if primary is None: raise
+        primary.add_note('proposal receipt diagnostics incomplete: '+type(error).__name__)
+
+
 def run(python,output,wheel=None,revision=None):
     output.mkdir(mode=0o700)
     binding=installed_binding(python,wheel,revision) if wheel is not None else {}
     receipt={'qualification':'INSTALLED_PROJECT_PROPOSAL_HTTP_COMPACT_V1','result':'FAIL','cases':[],'cleanup':False,**binding}
+    primary=None
     try:
         with tempfile.TemporaryDirectory(prefix='forge-proposal-http-',dir=output) as name:
             root=Path(name); (root/'admin.private').write_text(secrets.token_urlsafe(48));(root/'admin.private').chmod(0o600)
@@ -165,14 +179,10 @@ def run(python,output,wheel=None,revision=None):
             receipt.update(result='PROJECT_PROPOSAL_HTTP_COMPACT_PASS',stored_records=3,no_canonical_project=True,no_ep_model_mission_effects=True,separate_server_processes=True)
         receipt['cleanup']=not root.exists()
     except BaseException as error:
+        primary=error
         receipt['failure']={'category':type(error).__name__,'diagnostics':getattr(error,'__notes__',[])};raise
     finally:
-        try:(output/'installed-project-proposal-http.public.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
-        except OSError as error:
-            primary = sys.exc_info()[1]
-            # The original active run failure is recorded by the except block above.
-            sys.stderr.write('diagnostics incomplete: public receipt retention '+type(error).__name__+'; primary '+receipt.get('failure',{}).get('category','none')+'\n')
-            if receipt['result']=='PROJECT_PROPOSAL_HTTP_COMPACT_PASS':raise
+        retain_receipt(output,receipt,primary)
     print(receipt['result'],len(receipt['cases']))
 
 
