@@ -229,7 +229,9 @@ def run(args: argparse.Namespace) -> int:
             original=(first/'proposal.json').read_bytes();(first/'proposal.json').write_bytes(original+b' ');child('changed-plan-refused',['check-proposal','--proposal',str(first)],1);(first/'proposal.json').write_bytes(original)
             first.chmod(0o755);child('lost-private-root-refused',['check-proposal','--proposal',str(first)],1);first.chmod(0o700);child('restored-private-proposal',['check-proposal','--proposal',str(first)])
             for name,change in [('bad-digest',lambda x:x.update(inventory_digest='0'*64)),('cross-path-replace',lambda x:x['mappings'][0].update(choice='PROPOSE_REPLACEMENT')),('unknown-field',lambda x:x.update(extra=True)),('casefold-excluded-alias',lambda x:x['inventory']['coverage']['excluded_paths'].append('DOCS/ARCHITECTURE/ARCHITECTURE.MD'))]:
-                bad=copy.deepcopy(value);change(bad);put(bad);target=root/name;child(name,['preview','--input',str(input_file),'--export',str(target)],1);assert not target.exists()
+                bad=copy.deepcopy(value);change(bad)
+                if name=='casefold-excluded-alias':bind(bad)
+                put(bad);target=root/name;child(name,['preview','--input',str(input_file),'--export',str(target)],1);assert not target.exists()
             put(value);repo=root/'disposable-target';repo.mkdir();(repo/'.git').mkdir();sentinel=repo/'existing.txt';sentinel.write_bytes(b'unchanged synthetic target')
             target_before={str(p.relative_to(repo)):sha(p.read_bytes()) for p in repo.rglob('*') if p.is_file()}
             child('repository-export-refused',['preview','--input',str(input_file),'--export',str(repo/'proposal')],1)

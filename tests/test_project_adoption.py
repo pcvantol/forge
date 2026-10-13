@@ -338,3 +338,16 @@ class AdoptionTests(unittest.TestCase):
                     value["inventory"]["context"][group] = [ARCH.upper()]
                 with self.assertRaises(ContractError):
                     service.preview(bind(value))
+
+    def test_correctly_bound_exclusion_alias_detects_removed_input_guard(self):
+        value=document(supplied(), ARCH, status="ABSENT")
+        value["inventory"]["coverage"]["excluded_paths"]=[ARCH.upper()]
+        bind(value)
+        self.assertEqual(value["inventory_digest"],bootstrap.digest(canonical(value["inventory"])))
+        with self.assertRaises(ContractError):service.preview(value)
+        # Deliberate negative control: without intake protection the exact same
+        # validly hashed packet reaches the unsafe case-sensitive exclusion join.
+        with patch.object(service,"check_input",side_effect=lambda item:item):
+            row=next(row for row in service.preview(value)["entries"] if row["artifact_path"]==ARCH)
+        self.assertEqual(row["operation"],"PROPOSE_ADDITION")
+        with self.assertRaises(ContractError):service.preview(value)
