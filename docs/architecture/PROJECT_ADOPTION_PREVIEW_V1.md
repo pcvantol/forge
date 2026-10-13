@@ -165,3 +165,13 @@ already closed under its own original source/artifact/register bindings, which
 remain unchanged. Source tests are not installed qualification, and no pending
 R51 stage is recorded as completed. No automatic following feature, public
 release, signing, live EP/Workspace or user-data migration is authorized.
+
+
+## Protected implementation and finalization
+
+[Delivery record](../qualification/R51_PROJECT_ADOPTION_DELIVERY_2026_10_13.md)
+binds PR285/protected implementation eb717036, complete independent reviews,
+actual hosted1533-test/31-case installed evidence, exact source/tree/artifact
+and preserved failures. R51 finalization and NEW exact-final-main installed
+readback remain open until their own gates pass and the external register
+records terminal closure. This does not close full PB-F2 or peer execution.

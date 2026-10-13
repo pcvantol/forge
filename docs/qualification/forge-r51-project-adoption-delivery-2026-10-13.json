@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "assignment_id": "L3-PROJECT-ADOPTION-PREVIEW-V1-20261013",
+  "revision": "R51/plan1",
+  "state": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
+  "source": {
+    "base": "18ad9b51a4353ba96275fb55048610c1a1e64dd4",
+    "reviewed_head": "da35371eed52ba6565b6fca8e9665921c8cea05e",
+    "reviewed_tree": "7a7d192630cd4fbbb1c540b4f06c95f8d10c76a0",
+    "pr": 285,
+    "protected_main": "eb717036999b22d636d3cc9e4bf512b8ad6b24ce",
+    "merged_at": "2026-10-13T12:23:14Z"
+  },
+  "version": {
+    "product": "2.17.0",
+    "runtime_schema": 46,
+    "operation": "forge-r51-project-adoption-preview-20261013",
+    "finalization": "NO_BUMP"
+  },
+  "reviews": {
+    "security": {
+      "state": "CONTENT_PASS",
+      "head": "da35371eed52ba6565b6fca8e9665921c8cea05e",
+      "sha256": "fb0324066d207f5d67166f71eaa7676cf7e40906bf3966782d178811fdc21eca",
+      "report": "forge-r51-security-da35371.md"
+    },
+    "quality": {
+      "state": "CONTENT_PASS",
+      "head": "da35371eed52ba6565b6fca8e9665921c8cea05e",
+      "sha256": "67ac322e0a6bf56975adea84883f853b5ccaf2bbc8e7c9a46856f72569236a3f",
+      "report": "forge-r51-quality-da35371.md"
+    }
+  },
+  "counters": {
+    "corrections": 6,
+    "candidate_cycles": 6,
+    "maximum": "CONTENT_BOUNDED_NO_ADMINISTRATIVE_CAP",
+    "predecessors": "R50 and earlier CLOSED unchanged"
+  },
+  "local_validation": {
+    "head": "da35371eed52ba6565b6fca8e9665921c8cea05e",
+    "state": "PASS",
+    "original_log": "da3-full-validation.log",
+    "tests": 1533,
+    "seconds": 1409.893,
+    "skips": 1
+  },
+  "local_installed": {
+    "source": "da35371eed52ba6565b6fca8e9665921c8cea05e",
+    "tree": "7a7d192630cd4fbbb1c540b4f06c95f8d10c76a0",
+    "result": "PROJECT_ADOPTION_OFFLINE_PASS",
+    "cases": 31,
+    "payload_files": 314,
+    "wheel_sha256": "3f160f9b2e41b32d83b30d2c0dd5c7cfe3a8a2b7bb4938cb72e07d9fe6710692",
+    "receipt_sha256": "98fc06c3b46dc6d4010edacbbd72306e98af89524532091f76d0f252925eab52",
+    "diagnostic_complete": true,
+    "cleanup": true
+  },
+  "scope": {
+    "contract": "pb-adoption-preview/1.0",
+    "inventory": "supplied-document-inventory/1.0",
+    "observations": "SUPPLIED_UNVERIFIED",
+    "proposal_state": "PROPOSED_NOT_APPROVED",
+    "repository_quality": "NOT_ASSESSED",
+    "registration": "NOT_PERFORMED",
+    "effect": "new private exclusive preview export only"
+  },
+  "historical_failures": [
+    "old interpreter selected by POSIX validation PATH",
+    "own partial validation environment ENOSPC",
+    "complete ed9 mapping/context/receipt retention reviews FAIL",
+    "complete41 cross-group exclusion alias review FAIL",
+    "088 installed negative used stale inventory digest: receipt preserved, not alias closure",
+    "41 candidate build failed ENOSPC before installed matrix",
+    "088 full validation safely interrupted after source revision advanced; no PASS claim"
+  ],
+  "open": [
+    "nonempty independent finalization reviews and own required exacthead CI/protected merge",
+    "NEW exact-final-main installed/offline artifact binding, plan readback and effective replay",
+    "current source/version/readback/own cleanup and external terminal CLOSED"
+  ],
+  "remaining_families": [
+    "full PB-F1 portable stacks",
+    "full PB-F2 approved multirepository adoption",
+    "PB-F3 apply/governance execution",
+    "actual EP inspection and Workspace integration"
+  ],
+  "hosted_candidate": {
+    "run": 38387055353,
+    "result": "SUCCESS",
+    "tests": 1533,
+    "seconds": 2404.118,
+    "platform_skips": 5,
+    "checkout": "de20d775fac6e9e82cb0ca9543afd6798773314c",
+    "tree": "7a7d192630cd4fbbb1c540b4f06c95f8d10c76a0",
+    "artifact_id": 11810495835,
+    "artifact_url": "https://github.com/pcvantol/forge/actions/runs/38387055353/artifacts/11810495835",
+    "artifact_zip_digest": "sha256:4d4dc3570aae6bcf450503bcd5c6e89280440c4d3196f54d8c7ee1d37c8f54a7",
+    "receipt_sha256": "0fe6ad55e9c281e42a3a9c38a1d0da777456235ad2155dcce0c637380fd0f36f",
+    "wheel_sha256": "f3f19a4689b61a3f55a85adcd074216b5e48b3bfe7e6f80355061e10479e9fbe",
+    "cases": 31,
+    "payload_files": 314,
+    "diagnostic_complete": true,
+    "cleanup": true,
+    "r50_regression_cases": 41,
+    "r50_artifact_id": 11810415823
+  },
+  "tde": {
+    "run": 38387055310,
+    "workflow_result": "CANCELLED",
+    "qualification": "UNAVAILABLE_NOT_PASS",
+    "policy": "OBSERVE_ONLY_NONBLOCKING_UNCHANGED"
+  }
+}

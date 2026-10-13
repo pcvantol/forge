@@ -146,9 +146,12 @@
         "PB-F2"
       ],
       "scope": "portable supplied/unverified inspect-input and immutable preview only",
-      "delivery_status": "IMPLEMENTATION_PENDING_QUALIFICATION",
+      "delivery_status": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
       "full_pb_f2_closed": false,
-      "architecture": "docs/architecture/PROJECT_ADOPTION_PREVIEW_V1.md"
+      "architecture": "docs/architecture/PROJECT_ADOPTION_PREVIEW_V1.md",
+      "implementation_main": "eb717036999b22d636d3cc9e4bf512b8ad6b24ce",
+      "delivery_record": "docs/qualification/R51_PROJECT_ADOPTION_DELIVERY_2026_10_13.md",
+      "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38387055353/artifacts/11810495835"
     }
   ]
 }
