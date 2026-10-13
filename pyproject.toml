@@ -29,6 +29,7 @@ Issues = "https://github.com/pcvantol/forge/issues"
 
 [project.scripts]
 forge-project-bootstrap = "forge.project_bootstrap.cli:main"
+forge-project-adoption = "forge.project_adoption.cli:main"
 forge = "forge.__main__:main"
 forge-mission-derive-actions = "forge.mission_no_dispatch:main"
 forge-mission-lifecycle = "forge.mission_lifecycle_cli:main"
@@ -63,4 +64,4 @@ exclude = ["tests", "tests.*"]
 version = {attr = "forge._version.__version__"}
 
 [tool.setuptools.package-data]
-forge = ["project_bootstrap/assets/*", "schemas/*.json", "api/*.json", "qualification/fixtures/fme-producer-v1/*.json"]
+forge = ["project_adoption/assets/*.json", "project_bootstrap/assets/*", "schemas/*.json", "api/*.json", "qualification/fixtures/fme-producer-v1/*.json"]

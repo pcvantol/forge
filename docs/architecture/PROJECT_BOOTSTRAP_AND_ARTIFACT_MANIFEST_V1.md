@@ -177,3 +177,12 @@ After bootstrap, factual progress follows the existing runtime/evidence-reconcil
 A design merge proves only that the target is specified. Implementation closure requires the named per-owner roadmap nodes and the shared PB qualification families. Qualify Genesis and Managed independently, then promotion, on installed artifacts without source checkouts. Deterministic fixtures, real local Git effects, remote-provider readback and optional live provider execution are separately labelled; a successful mock-host test cannot prove live GitHub provisioning.
 
 The current change creates no project bootstrap endpoint, production template bundle, new schemas at runtime, grants, repositories, Missions, package versions or installed service. All new node statuses remain PLANNED.
+
+## Selected portable implementation boundaries
+
+R50 portable PB-F0/first PB-F1 scope is qualified at its
+[own terminal binding](https://github.com/pcvantol/forge/issues/207#issuecomment-6132396962).
+[R51 supplied-inventory preview](PROJECT_ADOPTION_PREVIEW_V1.md) implements only
+bounded interpretation/mapping/proposal preparation above that unchanged
+baseline. Supplied observations are not EP inspection. All approval, real
+identity/effect/HTTP/readiness and full-family requirements above remain open.

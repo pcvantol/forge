@@ -1,0 +1,76 @@
+{
+  "contract_version": "pb-adoption-preview/1.0",
+  "state": "PROPOSED_NOT_APPROVED",
+  "input_digest": "bcac2c9493a2c2e42c1fe2797e0fb1ba525d04563a0e5b9f24f61be10a0f2db9",
+  "inventory_digest": "6d5f172ffa331afa13749ba818474d23d8c2fb2990af7459414e0a5c7bee1cfe",
+  "origin": {
+    "kind": "SUPPLIED_OBSERVATION",
+    "qualification": "SUPPLIED_UNVERIFIED",
+    "repository_id": "different-synthetic-repo",
+    "revision": "synthetic-r1",
+    "declared_current_revision": "synthetic-r1",
+    "reference": "synthetic-evidence-1"
+  },
+  "baseline": "portable-docs/1.0.0",
+  "baseline_catalog_digest": "757e9c0bc8a7c646badb5c0ae0c6dd024174f4d079b7390a6517ee78da0f375f",
+  "r50_render_digest": "d03a573b7752838720a1c0509950a4b92e36a098e97c5f5cc3c13c40ad01556a",
+  "repository_quality": "NOT_ASSESSED",
+  "identity_registration": "NOT_PERFORMED",
+  "entries": [
+    {
+      "artifact_path": "docs/architecture/ARCHITECTURE.md",
+      "source_path": "docs/architecture/ARCHITECTURE.md",
+      "artifact_id": "PB-A14",
+      "operation": "CONFLICT",
+      "reason": "IDENTITY_REFERENCE_CONFLICT",
+      "before": {
+        "status": "ABSENT"
+      },
+      "after": {},
+      "diff": "",
+      "mapping_only": false,
+      "mapping_source": {},
+      "semantic_owner": "UNKNOWN",
+      "update_class": "UNKNOWN",
+      "decisions": [
+        "IDENTITY_REFERENCE_CONFLICT"
+      ]
+    },
+    {
+      "artifact_path": "docs/product/VISION.md",
+      "source_path": "docs/RICHTING.md",
+      "artifact_id": "PB-A13",
+      "operation": "CONFLICT",
+      "reason": "IDENTITY_REFERENCE_CONFLICT",
+      "before": {
+        "status": "ABSENT"
+      },
+      "after": {},
+      "diff": "",
+      "mapping_only": false,
+      "mapping_source": {
+        "status": "PRESENT",
+        "sha256": "2f1fc8c45a22eca76aa853249fb1bbc4ca7c203151edfc07a6818391b8e128a9",
+        "mode": 420,
+        "content": "# Visie\nBestaande Nederlandse productrichting.\n"
+      },
+      "semantic_owner": "Business",
+      "update_class": "PROJECT_OWNED",
+      "decisions": [
+        "IDENTITY_REFERENCE_CONFLICT"
+      ]
+    }
+  ],
+  "retained_inventory_paths": [
+    "docs/RICHTING.md",
+    "docs/architecture/ARCHITECTURE.md",
+    "docs/product/VISION.md"
+  ],
+  "decisions": [
+    "IDENTITY_REFERENCE_CONFLICT",
+    "NO_APPROVAL_OR_APPLY_AUTHORITY",
+    "REPOSITORY_QUALITY_NOT_ASSESSED",
+    "SUPPLIED_OBSERVATIONS_NOT_LIVE_INSPECTION"
+  ],
+  "proposal_digest": "a51a83a67622ed3490dc5693426b785b9190459957758df5a9e2acf3715e9ba8"
+}

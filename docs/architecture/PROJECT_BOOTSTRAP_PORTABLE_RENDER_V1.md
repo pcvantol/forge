@@ -125,3 +125,14 @@ and full multi-language/stack onboarding remain open.
 Source-level candidate tests and independent review do not preclaim protected
 merge or exact-final-main proof. Delivery/finalization receipts record those
 actual stages separately. No public release or automatic successor is authorized.
+
+## Qualified R50 closure and preview companion
+
+R50 scoped DoD CLOSED on original Forge2.16.0/final-main18ad9b5,
+[terminal register](https://github.com/pcvantol/forge/issues/207#issuecomment-6132396962)
+and [original new-main offline evidence](https://github.com/pcvantol/forge/actions/runs/38299460733/artifacts/11771128520).
+This reconciles pending source-era labels without rewriting those receipts.
+The selected [R51 preview companion](PROJECT_ADOPTION_PREVIEW_V1.md) reuses this
+unchanged baseline and own safe export; its adoption output is checked under
+its own contract. It is never passed through this exact-new-render validator.
+No full parent/profile/effect readiness follows from either narrow subset.

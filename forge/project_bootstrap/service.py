@@ -78,8 +78,16 @@ def render(value: Any) -> dict[str, bytes]:
     return result
 
 
-def export(value: Any, target: Path) -> dict[str, Any]:
-    payload = render(value)
+def export_payload(payload: dict[str, bytes], target: Path) -> None:
+    """Write trusted finite own proposal bytes using the qualified exclusive I/O."""
+    if not payload or len(payload) > 128:
+        raise ContractError("invalid finite export inventory")
+    for name, raw in payload.items():
+        safe_path(name)
+        if not isinstance(raw, bytes) or len(raw) > 131072:
+            raise ContractError("invalid bounded export payload")
+    if target.name.casefold() == ".git":
+        raise ContractError("reserved export directory")
     if ".." in target.parts:
         raise ContractError("export traversal rejected")
     # Walk every parent by descriptor without following symlinks; no resolve-based race.
@@ -102,9 +110,15 @@ def export(value: Any, target: Path) -> dict[str, Any]:
             pass
         else:
             raise ContractError("export inside a repository is unsupported")
+        parent = os.fstat(fd)
+        if parent.st_mode & 0o022 and not parent.st_mode & stat.S_ISVTX:
+            raise ContractError("unprotected shared export parent")
         os.mkdir(target.name, mode=0o700, dir_fd=fd)  # existing output always conflicts
         root = os.open(target.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
         try:
+            metadata = os.fstat(root)
+            if stat.S_IMODE(metadata.st_mode) != 0o700 or metadata.st_uid != os.geteuid():
+                raise ContractError("export root privacy/ownership changed")
             for name, raw in sorted(payload.items()):
                 current = os.dup(root)
                 try:
@@ -127,6 +141,11 @@ def export(value: Any, target: Path) -> dict[str, Any]:
             os.close(root)
     finally:
         os.close(fd)
+
+
+def export(value: Any, target: Path) -> dict[str, Any]:
+    payload = render(value)
+    export_payload(payload, target)
     return {"state": "RENDERED_PROPOSAL", "manifest_digest": load_json(payload["engineering/bootstrap-manifest.json"])["manifest_digest"], "artifacts": len(payload)}
 
 
