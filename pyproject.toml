@@ -28,6 +28,7 @@ Repository = "https://github.com/pcvantol/forge"
 Issues = "https://github.com/pcvantol/forge/issues"
 
 [project.scripts]
+forge-project-proposal-grant = "forge.project_proposal_grant:main"
 forge-project-bootstrap = "forge.project_bootstrap.cli:main"
 forge-project-adoption = "forge.project_adoption.cli:main"
 forge = "forge.__main__:main"
