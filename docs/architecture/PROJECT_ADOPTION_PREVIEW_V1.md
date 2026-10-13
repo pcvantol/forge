@@ -175,3 +175,16 @@ actual hosted1533-test/31-case installed evidence, exact source/tree/artifact
 and preserved failures. R51 finalization and NEW exact-final-main installed
 readback remain open until their own gates pass and the external register
 records terminal closure. This does not close full PB-F2 or peer execution.
+
+
+## R52 selected HTTP companion
+
+The R51 supplied-inventory preview remains closed under its original version/baseline/source
+and evidence. The selected [R52 private proposal adapter](PROJECT_PROPOSAL_HTTP_V1.md)
+reuses this unchanged owning service and exact output over finite authenticated
+PREPARE/READ, original intent recovery and durable private result readback.
+[Implementation PR287](https://github.com/pcvantol/forge/pull/287) is protected
+merged on9736bbbd/Forge2.18.0/schema46. This does not reopen this predecessor,
+change its CLI/baseline bytes, expand target/EP/governance/Mission authority or
+close full onboarding. R52 finalization and NEW exact-final-main proof are
+separate gates; [delivery record](../qualification/R52_PROJECT_PROPOSAL_HTTP_DELIVERY_2026_10_13.md).

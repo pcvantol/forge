@@ -1,8 +1,8 @@
 # Private project proposal HTTP V1
 
 Assignment `L3-PROJECT-PROPOSAL-HTTP-V1-20261013`, R52/plan1.
-Forge 2.18.0, runtime schema46 unchanged. Implementation under qualification;
-this document alone is not installed evidence or scoped acceptance.
+Forge 2.18.0, runtime schema46 unchanged. Implementation protected-delivered on9736bbbd; finalization and NEW final-main
+qualification remain separate gates. This document alone is not installed evidence.
 
 ## Producer mapping
 
@@ -89,3 +89,18 @@ This binds HOB-F02 prepare/read and original intent recovery, only the selected
 PB-F7 adapter subset. HOB decisions, apply, repository effects, EP inspection,
 full onboarding, native Workspace and execution remain separate open ownership.
 L2/L4 assignments and producer pins are unchanged; their ACK is not a gate.
+
+## Protected delivery and finalization
+
+Implementation [PR287](https://github.com/pcvantol/forge/pull/287) merged on
+`9736bbbd96d451f9035dbf8a988a2ec4f85331e8`; exact reviewed sourcee182,
+full owningCI38432837870,1551tests and all changed source coverage strictly>80.2%.
+The [delivery record](../qualification/R52_PROJECT_PROPOSAL_HTTP_DELIVERY_2026_10_13.md)
+binds current authority/storage/publication repairs, independent Quality/Security,
+real Mac and labeled hosted installedHTTP proofs, original failures/counters,
+peer contracts and future final-main qualification. Finalization is NO_BUMP.
+
+NEW exact-final-main installedHTTP/OSrestart/readback/cleanup must follow this
+nonempty independently reviewed protected finalization. Owning terminal #207
+register closes only the selected subset after actual fresh proof and current
+requiredCI PASS; no full PB-F7/HOBdecisions/apply/EP/native acceptance claim.
