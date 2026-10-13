@@ -61,7 +61,7 @@ its [exact conditional artifact inventory](docs/architecture/project-bootstrap-a
 [scoped L1/L1-R roadmap](docs/roadmap/PROJECT_BOOTSTRAP_V1.md),
 [documentary DAG](docs/roadmap/project-bootstrap-v1.json) and
 [qualification catalogue](docs/architecture/PROJECT_BOOTSTRAP_QUALIFICATION_V1.md).
-The selected [portable proposal renderer](docs/architecture/PROJECT_BOOTSTRAP_PORTABLE_RENDER_V1.md) delivers PB-F0 and a first PB-F1 document profile; it performs no project provisioning. The full designs specify Genesis-local and Managed-remote creation/adoption,
+The selected [portable proposal renderer](docs/architecture/PROJECT_BOOTSTRAP_PORTABLE_RENDER_V1.md) delivers the qualified R50 PB-F0/first PB-F1 document profile; it performs no project provisioning. The selected [supplied-inventory adoption preview](docs/architecture/PROJECT_ADOPTION_PREVIEW_V1.md) adds only a bounded offline PB-F2 proposal subset; it is not a repo scanner or effect route. The full designs specify Genesis-local and Managed-remote creation/adoption,
 plus history-preserving promotion; implementation remains PLANNED.
 `forge server init` is still installation storage initialization, not a project
 scaffolder. This design neither starts a Mission nor changes Mission 3, live

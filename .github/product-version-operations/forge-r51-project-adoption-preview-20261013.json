@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.16.0",
+  "classification_rationale": "L3-PROJECT-ADOPTION-PREVIEW-V1-20261013",
+  "component": "product",
+  "event_lineage": "L3-PROJECT-ADOPTION-PREVIEW-V1-20261013",
+  "expected_head": "18ad9b51a4353ba96275fb55048610c1a1e64dd4",
+  "operation_id": "forge-r51-project-adoption-preview-20261013",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.17.0"
+}

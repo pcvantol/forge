@@ -1,0 +1,100 @@
+{
+  "contract_version": "pb-adoption-preview/1.0",
+  "bootstrap_input": {
+    "authority_contract_reference": "sample-core:engineering/project-contract.json",
+    "baseline": "portable-docs/1.0.0",
+    "contract_version": "pb-render/1.0",
+    "document_language": "en",
+    "host_profile": "LOCAL_POSIX",
+    "identity": {
+      "authority_repository_id": "sample-core",
+      "owner_reference": "synthetic-user-reference-1",
+      "project_id": "sample-product",
+      "repository_id": "sample-core",
+      "status": "PROVISIONAL_REFERENCE"
+    },
+    "license_profile": "UNDECIDED",
+    "mode": "GENESIS",
+    "product": {
+      "constraints": "Offline document proposal only.",
+      "name": "Sample product",
+      "non_goals": "No application feature implementation.",
+      "open_questions": [
+        "Which data must remain private?",
+        "Which components and technology are suitable?"
+      ],
+      "purpose": "Help teams discuss an explicitly supplied project goal.",
+      "users": "Small project teams."
+    },
+    "role": "authority",
+    "security_profile": "DOCUMENT_ONLY",
+    "source_references": [
+      {
+        "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+        "owner": "USER_DECLARED",
+        "reference": "synthetic-product-description-1"
+      }
+    ],
+    "stack_profile": "NO_PRODUCT_CODE"
+  },
+  "inventory": {
+    "contract_version": "supplied-document-inventory/1.0",
+    "origin": {
+      "kind": "SUPPLIED_OBSERVATION",
+      "qualification": "SUPPLIED_UNVERIFIED",
+      "repository_id": "sample-core",
+      "revision": "synthetic-r1",
+      "declared_current_revision": "synthetic-r1",
+      "reference": "synthetic-evidence-1"
+    },
+    "coverage": {
+      "scope": "PARTIAL_SUPPLIED",
+      "covered_paths": [
+        "docs/RICHTING.md",
+        "docs/product/VISION.md",
+        "docs/architecture/ARCHITECTURE.md"
+      ],
+      "excluded_paths": []
+    },
+    "context": {
+      "worktree_state": "CLEAN_SUPPLIED",
+      "staged_paths": [],
+      "dirty_paths": [],
+      "untracked_paths": [],
+      "ignored_paths": [],
+      "product_code": "PRESENT_SUPPLIED"
+    },
+    "documents": [
+      {
+        "path": "docs/RICHTING.md",
+        "status": "PRESENT",
+        "artifact_hint": "PB-A13",
+        "semantic_owner": "Business",
+        "update_class": "PROJECT_OWNED",
+        "content": "# Visie\nBestaande Nederlandse productrichting.\n",
+        "sha256": "2f1fc8c45a22eca76aa853249fb1bbc4ca7c203151edfc07a6818391b8e128a9",
+        "mode": 420
+      },
+      {
+        "path": "docs/product/VISION.md",
+        "status": "ABSENT"
+      },
+      {
+        "path": "docs/architecture/ARCHITECTURE.md",
+        "status": "ABSENT"
+      }
+    ]
+  },
+  "inventory_digest": "b71260828756ff95dc27af12ee55de7ea6f17cb66d103b4529e1d990ab976bb3",
+  "requested_artifacts": [
+    "docs/product/VISION.md",
+    "docs/architecture/ARCHITECTURE.md"
+  ],
+  "mappings": [
+    {
+      "artifact_path": "docs/product/VISION.md",
+      "source_path": "docs/RICHTING.md",
+      "choice": "LINK_EXISTING"
+    }
+  ]
+}

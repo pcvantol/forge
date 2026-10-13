@@ -1,0 +1,25 @@
+{
+  "contract_version": "pb-adoption-preview/1.0",
+  "state": "PREVIEW_ONLY",
+  "input_kind": "SUPPLIED_UNVERIFIED",
+  "supported_profiles": [
+    "R50 portable-docs/1.0.0 authority/child"
+  ],
+  "effects": [
+    "NEW_PRIVATE_PROPOSAL_EXPORT_ONLY"
+  ],
+  "not_implemented": [
+    "scan",
+    "apply",
+    "approve",
+    "HTTP",
+    "EP-inspection",
+    "identity-registration",
+    "Mission"
+  ],
+  "max_input_bytes": 131072,
+  "max_documents": 32,
+  "max_requested_artifacts": 20,
+  "max_document_characters": 8192,
+  "max_output_file_bytes": 131072
+}

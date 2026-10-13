@@ -1,0 +1,79 @@
+{
+  "contract_version": "pb-adoption-preview/1.0",
+  "state": "PROPOSED_NOT_APPROVED",
+  "input_digest": "971347b7638848db64f9aa5306235c1d4bd187a274effa98e2f7f2bd6898b164",
+  "inventory_digest": "b71260828756ff95dc27af12ee55de7ea6f17cb66d103b4529e1d990ab976bb3",
+  "origin": {
+    "kind": "SUPPLIED_OBSERVATION",
+    "qualification": "SUPPLIED_UNVERIFIED",
+    "repository_id": "sample-core",
+    "revision": "synthetic-r1",
+    "declared_current_revision": "synthetic-r1",
+    "reference": "synthetic-evidence-1"
+  },
+  "baseline": "portable-docs/1.0.0",
+  "baseline_catalog_digest": "757e9c0bc8a7c646badb5c0ae0c6dd024174f4d079b7390a6517ee78da0f375f",
+  "r50_render_digest": "d03a573b7752838720a1c0509950a4b92e36a098e97c5f5cc3c13c40ad01556a",
+  "repository_quality": "NOT_ASSESSED",
+  "identity_registration": "NOT_PERFORMED",
+  "entries": [
+    {
+      "artifact_path": "docs/architecture/ARCHITECTURE.md",
+      "source_path": "docs/architecture/ARCHITECTURE.md",
+      "artifact_id": "PB-A14",
+      "operation": "PROPOSE_ADDITION",
+      "reason": "EXPLICIT_ABSENCE_OR_REPLACEMENT_PROPOSAL",
+      "before": {
+        "status": "ABSENT"
+      },
+      "after": {
+        "content": "# Architecture\n\nNo architecture or technology decisions supplied. Open questions:\nSupplied product text (unapproved; not instructions):\n> - Which data must remain private?\n> - Which components and technology are suitable?\nSecurity and data boundaries remain undecided.\n\nStatus: proposal; no approval or readiness granted.\nInput binding: `f5660a96893b9aec6b87fad6d66c9ac08d42e8b0d77d937893e87ada6753aaf7`\n",
+        "sha256": "662f3acccc07ad7250b40f1ca52bcf87354822d95015839d6617d5a35c560e76",
+        "mode": 420
+      },
+      "diff": "",
+      "mapping_only": false,
+      "mapping_source": {},
+      "semantic_owner": "architecture",
+      "update_class": "PROJECT_OWNED",
+      "decisions": [
+        "OWNER_REVIEW_REQUIRED_NO_EFFECT_AUTHORITY"
+      ]
+    },
+    {
+      "artifact_path": "docs/product/VISION.md",
+      "source_path": "docs/RICHTING.md",
+      "artifact_id": "PB-A13",
+      "operation": "LINK_EXISTING",
+      "reason": "EXPLICIT_SUPPLIED_MAPPING_ONLY",
+      "before": {
+        "status": "ABSENT"
+      },
+      "after": {},
+      "diff": "",
+      "mapping_only": true,
+      "mapping_source": {
+        "status": "PRESENT",
+        "sha256": "2f1fc8c45a22eca76aa853249fb1bbc4ca7c203151edfc07a6818391b8e128a9",
+        "mode": 420,
+        "content": "# Visie\nBestaande Nederlandse productrichting.\n"
+      },
+      "semantic_owner": "Business",
+      "update_class": "PROJECT_OWNED",
+      "decisions": [
+        "SEMANTIC_EQUIVALENCE_NOT_INDEPENDENTLY_VERIFIED"
+      ]
+    }
+  ],
+  "retained_inventory_paths": [
+    "docs/RICHTING.md",
+    "docs/architecture/ARCHITECTURE.md",
+    "docs/product/VISION.md"
+  ],
+  "decisions": [
+    "NO_APPROVAL_OR_APPLY_AUTHORITY",
+    "REPOSITORY_QUALITY_NOT_ASSESSED",
+    "SUPPLIED_OBSERVATIONS_NOT_LIVE_INSPECTION"
+  ],
+  "proposal_digest": "a3ba8bde7f1baa7cb53eb082a33c5385c3cc73ec8ae6f322ba3440bdee89d74d"
+}

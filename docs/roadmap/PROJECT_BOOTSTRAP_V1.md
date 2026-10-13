@@ -1,6 +1,6 @@
 # Project bootstrap V1 — Forge implementation roadmap
 
-**Owner:** Forge. **Status:** R50 selects PB-F0 plus portable PB-F1 proposal subset; remaining execution/qualification nodes PLANNED. **NO_BUMP.**
+**Owner:** Forge. **Status:** R50 PB-F0/portable PB-F1 subset qualified; R51 PB-F2 supplied-input preview selected; full remaining nodes PLANNED. **NO_BUMP.**
 This scoped roadmap concretizes L1/L1-R in the [canonical strategic roadmap](../../knowledge/bootstrap/10_ROADMAP.md), consumes L0 baseline enforcement and F2/FH services, and does not replace those programmes. Design closure is not implementation closure of FWV1-G002/G003/G004/G010.
 
 Read the [architecture and artifact contract](../architecture/PROJECT_BOOTSTRAP_AND_ARTIFACT_MANIFEST_V1.md) and [40 qualification families](../architecture/PROJECT_BOOTSTRAP_QUALIFICATION_V1.md). The [JSON DAG](project-bootstrap-v1.json) is a non-executable delivery index. It contains only Forge work; peer nodes below are evidence requirements owned and scheduled by peers.
@@ -28,3 +28,18 @@ No runtime, package version, active policy, existing project, executable program
 ## R50 portable proposal implementation
 
 [Portable render contract](../architecture/PROJECT_BOOTSTRAP_PORTABLE_RENDER_V1.md) maps the selected PB-F0/PB-F1 subset and actual CLI. Full PB-F1/remote profiles and PB-F2..FQ remain open. Protected delivery and exact-final-main installed/offline proof are recorded by the owning R50 delivery receipt; source availability alone is not installed PASS.
+
+## R50 reconciliation and selected R51 subset
+
+R50 is CLOSED on Forge2.16.0/final-main18ad9b5, with original
+[terminal register](https://github.com/pcvantol/forge/issues/207#issuecomment-6132396962)
+and new exact-main41-case installed/offline evidence. The prior selected-subset
+IMPLEMENTATION_PENDING_QUALIFICATION label is reconciled to that actual narrow
+closure; original receipts and parent node IDs/statuses are not rewritten.
+
+[Supplied-inventory adoption preview](../architecture/PROJECT_ADOPTION_PREVIEW_V1.md)
+selects only PB-F2 offline interpretation/mapping/preview. Not a repository scan,
+EP wire inspector, approved effect plan, HTTP/apply, registration or readiness.
+R51 source/candidate is pending complete independent review, protected delivery
+and new exact-final-main installed qualification. Full PB-F1/PB-F2 and peerflows
+remain open. Existing R50 pins and L2/L4 tasks/pins/budgets remain unchanged.
