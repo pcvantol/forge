@@ -22,12 +22,20 @@ SOURCE=Path(__file__).resolve().parents[2]
 spec=importlib.util.spec_from_file_location('proposal_capture',Path(__file__).with_name('project_bootstrap_process.py'))
 CAPTURE=importlib.util.module_from_spec(spec);spec.loader.exec_module(CAPTURE)
 COMMAND_COUNTER=0
+MODELED_OS_IDENTITY=False
+
+
+def invocation(python,args):
+    if not MODELED_OS_IDENTITY:return [str(python),'-I',*args]
+    if args[0] != '-m':raise ValueError('qualification fixture supports modules only')
+    code="import os,runpy,sys;from forge.operator_identity import MacOSGeneratedUIDIdentityAdapter,NamedOperatorIdentity;MacOSGeneratedUIDIdentityAdapter.resolve=lambda self:NamedOperatorIdentity('r52-isolated-trusted-os-fixture',os.getuid());sys.argv=[sys.argv[1],*sys.argv[2:]];runpy.run_module(sys.argv[0],run_name='__main__')"
+    return [str(python),'-I','-c',code,*args[1:]]
 
 
 def command(python,args,root):
     global COMMAND_COUNTER
     COMMAND_COUNTER+=1
-    report,stdout,stderr=CAPTURE.capture([str(python),'-I',*args],case='setup-'+str(COMMAND_COUNTER),output=root.parent,cwd=root,env={'PATH':str(python.parent)+':/usr/bin:/bin','HOME':str(root)},expected=0)
+    report,stdout,stderr=CAPTURE.capture(invocation(python,args),case='setup-'+str(COMMAND_COUNTER),output=root.parent,cwd=root,env={'PATH':str(python.parent)+':/usr/bin:/bin','HOME':str(root)},expected=0)
     if not report['capture_complete'] or report['primary_failure']:raise RuntimeError('trusted setup command or capture failed')
     return json.loads(stdout)
 
@@ -46,7 +54,7 @@ def call(port,token,method,path,body=None):
 def server(python,root):
     with socket.socket() as listener:listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
     with (root/'server.private.log').open('ab') as log:
-        process=subprocess.Popen([str(python),'-I','-m','forge','--data-root',str(root/'runtime'),'server','run','--credential-file',str(root/'admin.private'),'--port',str(port),'--tick-interval','1'],cwd=root,stdout=log,stderr=log,start_new_session=True)
+        process=subprocess.Popen(invocation(python,['-m','forge','--data-root',str(root/'runtime'),'server','run','--credential-file',str(root/'admin.private'),'--port',str(port),'--tick-interval','1']),cwd=root,stdout=log,stderr=log,start_new_session=True)
         try:
             deadline=time.monotonic()+15
             while True:
@@ -120,7 +128,7 @@ def retain_receipt(output, receipt, primary):
 def run(python,output,wheel=None,revision=None):
     output.mkdir(mode=0o700)
     binding=installed_binding(python,wheel,revision) if wheel is not None else {}
-    receipt={'qualification':'INSTALLED_PROJECT_PROPOSAL_HTTP_COMPACT_V1','result':'FAIL','cases':[],'cleanup':False,**binding}
+    receipt={'qualification':'INSTALLED_PROJECT_PROPOSAL_HTTP_COMPACT_V1','result':'FAIL','cases':[],'cleanup':False,'operator_identity_evidence':'MODELED_TRUSTED_OS_FIXTURE' if MODELED_OS_IDENTITY else 'ACTUAL_MACOS_GENERATED_UID','transport_evidence':'ACTUAL_INSTALLED_HTTP_SEPARATE_SERVER_OS',**binding}
     primary=None
     try:
         with tempfile.TemporaryDirectory(prefix='forge-proposal-http-',dir=output) as name:
@@ -183,6 +191,20 @@ def run(python,output,wheel=None,revision=None):
                 assert call(port,alice,'POST','/v1/onboarding/plans',{**requests[0],'actor':'owner'})[0]==400
                 assert call(port,alice,'GET','/v1/onboarding/intents/original-0?dossier_id=dossier-alice&dossier_id=foreign')[0]==400
                 receipt['cases'].append('closed-schema-query-and-no-actor-authority')
+                reader=root/'readonly.private'
+                command(python,['-m','forge.project_proposal_grant','--data-root',str(root/'runtime'),'issue','--principal-id','alice','--audience','synthetic-workspace','--dossier-id','dossier-alice','--permission','READ','--kind','pb-render/1.0','--maximum-records','8','--expires-at',(datetime.now(UTC)+timedelta(hours=1)).isoformat(),'--token-file',str(reader)],root)
+                assert call(port,reader,'GET','/v1/onboarding/intents/original-0?dossier_id=dossier-alice')==(200,results[0])
+                assert call(port,reader,'POST','/v1/onboarding/plans',requests[0])[0]==403
+                assert 'POST /v1/onboarding/plans' not in call(port,reader,'GET','/v1/onboarding/capability')[1]['operations']
+                expiring=root/'expiring.private'
+                command(python,['-m','forge.project_proposal_grant','--data-root',str(root/'runtime'),'issue','--principal-id','alice','--audience','synthetic-workspace','--dossier-id','dossier-alice','--permission','READ','--kind','pb-render/1.0','--maximum-records','8','--expires-at',(datetime.now(UTC)+timedelta(seconds=3)).isoformat(),'--token-file',str(expiring)],root)
+                assert call(port,expiring,'GET','/v1/onboarding/capability')[0]==200
+                deadline=time.monotonic()+5
+                while call(port,expiring,'GET','/v1/onboarding/capability')[0]==200:
+                    if time.monotonic()>deadline:raise TimeoutError('actual finite grant expiry not enforced')
+                    time.sleep(0.05)
+                assert call(port,expiring,'GET','/v1/onboarding/intents/original-0?dossier_id=dossier-alice')[0]==401
+                receipt['cases'].append('actual-owner-issued-readonly-and-real-time-expiry')
                 # Real lost success body: client closes without reading the committed response.
                 lost={**requests[0],'operation_id':'lost-success'}
                 raw=json.dumps(lost).encode();headers=('POST /v1/onboarding/plans HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer '+alice.read_text().strip()+'\r\nX-Forge-Proposal-Audience: synthetic-workspace\r\nContent-Type: application/json\r\nContent-Length: '+str(len(raw))+'\r\nConnection: close\r\n\r\n').encode()
@@ -216,4 +238,5 @@ def run(python,output,wheel=None,revision=None):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--python',required=True,type=Path);parser.add_argument('--output-dir',required=True,type=Path)
     parser.add_argument('--wheel',required=True,type=Path);parser.add_argument('--source-revision',required=True)
-    args=parser.parse_args();run(args.python,args.output_dir,args.wheel,args.source_revision)
+    parser.add_argument('--modeled-os-identity',action='store_true',help='Explicit isolated hosted OS identity fixture; never live macOS qualification')
+    args=parser.parse_args();MODELED_OS_IDENTITY=args.modeled_os_identity;run(args.python,args.output_dir,args.wheel,args.source_revision)
