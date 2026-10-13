@@ -69,6 +69,8 @@ from .workspace_read_grant import WorkspaceReadGrant
 from .workspace_review_grant import ReviewPrincipal, WorkspaceReviewGrant
 from .workspace_worklist_grant import WorkspaceWorklistGrant
 from .workspace_worklist_control_grant import WorkspaceWorklistControlGrant
+from .project_proposal_grant import ProjectProposalGrant
+from .project_proposal_service import ProjectProposalService
 from .advisory_grant import AdvisoryGrant
 from .advisory_service import AdvisoryService
 from .mission_concept_service import MissionConceptService
@@ -95,6 +97,10 @@ from .workspace_review_inbox import (
 SERVER_API_VERSION = "1"
 SERVER_RUNTIME_CONTRACT_VERSION = "1.0"
 SERVER_ROUTE_INVENTORY = (
+    ('GET', '/v1/onboarding/capability'),
+    ('POST', '/v1/onboarding/plans'),
+    ('GET', '/v1/onboarding/plans/{plan_id}'),
+    ('GET', '/v1/onboarding/intents/{operation_id}'),
     ('GET', '/v1/approved-workset-activity'),
     ('GET', '/v1/approved-workset-activity/{workset_id}/pages'),
     ('GET', '/v1/approved-workset-activity/{workset_id}/pages/{cursor}'),
@@ -787,6 +793,7 @@ class ForgeServerAPI:
         self.review_grant = review_grant
         self.worklist_grant = worklist_grant
         self.worklist_control_grant = worklist_control_grant
+        self.proposal_grant = ProjectProposalGrant(services.root, instance.instance_id)
         self.advisory_grant = advisory_grant
         self.candidate_grant = candidate_grant
         self.decision_grant = decision_grant
@@ -814,6 +821,8 @@ class ForgeServerAPI:
     def _authentication_kind(self, authorization: str | None) -> str | None:
         if self._authenticated(authorization):
             return "ADMIN"
+        if self.proposal_grant.authenticate(authorization):
+            return "PROJECT_PROPOSAL"
         if self.final_acceptance_grant.authenticate(authorization):
             return "MISSION_FINAL_ACCEPTANCE"
         if self.order_grant.authenticate(authorization):
@@ -959,7 +968,7 @@ class ForgeServerAPI:
         }}, ForgeServerAPI._headers())
 
     def handle(self, method: str, target: str, authorization: str | None,
-               body: Mapping[str, Any] | None = None) -> APIResponse:
+               body: Mapping[str, Any] | None = None, *, proposal_audience: str | None = None) -> APIResponse:
         headers = self._headers()
         kind = self._authentication_kind(authorization)
         if kind is None:
@@ -972,6 +981,13 @@ class ForgeServerAPI:
             return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
             }}, headers)
+        if path == '/v1/onboarding' or path.startswith('/v1/onboarding/'):
+            if kind != 'PROJECT_PROPOSAL':
+                return APIResponse(403, {'contract_version':'forge-project-proposal-http/v1','error':{'code':'PROPOSAL_SCOPE_DENIED'}}, headers)
+            status, document = ProjectProposalService(self.proposal_grant).handle(method,target,authorization,proposal_audience,body)
+            return APIResponse(status,document,headers)
+        if kind == 'PROJECT_PROPOSAL':
+            return APIResponse(403, {'contract_version':'forge-project-proposal-http/v1','error':{'code':'PROPOSAL_SCOPE_DENIED'}}, headers)
         if path == ACTIVITY_BASE or path.startswith(ACTIVITY_BASE + '/'):
             if kind != "WORKSET_ORDER":
                 return APIResponse(403, {'contract_version': 'forge-workset-activity/v1',
@@ -1224,24 +1240,31 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 length = int(length_text)
             except ValueError as error:
                 raise ValueError("request Content-Length is invalid") from error
-            if length < 0 or length > _MAX_BODY:
+            limit = 262144 if self.path.startswith('/v1/onboarding/') else _MAX_BODY
+            if length < 0 or length > limit:
                 raise ValueError("request body exceeds Forge Server limit")
             raw = self.rfile.read(length)
             if len(raw) != length:
                 raise ValueError("request body is shorter than Content-Length")
             if not raw:
                 return {}
-            value = json.loads(raw)
+            from .project_bootstrap.schema import load_json
+            value = load_json(raw)
             if not isinstance(value, dict):
                 raise ValueError("request body must be a JSON object")
             return value
 
         def _dispatch(self) -> None:
+            kind = None
+            proposal_audience = None
             try:
                 authorizations = self.headers.get_all("Authorization", [])
                 if len(authorizations) > 1:
                     raise ValueError("request Authorization is ambiguous")
                 authorization = authorizations[0] if authorizations else None
+                audience_values = self.headers.get_all("X-Forge-Proposal-Audience", [])
+                if len(audience_values) > 1: raise ValueError("ambiguous proposal audience")
+                proposal_audience = audience_values[0] if audience_values else None
                 kind = api._authentication_kind(authorization)
                 if kind is None:
                     response = api._authentication_required()
@@ -1253,13 +1276,21 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                     review_mission = api._review_mission_for_decision(
                         self.command, path, authorization,
                     ) if kind == "WORKSPACE_REVIEW" else None
-                    body = self._body() if kind in {"ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE", "CANDIDATE_DECISION", "WORKSET_RELEASE", "MISSION_FINAL_ACCEPTANCE", "WORKSET_ORDER"} or review_mission is not None else None
-                    response = api.handle(self.command, target, authorization, body)
+                    if path.startswith("/v1/onboarding/") and (self.headers.get_all("X-Actor") or self.headers.get_all("X-Viewer")):
+                        raise ValueError("untrusted actor header unsupported")
+                    if path.startswith("/v1/onboarding/") and self.command == "GET" and self.headers.get("Content-Length", "0") != "0":
+                        raise ValueError("proposal GET body forbidden")
+                    body = self._body() if kind in {"PROJECT_PROPOSAL", "ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE", "CANDIDATE_DECISION", "WORKSET_RELEASE", "MISSION_FINAL_ACCEPTANCE", "WORKSET_ORDER"} or review_mission is not None else None
+                    response = api.handle(self.command, target, authorization, body, proposal_audience=proposal_audience)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
-                    "code": "REQUEST_INVALID", "message": str(error),
+                    "code": "REQUEST_INVALID", "message": "HTTP request was rejected",
                 }}, ForgeServerAPI._headers())
             payload = json.dumps(response.body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            if kind == 'PROJECT_PROPOSAL' and response.status == 200:
+                from .project_proposal_publication import publish
+                publish(self,api.proposal_grant,authorization,proposal_audience,response,payload)
+                return
             self.send_response(response.status)
             for name, value in response.headers.items():
                 self.send_header(name, value)
