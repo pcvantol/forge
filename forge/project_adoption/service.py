@@ -77,6 +77,14 @@ def check_input(value: Any) -> dict[str, Any]:
         if mapping["choice"] == "PROPOSE_REPLACEMENT" and mapping["source_path"] != mapping["artifact_path"]:
             raise ContractError("replacement requires exact target before binding")
         mapped.add(mapping["artifact_path"])
+    # Same spelling may recur; different spellings of one logical path may not.
+    paths = [document["path"] for document in inv["documents"]]
+    paths.extend(item for group in groups for item in group)
+    paths.extend(mapping[key] for mapping in value["mappings"] for key in ["source_path", "artifact_path"])
+    spelling = {}
+    for path in paths:
+        if spelling.setdefault(path.casefold(), path) != path:
+            raise ContractError("cross-group path alias")
     return value
 
 

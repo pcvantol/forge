@@ -324,12 +324,17 @@ class AdoptionTests(unittest.TestCase):
             self.assertEqual(cli.main(["preview","--input",str(path)]),1)
             self.assertEqual(json.loads(output.getvalue())["error"],"INPUT_OR_PROPOSAL_REJECTED")
 
-    def test_casefold_context_alias_blocks_absence_in_each_context_group(self):
-        for name in ["staged_paths", "dirty_paths", "untracked_paths", "ignored_paths"]:
-            with self.subTest(name=name):
+    def test_cross_group_casefold_aliases_are_rejected(self):
+        for group in ["staged_paths", "dirty_paths", "untracked_paths", "ignored_paths", "covered_paths", "excluded_paths", "documents", "mapping_source"]:
+            with self.subTest(group=group):
                 value = document(supplied(), ARCH, status="ABSENT")
-                value["inventory"]["context"][name] = [ARCH.upper()]
-                row = next(row for row in service.preview(bind(value))["entries"] if row["artifact_path"] == ARCH)
-                self.assertEqual(row["operation"], "CONFLICT")
-                self.assertEqual(row["reason"], "ABSENCE_CONFLICTS_WITH_SUPPLIED_WORKTREE")
-                self.assertEqual(row["after"], {})
+                if group in ["covered_paths", "excluded_paths"]:
+                    value["inventory"]["coverage"][group].append(ARCH.upper())
+                elif group == "documents":
+                    value["inventory"]["documents"][0]["path"] = ARCH.upper()
+                elif group == "mapping_source":
+                    value["mappings"] = [{"artifact_path":ARCH,"source_path":ARCH.upper(),"choice":"LINK_EXISTING"}]
+                else:
+                    value["inventory"]["context"][group] = [ARCH.upper()]
+                with self.assertRaises(ContractError):
+                    service.preview(bind(value))

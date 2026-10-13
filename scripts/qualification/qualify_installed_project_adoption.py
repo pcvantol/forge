@@ -183,7 +183,7 @@ def run(args: argparse.Namespace) -> int:
                 put(bind(case));target=root/status;child(status.lower()+'-preview',['preview','--input',str(input_file),'--export',str(target)])
                 row=next(x for x in json.loads((target/'proposal.json').read_text())['entries'] if x['artifact_path']=='docs/architecture/ARCHITECTURE.md')
                 assert row['operation']=='INSUFFICIENT_INFORMATION' and row['after']=={}
-            for label in ['existing-change','identical-keep','excluded-source','dirty-absence','casefold-dirty-absence','ambiguous-vision','identity-bytes-missing','code-quality-claim']:
+            for label in ['existing-change','identical-keep','excluded-source','dirty-absence','ambiguous-vision','identity-bytes-missing','code-quality-claim']:
                 case=copy.deepcopy(value)
                 doc=next(x for x in case['inventory']['documents'] if x['path']=='docs/architecture/ARCHITECTURE.md')
                 expected_operation='CONFLICT'
@@ -195,7 +195,7 @@ def run(args: argparse.Namespace) -> int:
                     expected_operation='PROPOSE_CHANGE' if label=='existing-change' else 'KEEP'
                 elif label=='excluded-source':
                     case['inventory']['coverage']['excluded_paths']=[inspect_path];expected_operation='INSUFFICIENT_INFORMATION'
-                elif label in {'dirty-absence','casefold-dirty-absence'}:case['inventory']['context']['untracked_paths']=[inspect_path.upper() if label=='casefold-dirty-absence' else inspect_path]
+                elif label=='dirty-absence':case['inventory']['context']['untracked_paths']=[inspect_path]
                 elif label=='ambiguous-vision':
                     inspect_path='docs/product/VISION.md';case['mappings']=[]
                     extra={'path':'docs/OTHER_VISION.md','status':'PRESENT','content':'Other supplied vision','sha256':sha(b'Other supplied vision'),'mode':0o644,'artifact_hint':'PB-A13'}
@@ -228,7 +228,7 @@ def run(args: argparse.Namespace) -> int:
             assert {p.name:sha(p.read_bytes()) for p in first.iterdir()}==frozen
             original=(first/'proposal.json').read_bytes();(first/'proposal.json').write_bytes(original+b' ');child('changed-plan-refused',['check-proposal','--proposal',str(first)],1);(first/'proposal.json').write_bytes(original)
             first.chmod(0o755);child('lost-private-root-refused',['check-proposal','--proposal',str(first)],1);first.chmod(0o700);child('restored-private-proposal',['check-proposal','--proposal',str(first)])
-            for name,change in [('bad-digest',lambda x:x.update(inventory_digest='0'*64)),('cross-path-replace',lambda x:x['mappings'][0].update(choice='PROPOSE_REPLACEMENT')),('unknown-field',lambda x:x.update(extra=True))]:
+            for name,change in [('bad-digest',lambda x:x.update(inventory_digest='0'*64)),('cross-path-replace',lambda x:x['mappings'][0].update(choice='PROPOSE_REPLACEMENT')),('unknown-field',lambda x:x.update(extra=True)),('casefold-excluded-alias',lambda x:x['inventory']['coverage']['excluded_paths'].append('DOCS/ARCHITECTURE/ARCHITECTURE.MD'))]:
                 bad=copy.deepcopy(value);change(bad);put(bad);target=root/name;child(name,['preview','--input',str(input_file),'--export',str(target)],1);assert not target.exists()
             put(value);repo=root/'disposable-target';repo.mkdir();(repo/'.git').mkdir();sentinel=repo/'existing.txt';sentinel.write_bytes(b'unchanged synthetic target')
             target_before={str(p.relative_to(repo)):sha(p.read_bytes()) for p in repo.rglob('*') if p.is_file()}
