@@ -102,13 +102,20 @@ class ProjectProposalGrant:
             self.store.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
             # Witness first: any uncertain/missing subsequent store fails closed.
             write(self.witness, {'contract_version':CONTRACT,'instance_id':self.instance_id,'key':secrets.token_hex(32)}, create=True)
-            write(self.store, {'contract_version':CONTRACT,'instance_id':self.instance_id,'dossiers':{},'records':{}}, create=True)
+            self.save_store({'contract_version':CONTRACT,'instance_id':self.instance_id,'dossiers':{},'records':{}}, create=True)
+
+    def save_store(self, value, *, create=False):
+        original = {k:v for k,v in value.items() if k != 'store_integrity'}
+        write(self.store, {**original,'store_integrity':self.integrity(original)}, create=create)
 
     def _store(self):
         self.integrity({})
         value = read(self.store)
-        if not isinstance(value,dict) or set(value) != {'contract_version','instance_id','dossiers','records'} or value['contract_version'] != CONTRACT or value['instance_id'] != self.instance_id or not isinstance(value['dossiers'],dict) or len(value['dossiers']) > 32 or not isinstance(value['records'],dict) or len(value['records']) > 64:
+        if not isinstance(value,dict) or set(value) != {'contract_version','instance_id','dossiers','records','store_integrity'} or value['contract_version'] != CONTRACT or value['instance_id'] != self.instance_id or not isinstance(value['dossiers'],dict) or len(value['dossiers']) > 32 or not isinstance(value['records'],dict) or len(value['records']) > 64:
             raise ValueError('proposal store invalid')
+        original = {k:v for k,v in value.items() if k != 'store_integrity'}
+        if not isinstance(value['store_integrity'],str) or not secrets.compare_digest(value['store_integrity'],self.integrity(original)):
+            raise ValueError('proposal store integrity failed')
         return value
 
     def issue(self, *, principal_id, audience, dossier_ids, permissions, kinds, maximum_records, expires_at, token_path):
@@ -129,7 +136,7 @@ class ProjectProposalGrant:
                 if existing is not None and existing != proposed: raise PermissionError('dossier binding immutable')
                 store['dossiers'][key] = proposed
             if len(store['dossiers']) > 32: raise ValueError('dossier capacity exhausted')
-            write(self.store,store)
+            self.save_store(store)
             token = secrets.token_urlsafe(48)
             r={'grant_id':'proposal-'+secrets.token_hex(16),'principal_id':principal_id,'instance_id':self.instance_id,'audience':audience,
                'dossier_ids':sorted(dossier_ids),'permissions':sorted(set(permissions)),'kinds':sorted(set(kinds)),'maximum_records':maximum_records,
@@ -142,7 +149,7 @@ class ProjectProposalGrant:
 
     def authenticate(self, authorization):
         try: return self.authorize(authorization)
-        except (OSError,ValueError,TypeError,KeyError,PermissionError): return None
+        except (OSError,ValueError,TypeError,KeyError,PermissionError,sqlite3.Error): return None
 
     def authorize(self, authorization, *, audience=None, dossier_id=None, permission='READ', kind=None):
         if not isinstance(authorization,str) or not authorization.startswith('Bearer '): raise PermissionError('authentication required')
@@ -199,7 +206,7 @@ def main(argv=None):
         elif args.action=='revoke':result=grant.revoke(args.grant_id)
         else:result=grant.issue(principal_id=args.principal_id,audience=args.audience,dossier_ids=args.dossier_id,permissions=args.permission,kinds=args.kind,maximum_records=args.maximum_records,expires_at=args.expires_at,token_path=args.token_file)
         print(json.dumps(result,sort_keys=True));return 0
-    except (OSError,ValueError,TypeError,RuntimeError,PermissionError):
+    except (OSError,ValueError,TypeError,RuntimeError,PermissionError,sqlite3.Error):
         print(json.dumps({'error':{'code':'PROPOSAL_GRANT_INVALID'}}));return 1
 
 if __name__=='__main__':raise SystemExit(main())

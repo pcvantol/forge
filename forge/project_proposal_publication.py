@@ -2,6 +2,7 @@
 import json
 import select
 import socket
+import sqlite3
 import time
 
 
@@ -24,5 +25,5 @@ def publish(handler, grant, authorization, audience, response, payload):
             body=json.dumps({'error':{'code':'PROPOSAL_PUBLICATION_DENIED'}}).encode()
             handler.send_response(403);handler.send_header('Content-Type','application/json');handler.send_header('Content-Length',str(len(body)));handler.send_header('Cache-Control','no-store');handler.end_headers();handler.wfile.write(body)
         # Already sent bytes cannot be withdrawn; incomplete JSON is never a new success.
-    except (OSError,ValueError,TypeError,RuntimeError):
+    except (OSError,ValueError,TypeError,RuntimeError,sqlite3.Error):
         return

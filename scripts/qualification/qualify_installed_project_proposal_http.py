@@ -137,7 +137,12 @@ def run(python,output,wheel=None,revision=None):
                 status,cap=call(port,alice,'GET','/v1/onboarding/capability');assert status==200 and cap['project_registration'] is False
                 receipt['cases'].append('actual-installed-http-capability-no-canonical-project')
                 results=[];requests=[]
-                for kind,value in [('pb-render/1.0',basis),('pb-adoption-preview/1.0',adoption)]:
+                profiles=[]
+                for role in ['authority','child']:
+                    original=json.loads(subprocess.check_output(['git','-C',str(SOURCE),'show','HEAD:examples/project-bootstrap/'+role+'-input.json']))
+                    for mode,profile in [('GENESIS','LOCAL_POSIX'),('MANAGED','GITHUB_DOCUMENTS')]:
+                        profiles.append(('pb-render/1.0',{**original,'mode':mode,'host_profile':profile}))
+                for kind,value in [*profiles,('pb-adoption-preview/1.0',adoption)]:
                     body={'contract_version':CONTRACT,'instance_id':cap['instance_id'],'dossier_id':'dossier-alice','operation_id':'original-'+str(len(results)),'proposal_kind':kind,'input':value}
                     status,plan=call(port,alice,'POST','/v1/onboarding/plans',body);assert status==200,(status,plan)
                     assert plan['result']['state']=='PROPOSED_NOT_APPROVED'
@@ -147,7 +152,7 @@ def run(python,output,wheel=None,revision=None):
                     command(python,args,root)
                     for item in plan['result']['artifacts']:
                         assert (export/item['path']).read_bytes()==item['content'].encode() and sha256(item['content'].encode()).hexdigest()==item['sha256']
-                    results.append(plan);requests.append(body);receipt['cases'].append('http-'+kind+'-exact-installed-cli-parity')
+                    results.append(plan);requests.append(body);receipt['cases'].append('http-'+kind+'-'+value.get('role','adoption')+'-'+value.get('mode','supplied')+'-exact-installed-cli-parity')
                     assert call(port,alice,'POST','/v1/onboarding/plans',body)==(200,plan)
                     assert call(port,alice,'GET','/v1/onboarding/intents/'+body['operation_id']+'?dossier_id=dossier-alice')==(200,plan)
                     assert call(port,bob,'GET','/v1/onboarding/plans/'+plan['plan_id']+'?dossier_id=dossier-bob')[0]==403
@@ -156,6 +161,28 @@ def run(python,output,wheel=None,revision=None):
                 assert call(port,alice,'POST','/v1/onboarding/plans',changed)[0]==409
                 assert call(port,alice,'GET','/v1/projects')[0]==403
                 receipt['cases'].extend(['exact-idempotency-original-intent','cross-caller-dossier-and-admin-denied','changed-same-key-conflicts'])
+                # Successful independent Bob scope, not only negative isolation.
+                bob_request={**requests[0],'dossier_id':'dossier-bob','operation_id':'bob-original'}
+                bob_status,bob_plan=call(port,bob,'POST','/v1/onboarding/plans',bob_request);assert bob_status==200
+                assert call(port,bob,'GET','/v1/onboarding/intents/bob-original?dossier_id=dossier-bob')==(200,bob_plan)
+                assert call(port,alice,'GET','/v1/onboarding/plans/'+bob_plan['plan_id']+'?dossier_id=dossier-alice')[0]==403
+                receipt['cases'].append('two-positive-independent-private-callers')
+                store_path=root/'runtime'/'onboarding'/'proposals'/'store.json'
+                original_store=store_path.read_bytes()
+                corrupt=json.loads(original_store);corrupt['records'][results[0]['plan_id']]['result']['repository_quality']='PASS'
+                store_path.write_text(json.dumps(corrupt));store_path.chmod(0o600)
+                assert call(port,alice,'GET','/v1/onboarding/intents/original-0?dossier_id=dossier-alice')[0]==503
+                assert call(port,alice,'POST','/v1/onboarding/plans',{**requests[0],'operation_id':'must-not-commit'})[0]==503
+                store_path.write_bytes(original_store);store_path.chmod(0o600)
+                assert call(port,alice,'GET','/v1/onboarding/intents/original-0?dossier_id=dossier-alice')==(200,results[0])
+                store_path.unlink()
+                assert call(port,alice,'GET','/v1/onboarding/intents/original-0?dossier_id=dossier-alice')[0]==503
+                assert not store_path.exists()
+                store_path.write_bytes(original_store);store_path.chmod(0o600)
+                receipt['cases'].append('actual-private-store-corruption-missing-denial-exact-restoration')
+                assert call(port,alice,'POST','/v1/onboarding/plans',{**requests[0],'actor':'owner'})[0]==400
+                assert call(port,alice,'GET','/v1/onboarding/intents/original-0?dossier_id=dossier-alice&dossier_id=foreign')[0]==400
+                receipt['cases'].append('closed-schema-query-and-no-actor-authority')
                 # Real lost success body: client closes without reading the committed response.
                 lost={**requests[0],'operation_id':'lost-success'}
                 raw=json.dumps(lost).encode();headers=('POST /v1/onboarding/plans HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer '+alice.read_text().strip()+'\r\nX-Forge-Proposal-Audience: synthetic-workspace\r\nContent-Type: application/json\r\nContent-Length: '+str(len(raw))+'\r\nConnection: close\r\n\r\n').encode()
@@ -175,8 +202,8 @@ def run(python,output,wheel=None,revision=None):
                 receipt['cases'].extend(['real-lost-success-original-intent','separate-server-os-restart-exact-readback','actual-revocation-read-replay-denied'])
             with sqlite3.connect(root/'runtime'/'forge.db') as database:
                 for table in ['mission_id_allocations','mission_state','governance_decisions']:assert database.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==0
-            stored=json.loads((root/'runtime'/'onboarding'/'proposals'/'store.json').read_text());assert len(stored['records'])==3
-            receipt.update(result='PROJECT_PROPOSAL_HTTP_COMPACT_PASS',stored_records=3,no_canonical_project=True,no_ep_model_mission_effects=True,separate_server_processes=True)
+            stored=json.loads((root/'runtime'/'onboarding'/'proposals'/'store.json').read_text());assert len(stored['records'])==len(results)+2
+            receipt.update(result='PROJECT_PROPOSAL_HTTP_COMPACT_PASS',stored_records=len(results)+2,no_canonical_project=True,no_ep_model_mission_effects=True,separate_server_processes=True)
         receipt['cleanup']=not root.exists()
     except BaseException as error:
         primary=error

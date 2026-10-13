@@ -43,6 +43,18 @@
     {
       "key": "worksetActivityToken",
       "value": ""
+    },
+    {
+      "key": "proposalToken",
+      "value": "private-finite-proposal-token-not-admin"
+    },
+    {
+      "key": "proposalAudience",
+      "value": "synthetic-workspace"
+    },
+    {
+      "key": "proposalDossier",
+      "value": "synthetic-product-a"
     }
   ],
   "auth": {
@@ -2328,6 +2340,141 @@
         }
       },
       "description": "Original scoped public source fact; current scoped READ only; no model/EP/write; original time or UNKNOWN; resync explicit."
+    },
+    {
+      "name": "Private proposal: GET /v1/onboarding/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{proposalToken}}"
+          },
+          {
+            "key": "X-Forge-Proposal-Audience",
+            "value": "{{proposalAudience}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/onboarding/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "onboarding",
+            "capability"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Private proposal: POST /v1/onboarding/plans",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{proposalToken}}"
+          },
+          {
+            "key": "X-Forge-Proposal-Audience",
+            "value": "{{proposalAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/onboarding/plans",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "onboarding",
+            "plans"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contract_version\": \"forge-project-proposal-http/v1\",\n  \"instance_id\": \"replace-with-current-capability-instance\",\n  \"dossier_id\": \"synthetic-product-a\",\n  \"operation_id\": \"synthetic-prepare-1\",\n  \"proposal_kind\": \"pb-render/1.0\",\n  \"input\": {}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Private proposal: GET /v1/onboarding/plans/{plan_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{proposalToken}}"
+          },
+          {
+            "key": "X-Forge-Proposal-Audience",
+            "value": "{{proposalAudience}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/onboarding/plans/{plan_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "onboarding",
+            "plans",
+            "{plan_id}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{proposalDossier}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Private proposal: GET /v1/onboarding/intents/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{proposalToken}}"
+          },
+          {
+            "key": "X-Forge-Proposal-Audience",
+            "value": "{{proposalAudience}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/onboarding/intents/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "onboarding",
+            "intents",
+            "{operation_id}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{proposalDossier}}"
+            }
+          ]
+        }
+      }
     }
   ]
 }

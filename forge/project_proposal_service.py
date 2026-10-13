@@ -1,6 +1,7 @@
 """Authenticated finite private HTTP dossiers above the unchanged R50/R51 services."""
 from hashlib import sha256
 import json
+import sqlite3
 from urllib.parse import urlsplit, parse_qs
 from .approved_worklist import identifier
 from .project_bootstrap.schema import canonical, load_json, ContractError
@@ -125,7 +126,7 @@ class ProjectProposalService:
                     if owner is None or owner['principal_id'] != principal.principal_id or owner['audience'] != audience: raise PermissionError('dossier owner mismatch')
                     count = sum(r.get('dossier_id') == dossier for r in store['records'].values())
                     if len(store['records']) >= 64 or count >= min(owner['maximum_records'],principal.maximum_records): return 409,{'contract_version':CONTRACT,'error':{'code':'PROPOSAL_CAPACITY_EXHAUSTED'}}
-                    store['records'][plan_id] = record; write(self.grant.store,store)
+                    store['records'][plan_id] = record; self.grant.save_store(store)
                     return 200,self.response(principal,dossier,record)
             if method == 'GET' and len(parts) == 5 and parts[:3] == ['','v1','onboarding'] and parts[3] in {'plans','intents'}:
                 if set(query) != {'dossier_id'} or body: raise InvalidRequest('exact dossier query required')
@@ -144,5 +145,5 @@ class ProjectProposalService:
             return 403,{'contract_version':CONTRACT,'error':{'code':'PROPOSAL_SCOPE_DENIED'}}
         except ContractError:
             return 422,{'contract_version':CONTRACT,'error':{'code':'PROPOSAL_INPUT_UNSUPPORTED'}}
-        except (OSError,KeyError,TypeError,ValueError):
+        except (OSError,KeyError,TypeError,ValueError,sqlite3.Error):
             return 503,{'contract_version':CONTRACT,'error':{'code':'PROPOSAL_UNAVAILABLE_OR_INVALID'}}

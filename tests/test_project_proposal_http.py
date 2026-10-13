@@ -1,5 +1,6 @@
 """Actual source HTTP controls; trusted OS identity fixture is not installed proof."""
 from copy import deepcopy
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import json
@@ -72,6 +73,48 @@ class ProposalHTTPTests(unittest.TestCase):
         before=self.grant.store.read_bytes();self.grant.initialize();self.assertEqual(self.grant.store.read_bytes(),before)
         with self.assertRaises(ValueError):write(self.grant.store,{},create=True)
         self.assertEqual(self.grant.store.read_bytes(),before)
+    def test_real_grant_revoke_after_commit_before_first_http_send(self):
+        original=ProjectProposalGrant.publication
+        @contextmanager
+        def revoked_before_send(grant,*args):
+            self.grant.revoke(self.issued['grant_id'])
+            with original(grant,*args):yield
+        with patch.object(ProjectProposalGrant,'publication',revoked_before_send):
+            status,body=self.call('POST','/v1/onboarding/plans',self.body)
+        self.assertEqual(status,403);self.assertEqual(body['error']['code'],'PROPOSAL_PUBLICATION_DENIED')
+        self.assertEqual(len(read(self.grant.store)['records']),1)
+        self.assertEqual(self.call('GET','/v1/onboarding/intents/original?dossier_id=alice-dossier')[0],401)
+
+    def test_trusted_cli_init_issue_revoke_without_project(self):
+        import io
+        from forge.project_proposal_grant import main
+        output=io.StringIO();token=Path(self.temp.name)/'cli-private'
+        with patch('sys.stdout',output):
+            self.assertEqual(main(['--data-root',str(self.root),'init']),0)
+            self.assertEqual(main(['--data-root',str(self.root),'issue','--principal-id','cli','--audience','synthetic-workspace','--dossier-id','cli-dossier','--permission','READ','--kind',KINDS[0],'--maximum-records','1','--expires-at',(datetime.now(UTC)+timedelta(hours=1)).isoformat(),'--token-file',str(token)]),0)
+            grant_id=json.loads(output.getvalue().splitlines()[-1])['grant_id']
+            self.assertEqual(main(['--data-root',str(self.root),'revoke','--grant-id',grant_id]),0)
+        self.assertNotIn(token.read_text().strip(),output.getvalue())
+
+    def test_corrupt_unselected_counter_cannot_enable_admission(self):
+        status,plan=self.call('POST','/v1/onboarding/plans',self.body);self.assertEqual(status,200)
+        original=read(self.grant.store)
+        for replacement in ['not-a-record', {**original['records'][plan['plan_id']],'dossier_id':'foreign'}]:
+            broken=deepcopy(original);broken['records'][plan['plan_id']]=replacement;write(self.grant.store,broken)
+            self.assertEqual(self.call('POST','/v1/onboarding/plans',{**self.body,'operation_id':'new-original'})[0],503)
+            self.assertEqual(read(self.grant.store),broken)
+        write(self.grant.store,original);self.assertEqual(self.get(plan),(200,plan))
+
+    def test_actual_database_writer_contention_is_http503_without_effect(self):
+        import sqlite3
+        lock=sqlite3.connect(self.root/'forge.db');lock.execute('BEGIN IMMEDIATE')
+        try:
+            status,body=self.call('POST','/v1/onboarding/plans',self.body)
+            self.assertEqual(status,503);self.assertEqual(body['error']['code'],'PROPOSAL_UNAVAILABLE_OR_INVALID')
+            self.assertEqual(read(self.grant.store)['records'],{})
+        finally:lock.rollback();lock.close()
+        self.assertEqual(self.call('POST','/v1/onboarding/plans',self.body)[0],200)
+
     def test_both_profiles_authority_child_exact_owning_bytes(self):
         from forge.project_bootstrap.service import render
         for role in ['authority','child']:
