@@ -15,7 +15,8 @@ def publish(handler, grant, authorization, audience, response, payload):
             if time.monotonic() >= deadline: raise TimeoutError('bounded publication deadline')
             if not select.select([], [handler.connection], [], min(0.1,max(0,deadline-time.monotonic())))[1]: continue
             try:
-                with grant.publication(authorization,audience,response.body):
+                with grant.publication(authorization,audience,response.body,deadline=deadline):
+                    if time.monotonic()>=deadline:raise TimeoutError('bounded publication deadline')
                     sent = handler.connection.send(data[offset:offset+65536],socket.MSG_DONTWAIT)
             except BlockingIOError: continue
             if sent <= 0: raise ConnectionError('publication interrupted')

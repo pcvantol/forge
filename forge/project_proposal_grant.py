@@ -9,9 +9,12 @@ from pathlib import Path
 import secrets
 import sqlite3
 import hmac
+import os
+import stat
+import time
 from .approved_worklist import identifier, timestamp
 from .project_bootstrap.schema import canonical
-from .workspace_review_grant import _locked, _new_token, _private_bytes, _write_private
+from .workspace_review_grant import _locked, _new_token, _private_bytes, _write_private, _private_directory, fcntl
 from .project_proposal_storage import read, write
 
 CONTRACT = 'forge-project-proposal-http/v1'
@@ -72,15 +75,37 @@ class ProjectProposalGrant:
         return value['records']
 
     @contextmanager
-    def boundary(self):
+    def lock_until(self, deadline):
+        if deadline is None:
+            with _locked(self.path): yield
+            return
+        if fcntl is None: raise ValueError('proposal lifecycle locking unavailable')
+        _private_directory(self.path.parent,create=True)
+        fd=os.open(self.path.parent/'.workspace-review-grants.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+        acquired=False
+        try:
+            info=os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or info.st_uid!=os.geteuid():raise ValueError('private proposal lock required')
+            while not acquired:
+                if time.monotonic()>=deadline:raise TimeoutError('proposal publication authority deadline')
+                try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);acquired=True
+                except BlockingIOError:time.sleep(min(0.01,max(0,deadline-time.monotonic())))
+            yield
+        finally:
+            if acquired:fcntl.flock(fd,fcntl.LOCK_UN)
+            os.close(fd)
+
+    @contextmanager
+    def boundary(self, deadline=None):
         """Grant lock then canonical SQLite writer reservation; no render/client wait."""
-        with _locked(self.path):
+        with self.lock_until(deadline):
             # The existing read composition first verifies this initialized runtime.
             operator_binding(self.root, self.instance_id)
-            connection = sqlite3.connect((self.root / 'forge.db').resolve().as_uri() + '?mode=rw', uri=True, timeout=3)
+            connection = sqlite3.connect((self.root / 'forge.db').resolve().as_uri() + '?mode=rw', uri=True, timeout=3 if deadline is None else max(0,min(3,deadline-time.monotonic())))
             try:
                 connection.execute('BEGIN IMMEDIATE')
                 operator_binding(self.root, self.instance_id)
+                if deadline is not None and time.monotonic()>=deadline:raise TimeoutError('proposal publication authority deadline')
                 yield
             finally:
                 connection.rollback(); connection.close()
@@ -164,12 +189,13 @@ class ProjectProposalGrant:
         return ProposalPrincipal(*(r[k] if k not in {'dossier_ids','permissions','kinds'} else tuple(r[k]) for k in ProposalPrincipal.__dataclass_fields__))
 
     @contextmanager
-    def publication(self, authorization, audience, body):
-        with self.boundary():
+    def publication(self, authorization, audience, body, *, deadline=None):
+        with self.boundary(deadline):
             p = self.authorize(authorization,audience=audience)
             if body.get('dossier_id') is not None:
                 self.authorize(authorization,audience=audience,dossier_id=body['dossier_id'],kind=body.get('proposal_kind'))
                 if body.get('principal_id') != p.principal_id or body.get('instance_id') != p.instance_id: raise PermissionError('publication scope denied')
+            if deadline is not None and time.monotonic()>=deadline:raise TimeoutError('proposal publication authority deadline')
             yield
 
     def revoke(self, grant_id):

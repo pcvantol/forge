@@ -42,7 +42,7 @@ class ProposalHTTPTests(unittest.TestCase):
     def call(self,method,path,body=None,token=None,audience='synthetic-workspace'):
         request=Request('http://127.0.0.1:'+str(self.http.server_address[1])+path,method=method,data=None if body is None else json.dumps(body).encode(),headers={'Authorization':'Bearer '+(token or self.token.read_text().strip()),'X-Forge-Proposal-Audience':audience,'Content-Type':'application/json'})
         try:
-            with urlopen(request,timeout=5) as response:return response.status,json.loads(response.read())
+            with urlopen(request,timeout=8) as response:return response.status,json.loads(response.read())
         except HTTPError as error:
             with error:return error.code,json.loads(error.read())
     def get(self,plan):return self.call('GET','/v1/onboarding/plans/'+plan['plan_id']+'?dossier_id=alice-dossier')
@@ -76,14 +76,35 @@ class ProposalHTTPTests(unittest.TestCase):
     def test_real_grant_revoke_after_commit_before_first_http_send(self):
         original=ProjectProposalGrant.publication
         @contextmanager
-        def revoked_before_send(grant,*args):
+        def revoked_before_send(grant,*args,**kwargs):
             self.grant.revoke(self.issued['grant_id'])
-            with original(grant,*args):yield
+            with original(grant,*args,**kwargs):yield
         with patch.object(ProjectProposalGrant,'publication',revoked_before_send):
             status,body=self.call('POST','/v1/onboarding/plans',self.body)
         self.assertEqual(status,403);self.assertEqual(body['error']['code'],'PROPOSAL_PUBLICATION_DENIED')
         self.assertEqual(len(read(self.grant.store)['records']),1)
         self.assertEqual(self.call('GET','/v1/onboarding/intents/original?dossier_id=alice-dossier')[0],401)
+
+    def test_real_owned_lock_wait_cannot_send_after_publication_deadline(self):
+        import time
+        from http.client import RemoteDisconnected
+        from forge.workspace_review_grant import _locked
+        original=ProjectProposalGrant.publication
+        locked=Event();release=Event()
+        def holder():
+            with _locked(self.grant.path):locked.set();release.wait(7)
+        @contextmanager
+        def blocked_publication(grant,*args,**kwargs):
+            owner=Thread(target=holder);owner.start();self.assertTrue(locked.wait(2))
+            try:
+                with original(grant,*args,**kwargs):yield
+            finally:release.set();owner.join(2)
+        with patch.object(ProjectProposalGrant,'publication',blocked_publication):
+            start=time.monotonic()
+            with self.assertRaises(RemoteDisconnected):self.call('POST','/v1/onboarding/plans',self.body)
+            self.assertLess(time.monotonic()-start,6.5)
+        record=next(iter(read(self.grant.store)['records'].values()))
+        self.assertEqual(self.call('GET','/v1/onboarding/intents/original?dossier_id=alice-dossier')[1]['plan_id'],record['plan_id'])
 
     def test_trusted_cli_init_issue_revoke_without_project(self):
         import io
