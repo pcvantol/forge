@@ -72,3 +72,22 @@ class ConceptContractTest(unittest.TestCase):
             module.resend_lost_original(1,b'header',b'body',10)
             self.assertEqual(connect.call_args.kwargs['timeout'],1.0)
             self.assertAlmostEqual(client.settimeout.call_args.args[0],0.6)
+
+    def test_original_private_capture_before_cleanup_and_primary_failure_retention(self):
+        from importlib.util import spec_from_file_location,module_from_spec
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        spec=spec_from_file_location('concept_private_capture',Path(__file__).resolve().parents[1]/'scripts/qualification/qualify_installed_concept_advisory_http.py')
+        module=module_from_spec(spec);spec.loader.exec_module(module)
+        with TemporaryDirectory() as tmp:
+            output=Path(tmp).resolve()
+            with module.owned_scratch(output) as (_,root):
+                root.mkdir();(root/'provider-requests.private.jsonl').write_bytes(b'synthetic original request\n')
+            self.assertFalse(root.exists());self.assertEqual((output/'provider-requests.private.jsonl').read_bytes(),b'synthetic original request\n')
+            original=RuntimeError('primary-probe')
+            with patch.object(module.BINDING.CAPTURE,'retain',side_effect=OSError('secondary private capture failure')):
+                with self.assertRaises(RuntimeError) as caught:
+                    with module.owned_scratch(output) as (_,root):
+                        root.mkdir();(root/'provider-requests.private.jsonl').write_bytes(b'synthetic\n');raise original
+            self.assertIs(caught.exception,original);self.assertFalse(root.exists());self.assertTrue(original.__notes__)

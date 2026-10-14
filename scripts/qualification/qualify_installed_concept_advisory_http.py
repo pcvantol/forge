@@ -221,11 +221,10 @@ def run(args):
                 permits=db.execute("SELECT COUNT(*) FROM forge_operational_logs WHERE event='planning_provider_generation_permit_acquired'").fetchone()[0]
                 committed=db.execute("SELECT COUNT(*) FROM forge_operational_logs WHERE event='planning_provider_generation_transport_committed'").fetchone()[0]
                 assert permits==committed==6
-            (output/'provider-requests.private.jsonl').write_bytes((root/'provider-requests.private.jsonl').read_bytes());(output/'provider-requests.private.jsonl').chmod(0o600)
             receipt.update(result='PREPROJECT_CONCEPT_ADVISORY_HTTP_COMPACT_PASS',provider_calls=6,durable_permits=permits,no_project_ep_approval_mission_effects=True)
         receipt['cleanup']=not root.exists()
     except BaseException as error:
-        primary=error;receipt['failure']={'category':type(error).__name__};raise
+        primary=error;receipt['result']='FAIL';receipt['failure']={'category':type(error).__name__};raise
     finally:
         if 'root' in locals():receipt['cleanup']=not root.exists()
         BINDING.retain_receipt(output,receipt,primary)
