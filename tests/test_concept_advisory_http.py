@@ -315,3 +315,22 @@ class ConceptHttpTest(unittest.TestCase):
             with patch.object(ConceptAdvisoryGrant,'publication',side_effect=sqlite3.OperationalError('private publication database fault')),patch('sys.stdout',new_callable=StringIO) as output:
                 self.assertEqual(main(args),1);self.assertEqual(output.getvalue(),'')
             self.assertFalse((root/'provider-requests.private.jsonl').exists())
+
+    def test_known_original_readback_distinguishes_initialization_contention_from_unknown_start(self):
+        from forge.runtime.bootstrap import RuntimeBootstrap
+        import fcntl
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';fixture.configure(root)
+            with http(root) as port:
+                token=root/'alice.private';_,cap=call(port,token,'GET','/v1/concept-advisory/capability')
+                r=example();r.update(instance_id=cap['instance_id'],dossier_id='dossier-alice',conversation_id='conversation-alice',transfer_policy_digest=cap['provider']['transfer_policy_digest'])
+                lock=RuntimeBootstrap(data_root=root/'runtime').resolver.initialization_lock_path
+                with lock.open('a+') as lease:
+                    fcntl.flock(lease.fileno(),fcntl.LOCK_EX)
+                    self.assertEqual(call(port,token,'POST','/v1/concept-advisory/turns',r)[0],503)
+                    missing=call(port,token,'GET','/v1/concept-advisory/intents/operation-one?dossier_id=dossier-alice&conversation_id=conversation-alice')
+                    self.assertEqual(missing[0],404);self.assertEqual(missing[1]['error']['code'],'CONCEPT_TURN_NOT_FOUND')
+                    fcntl.flock(lease.fileno(),fcntl.LOCK_UN)
+                self.assertEqual(call(port,token,'POST','/v1/concept-advisory/turns',r)[1]['original_turn']['status'],'COMPLETE')
+                self.assertEqual(call(port,token,'POST','/v1/concept-advisory/turns',r)[1]['recorded'],False)
+            self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)

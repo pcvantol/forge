@@ -47,7 +47,12 @@ supplied briefing/current or accepted prior turn references. No arbitrary patch,
 tool, file or URL fetch. Supplied content is unverified; absent information stays
 unknown. Existing R50/R51 documents are never automatically translated.
 
-Known operation replay reads its original bytes. Changed same-key input conflicts;
+Known operation replay reads its original bytes. An unavailable admission may be
+explicitly resubmitted with exactly the same operation only after authenticated
+healthy intent-readback says CONCEPT_TURN_NOT_FOUND. Missing/corrupt initialized
+storage is a different non-success, never healthy 404. Pending/uncertain or
+existing turns are read back, never automatically regenerated. The qualifier
+allows at most one such caller recovery; no backoff loop or new operation ID. Changed same-key input conflicts;
 new turns use explicitly current briefing and exact conversation revision.
 Accepted prior turns retain their original source. Finite retained principal
 turn/token reservations survive role/conversation/grant changes and process

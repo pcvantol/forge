@@ -44,6 +44,21 @@ def call(port,token,method,path,body=None):
         finally:error.close()
 
 
+def submit_original(port, token, request):
+    status, body = call(port,token,'POST','/v1/concept-advisory/turns',request)
+    if status != 503:
+        return status,body
+    # Healthy missing original differs from broken initialized storage.
+    # Same operation only, once; pending/uncertain never regenerates.
+    target='/v1/concept-advisory/intents/'+request['operation_id']+'?dossier_id='+request['dossier_id']+'&conversation_id='+request['conversation_id']
+    read_status, original = call(port,token,'GET',target)
+    if read_status == 200:
+        return read_status,original
+    if read_status == 404 and original.get('error',{}).get('code') == 'CONCEPT_TURN_NOT_FOUND':
+        return call(port,token,'POST','/v1/concept-advisory/turns',request)
+    return status,body
+
+
 @contextmanager
 def server(python,root,output):
     with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
@@ -90,18 +105,18 @@ def run(args):
                 token=root/'alice.private';assert not (root/'provider-requests.private.jsonl').exists()
                 receipt['cases'].append('capability-no-generation-no-project')
                 request={**template,'instance_id':cap['instance_id'],'dossier_id':'dossier-alice','conversation_id':'conversation-alice','transfer_policy_digest':cap['provider']['transfer_policy_digest']}
-                status,business=call(port,token,'POST','/v1/concept-advisory/turns',request);assert status==200 and business['original_turn']['status']=='COMPLETE',(status,business)
-                assert call(port,token,'POST','/v1/concept-advisory/turns',request)[1]['original_turn']==business['original_turn']
+                status,business=submit_original(port,token,request);assert status==200 and business['original_turn']['status']=='COMPLETE',(status,business)
+                assert submit_original(port,token,request)[1]['original_turn']==business['original_turn']
                 receipt['cases'].append('business-advice-exact-source-proposal-replay')
                 revised=json.loads(json.dumps(request));revised.update(operation_id='followup',turn_id='followup',expected_revision=1)
                 revised['briefing']['revision']=2;revised['briefing']['fields']['users']='Explicitly accepted local volunteers'
                 # Contract digest is stdlib canonical, identical to owning digest.
                 from hashlib import sha256
                 revised['briefing_digest']='sha256:'+sha256(json.dumps(revised['briefing'],sort_keys=True,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
-                status,followup=call(port,token,'POST','/v1/concept-advisory/turns',revised);assert status==200 and followup['original_turn']['status']=='COMPLETE'
+                status,followup=submit_original(port,token,revised);assert status==200 and followup['original_turn']['status']=='COMPLETE'
                 receipt['cases'].append('followup-explicit-refined-briefing-prior-context')
                 architecture={**revised,'operation_id':'architecture','turn_id':'architecture','advisor_kind':'ARCHITECTURE','expected_revision':2}
-                status,architect=call(port,token,'POST','/v1/concept-advisory/turns',architecture);assert status==200 and architect['original_turn']['status']=='COMPLETE'
+                status,architect=submit_original(port,token,architecture);assert status==200 and architect['original_turn']['status']=='COMPLETE'
                 receipt['cases'].append('architecture-exact-before-changeproposal')
                 assert call(port,root/'bob.private','GET','/v1/concept-advisory/history?dossier_id=dossier-alice&conversation_id=conversation-alice')[0]==403
                 assert call(port,root/'admin.private','GET','/v1/concept-advisory/capability')[0]==403
@@ -109,7 +124,7 @@ def run(args):
                 # Concurrent identical submit reads one durable original; no extra provider call.
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=2) as pool:
-                    duplicated=list(pool.map(lambda _:call(port,token,'POST','/v1/concept-advisory/turns',architecture),range(2)))
+                    duplicated=list(pool.map(lambda _:submit_original(port,token,architecture),range(2)))
                 assert all(status==200 and body['original_turn']==architect['original_turn'] for status,body in duplicated)
                 assert call(port,token,'POST','/v1/concept-advisory/turns',{**architecture,'message':'Changed same operation'})[0]==409
                 receipt['cases'].append('concurrent-identical-original-and-changed-key-conflict')
@@ -128,19 +143,19 @@ def run(args):
                 assert first!=second
                 status,recovered=call(port,token,'GET','/v1/concept-advisory/intents/operation-one?dossier_id=dossier-alice&conversation_id=conversation-alice')
                 assert status==200 and recovered['original_turn']==business['original_turn']
-                assert call(port,token,'POST','/v1/concept-advisory/turns',architecture)[1]['original_turn']==architect['original_turn']
+                assert submit_original(port,token,architecture)[1]['original_turn']==architect['original_turn']
                 assert call(port,token,'GET','/v1/concept-advisory/intents/lost?dossier_id=dossier-alice&conversation_id=conversation-alice')[1]['original_turn']==lost_turn
                 receipt['cases'].append('separate-server-os-restart-original-intent-no-second-call')
                 (root/'fault.private').write_text('inject')
                 invalid={**architecture,'operation_id':'invalid','turn_id':'invalid','expected_revision':4}
-                status,failed=call(port,token,'POST','/v1/concept-advisory/turns',invalid)
+                status,failed=submit_original(port,token,invalid)
                 assert status==200 and failed['original_turn']['status']=='FAILED' and failed['original_turn']['outcome']['output'] is None
                 receipt['cases'].append('invalid-model-tools-patch-output-rejected-consumption-retained')
                 (root/'fault.private').write_text('timeout')
                 uncertain={**architecture,'operation_id':'uncertain','turn_id':'uncertain','expected_revision':5}
-                status,pending=call(port,token,'POST','/v1/concept-advisory/turns',uncertain)
+                status,pending=submit_original(port,token,uncertain)
                 assert status==200 and pending['original_turn']['status']=='UNCERTAIN'
-                assert call(port,token,'POST','/v1/concept-advisory/turns',uncertain)[1]['original_turn']==pending['original_turn']
+                assert submit_original(port,token,uncertain)[1]['original_turn']==pending['original_turn']
                 assert call(port,token,'POST','/v1/concept-advisory/turns',{**uncertain,'operation_id':'another','turn_id':'another','expected_revision':6})[0]==409
                 receipt['cases'].append('uncertain-modelstart-blocks-second-generation')
                 (root/'fault.private').unlink()
