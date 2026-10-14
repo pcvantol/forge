@@ -334,3 +334,17 @@ class ConceptHttpTest(unittest.TestCase):
                 self.assertEqual(call(port,token,'POST','/v1/concept-advisory/turns',r)[1]['original_turn']['status'],'COMPLETE')
                 self.assertEqual(call(port,token,'POST','/v1/concept-advisory/turns',r)[1]['recorded'],False)
             self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)
+
+    def test_uncertain_blocker_is_read_before_mutating_runtime_even_after_reopen(self):
+        from unittest.mock import patch
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';fixture.configure(root);(root/'fault.private').write_text('timeout')
+            with http(root) as port:
+                token=root/'alice.private';_,cap=call(port,token,'GET','/v1/concept-advisory/capability')
+                r=example();r.update(instance_id=cap['instance_id'],dossier_id='dossier-alice',conversation_id='conversation-alice',transfer_policy_digest=cap['provider']['transfer_policy_digest'])
+                self.assertEqual(call(port,token,'POST','/v1/concept-advisory/turns',r)[1]['original_turn']['status'],'UNCERTAIN')
+            with http(root) as port,patch('forge.concept_advisory_service.control_runtime',side_effect=AssertionError('blocked unknown generation must not initialize mutating runtime')):
+                new={**r,'operation_id':'different','turn_id':'different','expected_revision':1}
+                status,error=call(port,token,'POST','/v1/concept-advisory/turns',new)
+                self.assertEqual(status,409,error);self.assertEqual(error['error']['code'],'INVOCATION_UNRESOLVED')
+            self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)

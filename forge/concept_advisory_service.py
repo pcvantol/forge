@@ -100,12 +100,15 @@ class ConceptAdvisoryService:
         # Existing original replay is a read: no mutating runtime/bootstrap opening.
         with self.grant.boundary():
             self.grant.authorize(authorization, audience=audience, dossier_id=r['dossier_id'], conversation_id=r['conversation_id'], permission='ADVISE')
-            old = self._load()['records'].get(key)
+            preadmission = self._load()
+            old = preadmission['records'].get(key)
             if old is not None:
                 if old['request_digest'] != h:
                     raise AdvisoryConflict('OPERATION_CONTENT_CONFLICT')
                 self.current_transfer(p)
                 return self._envelope(p, old, recorded=False)
+            if any(t['status'] in ('PENDING', 'UNCERTAIN') for t in preadmission['records'].values()):
+                raise AdvisoryConflict('INVOCATION_UNRESOLVED')
         with control_runtime(self.grant.root) as runtime:
             provider = ConceptAdvisoryProvider(runtime, p.provider_id)
             with self.grant.boundary():
