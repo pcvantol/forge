@@ -11,12 +11,14 @@ import socket
 import subprocess
 import time
 import sys
+import os
 
 SOURCE=Path(__file__).resolve().parents[2]
 spec=spec_from_file_location('existing_http_binding',Path(__file__).with_name('qualify_installed_project_proposal_http.py'))
 BINDING=module_from_spec(spec);spec.loader.exec_module(BINDING)
 CONTRACT='forge-preproject-concept-advisory/v1'
 MODELED_OS=False
+PRIVATE_TRACE=None
 
 def invocation(python,args):
     if not MODELED_OS:return [str(python),'-I',*args]
@@ -24,12 +26,21 @@ def invocation(python,args):
     return [str(python),'-I','-c',code,*args]
 
 
+def retain_trace(method,path,status,body):
+    if PRIVATE_TRACE is None:return
+    raw=(json.dumps({'method':method,'path':path,'status':status,'response':body})+'\n').encode()
+    if PRIVATE_TRACE.exists() and PRIVATE_TRACE.stat().st_size+len(raw)>1048576:raise RuntimeError('finite private HTTP capture exceeded')
+    fd=os.open(PRIVATE_TRACE,os.O_WRONLY|os.O_APPEND|os.O_CREAT,0o600)
+    with os.fdopen(fd,'ab') as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
+
 def call(port,token,method,path,body=None):
     request=Request('http://127.0.0.1:'+str(port)+path,method=method,data=None if body is None else json.dumps(body).encode(),headers={'Authorization':'Bearer '+token.read_text().strip(),'X-Forge-Concept-Audience':'synthetic-workspace','Content-Type':'application/json'})
     try:
-        with urlopen(request,timeout=15) as response:return response.status,json.loads(response.read())
+        with urlopen(request,timeout=15) as response:
+            body=json.loads(response.read());retain_trace(method,path,response.status,body);return response.status,body
     except HTTPError as error:
-        try:return error.code,json.loads(error.read())
+        try:
+            body=json.loads(error.read());retain_trace(method,path,error.code,body);return error.code,body
         finally:error.close()
 
 
@@ -62,7 +73,8 @@ def server(python,root,output):
 
 
 def run(args):
-    output=args.output_dir;output.mkdir(mode=0o700)
+    global PRIVATE_TRACE
+    output=args.output_dir;output.mkdir(mode=0o700);PRIVATE_TRACE=output/"http.private.jsonl"
     receipt={'result':'FAIL','cases':[],'cleanup':False,'provider_evidence':'MODELED_EXTERNAL_PROVIDER_NOT_LIVE_ADVICE_QUALITY',
              'transport_evidence':'ACTUAL_INSTALLED_HTTP_SEPARATE_SERVER_OS','operator_identity_evidence':'MODELED_TRUSTED_OS_FIXTURE' if MODELED_OS else 'ACTUAL_MACOS_GENERATED_UID',
              **BINDING.installed_binding(args.python,args.wheel,args.source_revision)}
@@ -137,6 +149,18 @@ def run(args):
                 assert call(port,token,'GET','/v1/concept-advisory/intents/uncertain?dossier_id=dossier-alice&conversation_id=conversation-alice')[1]['original_turn']==pending['original_turn']
                 assert call(port,token,'POST','/v1/concept-advisory/turns',{**uncertain,'operation_id':'restart-another','turn_id':'restart-another','expected_revision':6})[0]==409
                 receipt['cases'].append('uncertain-restart-preserves-budget-no-second-call')
+                from datetime import UTC,datetime,timedelta
+                expiring=root/'expiring.private'
+                issue=['-m','forge.concept_advisory_cli','--data-root',str(root/'runtime'),'issue','--principal-id','expiry-principal','--audience','synthetic-workspace','--provider-id','concept-fixture','--transfer-policy-digest',cap['provider']['transfer_policy_digest'],'--expires-at',(datetime.now(UTC)+timedelta(seconds=3)).isoformat(),'--token-file',str(expiring),'--dossier-id','expiry-dossier','--conversation-id','expiry-conversation','--permission','READ','--maximum-turns','1','--maximum-tokens','48000','--maximum-seconds','2']
+                report,stdout,stderr=BINDING.CAPTURE.capture(invocation(args.python,issue),case='owner-expiry-issue',output=output,cwd=root,env={'PATH':'/usr/bin:/bin','HOME':str(root)},expected=0)
+                assert report['capture_complete'] and not report['primary_failure']
+                assert call(port,expiring,'GET','/v1/concept-advisory/capability')[0]==200
+                deadline=time.monotonic()+5
+                while call(port,expiring,'GET','/v1/concept-advisory/capability')[0]==200:
+                    if time.monotonic()>deadline:raise TimeoutError('real concept grant expiry not enforced')
+                    time.sleep(0.1)
+                assert call(port,expiring,'GET','/v1/concept-advisory/history?dossier_id=expiry-dossier&conversation_id=expiry-conversation')[0]==401
+                receipt['cases'].append('actual-owner-issued-readonly-real-expiry-no-modelcall')
                 report,stdout,stderr=BINDING.CAPTURE.capture(invocation(args.python,['-m','forge.concept_advisory_cli','--data-root',str(root/'runtime'),'revoke','--grant-id',json.loads(stdout_setup)['grant_ids']['alice']]),case='owner-revoke',output=output,cwd=root,env={'PATH':'/usr/bin:/bin','HOME':str(root)},expected=0)
                 assert report['capture_complete'] and not report['primary_failure']
                 assert call(port,token,'GET','/v1/concept-advisory/history?dossier_id=dossier-alice&conversation_id=conversation-alice')[0]==401

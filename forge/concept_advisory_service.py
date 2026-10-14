@@ -72,11 +72,16 @@ class ConceptAdvisoryService:
                 'principal_id': principal.principal_id, 'audience': principal.audience,
                 **({'dossier_id': turn['request']['dossier_id'], 'conversation_id': turn['request']['conversation_id'], 'original_turn': turn} if turn else {}), **extra}
 
+    def current_transfer(self, principal):
+        if principal.transfer_policy_digest != provider_profile(self.grant.root, principal.provider_id)['transfer_policy_digest']:
+            raise PermissionError('current transfer binding required')
+
     def capability(self, authorization, audience):
         p = self.grant.authorize(authorization, audience=audience)
         with self.grant.boundary():
             self.grant.authorize(authorization, audience=audience); self._load()
         profile = provider_profile(self.grant.root, p.provider_id)
+        self.current_transfer(p)
         return self._envelope(p, supported_languages=list(LANGUAGES), briefing_fields=list(FIELDS),
                               dossier_ids=list(p.dossier_ids), conversation_ids=list(p.conversation_ids),
                               permissions=list(p.permissions), maximum_turns=p.maximum_turns, maximum_tokens=p.maximum_tokens, maximum_seconds=p.maximum_seconds,
@@ -92,6 +97,15 @@ class ConceptAdvisoryService:
         if r['transfer_policy_digest'] != p.transfer_policy_digest or p.transfer_policy_digest != profile['transfer_policy_digest']:
             raise PermissionError('current explicit transfer permission required')
         key = self._key(p.principal_id, p.audience, r)
+        # Existing original replay is a read: no mutating runtime/bootstrap opening.
+        with self.grant.boundary():
+            self.grant.authorize(authorization, audience=audience, dossier_id=r['dossier_id'], conversation_id=r['conversation_id'], permission='ADVISE')
+            old = self._load()['records'].get(key)
+            if old is not None:
+                if old['request_digest'] != h:
+                    raise AdvisoryConflict('OPERATION_CONTENT_CONFLICT')
+                self.current_transfer(p)
+                return self._envelope(p, old, recorded=False)
         with control_runtime(self.grant.root) as runtime:
             provider = ConceptAdvisoryProvider(runtime, p.provider_id)
             with self.grant.boundary():
@@ -157,6 +171,7 @@ class ConceptAdvisoryService:
                     current_store = self._load(); turn['status'] = 'FAILED'; self._save(current_store, key, turn)
                 raise
         self.grant.authorize(authorization, audience=audience, dossier_id=r['dossier_id'], conversation_id=r['conversation_id'])
+        self.current_transfer(p)
         return self._envelope(p, self._load()['records'][key], recorded=True)
 
     def read(self, authorization, audience, dossier, conversation, operation=None):
@@ -164,6 +179,7 @@ class ConceptAdvisoryService:
         with self.grant.boundary():
             self.grant.authorize(authorization, audience=audience, dossier_id=dossier, conversation_id=conversation)
             store = self._load()
+            self.current_transfer(p)
             turns = [t for t in store['records'].values() if t['principal_id'] == p.principal_id and t['audience'] == audience and t['request']['dossier_id'] == dossier and t['request']['conversation_id'] == conversation]
             if operation is not None:
                 turn = next((t for t in turns if t['request']['operation_id'] == operation), None)

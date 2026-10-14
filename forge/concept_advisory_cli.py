@@ -1,6 +1,11 @@
 """Explicit owner setup and private service CLI; no ambient credential fallback."""
 import argparse
 import json
+import io
+import os
+import select
+import sys
+import time
 from pathlib import Path
 from .concept_advisory_contract import CONTRACT
 from .concept_advisory_grant import ConceptAdvisoryGrant
@@ -8,6 +13,35 @@ from .concept_advisory_service import ConceptAdvisoryService, provider_profile
 from .project_bootstrap.schema import load_json
 from .workspace_review_grant import _private_bytes
 
+
+def publish_cli(grant, authorization, audience, document):
+    raw = (json.dumps(document, sort_keys=True)+'\n').encode()
+    if isinstance(sys.stdout, io.StringIO):
+        # An in-memory caller buffer cannot block waiting on a consumer.
+        with grant.publication(authorization, audience, document):
+            sys.stdout.write(raw.decode())
+        return
+    fd = sys.stdout.fileno(); blocking = os.get_blocking(fd)
+    deadline = time.monotonic()+5; offset = 0
+    try:
+        os.set_blocking(fd, False)
+        while offset < len(raw):
+            if time.monotonic() >= deadline:
+                raise TimeoutError('bounded CLI publication deadline')
+            if not select.select([], [fd], [], min(0.1, max(0, deadline-time.monotonic())))[1]:
+                continue
+            try:
+                with grant.publication(authorization, audience, document, deadline=deadline):
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('bounded CLI publication deadline')
+                    sent = os.write(fd, raw[offset:offset+4096])
+            except BlockingIOError:
+                continue
+            if sent <= 0:
+                raise OSError('CLI publication interrupted')
+            offset += sent
+    finally:
+        os.set_blocking(fd, blocking)
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='forge-concept-advisory')
@@ -55,7 +89,15 @@ def main(argv=None):
             if args.action == 'capability': document = service.capability(authorization, args.audience)
             elif args.action == 'submit': document = service.submit(authorization, args.audience, load_json(_private_bytes(Path(args.request_file))))
             else: document = service.read(authorization, args.audience, args.dossier_id, args.conversation_id, args.operation_id if args.action == 'intent' else None)
-        print(json.dumps(document, sort_keys=True)); return 0
+        if args.action in ('capability', 'submit', 'history', 'intent'):
+            try:
+                publish_cli(grant, authorization, args.audience, document)
+            except (OSError, ValueError, RuntimeError, PermissionError):
+                # Never append a secondary blocking write after partial publication.
+                return 1
+        else:
+            print(json.dumps(document, sort_keys=True))
+        return 0
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, PermissionError):
         print(json.dumps({'contract_version': CONTRACT, 'error': {'code': 'CONCEPT_CLI_UNAVAILABLE'}})); return 1
 

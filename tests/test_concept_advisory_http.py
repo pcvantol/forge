@@ -229,3 +229,70 @@ class ConceptHttpTest(unittest.TestCase):
                     self.assertEqual(output['original_turn']['request']['message'],message);self.assertEqual(output['original_turn']['outcome']['output']['language'],language)
                 calls=[json.loads(line) for line in (root/'provider-requests.private.jsonl').read_text().splitlines()]
                 self.assertEqual([v['request']['message'] for v in calls],list(messages.values()))
+
+    def test_concurrent_existing_turn_is_read_only_without_mutating_runtime(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from unittest.mock import patch
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';fixture.configure(root)
+            with http(root) as port:
+                token=root/'alice.private';_,cap=call(port,token,'GET','/v1/concept-advisory/capability')
+                r=example();r.update(instance_id=cap['instance_id'],dossier_id='dossier-alice',conversation_id='conversation-alice',transfer_policy_digest=cap['provider']['transfer_policy_digest'])
+                _,original=call(port,token,'POST','/v1/concept-advisory/turns',r)
+                with patch('forge.concept_advisory_service.control_runtime',side_effect=AssertionError('read replay must not open mutating composition')):
+                    with ThreadPoolExecutor(max_workers=2) as pool:
+                        replies=list(pool.map(lambda _:call(port,token,'POST','/v1/concept-advisory/turns',r),range(2)))
+                self.assertEqual([status for status,_ in replies],[200,200],replies)
+                self.assertTrue(all(body['original_turn']==original['original_turn'] for _,body in replies))
+            self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)
+
+    def test_cli_actual_profile_drift_and_revocation_before_output_denies_private_bytes(self):
+        from io import StringIO
+        from unittest.mock import patch
+        from forge.concept_advisory_cli import main
+        from forge.concept_advisory_service import ConceptAdvisoryService,profile_from_policy
+        from dataclasses import replace
+        from forge.worklist_control import control_runtime
+        from forge.concept_advisory_provider import ConceptAdvisoryProvider
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';grant=fixture.configure(root)
+            with http(root) as port:
+                token=root/'alice.private';_,cap=call(port,token,'GET','/v1/concept-advisory/capability')
+                r=example();r.update(instance_id=cap['instance_id'],dossier_id='dossier-alice',conversation_id='conversation-alice',transfer_policy_digest=cap['provider']['transfer_policy_digest'])
+                self.assertEqual(call(port,token,'POST','/v1/concept-advisory/turns',r)[0],200)
+            args=['--data-root',str(root/'runtime'),'intent','--token-file',str(token),'--audience','synthetic-workspace','--dossier-id','dossier-alice','--conversation-id','conversation-alice','--operation-id','operation-one']
+            with control_runtime(root/'runtime') as runtime:
+                policy=ConceptAdvisoryProvider(runtime,'concept-fixture').configuration.current_policy()
+            changed=profile_from_policy(replace(policy,version=policy.version+1))
+            with patch('forge.concept_advisory_service.provider_profile',return_value=changed),patch('sys.stdout',new_callable=StringIO) as output:
+                self.assertEqual(main(args),1);self.assertNotIn('original_turn',output.getvalue())
+            original=ConceptAdvisoryService.read
+            def revoked(service,*values,**kw):
+                doc=original(service,*values,**kw);grant.revoke(next(x['grant_id'] for x in grant._records() if x['principal_id']=='alice'));return doc
+            with patch.object(ConceptAdvisoryService,'read',revoked),patch('sys.stdout',new_callable=StringIO) as output:
+                self.assertEqual(main(args),1);self.assertNotIn('original_turn',output.getvalue())
+
+    def test_cli_real_nonblocking_descriptor_publication_and_bounded_wait(self):
+        from unittest.mock import patch
+        from forge.concept_advisory_cli import publish_cli
+        from forge.concept_advisory_service import ConceptAdvisoryService
+        from threading import Thread
+        import os,time
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';grant=fixture.configure(root);authorization='Bearer '+(root/'alice.private').read_text().strip()
+            document=ConceptAdvisoryService(grant).capability(authorization,'synthetic-workspace')
+            readfd,writefd=os.pipe();received=[]
+            def consume():
+                with os.fdopen(readfd,'rb') as reader:received.append(reader.read())
+            thread=Thread(target=consume);thread.start()
+            with os.fdopen(writefd,'w') as stream,patch('sys.stdout',stream):
+                publish_cli(grant,authorization,'synthetic-workspace',document);self.assertTrue(os.get_blocking(writefd))
+            thread.join(3);self.assertFalse(thread.is_alive());self.assertEqual(json.loads(received[0]),document)
+            readfd,writefd=os.pipe()
+            try:
+                with os.fdopen(writefd,'w') as stream,patch('sys.stdout',stream),patch('forge.concept_advisory_cli.select.select',return_value=([],[],[])):
+                    started=time.monotonic()
+                    with self.assertRaises(TimeoutError):publish_cli(grant,authorization,'synthetic-workspace',document)
+                    self.assertLess(time.monotonic()-started,6.5);self.assertTrue(os.get_blocking(writefd))
+                self.assertEqual(os.read(readfd,16),b'')
+            finally:os.close(readfd)
