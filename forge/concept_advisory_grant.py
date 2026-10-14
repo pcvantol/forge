@@ -23,6 +23,7 @@ class ConceptPrincipal:
     permissions: tuple
     maximum_turns: int
     maximum_tokens: int
+    maximum_seconds: int
     provider_id: str
     transfer_policy_digest: str
 
@@ -61,6 +62,8 @@ class ConceptAdvisoryGrant(ProjectProposalGrant):
                 raise ValueError('concept rights invalid')
             if type(record['maximum_turns']) is not int or not 1 <= record['maximum_turns'] <= 8 or type(record['maximum_tokens']) is not int or not 1 <= record['maximum_tokens'] <= 384000:
                 raise ValueError('concept quota invalid')
+            if type(record['maximum_seconds']) is not int or not 1 <= record['maximum_seconds'] <= 960:
+                raise ValueError('concept runtime quota invalid')
             for key in ('token_digest', 'operator_binding'):
                 if not isinstance(record[key], str) or len(record[key]) != 64 or any(c not in '0123456789abcdef' for c in record[key]):
                     raise ValueError('concept grant binding invalid')
@@ -71,7 +74,7 @@ class ConceptAdvisoryGrant(ProjectProposalGrant):
         return value['records']
 
     def issue(self, *, principal_id, audience, dossier_ids, conversation_ids, permissions,
-              maximum_turns, maximum_tokens, provider_id, transfer_policy_digest, expires_at, token_path):
+              maximum_turns, maximum_tokens, maximum_seconds, provider_id, transfer_policy_digest, expires_at, token_path):
         from .concept_advisory_service import provider_profile
         for key in (principal_id, audience, provider_id):
             identifier(key)
@@ -84,6 +87,8 @@ class ConceptAdvisoryGrant(ProjectProposalGrant):
             raise ValueError('explicit advice/transfer rights required')
         if type(maximum_turns) is not int or not 1 <= maximum_turns <= 8 or type(maximum_tokens) is not int or not 1 <= maximum_tokens <= 384000:
             raise ValueError('finite concept quota required')
+        if type(maximum_seconds) is not int or not 1 <= maximum_seconds <= 960:
+            raise ValueError('finite total generation runtime required')
         if not datetime.now(UTC) < timestamp(expires_at) <= datetime.now(UTC) + timedelta(days=30):
             raise ValueError('finite expiry required')
         profile = provider_profile(self.root, provider_id)
@@ -94,12 +99,12 @@ class ConceptAdvisoryGrant(ProjectProposalGrant):
             raise ValueError('token storage collision')
         with self.boundary():
             records = self._records(True); store = self._store()
-            if any(r['principal_id'] == principal_id and (r['maximum_turns'] != maximum_turns or r['maximum_tokens'] != maximum_tokens) for r in records):
+            if any(r['principal_id'] == principal_id and (r['maximum_turns'] != maximum_turns or r['maximum_tokens'] != maximum_tokens or r['maximum_seconds'] != maximum_seconds) for r in records):
                 raise PermissionError('retained principal quota immutable')
             if len(records) >= 32:
                 raise ValueError('finite grants exhausted')
             scope = {'principal_id': principal_id, 'audience': audience,
-                     'maximum_records': maximum_turns, 'maximum_tokens': maximum_tokens}
+                     'maximum_records': maximum_turns, 'maximum_tokens': maximum_tokens, 'maximum_seconds': maximum_seconds}
             for dossier in dossier_ids:
                 existing = store['dossiers'].get(dossier)
                 if existing is not None and existing != scope:
@@ -112,7 +117,7 @@ class ConceptAdvisoryGrant(ProjectProposalGrant):
             record = dict(grant_id='concept-'+secrets.token_hex(16), principal_id=principal_id,
                           instance_id=self.instance_id, audience=audience, dossier_ids=sorted(dossier_ids),
                           conversation_ids=sorted(conversation_ids), permissions=sorted(set(permissions)),
-                          maximum_turns=maximum_turns, maximum_tokens=maximum_tokens, provider_id=provider_id,
+                          maximum_turns=maximum_turns, maximum_tokens=maximum_tokens, maximum_seconds=maximum_seconds, provider_id=provider_id,
                           transfer_policy_digest=transfer_policy_digest, operator_binding=operator_binding(self.root, self.instance_id),
                           expires_at=expires_at, state='ACTIVE', token_digest=sha256(token.encode()).hexdigest())
             _new_token(token_path, token)
@@ -142,6 +147,9 @@ class ConceptAdvisoryGrant(ProjectProposalGrant):
     def publication(self, authorization, audience, body, *, deadline=None):
         with self.boundary(deadline):
             p = self.authorize(authorization, audience=audience, dossier_id=body.get('dossier_id'), conversation_id=body.get('conversation_id'))
+            from .concept_advisory_service import provider_profile
+            if p.transfer_policy_digest != provider_profile(self.root, p.provider_id)['transfer_policy_digest']:
+                raise PermissionError('current publication transfer binding required')
             if body.get('instance_id') != p.instance_id or body.get('principal_id') != p.principal_id:
                 raise PermissionError('concept publication scope denied')
             yield

@@ -20,7 +20,7 @@ def main(argv=None):
         issue.add_argument('--'+key, required=True)
     for key in ('dossier-id', 'conversation-id', 'permission'):
         issue.add_argument('--'+key, action='append', required=True)
-    issue.add_argument('--maximum-turns', type=int, required=True); issue.add_argument('--maximum-tokens', type=int, required=True)
+    issue.add_argument('--maximum-turns', type=int, required=True); issue.add_argument('--maximum-tokens', type=int, required=True); issue.add_argument('--maximum-seconds', type=int, required=True)
     revoke = sub.add_parser('revoke'); revoke.add_argument('--grant-id', required=True)
     for action in ('capability', 'submit', 'history', 'intent'):
         item = sub.add_parser(action); item.add_argument('--token-file', required=True); item.add_argument('--audience', required=True)
@@ -46,7 +46,7 @@ def main(argv=None):
         elif args.action == 'issue':
             document = grant.issue(principal_id=args.principal_id, audience=args.audience, dossier_ids=args.dossier_id,
                                    conversation_ids=args.conversation_id, permissions=args.permission, maximum_turns=args.maximum_turns,
-                                   maximum_tokens=args.maximum_tokens, provider_id=args.provider_id, transfer_policy_digest=args.transfer_policy_digest,
+                                   maximum_tokens=args.maximum_tokens, maximum_seconds=args.maximum_seconds, provider_id=args.provider_id, transfer_policy_digest=args.transfer_policy_digest,
                                    expires_at=args.expires_at, token_path=args.token_file)
         else:
             token = _private_bytes(Path(args.token_file))

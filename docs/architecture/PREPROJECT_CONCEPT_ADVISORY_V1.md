@@ -58,7 +58,7 @@ blocks another call. Recovery is read-only, without invented provider cancellati
 
 Request/result each 32 KiB, six changes, each text at most 2000 characters
 (user message 4000), eight turns per principal, total reserved tokens at most
-384000, eight dossiers/conversations per grant, 64 retained turns and 1 MiB store.
+384000 and total reserved generation time at most 960 seconds, eight dossiers/conversations per grant, 64 retained turns and 1 MiB store.
 Grant expiry at most thirty days; generation timeout comes from existing provider
 policy. No authority lock spans generation or waiting for a client. Short current
 owner/grant boundaries govern admission/start authorization, outcome persistence

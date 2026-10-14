@@ -12,18 +12,23 @@ from .planner.codex_cli_session import _policy_digest
 
 
 def provider_profile(root, provider_id):
-    with control_runtime(root) as runtime:
+    from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
+    with InstalledDynamicMissionRuntime.open_for_governance_read(str(root)) as runtime:
         provider = ConceptAdvisoryProvider(runtime, provider_id)
         policy = provider.configuration.current_policy()
         if not policy.provider_home or not policy.provider_config_home or policy.instance_id != runtime.database.runtime_identity.runtime_id:
             raise PermissionError('instance-owned provider context required')
-        profile = {'provider_id': policy.provider_id, 'model': policy.model or 'SESSION_CONFIGURED_NOT_REPORTED', 'profile': policy.profile,
-                   'policy_digest': _policy_digest(policy), 'input_token_bound': policy.input_token_bound,
-                   'context_token_bound': policy.context_token_bound, 'output_token_bound': policy.output_token_bound,
-                   'timeout_seconds': policy.timeout_seconds,
-                   'data_transfer': ['explicit_briefing', 'user_message', 'accepted_prior_turns'],
-                   'receiver': 'INSTANCE_CONFIGURED_EXTERNAL_SESSION', 'tools': False}
-        return {**profile, 'transfer_policy_digest': digest(profile)}
+        return profile_from_policy(policy)
+
+
+def profile_from_policy(policy):
+    profile = {'provider_id': policy.provider_id, 'model': policy.model or 'SESSION_CONFIGURED_NOT_REPORTED', 'profile': policy.profile,
+               'policy_digest': _policy_digest(policy), 'input_token_bound': policy.input_token_bound,
+               'context_token_bound': policy.context_token_bound, 'output_token_bound': policy.output_token_bound,
+               'timeout_seconds': policy.timeout_seconds,
+               'data_transfer': ['explicit_briefing', 'user_message', 'accepted_prior_turns'],
+               'receiver': 'INSTANCE_CONFIGURED_EXTERNAL_SESSION', 'tools': False}
+    return {**profile, 'transfer_policy_digest': digest(profile)}
 
 
 class ConceptAdvisoryService:
@@ -36,7 +41,7 @@ class ConceptAdvisoryService:
         except (OSError, ValueError, TypeError, KeyError) as error:
             raise RuntimeError("retained concept storage unavailable") from error
         for key, turn in store['records'].items():
-            if not isinstance(turn, dict) or set(turn) != {'request', 'request_digest', 'principal_id', 'audience', 'session_id', 'invocation_id', 'context', 'provider', 'status', 'outcome', 'reserved_tokens', 'revision', 'integrity'}:
+            if not isinstance(turn, dict) or set(turn) != {'request', 'request_digest', 'principal_id', 'audience', 'session_id', 'invocation_id', 'context', 'provider', 'status', 'outcome', 'reserved_tokens', 'reserved_seconds', 'revision', 'integrity'}:
                 raise ValueError('retained concept turn invalid')
             r, h = request(turn['request'])
             if h != turn['request_digest'] or key != self._key(turn['principal_id'], turn['audience'], r):
@@ -44,7 +49,7 @@ class ConceptAdvisoryService:
             original = {k: v for k, v in turn.items() if k != 'integrity'}
             if turn['integrity'] != self.grant.integrity(original) or turn['status'] not in ('PENDING', 'COMPLETE', 'FAILED', 'UNCERTAIN'):
                 raise ValueError('retained concept integrity invalid')
-            if type(turn['reserved_tokens']) is not int or turn['reserved_tokens'] < 1 or type(turn['revision']) is not int or turn['revision'] < 1:
+            if type(turn['reserved_tokens']) is not int or turn['reserved_tokens'] < 1 or type(turn['reserved_seconds']) is not int or turn['reserved_seconds'] < 1 or type(turn['revision']) is not int or turn['revision'] < 1:
                 raise ValueError('retained concept consumption invalid')
             if turn['status'] == 'COMPLETE':
                 if turn['outcome'] is None or turn['outcome']['output'] is None or digest(result(turn['outcome']['output'], turn)) != turn['outcome']['result_digest']:
@@ -74,7 +79,7 @@ class ConceptAdvisoryService:
         profile = provider_profile(self.grant.root, p.provider_id)
         return self._envelope(p, supported_languages=list(LANGUAGES), briefing_fields=list(FIELDS),
                               dossier_ids=list(p.dossier_ids), conversation_ids=list(p.conversation_ids),
-                              permissions=list(p.permissions), maximum_turns=p.maximum_turns, maximum_tokens=p.maximum_tokens,
+                              permissions=list(p.permissions), maximum_turns=p.maximum_turns, maximum_tokens=p.maximum_tokens, maximum_seconds=p.maximum_seconds,
                               provider=profile, transfer_authorized=p.transfer_policy_digest == profile['transfer_policy_digest'],
                               generation_on_read=False, approval=False, apply=False, retention='PRIVATE_NO_AUTOMATIC_DELETE')
 
@@ -96,10 +101,10 @@ class ConceptAdvisoryService:
                     if old['request_digest'] != h:
                         raise AdvisoryConflict('OPERATION_CONTENT_CONFLICT')
                     return self._envelope(p, old, recorded=False)
-                owned = [t for t in store['records'].values() if t['principal_id'] == p.principal_id and t['audience'] == p.audience]
+                owned = [t for t in store['records'].values() if t['principal_id'] == p.principal_id]
                 if any(t['status'] in ('PENDING', 'UNCERTAIN') for t in store['records'].values()):
                     raise AdvisoryConflict('INVOCATION_UNRESOLVED')
-                history_turns = [t for t in owned if t['request']['dossier_id'] == r['dossier_id'] and t['request']['conversation_id'] == r['conversation_id']]
+                history_turns = [t for t in owned if t['audience'] == p.audience and t['request']['dossier_id'] == r['dossier_id'] and t['request']['conversation_id'] == r['conversation_id']]
                 if any(t['request']['turn_id'] == r['turn_id'] for t in history_turns):
                     raise AdvisoryConflict('TURN_ID_REUSED')
                 revision = len(history_turns)
@@ -109,7 +114,7 @@ class ConceptAdvisoryService:
                     previous = max(history_turns, key=lambda t: t['revision'])['request']['briefing']
                     if previous['concept_id'] != r['briefing']['concept_id'] or previous['revision'] > r['briefing']['revision'] or (previous['revision'] == r['briefing']['revision'] and previous != r['briefing']):
                         raise AdvisoryConflict('BRIEFING_STALE')
-                if len(owned) >= p.maximum_turns or sum(t['reserved_tokens'] for t in owned) + profile['context_token_bound'] > p.maximum_tokens or len(store['records']) >= 64:
+                if len(owned) >= p.maximum_turns or sum(t['reserved_tokens'] for t in owned) + profile['context_token_bound'] > p.maximum_tokens or sum(t['reserved_seconds'] for t in owned) + profile['timeout_seconds'] > p.maximum_seconds or len(store['records']) >= 64:
                     raise AdvisoryConflict('CONCEPT_QUOTA_EXHAUSTED')
                 history = [{'turn_id': t['request']['turn_id'], 'request': t['request'], 'output': t['outcome']['output']} for t in sorted(history_turns, key=lambda t: t['revision']) if t['status'] == 'COMPLETE']
                 refs = ['briefing:'+r['briefing_digest'], 'turn:'+r['turn_id']] + ['turn:'+t['turn_id'] for t in history]
@@ -117,8 +122,10 @@ class ConceptAdvisoryService:
                 turn = {'request': r, 'request_digest': h, 'principal_id': p.principal_id, 'audience': p.audience,
                         'session_id': 'concept-session-'+key[:32], 'invocation_id': 'concept-invocation-'+key[:32],
                         'context': context, 'provider': None, 'status': 'PENDING', 'outcome': None,
-                        'reserved_tokens': profile['context_token_bound'], 'revision': revision+1}
+                        'reserved_tokens': profile['context_token_bound'], 'reserved_seconds': profile['timeout_seconds'], 'revision': revision+1}
                 policy, _, generation_digest = provider.prepare(turn, history)
+                if profile_from_policy(policy)['transfer_policy_digest'] != r['transfer_policy_digest']:
+                    raise PermissionError('provider policy changed before admission')
                 turn['provider'] = {'provider_id': p.provider_id, 'policy_digest': _policy_digest(policy),
                                     'generation_digest': generation_digest, 'requested_model': policy.model,
                                     'requested_profile': policy.profile, 'input_token_bound': policy.input_token_bound,
@@ -127,7 +134,7 @@ class ConceptAdvisoryService:
             def start_authorize():
                 actual = self.grant.authorize(authorization, audience=audience, dossier_id=r['dossier_id'], conversation_id=r['conversation_id'], permission='ADVISE')
                 self._load()
-                if actual.transfer_policy_digest != r['transfer_policy_digest']:
+                if actual.transfer_policy_digest != r['transfer_policy_digest'] or profile_from_policy(provider.configuration.current_policy())['transfer_policy_digest'] != r['transfer_policy_digest']:
                     raise PermissionError('transfer grant changed')
             provider.grant = self.grant
             provider.start_authorize = start_authorize

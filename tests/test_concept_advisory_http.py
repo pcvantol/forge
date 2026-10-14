@@ -23,7 +23,14 @@ def http(root):
 def call(port,token,method,path,body=None,audience='synthetic-workspace'):
     r=Request('http://127.0.0.1:'+str(port)+path,method=method,data=None if body is None else json.dumps(body).encode(),headers={'Authorization':'Bearer '+token.read_text().strip(),'X-Forge-Concept-Audience':audience,'Content-Type':'application/json'})
     try:
-        with urlopen(r,timeout=15) as response:return response.status,json.loads(response.read())
+        with urlopen(r,timeout=15) as response:
+            value=json.loads(response.read())
+            if path.startswith('/v1/concept-advisory/'):
+                from jsonschema import Draft202012Validator
+                schema=json.loads((Path(__file__).resolve().parents[1]/'forge/api/concept-advisory-v1.json').read_text())
+                Draft202012Validator(schema).validate(value)
+                if body is not None:Draft202012Validator(schema).validate(body)
+            return response.status,value
     except HTTPError as error:
         try:return error.code,json.loads(error.read())
         finally:error.close()
@@ -100,7 +107,7 @@ class ConceptHttpTest(unittest.TestCase):
             root=Path(tmp).resolve()/'synthetic';grant=fixture.configure(root)
             profile=provider_profile(root/'runtime','concept-fixture')
             with self.assertRaises(PermissionError):
-                grant.issue(principal_id='alice',audience='synthetic-workspace',dossier_ids=['new-dossier'],conversation_ids=['new-conversation'],permissions=['READ','ADVISE'],maximum_turns=7,maximum_tokens=384000,provider_id='concept-fixture',transfer_policy_digest=profile['transfer_policy_digest'],expires_at=(datetime.now(UTC)+timedelta(hours=1)).isoformat(),token_path=root/'new.private')
+                grant.issue(principal_id='alice',audience='synthetic-workspace',dossier_ids=['new-dossier'],conversation_ids=['new-conversation'],permissions=['READ','ADVISE'],maximum_turns=7,maximum_tokens=384000,maximum_seconds=16,provider_id='concept-fixture',transfer_policy_digest=profile['transfer_policy_digest'],expires_at=(datetime.now(UTC)+timedelta(hours=1)).isoformat(),token_path=root/'new.private')
             with http(root) as port:
                 token=root/'alice.private';_,cap=call(port,token,'GET','/v1/concept-advisory/capability')
                 r=example();r.update(instance_id=cap['instance_id'],dossier_id='dossier-alice',conversation_id='conversation-alice',transfer_policy_digest=cap['provider']['transfer_policy_digest'])
@@ -116,3 +123,100 @@ class ConceptHttpTest(unittest.TestCase):
                 grant.store.unlink();self.assertEqual(call(port,token,'GET','/v1/concept-advisory/history?dossier_id=dossier-alice&conversation_id=conversation-alice')[0],503)
                 self.assertFalse(grant.store.exists());grant.store.write_bytes(original);grant.store.chmod(0o600)
                 self.assertEqual(call(port,token,'GET','/v1/concept-advisory/history?dossier_id=dossier-alice&conversation_id=conversation-alice')[0],200)
+
+    def test_principal_budget_survives_owner_issued_new_audience_and_conversation(self):
+        from datetime import UTC,datetime,timedelta
+        from forge.concept_advisory_service import provider_profile
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';grant=fixture.configure(root);profile=provider_profile(root/'runtime','concept-fixture')
+            def issue(audience,dossier,conversation,token):
+                return grant.issue(principal_id='charlie',audience=audience,dossier_ids=[dossier],conversation_ids=[conversation],permissions=['READ','ADVISE'],maximum_turns=1,maximum_tokens=48000,maximum_seconds=2,provider_id='concept-fixture',transfer_policy_digest=profile['transfer_policy_digest'],expires_at=(datetime.now(UTC)+timedelta(hours=1)).isoformat(),token_path=token)
+            issue('synthetic-workspace','charlie-a','conversation-a',root/'charlie-a.private')
+            with http(root) as port:
+                _,cap=call(port,root/'charlie-a.private','GET','/v1/concept-advisory/capability')
+                r=example();r.update(instance_id=cap['instance_id'],dossier_id='charlie-a',conversation_id='conversation-a',transfer_policy_digest=profile['transfer_policy_digest'])
+                self.assertEqual(call(port,root/'charlie-a.private','POST','/v1/concept-advisory/turns',r)[0],200)
+                issue('new-workspace','charlie-b','conversation-b',root/'charlie-b.private')
+                r.update(operation_id='other',turn_id='other',dossier_id='charlie-b',conversation_id='conversation-b')
+                status,error=call(port,root/'charlie-b.private','POST','/v1/concept-advisory/turns',r,audience='new-workspace')
+                self.assertEqual(status,409,error);self.assertEqual(error['error']['code'],'CONCEPT_QUOTA_EXHAUSTED')
+            self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)
+
+    def test_actual_canonical_policy_change_before_prepare_denies_old_transfer(self):
+        from unittest.mock import patch
+        from forge.concept_advisory_provider import ConceptAdvisoryProvider
+        from forge.worklist_control import control_runtime
+        from forge.provider_security import PlanningProviderSecurityService,ProviderAuthenticationMode,CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,CODEX_CLI_CHATGPT_SESSION_TYPE
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';grant=fixture.configure(root)
+            with http(root) as port:
+                _,cap=call(port,root/'alice.private','GET','/v1/concept-advisory/capability')
+                r=example();r.update(instance_id=cap['instance_id'],dossier_id='dossier-alice',conversation_id='conversation-alice',transfer_policy_digest=cap['provider']['transfer_policy_digest'])
+                from forge.concept_advisory_service import provider_profile
+                original=provider_profile
+                def changed(*args):
+                    old=original(*args)
+                    with control_runtime(root/'runtime') as runtime:
+                        operators=runtime.repository.operators
+                        PlanningProviderSecurityService(runtime.database,None,operators).configure(configuration_id='synthetic-config',provider_id='concept-fixture',operator_context=operators.context(),expected_version=1,
+                          authentication_mode=ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION,provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,external_session_type=CODEX_CLI_CHATGPT_SESSION_TYPE,
+                          executable_path=str(root/'external-provider'),adapter_version='codex-cli-chatgpt-session-v1',profile='explicit-synthetic-profile',timeout_seconds=2,input_token_bound=41000,context_token_bound=49000,output_token_bound=8000)
+                    return old
+                with patch('forge.concept_advisory_service.provider_profile',changed):
+                    status,error=call(port,root/'alice.private','POST','/v1/concept-advisory/turns',r)
+                self.assertEqual(status,403,error);self.assertFalse((root/'provider-requests.private.jsonl').exists());self.assertEqual(grant._store()['records'],{})
+
+    def test_owning_cli_issue_submit_private_parity_revoke_and_errors(self):
+        from unittest.mock import patch
+        from io import StringIO
+        from datetime import UTC,datetime,timedelta
+        from forge.concept_advisory_cli import main
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';grant=fixture.configure(root)
+            prefix=['--data-root',str(root/'runtime')]
+            def cli(args,expected=0):
+                with patch('sys.stdout',new_callable=StringIO) as output:
+                    self.assertEqual(main(prefix+args),expected);return json.loads(output.getvalue())
+            self.assertEqual(cli(['init'])['state'],'PRIVATE_CONCEPT_ADVICE_INITIALIZED')
+            profile=cli(['provider-profile','--provider-id','concept-fixture'])
+            token=root/'cli.private'
+            issued=cli(['issue','--principal-id','cli-principal','--audience','synthetic-workspace','--provider-id','concept-fixture','--transfer-policy-digest',profile['transfer_policy_digest'],'--expires-at',(datetime.now(UTC)+timedelta(hours=1)).isoformat(),'--token-file',str(token),'--dossier-id','cli-dossier','--conversation-id','cli-conversation','--permission','READ','--permission','ADVISE','--maximum-turns','2','--maximum-tokens','96000','--maximum-seconds','4'])
+            self.assertNotIn(token.read_text().strip(),json.dumps(issued));auth=['--token-file',str(token),'--audience','synthetic-workspace']
+            cap=cli(['capability',*auth]);r=example();r.update(instance_id=cap['instance_id'],dossier_id='cli-dossier',conversation_id='cli-conversation',transfer_policy_digest=profile['transfer_policy_digest'])
+            file=root/'request.private.json';file.write_text(json.dumps(r));file.chmod(0o600)
+            output=cli(['submit',*auth,'--request-file',str(file)]);self.assertEqual(output['original_turn']['status'],'COMPLETE')
+            self.assertEqual(cli(['intent',*auth,'--dossier-id','cli-dossier','--conversation-id','cli-conversation','--operation-id','operation-one'])['original_turn'],output['original_turn'])
+            self.assertEqual(cli(['history',*auth,'--dossier-id','cli-dossier','--conversation-id','cli-conversation'])['revision'],1)
+            self.assertEqual(cli(['revoke','--grant-id',issued['grant_id']])['state'],'REVOKED')
+            cli(['capability',*auth],expected=1)
+            cli(['provider-profile','--provider-id','unconfigured'],expected=1)
+
+    def test_finite_grant_issue_limits_and_current_read_only_no_model_right(self):
+        from datetime import UTC,datetime,timedelta
+        from forge.concept_advisory_service import provider_profile
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';grant=fixture.configure(root);profile=provider_profile(root/'runtime','concept-fixture')
+            args=dict(principal_id='limited',audience='synthetic-workspace',dossier_ids=['limited'],conversation_ids=['limited'],permissions=['READ'],maximum_turns=2,maximum_tokens=96000,maximum_seconds=4,provider_id='concept-fixture',transfer_policy_digest=profile['transfer_policy_digest'],expires_at=(datetime.now(UTC)+timedelta(hours=1)).isoformat(),token_path=root/'limited.private')
+            for field,bad in [('dossier_ids',[]),('conversation_ids',['duplicate','duplicate']),('permissions',['PREPARE']),('maximum_turns',True),('maximum_tokens',384001),('maximum_seconds',961),('expires_at',(datetime.now(UTC)-timedelta(hours=1)).isoformat()),('transfer_policy_digest',digest({})),('token_path',grant.store.parent/'bad.private')]:
+                with self.subTest(field=field),self.assertRaises((ValueError,PermissionError)):grant.issue(**{**args,field:bad})
+            grant.issue(**args)
+            with http(root) as port:
+                token=root/'limited.private';_,cap=call(port,token,'GET','/v1/concept-advisory/capability')
+                self.assertEqual(cap['permissions'],['READ']);r=example();r.update(instance_id=cap['instance_id'],dossier_id='limited',conversation_id='limited',transfer_policy_digest=profile['transfer_policy_digest'])
+                self.assertEqual(call(port,token,'POST','/v1/concept-advisory/turns',r)[0],403)
+                self.assertEqual(call(port,token,'GET','/v1/concept-advisory/intents/unknown?dossier_id=limited&conversation_id=limited')[0],404)
+                self.assertEqual(call(port,token,'GET','/v1/concept-advisory/unknown')[0],404)
+            self.assertFalse((root/'provider-requests.private.jsonl').exists())
+
+    def test_five_language_provider_route_preserves_original_messages(self):
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';fixture.configure(root)
+            messages={'en':'Who is the first audience?','nl':'Wie is de eerste doelgroep?','de':'Wer ist die erste Zielgruppe?','fr':'Quel est le premier public ?','es':'¿Cuál es el primer público?'}
+            with http(root) as port:
+                _,cap=call(port,root/'alice.private','GET','/v1/concept-advisory/capability')
+                for index,(language,message) in enumerate(messages.items()):
+                    r=example();r.update(instance_id=cap['instance_id'],dossier_id='dossier-alice',conversation_id='conversation-alice',transfer_policy_digest=cap['provider']['transfer_policy_digest'],language=language,message=message,operation_id='language-'+language,turn_id='language-'+language,expected_revision=index)
+                    status,output=call(port,root/'alice.private','POST','/v1/concept-advisory/turns',r);self.assertEqual(status,200,output)
+                    self.assertEqual(output['original_turn']['request']['message'],message);self.assertEqual(output['original_turn']['outcome']['output']['language'],language)
+                calls=[json.loads(line) for line in (root/'provider-requests.private.jsonl').read_text().splitlines()]
+                self.assertEqual([v['request']['message'] for v in calls],list(messages.values()))
