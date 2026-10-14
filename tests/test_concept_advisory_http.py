@@ -36,6 +36,15 @@ def call(port,token,method,path,body=None,audience='synthetic-workspace'):
         finally:error.close()
 
 class ConceptHttpTest(unittest.TestCase):
+    def setUp(self):
+        import sys,os
+        if sys.platform != "darwin":
+            from unittest.mock import patch
+            from forge.operator_identity import MacOSGeneratedUIDIdentityAdapter,NamedOperatorIdentity
+            fixture_identity=NamedOperatorIdentity("r53-source-test-modeled-os",os.getuid())
+            guard=patch.object(MacOSGeneratedUIDIdentityAdapter,"resolve",return_value=fixture_identity)
+            guard.start();self.addCleanup(guard.stop)
+
     def test_business_updated_briefing_architecture_exact_replay_and_restart(self):
         with TemporaryDirectory() as tmp:
             root=Path(tmp).resolve()/'synthetic';fixture.configure(root)
