@@ -44,6 +44,7 @@ class ProposalPrincipal:
 
 
 class ProjectProposalGrant:
+    contract = CONTRACT
     def __init__(self, root, instance_id):
         self.root = Path(root); self.instance_id = identifier(instance_id)
         self.path = self.root / 'credentials' / 'project-proposal' / 'grants.json'
@@ -53,7 +54,7 @@ class ProjectProposalGrant:
     def _records(self, missing=False):
         if missing and not self.path.exists() and not self.path.is_symlink(): return []
         value = json.loads(_private_bytes(self.path))
-        if set(value) != {'contract_version','instance_id','records'} or value['contract_version'] != CONTRACT or value['instance_id'] != self.instance_id or not isinstance(value['records'],list) or len(value['records']) > 32:
+        if set(value) != {'contract_version','instance_id','records'} or value['contract_version'] != self.contract or value['instance_id'] != self.instance_id or not isinstance(value['records'],list) or len(value['records']) > 32:
             raise ValueError('proposal grant store invalid')
         seen = set()
         for r in value['records']:
@@ -112,7 +113,7 @@ class ProjectProposalGrant:
 
     def integrity(self, record):
         witness = read(self.witness, 4096)
-        if set(witness) != {'contract_version','instance_id','key'} or witness['contract_version'] != CONTRACT or witness['instance_id'] != self.instance_id:
+        if set(witness) != {'contract_version','instance_id','key'} or witness['contract_version'] != self.contract or witness['instance_id'] != self.instance_id:
             raise ValueError('proposal initialization witness invalid')
         key = bytes.fromhex(witness['key'])
         if len(key) != 32: raise ValueError('proposal integrity key invalid')
@@ -126,8 +127,8 @@ class ProjectProposalGrant:
                 raise ValueError('initialized proposal storage incomplete')
             self.store.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
             # Witness first: any uncertain/missing subsequent store fails closed.
-            write(self.witness, {'contract_version':CONTRACT,'instance_id':self.instance_id,'key':secrets.token_hex(32)}, create=True)
-            self.save_store({'contract_version':CONTRACT,'instance_id':self.instance_id,'dossiers':{},'records':{}}, create=True)
+            write(self.witness, {'contract_version':self.contract,'instance_id':self.instance_id,'key':secrets.token_hex(32)}, create=True)
+            self.save_store({'contract_version':self.contract,'instance_id':self.instance_id,'dossiers':{},'records':{}}, create=True)
 
     def save_store(self, value, *, create=False):
         original = {k:v for k,v in value.items() if k != 'store_integrity'}
@@ -136,7 +137,7 @@ class ProjectProposalGrant:
     def _store(self):
         self.integrity({})
         value = read(self.store)
-        if not isinstance(value,dict) or set(value) != {'contract_version','instance_id','dossiers','records','store_integrity'} or value['contract_version'] != CONTRACT or value['instance_id'] != self.instance_id or not isinstance(value['dossiers'],dict) or len(value['dossiers']) > 32 or not isinstance(value['records'],dict) or len(value['records']) > 64:
+        if not isinstance(value,dict) or set(value) != {'contract_version','instance_id','dossiers','records','store_integrity'} or value['contract_version'] != self.contract or value['instance_id'] != self.instance_id or not isinstance(value['dossiers'],dict) or len(value['dossiers']) > 32 or not isinstance(value['records'],dict) or len(value['records']) > 64:
             raise ValueError('proposal store invalid')
         original = {k:v for k,v in value.items() if k != 'store_integrity'}
         if not isinstance(value['store_integrity'],str) or not secrets.compare_digest(value['store_integrity'],self.integrity(original)):
@@ -167,7 +168,7 @@ class ProjectProposalGrant:
                'dossier_ids':sorted(dossier_ids),'permissions':sorted(set(permissions)),'kinds':sorted(set(kinds)),'maximum_records':maximum_records,
                'operator_binding':binding,'expires_at':expires_at,'state':'ACTIVE','token_digest':sha256(token.encode()).hexdigest()}
             _new_token(token_path,token)
-            try: _write_private(self.path,canonical({'contract_version':CONTRACT,'instance_id':self.instance_id,'records':[*records,r]}))
+            try: _write_private(self.path,canonical({'contract_version':self.contract,'instance_id':self.instance_id,'records':[*records,r]}))
             except Exception:
                 token_path.unlink(missing_ok=True); raise
             return {k:v for k,v in r.items() if k not in {'token_digest','operator_binding'}}
@@ -204,7 +205,7 @@ class ProjectProposalGrant:
             operator_binding(self.root,self.instance_id); records = self._records()
             r = next((r for r in records if r['grant_id'] == grant_id),None)
             if r is None: raise ValueError('unknown proposal grant')
-            r['state'] = 'REVOKED'; _write_private(self.path,canonical({'contract_version':CONTRACT,'instance_id':self.instance_id,'records':records}))
+            r['state'] = 'REVOKED'; _write_private(self.path,canonical({'contract_version':self.contract,'instance_id':self.instance_id,'records':records}))
             return {'grant_id':grant_id,'state':'REVOKED'}
 
 

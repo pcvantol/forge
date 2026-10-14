@@ -1,0 +1,54 @@
+import unittest
+from copy import deepcopy
+from forge.concept_advisory_contract import CONTRACT, FIELDS, request, result, digest
+
+
+def example():
+    source = {'concept_id': 'concept-one', 'revision': 1,
+              'fields': {key: None for key in FIELDS}}
+    source['fields']['purpose'] = 'Help volunteers coordinate local deliveries.'
+    return {'contract_version': CONTRACT, 'instance_id': 'instance-one',
+            'dossier_id': 'dossier-one', 'conversation_id': 'conversation-one',
+            'operation_id': 'operation-one', 'turn_id': 'turn-one',
+            'expected_revision': 0, 'briefing': source, 'briefing_digest': digest(source),
+            'advisor_kind': 'BUSINESS', 'language': 'nl', 'message': 'Welke doelgroep eerst?',
+            'transfer_policy_digest': digest({'profile': 'explicit-synthetic'})}
+
+
+class ConceptContractTest(unittest.TestCase):
+    def test_closed_source_unknowns_and_exact_language_preservation(self):
+        for language in ['en', 'nl', 'de', 'fr', 'es']:
+            value = example(); value['language'] = language
+            actual, bound = request(value)
+            self.assertEqual(actual, value); self.assertEqual(bound, digest(value))
+            self.assertIsNone(actual['briefing']['fields']['users'])
+        for mutation in ['extra', 'digest', 'revision', 'field', 'language', 'secret']:
+            value = example()
+            if mutation == 'extra': value['actor'] = 'owner'
+            if mutation == 'digest': value['briefing_digest'] = digest({})
+            if mutation == 'revision': value['expected_revision'] = True
+            if mutation == 'field': value['briefing']['fields']['repository_path'] = '/tmp'
+            if mutation == 'language': value['language'] = 'it'
+            if mutation == 'secret': value['message'] = 'Bearer abcdefghijklmnop'
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): request(value)
+
+    def test_exact_change_binding_and_no_invented_source_or_effect(self):
+        r, h = request(example()); ref = 'briefing:'+r['briefing_digest']
+        admitted = {'request': r, 'request_digest': h, 'context': {'evidence_references': [ref]}}
+        value = {'contract_version': CONTRACT, 'request_digest': h,
+                 'briefing_digest': r['briefing_digest'], 'advisor_kind': 'BUSINESS', 'language': 'nl',
+                 'answer': 'Begin met de lokale vrijwilligers; dit is een voorstel.',
+                 'questions': ['Wie neemt de levering in ontvangst?'],
+                 'assumptions': ['De doelgroep is nog niet bevestigd.'],
+                 'changes': [{'field': 'users', 'before': None, 'proposed': 'Lokale vrijwilligers',
+                              'reason': 'Een beperkte eerste doelgroep maakt feedback mogelijk.', 'references': [ref]}],
+                 'applied': False}
+        self.assertEqual(result(value, admitted), value)
+        for mutation in ['before', 'reference', 'field', 'applied', 'extra']:
+            bad = deepcopy(value)
+            if mutation == 'before': bad['changes'][0]['before'] = 'invented'
+            if mutation == 'reference': bad['changes'][0]['references'] = ['live-repo:invented']
+            if mutation == 'field': bad['changes'][0]['field'] = 'shell'
+            if mutation == 'applied': bad['applied'] = True
+            if mutation == 'extra': bad['tool_calls'] = []
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError): result(bad, admitted)

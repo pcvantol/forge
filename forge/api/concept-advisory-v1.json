@@ -1,0 +1,173 @@
+{
+  "contract_version": "forge-preproject-concept-advisory/v1",
+  "briefing_fields": [
+    "name",
+    "purpose",
+    "users",
+    "non_goals",
+    "constraints",
+    "open_questions"
+  ],
+  "languages": [
+    "en",
+    "nl",
+    "de",
+    "fr",
+    "es"
+  ],
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "contract_version",
+      "request_digest",
+      "briefing_digest",
+      "advisor_kind",
+      "language",
+      "answer",
+      "questions",
+      "assumptions",
+      "changes",
+      "applied"
+    ],
+    "properties": {
+      "contract_version": {
+        "const": "forge-preproject-concept-advisory/v1"
+      },
+      "request_digest": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "briefing_digest": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "advisor_kind": {
+        "enum": [
+          "BUSINESS",
+          "ARCHITECTURE"
+        ]
+      },
+      "language": {
+        "enum": [
+          "en",
+          "nl",
+          "de",
+          "fr",
+          "es"
+        ]
+      },
+      "answer": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "questions": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "assumptions": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "changes": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "field",
+            "before",
+            "proposed",
+            "reason",
+            "references"
+          ],
+          "properties": {
+            "field": {
+              "enum": [
+                "name",
+                "purpose",
+                "users",
+                "non_goals",
+                "constraints",
+                "open_questions"
+              ]
+            },
+            "before": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "proposed": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "references": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            }
+          }
+        }
+      },
+      "applied": {
+        "const": false
+      }
+    }
+  },
+  "routes": [
+    "GET /v1/concept-advisory/capability",
+    "POST /v1/concept-advisory/turns",
+    "GET /v1/concept-advisory/history?dossier_id=ID&conversation_id=ID",
+    "GET /v1/concept-advisory/intents/{operation_id}?dossier_id=ID&conversation_id=ID"
+  ],
+  "audience_header": "X-Forge-Concept-Audience",
+  "permissions": [
+    "READ",
+    "ADVISE"
+  ],
+  "limits": {
+    "request_bytes": 32768,
+    "result_bytes": 32768,
+    "turns_per_principal": 8,
+    "tokens_per_principal": 384000,
+    "grant_dossiers": 8,
+    "grant_conversations": 8,
+    "retained_records": 64,
+    "storage_bytes": 1048576
+  },
+  "generation_on_read": false,
+  "apply": false
+}
