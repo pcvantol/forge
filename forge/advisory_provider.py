@@ -48,6 +48,9 @@ class AdvisoryProvider:
         if len(__import__('json').dumps(binding).encode())>min(policy.input_token_bound,policy.context_token_bound):raise ValueError('advisory envelope exceeds configured bound')
         return policy,prompt,digest(binding)
 
+    def commit_transport(self, service, permit, policy, generation_digest):
+        service._commit_generation_transport(permit,policy,_policy_digest(policy),generation_digest)
+
     def invoke(self, admitted, history, authorize, sink):
         policy,prompt,generation_digest=self.prepare(admitted,history)
         if admitted['provider']['policy_digest']!=_policy_digest(policy) or admitted['provider']['generation_digest']!=generation_digest:
@@ -65,7 +68,7 @@ class AdvisoryProvider:
                     return outcome
                 permit=service._acquire_generation_permit(policy,_policy_digest(policy),generation_digest)
                 authorize()
-                service._commit_generation_transport(permit,policy,_policy_digest(policy),generation_digest)
+                self.commit_transport(service,permit,policy,generation_digest)
             except PermissionError as e:raise AdvisoryNotStarted('generation not started') from e
             run=self.transport._run_read_only(policy,None,self.output_schema,self.instructions,prompt_document=prompt)
             d=run.diagnostic.document()

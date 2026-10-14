@@ -2475,6 +2475,148 @@
           ]
         }
       }
+    },
+    {
+      "name": "Concept advice: GET /v1/concept-advisory/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{conceptAdviceToken}}"
+          },
+          {
+            "key": "X-Forge-Concept-Audience",
+            "value": "{{conceptAdviceAudience}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/concept-advisory/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "concept-advisory",
+            "capability"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Concept advice: POST /v1/concept-advisory/turns",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{conceptAdviceToken}}"
+          },
+          {
+            "key": "X-Forge-Concept-Audience",
+            "value": "{{conceptAdviceAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/concept-advisory/turns",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "concept-advisory",
+            "turns"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contract_version\": \"forge-preproject-concept-advisory/v1\",\n  \"instance_id\": \"instance-one\",\n  \"dossier_id\": \"dossier-one\",\n  \"conversation_id\": \"conversation-one\",\n  \"operation_id\": \"operation-one\",\n  \"turn_id\": \"turn-one\",\n  \"expected_revision\": 0,\n  \"briefing\": {\n    \"concept_id\": \"concept-one\",\n    \"revision\": 1,\n    \"fields\": {\n      \"name\": null,\n      \"purpose\": \"Help volunteers coordinate local deliveries.\",\n      \"users\": null,\n      \"non_goals\": null,\n      \"constraints\": null,\n      \"open_questions\": null\n    }\n  },\n  \"briefing_digest\": \"sha256:f50c96a56e44bb65ba0ff14040f1349f3f2fddbe9140c2f45bc65662f12be273\",\n  \"advisor_kind\": \"BUSINESS\",\n  \"language\": \"nl\",\n  \"message\": \"Welke doelgroep eerst?\",\n  \"transfer_policy_digest\": \"sha256:ed20b4a789d8f89978c305bb20b6874d92bcdcf7312a8deae6b2fff8e4173ee3\"\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Concept advice: GET /v1/concept-advisory/history",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{conceptAdviceToken}}"
+          },
+          {
+            "key": "X-Forge-Concept-Audience",
+            "value": "{{conceptAdviceAudience}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/concept-advisory/history",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "concept-advisory",
+            "history"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{conceptAdviceDossier}}"
+            },
+            {
+              "key": "conversation_id",
+              "value": "{{conceptAdviceConversation}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Concept advice: GET /v1/concept-advisory/intents/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{conceptAdviceToken}}"
+          },
+          {
+            "key": "X-Forge-Concept-Audience",
+            "value": "{{conceptAdviceAudience}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/concept-advisory/intents/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "concept-advisory",
+            "intents",
+            "{operation_id}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{conceptAdviceDossier}}"
+            },
+            {
+              "key": "conversation_id",
+              "value": "{{conceptAdviceConversation}}"
+            }
+          ]
+        }
+      }
     }
   ]
 }

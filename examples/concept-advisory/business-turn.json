@@ -1,0 +1,26 @@
+{
+  "contract_version": "forge-preproject-concept-advisory/v1",
+  "instance_id": "instance-one",
+  "dossier_id": "dossier-one",
+  "conversation_id": "conversation-one",
+  "operation_id": "operation-one",
+  "turn_id": "turn-one",
+  "expected_revision": 0,
+  "briefing": {
+    "concept_id": "concept-one",
+    "revision": 1,
+    "fields": {
+      "name": null,
+      "purpose": "Help volunteers coordinate local deliveries.",
+      "users": null,
+      "non_goals": null,
+      "constraints": null,
+      "open_questions": null
+    }
+  },
+  "briefing_digest": "sha256:f50c96a56e44bb65ba0ff14040f1349f3f2fddbe9140c2f45bc65662f12be273",
+  "advisor_kind": "BUSINESS",
+  "language": "nl",
+  "message": "Welke doelgroep eerst?",
+  "transfer_policy_digest": "sha256:ed20b4a789d8f89978c305bb20b6874d92bcdcf7312a8deae6b2fff8e4173ee3"
+}

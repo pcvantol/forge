@@ -21,6 +21,10 @@ TOKEN = "route-qualification-bearer"
 # Versioned V1 acceptance inventory, independent of the production tuple and
 # contract files. A removed or silently omitted case must fail this gate.
 EXPECTED_ROUTES = frozenset({
+    ("GET", "/v1/concept-advisory/capability"),
+    ("POST", "/v1/concept-advisory/turns"),
+    ("GET", "/v1/concept-advisory/history"),
+    ("GET", "/v1/concept-advisory/intents/{operation_id}"),
     ('GET','/v1/onboarding/capability'),
     ('POST','/v1/onboarding/plans'),
     ('GET','/v1/onboarding/plans/{plan_id}'),
@@ -191,7 +195,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 85)
+        self.assertEqual(len(EXPECTED_ROUTES), 89)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -263,8 +267,8 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
-                            if path.startswith('/v1/onboarding/'):
-                                self.assertEqual(status,403);self.assertEqual(body['error']['code'],'PROPOSAL_SCOPE_DENIED')
+                            if path.startswith('/v1/onboarding/') or path.startswith('/v1/concept-advisory/'):
+                                self.assertEqual(status,403);self.assertEqual(body['error']['code'],'CONCEPT_SCOPE_DENIED' if path.startswith('/v1/concept-advisory/') else 'PROPOSAL_SCOPE_DENIED')
                                 observed.add((method,path));continue
                             if path == '/v1/approved-workset-activity' or path.startswith('/v1/approved-workset-activity/'):
                                 self.assertEqual(status, 403)
