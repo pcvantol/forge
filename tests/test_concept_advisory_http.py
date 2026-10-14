@@ -296,3 +296,22 @@ class ConceptHttpTest(unittest.TestCase):
                     self.assertLess(time.monotonic()-started,6.5);self.assertTrue(os.get_blocking(writefd))
                 self.assertEqual(os.read(readfd,16),b'')
             finally:os.close(readfd)
+
+    def test_cli_actual_database_contention_and_publication_sqlite_fail_closed(self):
+        from io import StringIO
+        from unittest.mock import patch
+        from forge.concept_advisory_cli import main
+        from forge.concept_advisory_grant import ConceptAdvisoryGrant
+        import sqlite3
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';grant=fixture.configure(root)
+            args=['--data-root',str(root/'runtime'),'history','--token-file',str(root/'alice.private'),'--audience','synthetic-workspace','--dossier-id','dossier-alice','--conversation-id','conversation-alice']
+            with sqlite3.connect(root/'runtime'/'forge.db') as writer:
+                writer.execute('BEGIN IMMEDIATE')
+                with patch('sys.stdout',new_callable=StringIO) as output:
+                    self.assertEqual(main(args),1);document=json.loads(output.getvalue());self.assertEqual(document['error']['code'],'CONCEPT_CLI_UNAVAILABLE')
+                    self.assertNotIn(str(root),output.getvalue())
+                writer.rollback()
+            with patch.object(ConceptAdvisoryGrant,'publication',side_effect=sqlite3.OperationalError('private publication database fault')),patch('sys.stdout',new_callable=StringIO) as output:
+                self.assertEqual(main(args),1);self.assertEqual(output.getvalue(),'')
+            self.assertFalse((root/'provider-requests.private.jsonl').exists())

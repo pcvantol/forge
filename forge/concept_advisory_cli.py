@@ -4,6 +4,7 @@ import json
 import io
 import os
 import select
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -92,13 +93,13 @@ def main(argv=None):
         if args.action in ('capability', 'submit', 'history', 'intent'):
             try:
                 publish_cli(grant, authorization, args.audience, document)
-            except (OSError, ValueError, RuntimeError, PermissionError):
+            except (OSError, ValueError, RuntimeError, PermissionError, sqlite3.Error):
                 # Never append a secondary blocking write after partial publication.
                 return 1
         else:
             print(json.dumps(document, sort_keys=True))
         return 0
-    except (OSError, ValueError, TypeError, KeyError, RuntimeError, PermissionError):
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, PermissionError, sqlite3.Error):
         print(json.dumps({'contract_version': CONTRACT, 'error': {'code': 'CONCEPT_CLI_UNAVAILABLE'}})); return 1
 
 
