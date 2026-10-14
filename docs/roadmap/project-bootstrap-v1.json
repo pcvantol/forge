@@ -179,10 +179,15 @@
       "HOB-F01/S3",
       "HOB-F02"
     ],
-    "state": "IMPLEMENTING_NOT_QUALIFIED",
+    "state": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
     "contract": "forge-preproject-concept-advisory/v1",
     "architecture": "docs/architecture/PREPROJECT_CONCEPT_ADVISORY_V1.md",
     "full_onboarding_delivered": false,
-    "r52_closed_evidence": "PRESERVED"
+    "r52_closed_evidence": "PRESERVED",
+    "implementation_main": "233a014a60a6a47f26f5181a4de1ad2f7741559c",
+    "delivery_record": "docs/qualification/R53_PREPROJECT_CONCEPT_ADVISORY_DELIVERY_2026_10_14.md",
+    "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38530347478/artifacts/11880097127",
+    "finalization_effect": "NO_BUMP",
+    "closure_gate": "NEW exact-final-main current CI and installed HTTP/recovery/readback/cleanup, owning terminal register"
   }
 }

@@ -89,3 +89,11 @@ checks the authenticated original intent; only healthy `CONCEPT_TURN_NOT_FOUND`
 permits its one identical retransmission, after a one-second initialization
 backoff. A second rejection fails the gate. No new ID, provider retry, altered
 controller, generation timeout or lost-response recovery deadline is introduced.
+
+## Delivered subset and closure
+
+[The R53 delivery record](../qualification/R53_PREPROJECT_CONCEPT_ADVISORY_DELIVERY_2026_10_14.md)
+binds the protected implementation, current independent reviews, required CI,
+coverage and candidate installed evidence. Finalization and NEW exact-final-main
+installed/readback/cleanup remain explicit terminal gates. Full onboarding, live
+advice quality and native consumer acceptance are separate qualifications.
