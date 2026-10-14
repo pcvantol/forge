@@ -1,0 +1,298 @@
+{
+  "evidence_type": "SYNTHETIC_TYPED_WIRE_EXAMPLE_NOT_RUNTIME_RECEIPT",
+  "integrity_field": "Illustrative zeros; not a usable private storage seal or authority",
+  "conversation": [
+    {
+      "request": {
+        "contract_version": "forge-preproject-concept-advisory/v1",
+        "instance_id": "synthetic-instance",
+        "dossier_id": "dossier-alice",
+        "conversation_id": "conversation-alice",
+        "operation_id": "operation-one",
+        "turn_id": "turn-one",
+        "expected_revision": 0,
+        "briefing": {
+          "concept_id": "concept-one",
+          "revision": 1,
+          "fields": {
+            "name": null,
+            "purpose": "Help volunteers coordinate local deliveries.",
+            "users": null,
+            "non_goals": null,
+            "constraints": null,
+            "open_questions": null
+          }
+        },
+        "briefing_digest": "sha256:f50c96a56e44bb65ba0ff14040f1349f3f2fddbe9140c2f45bc65662f12be273",
+        "advisor_kind": "BUSINESS",
+        "language": "nl",
+        "message": "Welke doelgroep eerst?",
+        "transfer_policy_digest": "sha256:58b67518256347ddffc6b54eb823f7c8fa790db81d53754f61e9b5463f493028"
+      },
+      "response": {
+        "audience": "synthetic-workspace",
+        "contract_version": "forge-preproject-concept-advisory/v1",
+        "conversation_id": "conversation-alice",
+        "dossier_id": "dossier-alice",
+        "instance_id": "synthetic-instance",
+        "original_turn": {
+          "audience": "synthetic-workspace",
+          "context": {
+            "evidence_references": [
+              "briefing:sha256:f50c96a56e44bb65ba0ff14040f1349f3f2fddbe9140c2f45bc65662f12be273",
+              "turn:turn-one"
+            ],
+            "governance": "NO_APPROVAL",
+            "missing_information": "UNKNOWN",
+            "source_qualification": "SUPPLIED_UNVERIFIED"
+          },
+          "integrity": "0000000000000000000000000000000000000000000000000000000000000000",
+          "invocation_id": "synthetic-invocation-turn-one",
+          "outcome": {
+            "diagnostic": {
+              "classification": "COMPLETED_VALID",
+              "elapsed_milliseconds": 20,
+              "errno": null,
+              "error_category": null,
+              "exception_type": null,
+              "process_started": true,
+              "returncode": 0,
+              "terminal_events": [
+                "turn.completed"
+              ],
+              "timed_out": false
+            },
+            "error_code": null,
+            "execution": "CONFIRMED",
+            "observed_effort": "NOT_REPORTED",
+            "observed_model": "NOT_REPORTED",
+            "output": {
+              "advisor_kind": "BUSINESS",
+              "answer": "Synthetische modelproef: begin met een beperkte doelgroep en toets de aannames.",
+              "applied": false,
+              "assumptions": [
+                "De briefing bewijst nog geen operationele gereedheid."
+              ],
+              "briefing_digest": "sha256:f50c96a56e44bb65ba0ff14040f1349f3f2fddbe9140c2f45bc65662f12be273",
+              "changes": [
+                {
+                  "before": null,
+                  "field": "users",
+                  "proposed": "Lokale vrijwilligers",
+                  "reason": "Een beperkte proef verkleint onbewezen aannames.",
+                  "references": [
+                    "briefing:sha256:f50c96a56e44bb65ba0ff14040f1349f3f2fddbe9140c2f45bc65662f12be273"
+                  ]
+                }
+              ],
+              "contract_version": "forge-preproject-concept-advisory/v1",
+              "language": "nl",
+              "questions": [
+                "Wie bevestigt de beoogde doelgroep?"
+              ],
+              "request_digest": "sha256:b45ad527f6212a8118b94732d2933f3cf18764f628890fd4e013365be1fe655e"
+            },
+            "result_digest": "sha256:0cf1d14c621dbdaaabd9a76b0cbbf0ecdc16302ecce5fcf20780d7e68aa76ec7",
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 60
+            },
+            "usage_status": "OBSERVED"
+          },
+          "principal_id": "alice",
+          "provider": {
+            "context_token_bound": 48000,
+            "generation_digest": "sha256:1b21a7bc170b1887799367341dd7006998e016b742a59ecc886980dd40719657",
+            "input_token_bound": 40000,
+            "output_token_bound": 8000,
+            "policy_digest": "sha256:65ac8b06210a61efc032678bb536473ad9a3d6fb3b1925b4d0852e6489fe4b9e",
+            "provider_id": "concept-fixture",
+            "requested_model": null,
+            "requested_profile": "explicit-synthetic-profile"
+          },
+          "request": {
+            "contract_version": "forge-preproject-concept-advisory/v1",
+            "instance_id": "synthetic-instance",
+            "dossier_id": "dossier-alice",
+            "conversation_id": "conversation-alice",
+            "operation_id": "operation-one",
+            "turn_id": "turn-one",
+            "expected_revision": 0,
+            "briefing": {
+              "concept_id": "concept-one",
+              "revision": 1,
+              "fields": {
+                "name": null,
+                "purpose": "Help volunteers coordinate local deliveries.",
+                "users": null,
+                "non_goals": null,
+                "constraints": null,
+                "open_questions": null
+              }
+            },
+            "briefing_digest": "sha256:f50c96a56e44bb65ba0ff14040f1349f3f2fddbe9140c2f45bc65662f12be273",
+            "advisor_kind": "BUSINESS",
+            "language": "nl",
+            "message": "Welke doelgroep eerst?",
+            "transfer_policy_digest": "sha256:58b67518256347ddffc6b54eb823f7c8fa790db81d53754f61e9b5463f493028"
+          },
+          "request_digest": "sha256:b45ad527f6212a8118b94732d2933f3cf18764f628890fd4e013365be1fe655e",
+          "reserved_seconds": 2,
+          "reserved_tokens": 48000,
+          "revision": 1,
+          "session_id": "synthetic-session-turn-one",
+          "status": "COMPLETE"
+        },
+        "principal_id": "alice",
+        "recorded": true
+      }
+    },
+    {
+      "request": {
+        "contract_version": "forge-preproject-concept-advisory/v1",
+        "instance_id": "synthetic-instance",
+        "dossier_id": "dossier-alice",
+        "conversation_id": "conversation-alice",
+        "operation_id": "architect-turn",
+        "turn_id": "architect-turn",
+        "expected_revision": 1,
+        "briefing": {
+          "concept_id": "concept-one",
+          "revision": 2,
+          "fields": {
+            "name": null,
+            "purpose": "Help volunteers coordinate local deliveries.",
+            "users": "Expliciet overgenomen lokale vrijwilligers",
+            "non_goals": null,
+            "constraints": null,
+            "open_questions": null
+          }
+        },
+        "briefing_digest": "sha256:cdabec399502332d654ac0f63ca7443b34a52d0b111ae4f286357a19b6482062",
+        "advisor_kind": "ARCHITECTURE",
+        "language": "nl",
+        "message": "Welke doelgroep eerst?",
+        "transfer_policy_digest": "sha256:58b67518256347ddffc6b54eb823f7c8fa790db81d53754f61e9b5463f493028"
+      },
+      "response": {
+        "audience": "synthetic-workspace",
+        "contract_version": "forge-preproject-concept-advisory/v1",
+        "conversation_id": "conversation-alice",
+        "dossier_id": "dossier-alice",
+        "instance_id": "synthetic-instance",
+        "original_turn": {
+          "audience": "synthetic-workspace",
+          "context": {
+            "evidence_references": [
+              "briefing:sha256:cdabec399502332d654ac0f63ca7443b34a52d0b111ae4f286357a19b6482062",
+              "turn:architect-turn",
+              "turn:turn-one"
+            ],
+            "governance": "NO_APPROVAL",
+            "missing_information": "UNKNOWN",
+            "source_qualification": "SUPPLIED_UNVERIFIED"
+          },
+          "integrity": "0000000000000000000000000000000000000000000000000000000000000000",
+          "invocation_id": "synthetic-invocation-architect-turn",
+          "outcome": {
+            "diagnostic": {
+              "classification": "COMPLETED_VALID",
+              "elapsed_milliseconds": 20,
+              "errno": null,
+              "error_category": null,
+              "exception_type": null,
+              "process_started": true,
+              "returncode": 0,
+              "terminal_events": [
+                "turn.completed"
+              ],
+              "timed_out": false
+            },
+            "error_code": null,
+            "execution": "CONFIRMED",
+            "observed_effort": "NOT_REPORTED",
+            "observed_model": "NOT_REPORTED",
+            "output": {
+              "advisor_kind": "ARCHITECTURE",
+              "answer": "Synthetische modelproef: begin met een beperkte doelgroep en toets de aannames.",
+              "applied": false,
+              "assumptions": [
+                "De briefing bewijst nog geen operationele gereedheid."
+              ],
+              "briefing_digest": "sha256:cdabec399502332d654ac0f63ca7443b34a52d0b111ae4f286357a19b6482062",
+              "changes": [
+                {
+                  "before": null,
+                  "field": "constraints",
+                  "proposed": "Geen gevoelige ontvangersgegevens in de eerste proef",
+                  "reason": "Een beperkte proef verkleint onbewezen aannames.",
+                  "references": [
+                    "briefing:sha256:cdabec399502332d654ac0f63ca7443b34a52d0b111ae4f286357a19b6482062"
+                  ]
+                }
+              ],
+              "contract_version": "forge-preproject-concept-advisory/v1",
+              "language": "nl",
+              "questions": [
+                "Wie bevestigt de beoogde doelgroep?"
+              ],
+              "request_digest": "sha256:1d78bb19964234528bc5291943966e0724d2b8bf0e8d26c27a9e091d1a630fd3"
+            },
+            "result_digest": "sha256:57aec9efaf8fb4e05943b933cba25f1cd63a702a5735a462d2fc6c784f51a3c3",
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 60
+            },
+            "usage_status": "OBSERVED"
+          },
+          "principal_id": "alice",
+          "provider": {
+            "context_token_bound": 48000,
+            "generation_digest": "sha256:760071db33d6c876be38c9f57cfbc9cc12872a4c2f5eeb12439da43d909c5b1f",
+            "input_token_bound": 40000,
+            "output_token_bound": 8000,
+            "policy_digest": "sha256:65ac8b06210a61efc032678bb536473ad9a3d6fb3b1925b4d0852e6489fe4b9e",
+            "provider_id": "concept-fixture",
+            "requested_model": null,
+            "requested_profile": "explicit-synthetic-profile"
+          },
+          "request": {
+            "contract_version": "forge-preproject-concept-advisory/v1",
+            "instance_id": "synthetic-instance",
+            "dossier_id": "dossier-alice",
+            "conversation_id": "conversation-alice",
+            "operation_id": "architect-turn",
+            "turn_id": "architect-turn",
+            "expected_revision": 1,
+            "briefing": {
+              "concept_id": "concept-one",
+              "revision": 2,
+              "fields": {
+                "name": null,
+                "purpose": "Help volunteers coordinate local deliveries.",
+                "users": "Expliciet overgenomen lokale vrijwilligers",
+                "non_goals": null,
+                "constraints": null,
+                "open_questions": null
+              }
+            },
+            "briefing_digest": "sha256:cdabec399502332d654ac0f63ca7443b34a52d0b111ae4f286357a19b6482062",
+            "advisor_kind": "ARCHITECTURE",
+            "language": "nl",
+            "message": "Welke doelgroep eerst?",
+            "transfer_policy_digest": "sha256:58b67518256347ddffc6b54eb823f7c8fa790db81d53754f61e9b5463f493028"
+          },
+          "request_digest": "sha256:1d78bb19964234528bc5291943966e0724d2b8bf0e8d26c27a9e091d1a630fd3",
+          "reserved_seconds": 2,
+          "reserved_tokens": 48000,
+          "revision": 2,
+          "session_id": "synthetic-session-architect-turn",
+          "status": "COMPLETE"
+        },
+        "principal_id": "alice",
+        "recorded": true
+      }
+    }
+  ],
+  "workspace_adoption": "Only an explicit independent user/CAS action may adopt changes; separate new R52 proposal follows."
+}
