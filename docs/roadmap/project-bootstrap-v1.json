@@ -171,5 +171,18 @@
       "finalization_effect": "NO_BUMP",
       "closure_gate": "NEW exact-final-main current CI and installed HTTP/recovery/readback/cleanup, owning terminal register"
     }
-  ]
+  ],
+  "preproject_concept_advisory_subset": {
+    "assignment_id": "L3-PREPROJECT-CONCEPT-ADVISORY-V1-20261014",
+    "join_id": "L3-L4-CONCEPT-CHAT-BRIEF-V1-20261014",
+    "source_nodes": [
+      "HOB-F01/S3",
+      "HOB-F02"
+    ],
+    "state": "IMPLEMENTING_NOT_QUALIFIED",
+    "contract": "forge-preproject-concept-advisory/v1",
+    "architecture": "docs/architecture/PREPROJECT_CONCEPT_ADVISORY_V1.md",
+    "full_onboarding_delivered": false,
+    "r52_closed_evidence": "PRESERVED"
+  }
 }

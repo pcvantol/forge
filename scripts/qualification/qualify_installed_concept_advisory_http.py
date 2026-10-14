@@ -92,12 +92,17 @@ def run(args):
             import sqlite3
             with sqlite3.connect(root/'runtime'/'forge.db') as db:
                 for table in ['mission_id_allocations','mission_state','governance_decisions']:assert db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==0
-                permits=db.execute('SELECT COUNT(*) FROM planning_provider_generation_permits').fetchone()[0];assert permits==3
+                active_permits=db.execute('SELECT COUNT(*) FROM planning_provider_generation_permits').fetchone()[0];assert active_permits==0
+                permits=db.execute("SELECT COUNT(*) FROM forge_operational_logs WHERE event='planning_provider_generation_permit_acquired'").fetchone()[0]
+                committed=db.execute("SELECT COUNT(*) FROM forge_operational_logs WHERE event='planning_provider_generation_transport_committed'").fetchone()[0]
+                assert permits==committed==3
+            (output/'provider-requests.private.jsonl').write_bytes((root/'provider-requests.private.jsonl').read_bytes());(output/'provider-requests.private.jsonl').chmod(0o600)
             receipt.update(result='PREPROJECT_CONCEPT_ADVISORY_HTTP_COMPACT_PASS',provider_calls=3,durable_permits=permits,no_project_ep_approval_mission_effects=True)
         receipt['cleanup']=not root.exists()
     except BaseException as error:
         primary=error;receipt['failure']={'category':type(error).__name__};raise
     finally:
+        if 'root' in locals():receipt['cleanup']=not root.exists()
         BINDING.retain_receipt(output,receipt,primary)
         original=output/'installed-project-proposal-http.public.json'
         if original.exists():original.rename(output/'installed-concept-advisory-http.public.json')

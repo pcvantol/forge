@@ -306,7 +306,7 @@ class PlanningProviderSecurityService:
             connection.rollback(); raise
         return permit_id
 
-    def _commit_generation_transport(self, permit_id, expected_policy, policy_digest, request_digest):
+    def _commit_generation_transport(self, permit_id, expected_policy, policy_digest, request_digest, *, authorize=None):
         """Atomically verify the permit and block G011 writes until transport ends."""
         connection=self.db._connection; now=_timestamp()
         connection.execute('BEGIN IMMEDIATE')
@@ -317,6 +317,8 @@ class PlanningProviderSecurityService:
                     or row['policy_digest']!=policy_digest or row['request_digest']!=request_digest
                     or not self._same_policy(actual,expected_policy)):
                 raise PermissionError('canonical G011 generation permit is invalid')
+            if authorize is not None:
+                authorize()
             connection.execute("UPDATE planning_provider_generation_permits SET state='TRANSPORT_COMMITTED',updated_at=? WHERE permit_id=?",(now,permit_id))
             self.db._append_operational_event(
                 component='forge_planning_provider', level='INFO',

@@ -31,7 +31,10 @@ class ConceptAdvisoryService:
         self.grant = grant
 
     def _load(self):
-        store = self.grant._store()
+        try:
+            store = self.grant._store()
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            raise RuntimeError("retained concept storage unavailable") from error
         for key, turn in store['records'].items():
             if not isinstance(turn, dict) or set(turn) != {'request', 'request_digest', 'principal_id', 'audience', 'session_id', 'invocation_id', 'context', 'provider', 'status', 'outcome', 'reserved_tokens', 'revision', 'integrity'}:
                 raise ValueError('retained concept turn invalid')
@@ -121,6 +124,13 @@ class ConceptAdvisoryService:
                                     'requested_profile': policy.profile, 'input_token_bound': policy.input_token_bound,
                                     'output_token_bound': policy.output_token_bound, 'context_token_bound': policy.context_token_bound}
                 self._save(store, key, turn)
+            def start_authorize():
+                actual = self.grant.authorize(authorization, audience=audience, dossier_id=r['dossier_id'], conversation_id=r['conversation_id'], permission='ADVISE')
+                self._load()
+                if actual.transfer_policy_digest != r['transfer_policy_digest']:
+                    raise PermissionError('transfer grant changed')
+            provider.grant = self.grant
+            provider.start_authorize = start_authorize
             # No grant/authorization lock spans preflight, generation, or client wait.
             def authorize():
                 with self.grant.boundary():

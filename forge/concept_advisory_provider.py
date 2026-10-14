@@ -15,6 +15,10 @@ assumptions and questions from supplied facts. Changes are proposals for the six
 briefing fields only, with exact before-values and supplied source references.
 Business/Architecture advice is not approval. No project registration or effects.'''
 
+    def commit_transport(self, service, permit, policy, generation_digest):
+        with self.grant.lock_until(None):
+            service._commit_generation_transport(permit, policy, _policy_digest(policy), generation_digest, authorize=self.start_authorize)
+
     def validate_output(self, document, admitted):
         return result(document, admitted)
 
