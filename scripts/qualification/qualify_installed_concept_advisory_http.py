@@ -132,10 +132,14 @@ def run(args):
                 lost={**architecture,'operation_id':'lost','turn_id':'lost','expected_revision':3}
                 raw=json.dumps(lost).encode();header=('POST /v1/concept-advisory/turns HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer '+token.read_text().strip()+'\r\nX-Forge-Concept-Audience: synthetic-workspace\r\nContent-Type: application/json\r\nContent-Length: '+str(len(raw))+'\r\nConnection: close\r\n\r\n').encode()
                 with socket.create_connection(('127.0.0.1',port),timeout=3) as client:client.sendall(header+raw);client.shutdown(socket.SHUT_WR)
-                deadline=time.monotonic()+10
+                deadline=time.monotonic()+10;lost_reissued=False
                 while True:
                     status,original=call(port,token,'GET','/v1/concept-advisory/intents/lost?dossier_id=dossier-alice&conversation_id=conversation-alice')
                     if status==200 and original['original_turn']['status']=='COMPLETE':break
+                    if status==404 and original.get('error',{}).get('code')=='CONCEPT_TURN_NOT_FOUND' and not lost_reissued:
+                        # Explicit same-ID retransmission only after healthy nonadmission.
+                        with socket.create_connection(('127.0.0.1',port),timeout=3) as client:client.sendall(header+raw);client.shutdown(socket.SHUT_WR)
+                        lost_reissued=True
                     if time.monotonic()>deadline:raise TimeoutError('lost success recovery unavailable')
                     time.sleep(0.05)
                 lost_turn=original['original_turn'];receipt['cases'].append('real-lost-success-original-intent')
