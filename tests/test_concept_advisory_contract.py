@@ -52,3 +52,23 @@ class ConceptContractTest(unittest.TestCase):
             if mutation == 'applied': bad['applied'] = True
             if mutation == 'extra': bad['tool_calls'] = []
             with self.subTest(mutation=mutation), self.assertRaises(ValueError): result(bad, admitted)
+
+    def test_lost_intent_retransmission_cannot_start_after_original_deadline(self):
+        from importlib.util import spec_from_file_location,module_from_spec
+        from pathlib import Path
+        from unittest.mock import patch,MagicMock
+        spec=spec_from_file_location('concept_http_deadline',Path(__file__).resolve().parents[1]/'scripts/qualification/qualify_installed_concept_advisory_http.py')
+        module=module_from_spec(spec);spec.loader.exec_module(module)
+        with patch.object(module.time,'monotonic',return_value=11),patch.object(module.socket,'create_connection') as connect:
+            with self.assertRaises(TimeoutError):module.resend_lost_original(1,b'header',b'body',10)
+            connect.assert_not_called()
+        client=MagicMock()
+        with patch.object(module.time,'monotonic',side_effect=[9.0,10.1]),patch.object(module.socket,'create_connection') as connect:
+            connect.return_value.__enter__.return_value=client
+            with self.assertRaises(TimeoutError):module.resend_lost_original(1,b'header',b'body',10)
+            client.sendall.assert_not_called()
+        with patch.object(module.time,'monotonic',side_effect=[9.0,9.4]),patch.object(module.socket,'create_connection') as connect:
+            connect.return_value.__enter__.return_value=client
+            module.resend_lost_original(1,b'header',b'body',10)
+            self.assertEqual(connect.call_args.kwargs['timeout'],1.0)
+            self.assertAlmostEqual(client.settimeout.call_args.args[0],0.6)

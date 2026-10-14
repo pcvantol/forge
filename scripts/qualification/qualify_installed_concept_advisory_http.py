@@ -59,6 +59,16 @@ def submit_original(port, token, request):
     return status,body
 
 
+def resend_lost_original(port, header, raw, deadline):
+    remaining=deadline-time.monotonic()
+    if remaining<=0:raise TimeoutError('lost intent recovery deadline')
+    with socket.create_connection(('127.0.0.1',port),timeout=min(3,remaining)) as client:
+        remaining=deadline-time.monotonic()
+        if remaining<=0:raise TimeoutError('lost intent recovery deadline')
+        client.settimeout(min(3,remaining))
+        client.sendall(header+raw);client.shutdown(socket.SHUT_WR)
+
+
 @contextmanager
 def server(python,root,output):
     with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
@@ -138,7 +148,7 @@ def run(args):
                     if status==200 and original['original_turn']['status']=='COMPLETE':break
                     if status==404 and original.get('error',{}).get('code')=='CONCEPT_TURN_NOT_FOUND' and not lost_reissued:
                         # Explicit same-ID retransmission only after healthy nonadmission.
-                        with socket.create_connection(('127.0.0.1',port),timeout=3) as client:client.sendall(header+raw);client.shutdown(socket.SHUT_WR)
+                        resend_lost_original(port,header,raw,deadline)
                         lost_reissued=True
                     if time.monotonic()>deadline:raise TimeoutError('lost success recovery unavailable')
                     time.sleep(0.05)
