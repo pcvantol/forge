@@ -97,6 +97,25 @@ def server(python,root,output):
                 primary.add_note('owned Server cleanup incomplete: '+type(error).__name__)
 
 
+@contextmanager
+def owned_scratch(output):
+    with TemporaryDirectory(prefix='concept-r53-') as scratch:
+        parent=Path(scratch).resolve();root=parent/'synthetic'
+        try:
+            yield parent,root
+        finally:
+            primary=sys.exc_info()[1]
+            try:
+                for source,name in [(root/'provider-requests.private.jsonl','provider-requests.private.jsonl'),(root/'runtime/onboarding/concept-advisory/store.json','retained-store.private.json')]:
+                    if source.exists():
+                        with source.open('rb') as stream:raw=stream.read(1048577)
+                        if len(raw)>1048576:raise RuntimeError('finite original private capture exceeded')
+                        BINDING.CAPTURE.retain(output/name,raw)
+            except Exception as error:
+                if primary is None:raise
+                primary.add_note('original private diagnostics incomplete: '+type(error).__name__)
+
+
 def run(args):
     global PRIVATE_TRACE
     output=args.output_dir;output.mkdir(mode=0o700);PRIVATE_TRACE=output/"http.private.jsonl"
@@ -105,8 +124,7 @@ def run(args):
              **BINDING.installed_binding(args.python,args.wheel,args.source_revision)}
     primary=None
     try:
-        with TemporaryDirectory(prefix='concept-r53-') as scratch:
-            parent=Path(scratch).resolve();root=parent/'synthetic'
+        with owned_scratch(output) as (parent,root):
             report,stdout,stderr=BINDING.CAPTURE.capture(invocation(args.python,[str(Path(__file__).with_name('concept_advisory_fixture.py')),str(root)]),case='explicit-setup',output=output,cwd=parent,env={'PATH':'/usr/bin:/bin','HOME':str(parent)},expected=0)
             if report['primary_failure'] or not report['capture_complete']:raise RuntimeError('synthetic setup failed')
             stdout_setup=stdout
