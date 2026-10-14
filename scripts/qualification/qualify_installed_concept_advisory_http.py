@@ -55,6 +55,10 @@ def submit_original(port, token, request):
     if read_status == 200:
         return read_status,original
     if read_status == 404 and original.get('error',{}).get('code') == 'CONCEPT_TURN_NOT_FOUND':
+        if body.get('error',{}).get('code') == 'CONCEPT_RUNTIME_INITIALIZING':
+            # Existing Server tick initialization is transient; one explicit original
+            # retransmission after bounded backoff, never a model retry.
+            time.sleep(1)
         return call(port,token,'POST','/v1/concept-advisory/turns',request)
     return status,body
 

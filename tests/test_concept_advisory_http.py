@@ -348,3 +348,26 @@ class ConceptHttpTest(unittest.TestCase):
                 status,error=call(port,token,'POST','/v1/concept-advisory/turns',new)
                 self.assertEqual(status,409,error);self.assertEqual(error['error']['code'],'INVOCATION_UNRESOLVED')
             self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)
+
+    def test_initialization_busy_is_typed_before_admission_and_does_not_hide_other_failure(self):
+        import fcntl
+        from forge.runtime.bootstrap import RuntimeBootstrap,RuntimeResolutionError
+        from unittest.mock import patch
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp).resolve()/'synthetic';fixture.configure(root)
+            with http(root) as port:
+                token=root/'alice.private';_,cap=call(port,token,'GET','/v1/concept-advisory/capability')
+                r=example();r.update(instance_id=cap['instance_id'],dossier_id='dossier-alice',conversation_id='conversation-alice',transfer_policy_digest=cap['provider']['transfer_policy_digest'])
+                lockpath=RuntimeBootstrap(data_root=root/'runtime').resolver.initialization_lock_path
+                with lockpath.open('a+') as lock:
+                    fcntl.flock(lock.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+                    status,body=call(port,token,'POST','/v1/concept-advisory/turns',r)
+                    self.assertEqual((status,body['error']['code']),(503,'CONCEPT_RUNTIME_INITIALIZING'))
+                    self.assertEqual(call(port,token,'GET','/v1/concept-advisory/intents/operation-one?dossier_id=dossier-alice&conversation_id=conversation-alice')[0],404)
+                    self.assertFalse((root/'provider-requests.private.jsonl').exists())
+                with patch('forge.concept_advisory_service.control_runtime',side_effect=RuntimeResolutionError('different unsafe initialization failure')):
+                    status,body=call(port,token,'POST','/v1/concept-advisory/turns',r)
+                    self.assertEqual((status,body['error']['code']),(503,'CONCEPT_STORAGE_OR_PROVIDER_UNAVAILABLE'))
+                status,body=call(port,token,'POST','/v1/concept-advisory/turns',r)
+                self.assertEqual(status,200,body)
+            self.assertEqual(len((root/'provider-requests.private.jsonl').read_text().splitlines()),1)

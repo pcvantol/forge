@@ -81,3 +81,11 @@ transfer or user-credential authority is granted. Independent semantic assessmen
 of synthetic advice and visible uncertainty remains required. Complete tests,
 coverage, Q/S, protected implementation/finalization and NEW exact-final-main
 installed proof remain open until actual evidence is delivered.
+
+A pre-admission initialization lease conflict returns HTTP 503 with closed code
+`CONCEPT_RUNTIME_INITIALIZING`. Other storage/provider failures keep their original
+code. It does not admit a turn or generation permit. The qualification client
+checks the authenticated original intent; only healthy `CONCEPT_TURN_NOT_FOUND`
+permits its one identical retransmission, after a one-second initialization
+backoff. A second rejection fails the gate. No new ID, provider retry, altered
+controller, generation timeout or lost-response recovery deadline is introduced.

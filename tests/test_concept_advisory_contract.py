@@ -91,3 +91,20 @@ class ConceptContractTest(unittest.TestCase):
                     with module.owned_scratch(output) as (_,root):
                         root.mkdir();(root/'provider-requests.private.jsonl').write_bytes(b'synthetic\n');raise original
             self.assertIs(caught.exception,original);self.assertFalse(root.exists());self.assertTrue(original.__notes__)
+
+    def test_known_initialization_backoff_only_one_healthy_original_retry(self):
+        from importlib.util import spec_from_file_location,module_from_spec
+        from pathlib import Path
+        from unittest.mock import patch
+        spec=spec_from_file_location('concept_original_busy',Path(__file__).resolve().parents[1]/'scripts/qualification/qualify_installed_concept_advisory_http.py')
+        module=module_from_spec(spec);spec.loader.exec_module(module)
+        busy=(503,{'error':{'code':'CONCEPT_RUNTIME_INITIALIZING'}})
+        missing=(404,{'error':{'code':'CONCEPT_TURN_NOT_FOUND'}})
+        for original in (missing,(200,{'original_turn':{'status':'UNCERTAIN'}}),(503,{'error':{'code':'CONCEPT_STORAGE_OR_PROVIDER_UNAVAILABLE'}})):
+            with self.subTest(original=original),patch.object(module,'call',side_effect=[busy,original,busy]) as call,patch.object(module.time,'sleep') as wait:
+                actual=module.submit_original(1,'token',example())
+                if original==missing:
+                    self.assertEqual(actual,busy);self.assertEqual(call.call_count,3);wait.assert_called_once_with(1)
+                    self.assertEqual(call.call_args_list[0],call.call_args_list[2])
+                else:
+                    self.assertEqual(call.call_count,2);wait.assert_not_called()

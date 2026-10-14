@@ -8,6 +8,7 @@ from .concept_advisory_provider import ConceptAdvisoryProvider
 from .advisory_contract import AdvisoryConflict
 from .advisory_provider import AdvisoryNotStarted, AdvisoryProviderUnavailable
 from .worklist_control import control_runtime
+from .runtime.bootstrap import RuntimeResolutionError
 from .planner.codex_cli_session import _policy_digest
 
 
@@ -216,6 +217,8 @@ class ConceptAdvisoryService:
             code, status = error.code, 409
         except FileNotFoundError:
             code, status = 'CONCEPT_TURN_NOT_FOUND', 404
+        except RuntimeResolutionError as error:
+            code, status = ('CONCEPT_RUNTIME_INITIALIZING' if str(error) == 'another mutating Forge runtime owns this data root' else 'CONCEPT_STORAGE_OR_PROVIDER_UNAVAILABLE'), 503
         except (AdvisoryProviderUnavailable, OSError, RuntimeError, sqlite3.Error):
             code, status = 'CONCEPT_STORAGE_OR_PROVIDER_UNAVAILABLE', 503
         except (ValueError, TypeError, KeyError):
