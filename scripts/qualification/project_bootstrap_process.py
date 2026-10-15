@@ -17,7 +17,7 @@ def retain(path: Path, raw: bytes) -> None:
         handle.write(raw)
 
 
-def capture(args: list[str], *, case: str, output: Path, cwd: Path, env: dict[str, str], expected: int = 0) -> tuple[dict, bytes, bytes]:
+def capture(args: list[str], *, case: str, output: Path, cwd: Path, env: dict[str, str], expected: int = 0, timeout: float | None = None) -> tuple[dict, bytes, bytes]:
     process = subprocess.Popen(args, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, start_new_session=True)
     buffers = [bytearray(), bytearray()]
@@ -44,7 +44,7 @@ def capture(args: list[str], *, case: str, output: Path, cwd: Path, env: dict[st
     primary = None
     try:
         try:
-            process.wait(timeout=COMMAND_TIMEOUT)
+            process.wait(timeout=COMMAND_TIMEOUT if timeout is None else min(COMMAND_TIMEOUT, timeout))
         except subprocess.TimeoutExpired:
             primary = {'category':'COMMAND_TIMEOUT','observed_exit':None}
             try:

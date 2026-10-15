@@ -4669,6 +4669,564 @@
           }
         }
       }
+    },
+    "/v1/inspection-adoptions/capability": {
+      "get": {
+        "summary": "EP original inspection adoption: capability",
+        "security": [
+          {
+            "EPInspectionAdoptionBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original source-bound private proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Capability"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Original source-bound private proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Capability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/TransportError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/TransportError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                    },
+                    {
+                      "$ref": "inspection-adoptions-v1.json#/$defs/PublicationError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inspection-adoptions/plans": {
+      "post": {
+        "summary": "EP original inspection adoption: plans",
+        "security": [
+          {
+            "EPInspectionAdoptionBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original source-bound private proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Original source-bound private proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/TransportError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/TransportError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                    },
+                    {
+                      "$ref": "inspection-adoptions-v1.json#/$defs/PublicationError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "inspection-adoptions-v1.json#/$defs/Request"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inspection-adoptions/plans/{plan_id}": {
+      "get": {
+        "summary": "EP original inspection adoption: {plan_id}",
+        "security": [
+          {
+            "EPInspectionAdoptionBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original source-bound private proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Original source-bound private proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/TransportError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/TransportError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                    },
+                    {
+                      "$ref": "inspection-adoptions-v1.json#/$defs/PublicationError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inspection-adoptions/intents/{operation_id}": {
+      "get": {
+        "summary": "EP original inspection adoption: {operation_id}",
+        "security": [
+          {
+            "EPInspectionAdoptionBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Original source-bound private proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Original source-bound private proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/TransportError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/TransportError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                    },
+                    {
+                      "$ref": "inspection-adoptions-v1.json#/$defs/PublicationError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success, no cached source disclosure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoptions-v1.json#/$defs/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4741,6 +5299,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate owner-issued human-bound content READ/DECIDE grant; not admin, R52 or R53 authority."
+      },
+      "EPInspectionAdoptionBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate finite explicit owner-issued inspection adoption PREPARE/READ over one trusted original EP pairing; no old grant fallback."
       }
     },
     "schemas": {

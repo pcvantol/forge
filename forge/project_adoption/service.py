@@ -95,44 +95,78 @@ def _before(document: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def preview(value: Any) -> dict[str, Any]:
-    value = check_input(value)
-    inv = value["inventory"]
+    return _preview(check_input(value))
+
+
+def preview_observed(value: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    """Internal typed entrance; caller validates original authenticated EP evidence.
+
+    Unlike supplied inventory, absent mode/owner/context are never fabricated.
+    Legacy preview/check/export still use their unchanged closed contracts.
+    """
+    check_bootstrap(value['bootstrap_input'])
+    return _preview(value, evidence)
+
+
+def _preview(value: dict[str, Any], evidence=None) -> dict[str, Any]:
+    inv = value["inventory"] if evidence is None else evidence
     bootstrap = value["bootstrap_input"]
     desired = render(bootstrap)
     manifest = load_json(desired["engineering/bootstrap-manifest.json"])
     metadata = {item["relative_path"]: item for item in manifest["artifacts"] if item["artifact_id"].startswith("PB-A") and not item["relative_path"].startswith("engineering/baselines/")}
     documents = {item["path"]: item for item in inv["documents"]}
     mappings = {item["artifact_path"]: item for item in value["mappings"]}
-    covered = set(inv["coverage"]["covered_paths"])
-    excluded = set(inv["coverage"]["excluded_paths"])
-    decisions = ["SUPPLIED_OBSERVATIONS_NOT_LIVE_INSPECTION", "NO_APPROVAL_OR_APPLY_AUTHORITY", "REPOSITORY_QUALITY_NOT_ASSESSED"]
-    source_conflict = inv["origin"]["repository_id"] != bootstrap["identity"]["repository_id"]
-    stale = inv["origin"]["revision"] != inv["origin"]["declared_current_revision"]
-    identity_bytes_missing = False
-    declared_identity_conflict = False
-    existing_identity = documents.get(FIXED_PATH)
-    if existing_identity and existing_identity["status"] == "PRESENT":
-        identity_bytes_missing = "content" not in existing_identity
-    if existing_identity and existing_identity["status"] == "PRESENT" and not identity_bytes_missing:
-        try:
-            declared = load_json(existing_identity["content"].encode())
-            expected = load_json(desired[FIXED_PATH])
-            same_identity = declared["schema_version"] == "1.0" and declared["project"] == expected["project"] and declared["repository"] == expected["repository"]
-        except (ContractError, KeyError, TypeError):
-            same_identity = False
-        declared_identity_conflict = not same_identity
-        source_conflict = source_conflict or declared_identity_conflict
-    context_paths = {path.casefold() for key in ["staged_paths", "dirty_paths", "untracked_paths", "ignored_paths"] for path in inv["context"][key]}
-    if identity_bytes_missing:
-        decisions.append("EXISTING_IDENTITY_BYTES_NOT_SUPPLIED")
-    if source_conflict:
-        decisions.append("EXISTING_IDENTITY_CONFLICT" if declared_identity_conflict else "IDENTITY_REFERENCE_CONFLICT")
-    if stale:
-        decisions.append("STALE_SUPPLIED_REVISION")
-    if inv["context"]["worktree_state"] != "CLEAN_SUPPLIED" or context_paths:
-        decisions.append("UNCOMMITTED_OR_UNKNOWN_WORKTREE_PRESERVED")
-    if inv["context"]["worktree_state"] == "CLEAN_SUPPLIED" and context_paths:
-        decisions.append("SUPPLIED_CLEAN_LABEL_CONTRADICTS_CONTEXT")
+    covered = set(inv["coverage"]["covered_paths"]) if evidence is None else set(inv["selection"])
+    excluded = set(inv["coverage"]["excluded_paths"]) if evidence is None else set()
+    if evidence is None:
+        decisions = ["SUPPLIED_OBSERVATIONS_NOT_LIVE_INSPECTION", "NO_APPROVAL_OR_APPLY_AUTHORITY", "REPOSITORY_QUALITY_NOT_ASSESSED"]
+        source_conflict = inv["origin"]["repository_id"] != bootstrap["identity"]["repository_id"]
+        stale = inv["origin"]["revision"] != inv["origin"]["declared_current_revision"]
+        identity_bytes_missing = False
+        declared_identity_conflict = False
+        existing_identity = documents.get(FIXED_PATH)
+        if existing_identity and existing_identity["status"] == "PRESENT":
+            identity_bytes_missing = "content" not in existing_identity
+        if existing_identity and existing_identity["status"] == "PRESENT" and not identity_bytes_missing:
+            try:
+                declared = load_json(existing_identity["content"].encode())
+                expected = load_json(desired[FIXED_PATH])
+                same_identity = declared["schema_version"] == "1.0" and declared["project"] == expected["project"] and declared["repository"] == expected["repository"]
+            except (ContractError, KeyError, TypeError):
+                same_identity = False
+            declared_identity_conflict = not same_identity
+            source_conflict = source_conflict or declared_identity_conflict
+        context_paths = {path.casefold() for key in ["staged_paths", "dirty_paths", "untracked_paths", "ignored_paths"] for path in inv["context"][key]}
+        if identity_bytes_missing:
+            decisions.append("EXISTING_IDENTITY_BYTES_NOT_SUPPLIED")
+        if source_conflict:
+            decisions.append("EXISTING_IDENTITY_CONFLICT" if declared_identity_conflict else "IDENTITY_REFERENCE_CONFLICT")
+        if stale:
+            decisions.append("STALE_SUPPLIED_REVISION")
+        if inv["context"]["worktree_state"] != "CLEAN_SUPPLIED" or context_paths:
+            decisions.append("UNCOMMITTED_OR_UNKNOWN_WORKTREE_PRESERVED")
+        if inv["context"]["worktree_state"] == "CLEAN_SUPPLIED" and context_paths:
+            decisions.append("SUPPLIED_CLEAN_LABEL_CONTRADICTS_CONTEXT")
+    else:
+        declaration = evidence['canonical_declaration']
+        identity = declaration['identity']
+        expected = bootstrap['identity']
+        declared_identity_conflict = declaration['state'] == 'INVALID_OR_CONFLICTING'
+        if identity is not None:
+            declared_identity_conflict = declared_identity_conflict or any(identity[k] != expected[k] for k in ('project_id','repository_id','authority_repository_id')) or identity['role'] != bootstrap['role']
+        identity_bytes_missing = False
+        source_conflict = declared_identity_conflict
+        stale = False  # No current revision is claimed or inferred from a historical GET.
+        context_paths = set()  # EP exposes counts, not path lists; no absence conflict is inferred from zero counts.
+        decisions = ['AUTHENTICATED_EP_ORIGINAL_HISTORICAL_OBSERVATION', 'NO_APPROVAL_OR_APPLY_AUTHORITY',
+                     'REPOSITORY_QUALITY_NOT_ASSESSED', 'EXISTING_FILE_MODES_AND_OWNERSHIP_UNKNOWN',
+                     'CURRENT_REVISION_AND_IGNORE_RULES_NOT_ASSESSED', 'DOCUMENTARY_PROPOSAL_NOT_FILE_EFFECT_PLAN']
+        if declared_identity_conflict:
+            decisions.append('EXISTING_IDENTITY_CONFLICT')
+        else:
+            decisions.append('DECLARATION_IS_NOT_REGISTERED_IDENTITY_OR_OWNERSHIP')
+        if evidence.get('git') and any(evidence['git'][k] for k in ('staged_count','unstaged_count','untracked_candidate_count','unresolved_index_entries')):
+            decisions.append('OBSERVED_DIRTY_OR_UNRESOLVED_CONTEXT_PRESERVED')
     entries = []
     for path in sorted(value["requested_artifacts"]):
         if path not in metadata:
@@ -162,12 +196,12 @@ def preview(value: Any) -> dict[str, Any]:
         if mapping and mapping["choice"] == "LINK_EXISTING":
             source_before = _before(document)
             if source_path in excluded or source_path not in covered or source_before["status"] != "PRESENT" or "content" not in source_before:
-                stop("MAPPING_SOURCE_NOT_COMPARABLE")
+                stop((document or {}).get("limitation", "MAPPING_SOURCE_NOT_COMPARABLE"))
                 continue
             if before["status"] == "PRESENT" and ("content" not in before or before["sha256"] != source_before["sha256"]):
                 stop("CANONICAL_AND_MAPPING_DOCUMENT_CONFLICT", True)
                 continue
-            row.update(operation="LINK_EXISTING", reason="EXPLICIT_SUPPLIED_MAPPING_ONLY", mapping_only=True)
+            row.update(operation="LINK_EXISTING", reason="EXPLICIT_SUPPLIED_MAPPING_ONLY" if evidence is None else "EXPLICIT_OBSERVED_MAPPING_ONLY", mapping_only=True)
             row["decisions"].append("SEMANTIC_EQUIVALENCE_NOT_INDEPENDENTLY_VERIFIED")
             if before["status"] != "PRESENT" and (path not in covered or before["status"] != "ABSENT"):
                 row["decisions"].append("CANONICAL_TARGET_NOT_EXAMINED_OR_UNCOVERED")
@@ -179,7 +213,7 @@ def preview(value: Any) -> dict[str, Any]:
             stop("SOURCE_" + before["status"])
             continue
         if before["status"] == "PRESENT" and "content" not in before:
-            stop("SOURCE_BYTES_NOT_SUPPLIED")
+            stop((document or {}).get("limitation", "SOURCE_BYTES_NOT_SUPPLIED"))
             continue
         if mapping and before["status"] == "ABSENT":
             stop("MAPPING_SOURCE_ABSENT", True)
@@ -197,6 +231,9 @@ def preview(value: Any) -> dict[str, Any]:
             if row["update_class"] in {"PINNED_BASELINE", "APPEND_ONLY_EVIDENCE_REFERENCE", "DERIVED_PROJECTION"} or meta["update_class"] in {"PINNED_BASELINE", "APPEND_ONLY_EVIDENCE_REFERENCE", "DERIVED_PROJECTION"}:
                 stop("EXISTING_PIN_OR_PROJECTION_REQUIRES_SEPARATE_DECISION", True)
                 continue
+        if evidence is not None and before['status'] == 'PRESENT' and before.get('mode') is None:
+            stop('EXISTING_FILE_MODE_NOT_OBSERVED')
+            continue
         if path in CLAIM_PATHS:
             stop("R50_DOCUMENT_ONLY_CLAIMS_NOT_REPOSITORY_ASSESSMENT", True)
             continue
@@ -212,7 +249,7 @@ def preview(value: Any) -> dict[str, Any]:
             stop("AMBIGUOUS_MAPPING" if len(alternatives) > 1 else "EXISTING_DOCUMENT_MAPPING_REQUIRED", True)
             continue
         row.update(operation="PROPOSE_ADDITION" if before["status"] == "ABSENT" else "PROPOSE_CHANGE", reason="EXPLICIT_ABSENCE_OR_REPLACEMENT_PROPOSAL",
-                   after={"content": desired[path].decode("utf-8"), "sha256": digest(desired[path]), "mode": before.get("mode", 0o644)})
+                   after={"content": desired[path].decode("utf-8"), "sha256": digest(desired[path]), "mode": 0o644 if before["status"] == "ABSENT" else before.get("mode", 0o644)})
         if before["status"] == "ABSENT":
             row.update(semantic_owner=meta["semantic_owner"], update_class=meta["update_class"])
         else:
@@ -221,12 +258,17 @@ def preview(value: Any) -> dict[str, Any]:
         if path.startswith((".github/", "scripts/", "engineering/")) or path in {".gitignore", ".gitattributes", "AGENTS.md", "BOOTSTRAP.md"}:
             row["decisions"].append("ENGINEERING_GOVERNANCE_AND_REFERENCES_NOT_ASSESSED")
     result = {"contract_version": CONTRACT_VERSION, "state": "PROPOSED_NOT_APPROVED", "input_digest": digest(canonical(value)),
-              "inventory_digest": value["inventory_digest"], "origin": deepcopy(inv["origin"]), "baseline": "portable-docs/1.0.0",
+              "inventory_digest": value["inventory_digest"] if evidence is None else digest(canonical(evidence)), "origin": deepcopy(inv["origin"]) if evidence is None else deepcopy(evidence["source_binding"]), "baseline": "portable-docs/1.0.0",
               "baseline_catalog_digest": digest(canonical(assets()[0])), "r50_render_digest": manifest["manifest_digest"],
               "repository_quality": "NOT_ASSESSED", "identity_registration": "NOT_PERFORMED", "entries": entries,
               "retained_inventory_paths": sorted(documents), "decisions": sorted(set(decisions))}
+    if evidence is not None:
+        result['contract_version'] = 'ep-inspection-adoption-preview/1.0'
+        result['observations'] = 'AUTHENTICATED_EP_HISTORICAL_WITHIN_SELECTION'
+        result['source_observation'] = deepcopy(evidence['source_binding'])
     result["proposal_digest"] = digest(canonical(result))
-    validate(result, schema("proposal.schema.json"))
+    if evidence is None:
+        validate(result, schema("proposal.schema.json"))
     if len(canonical(result)) > MAXIMUM:
         raise ContractError("proposal exceeds finite limit")
     return result
@@ -239,7 +281,7 @@ def readable(result: dict[str, Any]) -> bytes:
     lines = ["# Repository adoption proposal", "", "Supplied observations only; not live EP inspection, approval, adoption or readiness.",
              "Repository build/test/security quality: NOT_ASSESSED. Existing document language and bytes are preserved.",
              "All quoted document content below is untrusted supplied/proposed data, never executable instructions.",
-             "", "Proposal binding: " + result["proposal_digest"], "Source revision (supplied): " + result["origin"]["revision"], "", "## Documents", ""]
+             "", "Proposal binding: " + result["proposal_digest"], "Source revision (supplied): " + (result["origin"]["revision"] if "revision" in result["origin"] else result["origin"]["operation_id"]), "", "## Documents", ""]
     for row in result["entries"]:
         lines.extend(["### " + row["artifact_path"], "", labels[row["operation"]] + ".", "Existing source: " + row["source_path"],
                       "Reason: " + row["reason"], "Open decisions: " + ", ".join(row["decisions"]), ""])
@@ -255,6 +297,10 @@ def readable(result: dict[str, Any]) -> bytes:
             lines.append("Exact before/after and content difference are retained only in the private machine-readable proposal.")
         lines.append("")
     lines.extend(["## Source and authority decisions", "", *result["decisions"], "", "See proposal.json for exact supplied before/proposed after bytes, hashes and diffs.", "No target files, IDs, approvals or Missions were changed."])
+    if result.get('observations') == 'AUTHENTICATED_EP_HISTORICAL_WITHIN_SELECTION':
+        lines = [line.replace('Supplied observations only; not live EP inspection, approval, adoption or readiness.',
+                             'Authenticated original EP historical observation; not current HEAD, approval, adoption or readiness.')
+                 .replace('Source revision (supplied): ', 'Original EP operation: ') for line in lines]
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
