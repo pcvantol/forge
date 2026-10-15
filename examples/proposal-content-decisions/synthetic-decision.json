@@ -1,0 +1,76 @@
+{
+  "qualification": "SYNTHETIC_CONTRACT_EXAMPLE_NOT_RUNTIME_OR_HUMAN_APPROVAL",
+  "note": "Zero digests are placeholders; obtain the exact subject and source-bound open points from actual authenticated readback. One role remains DECISION_NEEDED.",
+  "profile": {
+    "profile_id": "CONTENT_BASELINE_ONLY/1.0",
+    "meaning": "CONTENT_BASELINE_ONLY",
+    "required_roles": [
+      "BUSINESS",
+      "ARCHITECTURE"
+    ],
+    "proposal_kind": "pb-render/1.0",
+    "baseline": "portable-docs/1.0.0",
+    "role": "authority",
+    "mode": "GENESIS",
+    "host_profile": "LOCAL_POSIX",
+    "effects": false,
+    "mandatory_controls": [
+      "EXACT_SOURCE_AND_ARTIFACT_BINDING",
+      "SUPPORTED_DOCUMENT_ONLY_PROFILE",
+      "CURRENT_HUMAN_ROLE_AUTHORITY",
+      "REASON_REQUIRED",
+      "OPEN_POINTS_ACKNOWLEDGED"
+    ],
+    "open_points": "Visible future engineering questions are not automatic document-baseline blockers; approval acknowledges all supplied open questions.",
+    "not_assessed": [
+      "physical_target",
+      "repository_quality",
+      "security",
+      "TDE",
+      "execution_readiness"
+    ],
+    "not_authorized": [
+      "registration",
+      "repository_effect",
+      "risk_waiver",
+      "execution_plan",
+      "Action",
+      "Mission"
+    ]
+  },
+  "request": {
+    "contract_version": "forge-project-proposal-content-decision/v1",
+    "instance_id": "synthetic-instance",
+    "dossier_id": "synthetic-dossier",
+    "operation_id": "synthetic-operation",
+    "plan_id": "proposal-synthetic",
+    "subject": {
+      "plan_id": "proposal-synthetic",
+      "proposal_principal_id": "synthetic-service",
+      "proposal_kind": "pb-render/1.0",
+      "input_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "result_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "record_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "manifest_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "baseline": "portable-docs/1.0.0",
+      "profile_id": "CONTENT_BASELINE_ONLY/1.0",
+      "source_references": [
+        {
+          "reference": "supplied-synthetic-brief",
+          "owner": "USER_DECLARED",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "concept_revision": null
+    },
+    "profile_id": "CONTENT_BASELINE_ONLY/1.0",
+    "role": "BUSINESS",
+    "decision": "APPROVE_CONTENT",
+    "expected_decision_revision": 0,
+    "previous_decision_id": null,
+    "reason": "The supplied document basis is acceptable; the future database choice remains open.",
+    "acknowledged_open_points": [
+      "Which database should later engineering choose?"
+    ]
+  }
+}
