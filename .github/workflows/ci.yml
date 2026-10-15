@@ -27,7 +27,7 @@ jobs:
       - name: Release repository context (delivered controller and restored defect)
         timeout-minutes: 3
         run: bash scripts/qualification/qualify_release_repository_context.sh "$RUNNER_TEMP/forge-release-repository-context"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-release-repository-context-${{ github.sha }}
@@ -62,7 +62,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_fci_failure_gate.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-fci-failure-gate"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installed-http-successor-${{ github.sha }}
@@ -80,7 +80,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_project_bootstrap.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-project-bootstrap"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-project-bootstrap-${{ github.sha }}
@@ -96,7 +96,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_project_adoption.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-project-adoption"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-project-adoption-${{ github.sha }}
@@ -113,7 +113,7 @@ jobs:
             --python "$RUNNER_TEMP/forge-installed/bin/python" --wheel "${wheel[0]}" \
             --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-project-proposals" --modeled-os-identity
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-project-proposals-${{ github.sha }}
@@ -131,7 +131,7 @@ jobs:
             --python "$RUNNER_TEMP/forge-installed/bin/python" --wheel "${wheel[0]}" \
             --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-concept-advisory" --modeled-os-identity
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-concept-advisory-${{ github.sha }}
@@ -156,7 +156,7 @@ jobs:
           set -e
           test "$failure_exit" -eq 1
           "$RUNNER_TEMP/forge-installed/bin/python" -I -c 'import json,pathlib; d=json.loads(pathlib.Path("forge-worklist-read-failure/installed-worklist-read.public.json").read_text()); assert d["result"] == "FAIL" and d["failure_type"] == "AssertionError" and d["failure_stage"] == "positive-read" and d["observed_read_status"] == 401 and d["external_fault"] == "revoked-positive-read-credential"'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installed-worklist-read-${{ github.sha }}
@@ -185,7 +185,7 @@ jobs:
           set -e
           test "$failure_exit" -eq 1
           "$RUNNER_TEMP/forge-installed/bin/python" -I -c 'import json,pathlib; d=json.loads(pathlib.Path("forge-worklist-activation-failure/installed-worklist-activation.public.json").read_text()); assert d["result"] == "FAIL" and d["failure_type"] == "AssertionError" and d["failure_stage"] == "B-activation" and d["observed_allocations"] == d["observed_provider_invocations"] == 1 and d["external_fault"] == "RELEASE_REVOKED_BEFORE_B" and all(c["owned_runtime_target_home_config_scratch_removed"] for c in d["cleanup"])'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installed-worklist-activation-${{ github.sha }}
@@ -214,7 +214,7 @@ jobs:
           set -e
           test "$failure_exit" -eq 1
           "$RUNNER_TEMP/forge-installed/bin/python" -I -c 'import json,pathlib; d=json.loads(pathlib.Path("forge-worklist-control-failure/installed-worklist-control.public.json").read_text()); assert d["result"] == "FAIL" and d["failure"]["type"] == "AssertionError" and d["failure"]["stage"] == "positive-command-replay" and d["external_fault"] == "REVOKED_CONTROL_GRANT" and all(c["owned_runtime_home_credentials_scratch_removed"] for c in d["cleanup"])'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installed-worklist-control-${{ github.sha }}
@@ -243,7 +243,7 @@ jobs:
           set -e
           test "$gate_exit" -eq 1
           python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-advisory-http-control/installed-advisory.public.json").read_text()); assert d["result"]=="FAIL" and d["failure"]["type"]=="AssertionError" and d["failure"]["stage"]=="positive-replay" and d["external_fault"]=="REVOKED_POSITIVE_ADVISORY_GRANT"'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installed-advisory-${{ github.sha }}
@@ -272,7 +272,7 @@ jobs:
           set -e
           test "$gate_exit" -eq 1
           python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-advisory-candidate-control/installed-advisory-candidate.public.json").read_text()); assert d["result"]=="FAIL" and d["failure"]["type"]=="AssertionError" and d["failure"]["stage"]=="positive-candidate-replay" and d["external_fault"]=="REVOKED_POSITIVE_CANDIDATE_GRANT" and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installed-advisory-candidate-${{ github.sha }}
@@ -301,7 +301,7 @@ jobs:
           set -e
           test "$gate_exit" -eq 1
           python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-mission-concepts-control/installed-mission-concepts.public.json").read_text()); assert d["result"]=="FAIL" and d["failure"]["stage"]=="positive-concept-replay" and d["external_fault"]=="REVOKED_POSITIVE_CONCEPT_GRANT" and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-mission-concepts-${{ github.sha }}
@@ -323,7 +323,7 @@ jobs:
           set -e
           test "$gate_exit" -eq 1
           python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-installation-detach-control/installed-installation-detach.public.json").read_text()); assert d["result"]=="FAIL" and d["failure_control_detected"] and d["failure"]=={"type":"AssertionError","stage":"positive-installation-detach"} and d["external_fault"]=="REVOKED_POSITIVE_INSTALLATION_OPERATOR" and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installation-detach-${{ github.sha }}
@@ -352,7 +352,7 @@ jobs:
           set -e
           test "$gate_exit" -eq 1
           python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-workset-release-control/installed-workset-release.public.json").read_text()); assert d["result"]=="FAIL" and d["failure"]["type"]=="AssertionError" and d["failure_control_detected"] and d["failure"]["stage"]=="positive-workset-activation" and d["external_fault"]=="REVOKED_POSITIVE_RELEASE_GRANT" and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-workset-release-${{ github.sha }}
@@ -381,7 +381,7 @@ jobs:
           set -e
           test "$gate_exit" -eq 1
           python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-candidate-decisions-control/installed-candidate-decisions.public.json").read_text()); assert d["result"]=="FAIL" and d["failure"]["type"]=="AssertionError" and d["failure"]["stage"]=="positive-decision-replay" and d["external_fault"]=="REVOKED_POSITIVE_DECISION_GRANT" and d["cleanup"]["owned_runtime_home_credentials_scratch_removed"]'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installed-candidate-decisions-${{ github.sha }}
@@ -399,7 +399,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_action_authority.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output "$GITHUB_WORKSPACE/installed-action-authority-boundary.public.json"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-installed-action-authority-boundary-${{ github.sha }}
@@ -416,7 +416,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_mission_final_acceptance.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-mission-final-acceptance"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-mission-final-acceptance-${{ github.sha }}
@@ -435,7 +435,7 @@ jobs:
             "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_workset_order.py" \
             --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-workset-order"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: forge-workset-order-${{ github.sha }}
@@ -455,7 +455,7 @@ jobs:
             --wheel "$(find "$RUNNER_TEMP/forge-wheel" -name '*.whl' -print -quit)" \
             --source-revision "$(git rev-parse HEAD)" \
             --output-dir "$RUNNER_TEMP/forge-workset-activity-installed"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: forge-workset-activity-${{ github.sha }}
@@ -483,7 +483,7 @@ jobs:
             --include="$GITHUB_WORKSPACE/scripts/update_installed_forge.py" \
             -o "$RUNNER_TEMP/forge-maintenance-coverage.json"
           python -c 'import json,os; from pathlib import Path; d=json.loads((Path(os.environ["RUNNER_TEMP"])/"forge-maintenance-coverage.json").read_text()); rows=[v for k,v in d["files"].items() if k.endswith("scripts/update_installed_forge.py")]; assert len(rows)==1 and rows[0]["summary"]["percent_covered"]>80.2'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: forge-published-preservation-${{ github.sha }}
