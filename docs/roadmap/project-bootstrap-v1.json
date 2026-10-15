@@ -201,7 +201,7 @@
       "PB-F2",
       "HOB-F02"
     ],
-    "state": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
+    "state": "CLOSED_SELECTED_SUBSET",
     "profile_id": "CONTENT_BASELINE_ONLY/1.0",
     "required_roles": [
       "BUSINESS",
@@ -215,6 +215,30 @@
     "implementation_main": "13cd5d2b37fedceddd8d4dda65477f3494e9d4c1",
     "delivery_record": "docs/qualification/R54_PROJECT_PROPOSAL_CONTENT_DECISION_DELIVERY_2026_10_15.md",
     "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38719815620/artifacts/11967229503",
+    "finalization_effect": "NO_BUMP",
+    "closure_gate": "Own finalization checks/reviews/required CI/protected merge; NEW exact-final-main installed HTTP/restart/readback/cleanup and terminal register",
+    "terminal_evidence": "https://github.com/pcvantol/forge/issues/207#issuecomment-6195361250",
+    "final_main": "0ea1b1a7380aaef95205821bc7bf3c9a3f9ec3e2"
+  },
+  "ep_inspection_adoption_subset": {
+    "assignment_id": "L3-EP-INSPECTION-ADOPTION-PREVIEW-V1-20261015",
+    "join_id": "L2-L3-INSPECTION-ADOPTION-V1-20261015",
+    "source_nodes": [
+      "PB-F2",
+      "HOB-F02"
+    ],
+    "state": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
+    "contract": "forge-ep-inspection-adoption-preview/v1",
+    "proposal_kind": "ep-inspection-adoption-preview/1.0",
+    "architecture": "docs/architecture/EP_INSPECTION_ADOPTION_PREVIEW_V1.md",
+    "producer_revision": "f3b56303b561a7193965f4aa41fd8da744a8c1c2",
+    "producer_version": "2.3.121",
+    "effect_authority": false,
+    "full_pb_f2_closed": false,
+    "predecessors": "R54 and predecessors CLOSED; original pins/evidence/counters preserved",
+    "implementation_main": "70618746948282026c8be7c717993eb9bc69c404",
+    "delivery_record": "docs/qualification/R55_EP_INSPECTION_ADOPTION_DELIVERY_2026_10_15.md",
+    "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38790025378/artifacts/12000150726",
     "finalization_effect": "NO_BUMP",
     "closure_gate": "Own finalization checks/reviews/required CI/protected merge; NEW exact-final-main installed HTTP/restart/readback/cleanup and terminal register"
   }

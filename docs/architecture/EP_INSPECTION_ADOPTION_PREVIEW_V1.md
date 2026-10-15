@@ -3,7 +3,9 @@
 Selected R55/plan1, L3-EP-INSPECTION-ADOPTION-PREVIEW-V1-20261015.
 JOIN L2-L3-INSPECTION-ADOPTION-V1-20261015. Contract
 forge-ep-inspection-adoption-preview/v1; kind ep-inspection-adoption-preview/1.0.
-This early contract/mapping is implementation work, not a qualification receipt.
+Implementation PR294 is protected delivered; [own delivery/finalization record](../qualification/R55_EP_INSPECTION_ADOPTION_DELIVERY_2026_10_15.md)
+binds current source assurance and candidate evidence. Final-main qualification
+and terminal closure are separate actual gates.
 Forge2.21.0/schema46. R54 and predecessors remain CLOSED.
 
 ## Selected producer and outcome
@@ -52,7 +54,7 @@ vision is silently rendered into the target or substituted for the linked text.
 
 Separate owner-issued finite PREPARE/READ grants opt into this kind and exact
 trusted pairing. Old R52/R53/R54 grants gain no new right. Normal request input
-contains no endpoint/path/credential or uploaded EP payload. Planned thin routes
+contains no endpoint/path/credential or uploaded EP payload. Delivered thin routes
 under /v1/inspection-adoptions: capability, POST plans, GET plans/{plan_id} and
 GET intents/{operation_id}, with explicit dossier query for reads, Bearer and
 X-Forge-Inspection-Audience. Private local CLI provides owner init/bind/issue/

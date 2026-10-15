@@ -59,3 +59,45 @@ class RemainingDeadlineTests(unittest.TestCase):
             self.assertLess(time.monotonic()-start,1)
             self.assertEqual(q.BINDING.CAPTURE.COMMAND_TIMEOUT,30)
             self.assertEqual(records[0]['primary_failure']['category'],'COMMAND_TIMEOUT')
+
+class OriginalReadbackRecoveryTests(unittest.TestCase):
+    def test_publication_race_uses_only_original_get_and_checks_current_capability(self):
+        responses=[(403,b'{"error":{"code":"PROPOSAL_PUBLICATION_DENIED"}}',{'error':{'code':'PROPOSAL_PUBLICATION_DENIED'}}),
+                   (200,b'{}',{}),(200,b'original',{'original':True})]
+        with tempfile.TemporaryDirectory() as name,patch.object(q,'request',side_effect=responses) as send:
+            self.assertEqual(q.recover_original(1234,'/v1/inspection-adoptions/intents/selected?dossier_id=d',{},Path(name)),(200,b'original',{'original':True}))
+            self.assertEqual([call.args[1] for call in send.call_args_list],['GET']*3)
+            self.assertIn('capability',send.call_args_list[1].args[2])
+
+    def test_actual_scope_denial_and_failed_current_authority_are_not_retried(self):
+        for responses in ([(403,b'{}',{'error':{'code':'INSPECTION_ADOPTION_SCOPE_DENIED'}})],
+                          [(403,b'{}',{'error':{'code':'PROPOSAL_PUBLICATION_DENIED'}}),(401,b'{}',{})]):
+            with self.subTest(responses=responses),tempfile.TemporaryDirectory() as name,patch.object(q,'request',side_effect=responses) as send:
+                with self.assertRaises(RuntimeError):q.recover_original(1234,'/original',{},Path(name))
+                self.assertEqual(send.call_count,len(responses))
+
+class RecoveryAbsoluteDeadlineTests(unittest.TestCase):
+    def test_late_success_is_not_accepted_after_original_readback_deadline(self):
+        with tempfile.TemporaryDirectory() as name,patch.object(q.time,'monotonic',side_effect=[0,0,11]),patch.object(q,'request',return_value=(200,b'original',{'original':True})):
+            with self.assertRaisesRegex(RuntimeError,'deadline'):q.recover_original(1234,'/original',{},Path(name))
+
+    def test_actual_slow_trickle_is_bounded_by_total_http_budget(self):
+        from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+        from threading import Thread
+        import http.client
+        import time
+        class Slow(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200);self.send_header('Content-Length','4');self.end_headers()
+                try:
+                    for b in b'null':
+                        self.wfile.write(bytes([b]));self.wfile.flush();time.sleep(.08)
+                except OSError:pass
+            def log_message(self,*_):pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),Slow)
+        worker=Thread(target=server.serve_forever,daemon=True);worker.start();start=time.monotonic()
+        try:
+            with self.assertRaises((OSError,http.client.HTTPException)):
+                q.request(server.server_port,'GET','/synthetic',{},timeout=.15)
+            self.assertLess(time.monotonic()-start,.3)
+        finally:server.shutdown();worker.join(2);server.server_close()

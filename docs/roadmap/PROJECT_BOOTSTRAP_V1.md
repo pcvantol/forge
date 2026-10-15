@@ -1,6 +1,6 @@
 # Project bootstrap V1 — Forge implementation roadmap
 
-**Owner:** Forge. **Status:** R50–R53 selected subsets CLOSED; R54 content-only decision implementation delivered, final qualification OPEN; full remaining nodes PLANNED. **NO_BUMP.**
+**Owner:** Forge. **Status:** R50–R54 selected subsets CLOSED; R55 inspection adoption implementation delivered, own finalization/final qualification OPEN; full remaining nodes PLANNED. **NO_BUMP.**
 This scoped roadmap concretizes L1/L1-R in the [canonical strategic roadmap](../../knowledge/bootstrap/10_ROADMAP.md), consumes L0 baseline enforcement and F2/FH services, and does not replace those programmes. Design closure is not implementation closure of FWV1-G002/G003/G004/G010.
 
 Read the [architecture and artifact contract](../architecture/PROJECT_BOOTSTRAP_AND_ARTIFACT_MANIFEST_V1.md) and [40 qualification families](../architecture/PROJECT_BOOTSTRAP_QUALIFICATION_V1.md). The [JSON DAG](project-bootstrap-v1.json) is a non-executable delivery index. It contains only Forge work; peer nodes below are evidence requirements owned and scheduled by peers.
@@ -62,8 +62,29 @@ CONTENT_BASELINE_ONLY/1.0 decisions over existing portable GENESIS proposals.
 [Contract](../architecture/PROJECT_PROPOSAL_CONTENT_DECISION_V1.md) and
 [delivery record](../qualification/R54_PROJECT_PROPOSAL_CONTENT_DECISION_DELIVERY_2026_10_15.md)
 bind protected implementation PR292/main13cd5d2, complete source assurance and
-current candidate evidence. Own finalization and NEW exact-final-main installed
-HTTP/restart/readback/cleanup remain OPEN until the owning terminal register.
+candidate evidence. The [R54 terminal](https://github.com/pcvantol/forge/issues/207#issuecomment-6195361250)
+closed this bounded subset at final main0ea1b1a, preserving its original pins,
+failures, counters and TDE-FAIL boundary.
 Business AND Architecture are required; open points remain visible; original
 R52 proposal bytes remain unchanged. This closes no full PB-F2/PB-F7/HOB family,
 effect/apply/provisioning/readiness or native active-approval workflow.
+
+
+## Current selected inspection-consumer subset — R55
+
+R55 implements only PB-F2/HOB-F02 original qualified EP inspection -> private
+source-bound documentary adoption preview. [Owning contract and field mapping](../architecture/EP_INSPECTION_ADOPTION_PREVIEW_V1.md),
+[delivery record](../qualification/R55_EP_INSPECTION_ADOPTION_DELIVERY_2026_10_15.md)
+and implementation PR294/main7061874 bind the actual independent assurance,
+normal full CI and candidate installed HTTP proof. Existing R50 renderer/R51
+rules/R52 storage are reused; historical SUPPLIED_UNVERIFIED is unchanged.
+
+Qualified EP2.3.121/f3b56303 is pinned; owning authenticated original GET only,
+no new inspection, identity/approval/effect/model/Action/Mission. Missing mode,
+content/context/currentness/absence stays unknown. Full PB-F2/PB-F7/HOB,
+provisioning/effect/remote and full qualification families remain open. L2's
+independent later progress work and L4plan106/pins/budgets are unchanged.
+
+This own nonempty finalization still requires its independent reviews/checks,
+normal protected merge and NEW exact-final-main installed HTTP/restart/readback/
+cleanup plus immutable handoff/terminal record. No automatic successor.

@@ -5,7 +5,7 @@ from copy import deepcopy
 from tempfile import mkdtemp
 from hashlib import sha256
 from datetime import UTC, datetime, timedelta
-from threading import Thread
+from threading import Thread, Timer
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.util import spec_from_file_location, module_from_spec
 import argparse
@@ -80,14 +80,32 @@ def port():
         return sock.getsockname()[1]
 
 
-def request(port_number, method, target, headers, body=None, lost=False):
-    client = http.client.HTTPConnection('127.0.0.1',port_number,timeout=15)
+def request(port_number, method, target, headers, body=None, lost=False, timeout=15):
+    deadline = time.monotonic()+timeout
+    client = http.client.HTTPConnection('127.0.0.1',port_number,timeout=timeout)
+    watchdog = None
     try:
+        client.connect()
+        peer_socket = client.sock
+        def interrupt():
+            try:
+                peer_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            peer_socket.close()
+        remaining = deadline-time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('qualification total HTTP deadline')
+        watchdog = Timer(remaining,interrupt)
+        watchdog.daemon = True
+        watchdog.start()
         client.request(method,target,body=None if body is None else json.dumps(body).encode(),headers={**headers,'Content-Type':'application/json'})
         if lost:
             return None
         response = client.getresponse()
         raw = response.read(1048577)
+        if time.monotonic() >= deadline:
+            raise TimeoutError('qualification total HTTP deadline')
         value = json.loads(raw)
         if target.startswith('/v1/inspection-adoptions/'):
             from jsonschema import Draft202012Validator
@@ -96,7 +114,43 @@ def request(port_number, method, target, headers, body=None, lost=False):
                 Draft202012Validator(json.loads((SOURCE/'forge/api/inspection-adoptions-v1.json').read_text())).validate(body)
         return response.status,raw,value
     finally:
+        if watchdog is not None:
+            watchdog.cancel()
+            watchdog.join(.2)
         client.close()
+
+
+def recover_original(port_number, intent, headers, output):
+    """Recover ONLY the original GET within the existing ten-second window.
+
+    A pending projection can lose its publication CAS to the same operation's
+    successful commit. No cached success, new POST or generic scope retry.
+    """
+    deadline = time.monotonic()+10
+    attempts = 0
+    while True:
+        remaining = deadline-time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError('lost answer original readback deadline')
+        code, raw, value = request(port_number,'GET',intent,headers,timeout=min(15,remaining))
+        if time.monotonic() >= deadline:
+            raise RuntimeError('lost answer original readback deadline')
+        if code == 200:
+            return code,raw,value
+        attempts += 1
+        private(output/('recovery-'+str(attempts)+'.private.json'),{'status':code,'response':value})
+        if code == 403 and value.get('error',{}).get('code') == 'PROPOSAL_PUBLICATION_DENIED':
+            remaining = deadline-time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError('lost answer original readback deadline')
+            current, _, _ = request(port_number,'GET','/v1/inspection-adoptions/capability',headers,timeout=min(15,remaining))
+            if time.monotonic() >= deadline:
+                raise RuntimeError('lost answer original readback deadline')
+            if current != 200:
+                raise RuntimeError('lost answer current authority denied:'+str(current))
+        elif code not in (202,404):
+            raise RuntimeError('lost answer did not recover original:'+str(code))
+        time.sleep(min(.05,max(0,deadline-time.monotonic())))
 
 
 @contextmanager
@@ -344,14 +398,7 @@ def run(args):
                 with forge_server() as forge_port:
                     request(forge_port,'POST','/v1/inspection-adoptions/plans',forged_headers,body,lost=True)
                     intent = '/v1/inspection-adoptions/intents/adopt-original?dossier_id=synthetic-dossier'
-                    stop = time.monotonic()+10
-                    while True:
-                        code, original_raw, proposal = request(forge_port,'GET',intent,forged_headers)
-                        if code == 200:
-                            break
-                        if code not in (202,404) or time.monotonic() >= stop:
-                            raise RuntimeError('lost answer did not recover original:'+str(code))
-                        time.sleep(.05)
+                    code, original_raw, proposal = recover_original(forge_port,intent,forged_headers,output)
                     private(output/'forge-original.private.json',original_raw)
                     generated = json.loads(next(a['content'] for a in proposal['result']['artifacts'] if a['path']=='proposal.json'))
                     from jsonschema import Draft202012Validator
