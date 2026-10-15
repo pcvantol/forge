@@ -35,10 +35,10 @@ def private(path, value):
 
 
 
-def command_capture(arguments, *, module, output, cwd, env, commands):
+def command_capture(arguments, *, module, output, cwd, env, commands, timeout=None):
     """Record primary process outcome before any caller diagnostic publication."""
     label = 'command-'+str(len(commands)+1)
-    report, stdout, stderr = BINDING.CAPTURE.capture(arguments,case=label,output=output,cwd=cwd,env=env,expected=0)
+    report, stdout, stderr = BINDING.CAPTURE.capture(arguments,case=label,output=output,cwd=cwd,env=env,expected=0,timeout=timeout)
     commands.append({'module':module,**report,'stdout_sha256':sha256(stdout).hexdigest(),
                      'stderr_sha256':sha256(stderr).hexdigest()})
     if report['primary_failure'] is not None:
@@ -184,7 +184,7 @@ def run(args):
         if time.monotonic() >= deadline:
             raise TimeoutError('prebooked qualification deadline')
         return command_capture(invocation(python,['-m',module,*arguments]),module=module,
-                               output=output,cwd=root,env=env,commands=commands)
+                               output=output,cwd=root,env=env,commands=commands,timeout=min(30,deadline-time.monotonic()))
 
     @contextmanager
     def owned_fixture():
@@ -216,13 +216,9 @@ def run(args):
                     original_error.add_note('original EP capture incomplete: '+type(error).__name__)
             if ep_started:
                 try:
-                    stopped = subprocess.run([str(args.ep_python),'-I','-m','engineering_platform.server','stop',
-                        '--data-root',str(ep_root),'--expected-instance-id',ep_instance],cwd=temporary,env=env,
-                        capture_output=True,timeout=30)
-                    private(output/'ep-stop.stdout.private',stopped.stdout)
-                    private(output/'ep-stop.stderr.private',stopped.stderr)
-                    if stopped.returncode:
-                        raise RuntimeError('own EP stop unconfirmed')
+                    command_capture([str(args.ep_python),'-I','-m','engineering_platform.server','stop',
+                        '--data-root',str(ep_root),'--expected-instance-id',ep_instance],module='owning-ep-cleanup',
+                        output=output,cwd=temporary,env=env,commands=commands,timeout=30)
                     ep_started = False
                 except BaseException as error:
                     cleanup_error = error
@@ -428,6 +424,14 @@ def run(args):
                     assert request(forge_port,'GET',intent,forged_headers)[0]==424
                     faults.clear()
                     assert request(forge_port,'GET',intent,forged_headers)[2]==proposal
+                    forge('issue','--principal-id','synthetic-service','--audience','synthetic-workspace','--dossier-id','synthetic-dossier',
+                          '--permission','READ','--pairing-id','selected-original','--maximum-records','4',
+                          '--expires-at',(datetime.now(UTC)+timedelta(seconds=2)).isoformat(),'--token-file',root/'short-reader.private')
+                    short_headers = {**forged_headers,'Authorization':'Bearer '+(root/'short-reader.private').read_text().strip()}
+                    assert request(forge_port,'GET',intent,short_headers)[0]==200
+                    time.sleep(2.05)
+                    assert request(forge_port,'GET',intent,short_headers)[0]==401
+                    receipt['cases'].append('real-short-read-grant-expiry-denies-installed-http-no-disclosure')
                     forge('revoke','--grant-id',own_issued['grant_id'])
                     assert request(forge_port,'GET',intent,forged_headers)[0]==401
                 receipt['cases'].append('real-restored-digest-fault-detector-red-original-installed-bytes-restored-and-green')

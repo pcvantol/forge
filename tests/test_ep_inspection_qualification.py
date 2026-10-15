@@ -46,3 +46,16 @@ class QualificationRetentionTests(unittest.TestCase):
             with patch.object(q,'private',side_effect=OSError('full')):
                 q.finish_receipt(Path(name),receipt,[],primary)
             self.assertIn('retention',primary.__notes__[0])
+
+class RemainingDeadlineTests(unittest.TestCase):
+    def test_real_command_uses_remaining_probe_budget_without_global_timeout_change(self):
+        import time
+        with tempfile.TemporaryDirectory() as name:
+            root=Path(name);records=[];start=time.monotonic()
+            self.assertEqual(q.BINDING.CAPTURE.COMMAND_TIMEOUT,30)
+            with self.assertRaisesRegex(RuntimeError,'COMMAND_TIMEOUT'):
+                q.command_capture([sys.executable,'-u','-c','import time;print("deadline-bound");time.sleep(2)'],
+                    module='synthetic',output=root,cwd=root,env=None,commands=records,timeout=0.2)
+            self.assertLess(time.monotonic()-start,1)
+            self.assertEqual(q.BINDING.CAPTURE.COMMAND_TIMEOUT,30)
+            self.assertEqual(records[0]['primary_failure']['category'],'COMMAND_TIMEOUT')

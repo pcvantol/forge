@@ -233,3 +233,25 @@ class InspectionAdoptionHTTPTests(unittest.TestCase):
             with self.assertRaises(PeerError):original(self.grant.pair('selected-original'),deadline=time.monotonic()+.2)
             self.assertLess(time.monotonic()-started,1)
         finally:self.release.set()
+
+
+    def test_explicit_new_snapshot_requires_new_pairing_and_proposal_without_old_approval(self):
+        first=self.prepare()
+        self.snapshot['operation_id']='op-explicit-new'
+        self.snapshot['observation']['observed_at']='2026-10-15T18:13:58+00:00'
+        pair=deepcopy(self.pair);pair['pairing_id']='explicit-new'
+        pair['binding']['operation_id']='op-explicit-new'
+        pair['snapshot_digest']=sha256(canonical(self.snapshot)).hexdigest()
+        self.grant.bind(pair,self.root/'ep.private')
+        self.grant.issue(principal_id='synthetic-service',audience='synthetic-workspace',dossier_ids=['synthetic-dossier'],
+            permissions=['READ','PREPARE'],pairing_id='explicit-new',maximum_records=4,
+            expires_at=(datetime.now(UTC)+timedelta(minutes=15)).isoformat(),token_path=self.root/'next.private')
+        # The old immutable pairing cannot relabel a changed original observation.
+        self.assertEqual(self.read()[0],424)
+        body=deepcopy(self.body);body.update(operation_id='adopt-next',pairing_id='explicit-new')
+        code,second=self.call('POST',BASE+'/plans',body,token='next')
+        self.assertEqual(code,200,second)
+        self.assertNotEqual(second['plan_id'],first['plan_id'])
+        self.assertEqual(second['approval'],'NOT_PERFORMED')
+        self.assertEqual(second['result']['source_binding']['operation_id'],'op-explicit-new')
+        self.assertEqual(len(self.grant._store()['records']),2)
