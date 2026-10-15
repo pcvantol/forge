@@ -46,9 +46,14 @@ def server(python,root,output):
                     time.sleep(.05)
             yield port,process.pid,cap
         finally:
-            process.terminate()
-            try:process.wait(timeout=5)
-            except subprocess.TimeoutExpired:process.kill();process.wait(timeout=5)
+            primary=sys.exc_info()[1]
+            try:
+                process.terminate()
+                try:process.wait(timeout=5)
+                except subprocess.TimeoutExpired:process.kill();process.wait(timeout=5)
+            except Exception as error:
+                if primary is None:raise
+                primary.add_note('owned Server cleanup incomplete: '+type(error).__name__)
 
 def request_for(snapshot,role,operation):
     return {'contract_version':CONTRACT,'instance_id':snapshot['instance_id'],'dossier_id':snapshot['dossier_id'],'operation_id':operation,'plan_id':snapshot['plan_id'],'subject':snapshot['subject'],'profile_id':PROFILE,'role':role,'decision':'APPROVE_CONTENT','expected_decision_revision':snapshot['decision_revision'],'previous_decision_id':snapshot['history'][-1]['decision_id'] if snapshot['history'] else None,'reason':'Synthetic technical decision: accept document content while retaining future engineering questions.','acknowledged_open_points':snapshot['open_points']}
@@ -56,7 +61,7 @@ def request_for(snapshot,role,operation):
 def run(args):
     output=args.output_dir;output.mkdir(mode=0o700)
     receipt={'result':'FAIL','cases':[],'cleanup':False,'human_decisions':'SYNTHETIC_TECHNICAL_NOT_REAL_OWNER_BUSINESS_APPROVAL','operator_identity_evidence':'MODELED_TRUSTED_OS_FIXTURE' if MODELED_OS else 'ACTUAL_MACOS_GENERATED_UID','transport':'ACTUAL_NONEDITABLE_HTTP_SEPARATE_SERVER_OS',**BINDING.installed_binding(args.python,args.wheel,args.source_revision)}
-    case_number=0
+    case_number=0;primary=None
     def command(arguments,root):
         nonlocal case_number
         case_number+=1
@@ -103,12 +108,24 @@ def run(args):
                     for table in ['mission_id_allocations','mission_state','governance_decisions','planning_provider_generation_permits']:assert db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==0
                 receipt.update(result='PROJECT_PROPOSAL_CONTENT_HTTP_PASS',decision_records=2,no_project_repo_ep_model_mission_effects=True,separate_server_processes=True)
             finally:
-                for source,name in [(root/'runtime/onboarding/proposals/store.json','original-r52-store.private.json'),(root/'runtime/onboarding/content-decisions/store.json','original-content-store.private.json')]:
-                    if source.exists():BINDING.CAPTURE.retain(output/name,source.read_bytes())
+                current=sys.exc_info()[1]
+                try:
+                    for source,name in [(root/'runtime/onboarding/proposals/store.json','original-r52-store.private.json'),(root/'runtime/onboarding/content-decisions/store.json','original-content-store.private.json')]:
+                        if source.exists():
+                            with source.open('rb') as stream:raw=stream.read(1048577)
+                            if len(raw)>1048576:raise RuntimeError('finite original evidence capture exceeded')
+                            BINDING.CAPTURE.retain(output/name,raw)
+                except Exception as error:
+                    if current is None:raise
+                    current.add_note('original private diagnostics incomplete: '+type(error).__name__)
         receipt['cleanup']=not parent.exists()
     except BaseException as error:
-        receipt['result']='FAIL';receipt['failure']={'category':type(error).__name__};raise
-    finally:(output/'installed-proposal-content-http.public.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
+        primary=error;receipt['result']='FAIL';receipt['failure']={'category':type(error).__name__};raise
+    finally:
+        if 'root' in locals():receipt['cleanup']=not root.exists()
+        BINDING.retain_receipt(output,receipt,primary)
+        original=output/'installed-project-proposal-http.public.json'
+        if original.exists():original.rename(output/'installed-proposal-content-http.public.json')
     print('PROJECT_PROPOSAL_CONTENT_HTTP_PASS',len(receipt['cases']))
 
 if __name__=='__main__':
