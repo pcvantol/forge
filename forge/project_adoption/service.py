@@ -196,7 +196,7 @@ def _preview(value: dict[str, Any], evidence=None) -> dict[str, Any]:
         if mapping and mapping["choice"] == "LINK_EXISTING":
             source_before = _before(document)
             if source_path in excluded or source_path not in covered or source_before["status"] != "PRESENT" or "content" not in source_before:
-                stop("MAPPING_SOURCE_NOT_COMPARABLE")
+                stop((document or {}).get("limitation", "MAPPING_SOURCE_NOT_COMPARABLE"))
                 continue
             if before["status"] == "PRESENT" and ("content" not in before or before["sha256"] != source_before["sha256"]):
                 stop("CANONICAL_AND_MAPPING_DOCUMENT_CONFLICT", True)

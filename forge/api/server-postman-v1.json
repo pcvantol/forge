@@ -2747,6 +2747,136 @@
         },
         "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
       }
+    },
+    {
+      "name": "GET /v1/inspection-adoptions/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionAdoptionToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Audience",
+            "value": "{{inspectionAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoptions/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoptions",
+            "capability"
+          ]
+        },
+        "description": "Existing selected EP snapshot, GET-only peer; use closed request schema. Reads require explicit dossier_id query. No effect authority."
+      }
+    },
+    {
+      "name": "POST /v1/inspection-adoptions/plans",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionAdoptionToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Audience",
+            "value": "{{inspectionAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoptions/plans",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoptions",
+            "plans"
+          ]
+        },
+        "description": "Existing selected EP snapshot, GET-only peer; use closed request schema. Reads require explicit dossier_id query. No effect authority."
+      }
+    },
+    {
+      "name": "GET /v1/inspection-adoptions/plans/{plan_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionAdoptionToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Audience",
+            "value": "{{inspectionAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoptions/plans/{plan_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoptions",
+            "plans",
+            "{plan_id}"
+          ]
+        },
+        "description": "Existing selected EP snapshot, GET-only peer; use closed request schema. Reads require explicit dossier_id query. No effect authority."
+      }
+    },
+    {
+      "name": "GET /v1/inspection-adoptions/intents/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionAdoptionToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Audience",
+            "value": "{{inspectionAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoptions/intents/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoptions",
+            "intents",
+            "{operation_id}"
+          ]
+        },
+        "description": "Existing selected EP snapshot, GET-only peer; use closed request schema. Reads require explicit dossier_id query. No effect authority."
+      }
     }
   ]
 }

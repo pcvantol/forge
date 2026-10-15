@@ -78,7 +78,7 @@ class InspectionAdoptionGrant(ProjectProposalGrant):
             if existed:
                 self._pair_records()
             else:
-                self._save_pairs({})
+                self._save_pairs({}, create=True)
 
     def _pair_records(self):
         value = read(self.pairs, 131072)
@@ -88,8 +88,8 @@ class InspectionAdoptionGrant(ProjectProposalGrant):
             raise ContractError('private pairing integrity failed')
         return value['records']
 
-    def _save_pairs(self, records):
-        write(self.pairs, {'records':records,'integrity':self.integrity(records)})
+    def _save_pairs(self, records, *, create=False):
+        write(self.pairs, {'records':records,'integrity':self.integrity(records)}, create=create)
 
     def bind(self, config, credential_file):
         config = check_pairing(json.loads(canonical(config)))

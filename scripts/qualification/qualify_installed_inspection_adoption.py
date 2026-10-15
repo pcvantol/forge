@@ -16,6 +16,8 @@ import shutil
 import subprocess
 import sys
 import time
+import zipfile
+import configparser
 
 SOURCE = Path(__file__).resolve().parents[2]
 spec = spec_from_file_location('r52_binding',Path(__file__).with_name('qualify_installed_project_proposal_http.py'))
@@ -45,7 +47,13 @@ def request(port_number, method, target, headers, body=None, lost=False):
             return None
         response = client.getresponse()
         raw = response.read(1048577)
-        return response.status,raw,json.loads(raw)
+        value = json.loads(raw)
+        if target.startswith('/v1/inspection-adoptions/'):
+            from jsonschema import Draft202012Validator
+            Draft202012Validator(json.loads((SOURCE/'forge/api/inspection-adoptions-v1.json').read_text())).validate(value)
+            if response.status == 200 and body is not None:
+                Draft202012Validator(json.loads((SOURCE/'forge/api/inspection-adoptions-v1.json').read_text())).validate(body)
+        return response.status,raw,value
     finally:
         client.close()
 
@@ -94,11 +102,31 @@ def run(args):
     output = args.output_dir
     output.mkdir(mode=0o700)
     receipt = {'result':'FAIL','cases':[],'cleanup':False,**BINDING.installed_binding(args.python,args.wheel,args.source_revision)}
-    if sha256(args.ep_wheel.read_bytes()).hexdigest() != EP_WHEEL_SHA:
-        raise ValueError('exact qualified EP wheel required')
-    receipt.update(ep_producer_revision=EP_REVISION,ep_wheel_sha256=EP_WHEEL_SHA,
-                   ep_transport='ACTUAL_INSTALLED_EP_HTTP_VIA_EXTERNAL_AUDIT_RELAY',operator_identity='ACTUAL_MACOS_GENERATED_UID',
+    manifest = json.loads((SOURCE/'forge/api/ep-inspection-producer-runtime-v1.json').read_text())
+    with zipfile.ZipFile(args.ep_wheel) as archive:
+        payload = {name:sha256(archive.read(name)).hexdigest() for name in archive.namelist() if name.startswith('engineering_platform/') and not name.endswith('/')}
+        entries = [name for name in archive.namelist() if name.endswith('.dist-info/entry_points.txt')]
+        if payload != manifest['payload'] or len(entries) != 1:
+            raise ValueError('exact qualified EP product payload required')
+        parser = configparser.ConfigParser()
+        parser.read_string(archive.read(entries[0]).decode())
+        if dict(parser['console_scripts']) != manifest['console_scripts']:
+            raise ValueError('exact qualified EP entrypoints required')
+    probe = "import engineering_platform,importlib.metadata,json;from pathlib import Path;d=importlib.metadata.distribution('engineering-platform');print(json.dumps({'package':str(Path(engineering_platform.__file__).resolve().parent),'version':d.version,'direct':json.loads(d.read_text('direct_url.json')),'entries':{e.name:e.value for e in d.entry_points if e.group=='console_scripts'}}))"
+    installed = json.loads(subprocess.check_output([str(args.ep_python),'-I','-c',probe],cwd=args.ep_wheel.parent))
+    package = Path(installed['package'])
+    actual_payload = {str(path.relative_to(package.parent)):sha256(path.read_bytes()).hexdigest() for path in package.rglob('*') if path.is_file() and '__pycache__' not in path.parts}
+    if actual_payload != payload or installed['version'] != manifest['version'] or installed['entries'] != manifest['console_scripts'] or installed['direct'].get('dir_info',{}).get('editable') or installed['direct'].get('archive_info',{}).get('hashes',{}).get('sha256') != sha256(args.ep_wheel.read_bytes()).hexdigest():
+        raise ValueError('qualified EP installed bytes/version/noneditable wheel mismatch')
+    receipt.update(ep_producer_revision=EP_REVISION,ep_wheel_sha256=sha256(args.ep_wheel.read_bytes()).hexdigest(),ep_payload_files_verified=len(payload),
+                   ep_transport='ACTUAL_INSTALLED_EP_HTTP_VIA_EXTERNAL_AUDIT_RELAY',
+                   operator_identity='MODELED_TRUSTED_OS_FIXTURE' if args.modeled_os_identity else 'ACTUAL_MACOS_GENERATED_UID',
                    snapshot_preparation='EXPLICIT_TESTOWNER_PREPARATION_SEPARATE_FROM_GET_ONLY_ADAPTER')
+    def invocation(python, arguments):
+        if not args.modeled_os_identity or python != args.python:
+            return [str(python),'-I',*map(str,arguments)]
+        code = "import os,runpy,sys;from forge.operator_identity import MacOSGeneratedUIDIdentityAdapter,NamedOperatorIdentity;MacOSGeneratedUIDIdentityAdapter.resolve=lambda self:NamedOperatorIdentity('r55-declared-hosted-os-fixture',os.getuid());a=sys.argv[1:];sys.argv=a[1:] if a[0]=='-m' else a;runpy.run_module(sys.argv[0],run_name='__main__') if a[0]=='-m' else runpy.run_path(a[0],run_name='__main__')"
+        return [str(python),'-I','-c',code,*map(str,arguments)]
     commands = []
     deadline = time.monotonic()+240
     processes = []
@@ -108,7 +136,7 @@ def run(args):
     def command(python,module,*arguments,env=None):
         if time.monotonic() >= deadline:
             raise TimeoutError('prebooked qualification deadline')
-        result = subprocess.run([str(python),'-I','-m',module,*map(str,arguments)],cwd=root,env=env,capture_output=True,timeout=min(30,deadline-time.monotonic()))
+        result = subprocess.run(invocation(python,['-m',module,*arguments]),cwd=root,env=env,capture_output=True,timeout=min(30,deadline-time.monotonic()))
         label = 'command-'+str(len(commands)+1)
         private(output/(label+'.stdout.private'),result.stdout)
         private(output/(label+'.stderr.private'),result.stderr)
@@ -128,6 +156,22 @@ def run(args):
             raise
         finally:
             cleanup_error = None
+            try:
+                captured = 0
+                ep_files = temporary/'ep-runtime'/'preproject-inspection-v1'
+                for source in sorted(ep_files.rglob('*')):
+                    if source.is_file() and not source.is_symlink():
+                        raw = source.read_bytes()
+                        captured += len(raw)
+                        if captured > 2097152:
+                            raise RuntimeError('original EP diagnostic capture bound exceeded')
+                        target = output/'ep-private-capture'/source.relative_to(ep_files)
+                        target.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+                        private(target,raw)
+            except BaseException as error:
+                cleanup_error = error
+                if original_error is not None:
+                    original_error.add_note('original EP capture incomplete: '+type(error).__name__)
             if ep_started:
                 try:
                     stopped = subprocess.run([str(args.ep_python),'-I','-m','engineering_platform.server','stop',
@@ -141,7 +185,7 @@ def run(args):
                 except BaseException as error:
                     cleanup_error = error
             try:
-                if not ep_started and all(p.poll() is not None for p in processes):
+                if cleanup_error is None and not ep_started and all(p.poll() is not None for p in processes):
                     shutil.rmtree(temporary)
                 else:
                     raise RuntimeError('own fixture retained: process stop unconfirmed')
@@ -209,7 +253,7 @@ def run(args):
                 forge_root = root/'forge'
                 # Existing ordinary fixture binds the actual Mac owner and initializes R52; no project.
                 fixture = Path(__file__).with_name('proposal_content_fixture.py')
-                setup_process = subprocess.run([str(args.python),'-I',str(fixture),str(forge_root)],cwd=root,capture_output=True,timeout=20)
+                setup_process = subprocess.run(invocation(args.python,[str(fixture),str(forge_root)]),cwd=root,capture_output=True,timeout=20)
                 private(output/'forge-setup.stdout.private',setup_process.stdout)
                 private(output/'forge-setup.stderr.private',setup_process.stderr)
                 if setup_process.returncode:
@@ -230,7 +274,7 @@ def run(args):
                 forge('issue','--principal-id','synthetic-service','--audience','synthetic-workspace','--dossier-id','synthetic-dossier',
                       '--permission','READ','--permission','PREPARE','--pairing-id','selected-original','--maximum-records','4',
                       '--expires-at',(datetime.now(UTC)+timedelta(minutes=15)).isoformat(),'--token-file',root/'forge-token.private')
-                forged_headers = {'Authorization':'Bearer '+(root/'forge-token.private').read_text(),'X-Forge-Inspection-Audience':'synthetic-workspace'}
+                forged_headers = {'Authorization':'Bearer '+(root/'forge-token.private').read_text().strip(),'X-Forge-Inspection-Audience':'synthetic-workspace'}
                 value = {k:original_input[k] for k in ('bootstrap_input','requested_artifacts','mappings')}
                 value['requested_artifacts'].append('docs/roadmap/ROADMAP.md')
                 body = {'contract_version':CONTRACT,'instance_id':setup['instance_id'],'dossier_id':'synthetic-dossier',
@@ -239,8 +283,8 @@ def run(args):
                 def forge_server():
                     listen = port()
                     with (output/'forge-server.private.log').open('ab') as log:
-                        child = subprocess.Popen([str(args.python),'-I','-m','forge','--data-root',str(forge_root/'runtime'),'server','run',
-                            '--credential-file',str(forge_root/'admin.private'),'--port',str(listen),'--tick-interval','1'],cwd=root,stdout=log,stderr=log)
+                        child = subprocess.Popen(invocation(args.python,['-m','forge','--data-root',str(forge_root/'runtime'),'server','run',
+                            '--credential-file',str(forge_root/'admin.private'),'--port',str(listen),'--tick-interval','1']),cwd=root,stdout=log,stderr=log)
                         processes.append(child)
                         try:
                             stop = time.monotonic()+15
@@ -275,6 +319,8 @@ def run(args):
                         time.sleep(.05)
                     private(output/'forge-original.private.json',original_raw)
                     generated = json.loads(next(a['content'] for a in proposal['result']['artifacts'] if a['path']=='proposal.json'))
+                    from jsonschema import Draft202012Validator
+                    Draft202012Validator(json.loads((SOURCE/'forge/api/inspection-adoption-proposal-v1.json').read_text())).validate(generated)
                     entries = {x['artifact_path']:x for x in generated['entries']}
                     assert entries['docs/product/VISION.md']['operation']=='LINK_EXISTING'
                     assert entries['docs/product/VISION.md']['mapping_source']['content']==vision
@@ -339,4 +385,5 @@ if __name__=='__main__':
     for key in ('python','wheel','ep-python','ep-wheel','ep-native-launcher','output-dir'):
         parser.add_argument('--'+key,type=Path,required=True)
     parser.add_argument('--source-revision',required=True)
+    parser.add_argument('--modeled-os-identity',action='store_true')
     run(parser.parse_args())

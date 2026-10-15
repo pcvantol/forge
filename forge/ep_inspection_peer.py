@@ -1,6 +1,8 @@
 """Finite owner-bound original EP GET; no proxy, redirect, POST or ambient auth."""
 import http.client
 import time
+import socket
+from threading import Timer
 from urllib.parse import urlsplit
 from hashlib import sha256
 from .approved_worklist import identifier
@@ -35,7 +37,20 @@ def original(pairing, *, deadline=None):
                'EP-Host-ID': binding['host_id'], 'EP-Consumer-ID': binding['consumer_id'],
                'EP-Principal': binding['principal'], 'EP-Audience': binding['audience']}
     connection = http.client.HTTPConnection(host, port, timeout=timeout)
+    hard_deadline = time.monotonic()+timeout
+    watchdog = None
     try:
+        connection.connect()
+        peer_socket = connection.sock
+        def interrupt():
+            try:
+                peer_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            peer_socket.close()
+        watchdog = Timer(max(0,hard_deadline-time.monotonic()),interrupt)
+        watchdog.daemon = True
+        watchdog.start()
         connection.request('GET', '/v1/onboarding/inspections/'+operation, headers=headers)
         response = connection.getresponse()
         if response.status != 200:
@@ -53,4 +68,7 @@ def original(pairing, *, deadline=None):
     except (ValueError, TypeError, KeyError) as error:
         raise PeerError('EP_CONTRACT_OR_SUBJECT_INVALID', 424) from error
     finally:
+        if watchdog is not None:
+            watchdog.cancel()
+            watchdog.join(0.2)
         connection.close()
