@@ -162,14 +162,17 @@
         "PB-F7"
       ],
       "scope": "finite authenticated private proposal PREPARE/READ over qualified R50/R51",
-      "delivery_status": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
+      "delivery_status": "QUALIFIED_SCOPED_DOD",
       "full_pb_f7_closed": false,
       "architecture": "docs/architecture/PROJECT_PROPOSAL_HTTP_V1.md",
       "implementation_main": "9736bbbd96d451f9035dbf8a988a2ec4f85331e8",
       "delivery_record": "docs/qualification/R52_PROJECT_PROPOSAL_HTTP_DELIVERY_2026_10_13.md",
       "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38432837870/artifacts/11834371606",
       "finalization_effect": "NO_BUMP",
-      "closure_gate": "NEW exact-final-main current CI and installed HTTP/recovery/readback/cleanup, owning terminal register"
+      "closure_gate": "NEW exact-final-main current CI and installed HTTP/recovery/readback/cleanup, owning terminal register",
+      "final_main": "96e1d73670b8575d41977fd448bfec10fc55206e",
+      "terminal_register": "https://github.com/pcvantol/forge/issues/207#issuecomment-6155303736",
+      "installed_proof": "https://github.com/pcvantol/forge/actions/runs/38456735650/artifacts/11847506983"
     }
   ],
   "preproject_concept_advisory_subset": {
@@ -198,7 +201,7 @@
       "PB-F2",
       "HOB-F02"
     ],
-    "state": "IMPLEMENTING_NOT_QUALIFIED",
+    "state": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
     "profile_id": "CONTENT_BASELINE_ONLY/1.0",
     "required_roles": [
       "BUSINESS",
@@ -208,6 +211,11 @@
     "architecture": "docs/architecture/PROJECT_PROPOSAL_CONTENT_DECISION_V1.md",
     "effect_authority": false,
     "full_pb_f2_closed": false,
-    "predecessors": "R53 and predecessors CLOSED; original pins and evidence retained"
+    "predecessors": "R53 and predecessors CLOSED; original pins and evidence retained",
+    "implementation_main": "13cd5d2b37fedceddd8d4dda65477f3494e9d4c1",
+    "delivery_record": "docs/qualification/R54_PROJECT_PROPOSAL_CONTENT_DECISION_DELIVERY_2026_10_15.md",
+    "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38719815620/artifacts/11967229503",
+    "finalization_effect": "NO_BUMP",
+    "closure_gate": "Own finalization checks/reviews/required CI/protected merge; NEW exact-final-main installed HTTP/restart/readback/cleanup and terminal register"
   }
 }
