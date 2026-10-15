@@ -1,6 +1,7 @@
 """Actual noneditable Forge -> authenticated EP original GET; isolated synthetic owner setup."""
 from pathlib import Path
 from contextlib import contextmanager
+from copy import deepcopy
 from tempfile import mkdtemp
 from hashlib import sha256
 from datetime import UTC, datetime, timedelta
@@ -33,6 +34,46 @@ def private(path, value):
     path.chmod(0o600)
 
 
+
+def command_capture(arguments, *, module, output, cwd, env, commands):
+    """Record primary process outcome before any caller diagnostic publication."""
+    label = 'command-'+str(len(commands)+1)
+    report, stdout, stderr = BINDING.CAPTURE.capture(arguments,case=label,output=output,cwd=cwd,env=env,expected=0)
+    commands.append({'module':module,**report,'stdout_sha256':sha256(stdout).hexdigest(),
+                     'stderr_sha256':sha256(stderr).hexdigest()})
+    if report['primary_failure'] is not None:
+        raise RuntimeError('installed owning command failed:'+label+':'+report['primary_failure']['category'])
+    if not report['capture_complete'] or report['secondary_failures']:
+        raise RuntimeError('installed owning command evidence incomplete:'+label)
+    return json.loads(stdout)
+
+
+def finish_receipt(output, receipt, commands, primary):
+    """All fallible private retention precedes public success publication."""
+    retention_error = None
+    try:
+        private(output/'commands.private.json',commands)
+    except OSError as error:
+        retention_error = error
+        receipt['result'] = 'FAIL'
+        receipt['diagnostic_complete'] = False
+        receipt['failure_type'] = type(primary or error).__name__
+        if primary is not None:
+            primary.add_note('command diagnostic retention incomplete: '+type(error).__name__)
+    effective_primary = primary or retention_error
+    BINDING.retain_receipt(output,receipt,effective_primary)
+    legacy = output/'installed-project-proposal-http.public.json'
+    try:
+        if legacy.exists():
+            legacy.rename(output/'installed-inspection-adoption.public.json')
+    except OSError as error:
+        if effective_primary is None:
+            raise
+        effective_primary.add_note('receipt rename incomplete: '+type(error).__name__)
+    if primary is None and retention_error is not None:
+        raise retention_error
+
+
 def port():
     with socket.socket() as sock:
         sock.bind(('127.0.0.1',0))
@@ -59,7 +100,7 @@ def request(port_number, method, target, headers, body=None, lost=False):
 
 
 @contextmanager
-def relay(ep_port, records):
+def relay(ep_port, records, faults):
     """External HTTP audit relay, always forwards to the real separately installed EP."""
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -68,6 +109,12 @@ def relay(ep_port, records):
                 connection.request('GET',self.path,headers={k:v for k,v in self.headers.items() if k.lower() not in ('host','connection')})
                 response = connection.getresponse()
                 raw = response.read(1048577)
+                if response.status == 200 and faults.get('coherent_content'):
+                    altered = json.loads(raw)
+                    doc = next(d for d in altered['observation']['documents'] if d['content'] is not None)
+                    doc['content'] += '\nUntrusted coherent alteration'
+                    doc['sha256'] = sha256(doc['content'].encode()).hexdigest()
+                    raw = json.dumps(altered).encode()
                 records.append({'method':'GET','path':self.path,'status':response.status,'body_sha256':sha256(raw).hexdigest()})
                 self.send_response(response.status)
                 self.send_header('Content-Type','application/json')
@@ -136,14 +183,9 @@ def run(args):
     def command(python,module,*arguments,env=None):
         if time.monotonic() >= deadline:
             raise TimeoutError('prebooked qualification deadline')
-        result = subprocess.run(invocation(python,['-m',module,*arguments]),cwd=root,env=env,capture_output=True,timeout=min(30,deadline-time.monotonic()))
-        label = 'command-'+str(len(commands)+1)
-        private(output/(label+'.stdout.private'),result.stdout)
-        private(output/(label+'.stderr.private'),result.stderr)
-        commands.append({'module':module,'exit':result.returncode,'stdout_sha256':sha256(result.stdout).hexdigest(),'stderr_sha256':sha256(result.stderr).hexdigest()})
-        if result.returncode:
-            raise RuntimeError('installed owning command failed:'+label)
-        return json.loads(result.stdout)
+        return command_capture(invocation(python,['-m',module,*arguments]),module=module,
+                               output=output,cwd=root,env=env,commands=commands)
+
     @contextmanager
     def owned_fixture():
         nonlocal ep_started
@@ -249,16 +291,13 @@ def run(args):
             ep_ledger = tree(ep_root/'preproject-inspection-v1')
             canonical = lambda v:(json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode()
             audited = []
-            with relay(ep_port,audited) as relay_port:
+            faults = {}
+            with relay(ep_port,audited,faults) as relay_port:
                 forge_root = root/'forge'
                 # Existing ordinary fixture binds the actual Mac owner and initializes R52; no project.
                 fixture = Path(__file__).with_name('proposal_content_fixture.py')
-                setup_process = subprocess.run(invocation(args.python,[str(fixture),str(forge_root)]),cwd=root,capture_output=True,timeout=20)
-                private(output/'forge-setup.stdout.private',setup_process.stdout)
-                private(output/'forge-setup.stderr.private',setup_process.stderr)
-                if setup_process.returncode:
-                    raise RuntimeError('ordinary installed Forge owner setup failed')
-                setup = json.loads(setup_process.stdout)
+                setup = command_capture(invocation(args.python,[str(fixture),str(forge_root)]),module='owning-fixture',
+                                        output=output,cwd=root,env=None,commands=commands)
                 def forge(action,*arguments):
                     return command(args.python,'forge.ep_inspection_cli','--data-root',forge_root/'runtime',action,*arguments)
                 forge('init')
@@ -271,7 +310,7 @@ def run(args):
                                       'paths':paths,'content_paths':['docs/RICHTING.md']}}
                 private(root/'pairing.private.json',pairing)
                 forge('bind','--config-file',root/'pairing.private.json','--ep-token-file',root/'ep-token.private')
-                forge('issue','--principal-id','synthetic-service','--audience','synthetic-workspace','--dossier-id','synthetic-dossier',
+                own_issued = forge('issue','--principal-id','synthetic-service','--audience','synthetic-workspace','--dossier-id','synthetic-dossier',
                       '--permission','READ','--permission','PREPARE','--pairing-id','selected-original','--maximum-records','4',
                       '--expires-at',(datetime.now(UTC)+timedelta(minutes=15)).isoformat(),'--token-file',root/'forge-token.private')
                 forged_headers = {'Authorization':'Bearer '+(root/'forge-token.private').read_text().strip(),'X-Forge-Inspection-Audience':'synthetic-workspace'}
@@ -332,6 +371,26 @@ def run(args):
                     code,_,same = request(forge_port,'POST','/v1/inspection-adoptions/plans',forged_headers,body)
                     assert code==200 and same==proposal
                     receipt['cases'].append('identical-explicit-operation-replay-original-result')
+                    concurrent = []
+                    workers = [Thread(target=lambda:concurrent.append(request(forge_port,'POST','/v1/inspection-adoptions/plans',forged_headers,body))) for _ in range(2)]
+                    for worker in workers:worker.start()
+                    for worker in workers:
+                        worker.join(15)
+                        assert not worker.is_alive()
+                    assert len(concurrent)==2 and all(code==200 and same==proposal for code,_,same in concurrent)
+                    changed = deepcopy(body)
+                    changed['input']['bootstrap_input']['product']['purpose']='Changed exact request'
+                    assert request(forge_port,'POST','/v1/inspection-adoptions/plans',forged_headers,changed)[0]==409
+                    foreign = {**forged_headers,'X-Forge-Inspection-Audience':'foreign'}
+                    assert request(forge_port,'GET',intent,foreign)[0]==403
+                    old = {**forged_headers,'Authorization':'Bearer '+(forge_root/'prepare.private').read_text().strip()}
+                    assert request(forge_port,'POST','/v1/inspection-adoptions/plans',old,body)[0]==403
+                    faults['coherent_content'] = True
+                    assert request(forge_port,'GET',intent,forged_headers)[0]==424
+                    faults.clear()
+                    assert request(forge_port,'GET',intent,forged_headers)[2]==proposal
+                    receipt['cases'].append('actual-installed-concurrency-key-conflict-old-grant-audience-and-coherent-payload-rejection')
+
                 ep('engineering_platform.server','stop')
                 ep('engineering_platform.server','start','--bind-port',ep_port)
                 second_ep = json.loads((ep_root/'runtime.json').read_text())['pid']
@@ -340,6 +399,41 @@ def run(args):
                     code,_,same = request(forge_port,'GET',intent,forged_headers)
                     assert code==200 and same==proposal
                 receipt['cases'].append('separate-forge-and-ep-server-os-restarts-original-proposal-readback')
+                # Relevant restored fault in ONLY this disposable Forge installation.
+                # The same real HTTP detector must fail when the original-digest guard is removed.
+                installed_peer = Path(subprocess.check_output([str(args.python),'-I','-c',
+                    'import forge.ep_inspection_peer;print(forge.ep_inspection_peer.__file__)'],cwd=root).decode().strip())
+                original_peer = installed_peer.read_bytes()
+                guard = b"if sha256(canonical(value)).hexdigest() != pairing['snapshot_digest']:"
+                assert original_peer.count(guard)==1
+                faults['coherent_content'] = True
+                detected = False
+                try:
+                    installed_peer.write_bytes(original_peer.replace(guard,b"if False and sha256(canonical(value)).hexdigest() != pairing['snapshot_digest']:"))
+                    shutil.rmtree(installed_peer.parent/'__pycache__',ignore_errors=True)
+                    with forge_server() as forge_port:
+                        probe = "import http.client,json,sys;c=http.client.HTTPConnection('127.0.0.1',int(sys.argv[1]),timeout=15);c.request('GET',sys.argv[2],headers=json.load(sys.stdin));r=c.getresponse();r.read();assert r.status==424, 'restored wrong-original-digest fault escaped rejection'"
+                        negative = subprocess.run([str(args.python),'-I','-c',probe,str(forge_port),intent],
+                            input=json.dumps(forged_headers).encode(),capture_output=True,cwd=root,timeout=20)
+                        private(output/'restored-fault.stdout.private',negative.stdout)
+                        private(output/'restored-fault.stderr.private',negative.stderr)
+                        assert negative.returncode!=0 and b'restored wrong-original-digest fault' in negative.stderr
+                        detected = True
+                finally:
+                    installed_peer.write_bytes(original_peer)
+                    shutil.rmtree(installed_peer.parent/'__pycache__',ignore_errors=True)
+                    assert installed_peer.read_bytes()==original_peer
+                assert detected
+                with forge_server() as forge_port:
+                    assert request(forge_port,'GET',intent,forged_headers)[0]==424
+                    faults.clear()
+                    assert request(forge_port,'GET',intent,forged_headers)[2]==proposal
+                    forge('revoke','--grant-id',own_issued['grant_id'])
+                    assert request(forge_port,'GET',intent,forged_headers)[0]==401
+                receipt['cases'].append('real-restored-digest-fault-detector-red-original-installed-bytes-restored-and-green')
+                receipt['cases'].append('actual-owning-cli-revoke-denies-installed-http-without-cached-disclosure')
+                receipt['final_installed_bytes_reverified'] = BINDING.installed_binding(args.python,args.wheel,args.source_revision)['wheel_sha256']==receipt['wheel_sha256']
+
                 assert all(x['method']=='GET' and x['path']=='/v1/onboarding/inspections/op-original' for x in audited[audit_start:])
                 receipt['adapter_gets'] = len(audited)-audit_start
                 receipt['adapter_inspection_posts'] = 0
@@ -353,7 +447,7 @@ def run(args):
             ep('engineering_platform.server','stop')
             ep_started = False
             receipt['separate_ep_server_pids'] = first_ep != second_ep
-            receipt['separate_forge_processes'] = len({p.pid for p in processes})==2
+            receipt['separate_forge_processes'] = len({p.pid for p in processes})>=4
             receipt['result']='EP_INSPECTION_ADOPTION_HTTP_PASS'
             private(output/'commands.private.json',commands)
         receipt['cleanup'] = not root.exists() and all(p.poll() is not None for p in processes)
@@ -369,14 +463,7 @@ def run(args):
         receipt['ep_stop_pending'] = ep_started
         if ep_started:
             receipt['result']='FAIL'
-        BINDING.retain_receipt(output,receipt,primary)
-        legacy = output/'installed-project-proposal-http.public.json'
-        if legacy.exists():legacy.rename(output/'installed-inspection-adoption.public.json')
-        try:
-            private(output/'commands.private.json',commands)
-        except OSError as error:
-            if primary is None:raise
-            primary.add_note('command diagnostic retention incomplete: '+type(error).__name__)
+        finish_receipt(output,receipt,commands,primary)
     print(receipt['result'],len(receipt['cases']))
 
 

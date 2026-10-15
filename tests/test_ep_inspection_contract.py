@@ -68,3 +68,77 @@ class ObservedAdoptionTests(unittest.TestCase):
         self.assertEqual(entries['docs/roadmap/ROADMAP.md']['operation'],'INSUFFICIENT_INFORMATION')
         self.assertEqual(entries['docs/roadmap/ROADMAP.md']['before'],{'status':'UNKNOWN'})
         self.assertNotIn('SUPPLIED_OBSERVATIONS_NOT_LIVE_INSPECTION',proposal['decisions'])
+
+class FixedDeclarationMappingTests(unittest.TestCase):
+    def test_observed_entrance_keeps_legacy_fixed_b8r_path_rule(self):
+        import json
+        from pathlib import Path
+        from forge.ep_inspection_preview import check_input
+        original=json.loads(Path('examples/project-adoption/adopt-existing-vision-input.json').read_text())
+        value={k:original[k] for k in ('bootstrap_input','requested_artifacts','mappings')}
+        fixed='.engineering-platform/repository.json'
+        value['requested_artifacts']=[fixed]
+        value['mappings']=[{'artifact_path':fixed,'source_path':'docs/RICHTING.md','choice':'LINK_EXISTING'}]
+        with self.assertRaisesRegex(ContractError,'B8R declaration path is fixed'):check_input(value)
+        value['mappings'][0]['source_path']=fixed
+        self.assertEqual(check_input(value),value)
+
+class ObservationUncertaintyTests(unittest.TestCase):
+    """Modeled producer-wire cases; actual installed transport is qualified separately."""
+    def sample(self):
+        import json
+        from pathlib import Path
+        original=json.loads(Path('examples/project-adoption/adopt-existing-vision-input.json').read_text())
+        value={k:original[k] for k in ('bootstrap_input','requested_artifacts','mappings')}
+        v=wire();v['observation']['selection']=['docs/RICHTING.md','docs/architecture/ARCHITECTURE.md']
+        content='Nederlandstalige bestaande visie'
+        from hashlib import sha256
+        v['observation']['documents']=[{'path':'docs/RICHTING.md','state':'PRESENT','content':content,'sha256':sha256(content.encode()).hexdigest()}, {'path':'docs/architecture/ARCHITECTURE.md','state':'ABSENT','content':None,'sha256':None}]
+        b={**binding(v),'consumer_id':'synthetic-forge','principal':'synthetic-peer','audience':'synthetic-audience','content_paths':['docs/RICHTING.md']}
+        return value,v,b
+
+    def proposal(self,value,v,b):
+        import json
+        from forge.ep_inspection_preview import result
+        response=result(value,observation(canonical(v),b),b)
+        return json.loads(next(a['content'] for a in response['artifacts'] if a['path']=='proposal.json'))
+
+    def test_metadata_only_oversized_and_missing_selected_document_are_not_absent(self):
+        from hashlib import sha256
+        for kind in ('metadata','oversized','missing'):
+            value,v,b=self.sample()
+            doc=v['observation']['documents'][0]
+            if kind=='metadata':doc['content']=None;b['content_paths']=[]
+            elif kind=='oversized':doc['content']='x'*8193;doc['sha256']=sha256(doc['content'].encode()).hexdigest()
+            else:v['observation']['documents']=v['observation']['documents'][1:]
+            proposal=self.proposal(value,v,b)
+            entry=next(e for e in proposal['entries'] if e['artifact_path']=='docs/product/VISION.md')
+            self.assertEqual(entry['operation'],'INSUFFICIENT_INFORMATION')
+            if kind=='oversized':self.assertEqual(entry['reason'],'R51_DOCUMENT_CONTENT_LIMIT_EXCEEDED')
+            self.assertNotEqual(entry['operation'],'PROPOSE_ADDITION')
+
+    def test_conflicting_declaration_blocks_all_rows_dirty_context_remains_visible(self):
+        value,v,b=self.sample()
+        v['observation']['git']['unstaged_count']=2
+        proposal=self.proposal(value,v,b)
+        self.assertIn('OBSERVED_DIRTY_OR_UNRESOLVED_CONTEXT_PRESERVED',proposal['decisions'])
+        v['observation']['canonical_declaration']={'state':'INVALID_OR_CONFLICTING','identity':None}
+        self.assertTrue(all(e['operation']=='CONFLICT' for e in self.proposal(value,v,b)['entries']))
+        v['observation']['canonical_declaration']={'state':'OBSERVED_DECLARATION_ONLY','identity':{**{k:value['bootstrap_input']['identity'][k] for k in ('project_id','repository_id','authority_repository_id')},'project_id':'foreign','role':'authority'}}
+        self.assertTrue(all(e['operation']=='CONFLICT' for e in self.proposal(value,v,b)['entries']))
+
+    def test_original_subject_content_consent_selection_and_null_combinations_refused(self):
+        for kind in ('instance_id','source_ref','operation_id','host_id','hash','consent','absent-bytes','present-nohash','declaration','git-presence','selection','duplicate','exclusions','timezone'):
+            _,v,b=self.sample()
+            if kind in ('instance_id','source_ref','operation_id','host_id'):v[kind]='foreign'
+            elif kind=='hash':v['observation']['documents'][0]['sha256']='f'*64
+            elif kind=='consent':b['content_paths']=[]
+            elif kind=='absent-bytes':v['observation']['documents'][1]['content']='not absent'
+            elif kind=='present-nohash':v['observation']['documents'][0]['sha256']=None
+            elif kind=='declaration':v['observation']['canonical_declaration']['state']='OBSERVED_DECLARATION_ONLY'
+            elif kind=='git-presence':v['observation']['git']=None
+            elif kind=='selection':v['observation']['selection']=[]
+            elif kind=='duplicate':v['observation']['documents'].append(deepcopy(v['observation']['documents'][0]))
+            elif kind=='exclusions':v['observation']['exclusions']=[]
+            else:v['observation']['observed_at']='2026-10-15T17:13:58'
+            with self.subTest(kind=kind),self.assertRaises((ContractError,ValueError)):observation(canonical(v),b)

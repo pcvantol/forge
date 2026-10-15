@@ -3,7 +3,7 @@ from copy import deepcopy
 from .ep_inspection_contract import KIND, EP_REVISION, EP_TREE, EP_SCHEMA_SHA256, document_observations
 from .project_bootstrap.schema import canonical, ContractError, validate
 from .project_bootstrap.service import check_input as check_basis, digest
-from .project_adoption.service import schema as adoption_schema, preview_observed, readable, document_path
+from .project_adoption.service import schema as adoption_schema, preview_observed, readable, document_path, FIXED_PATH
 
 
 def check_input(value):
@@ -22,6 +22,8 @@ def check_input(value):
         document_path(choice['source_path'])
         if choice['artifact_path'] not in paths or choice['artifact_path'] in mapped:
             raise ContractError('mapping artifact mismatch')
+        if choice['artifact_path'] == FIXED_PATH and choice['source_path'] != FIXED_PATH:
+            raise ContractError('B8R declaration path is fixed')
         if choice['choice'] == 'PROPOSE_REPLACEMENT' and choice['source_path'] != choice['artifact_path']:
             raise ContractError('cross-path replacement lacks original before')
         mapped.add(choice['artifact_path'])
