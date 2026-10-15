@@ -1,8 +1,10 @@
 # Project proposal content decisions V1
 
 Selected R54/plan1: L3-PROJECT-PROPOSAL-CONTENT-DECISION-V1-20261015.
-Forge 2.20.0/schema46. This specification precedes qualification; it is not a
-runtime or human business approval receipt. R53 and predecessors remain closed.
+Forge 2.20.0/schema46. The profile/contract was published before first
+qualification. Implementation is protected-delivered; final scoped qualification
+is governed by the delivery record below. This specification is not a human
+business approval receipt. R53 and predecessors remain closed.
 
 ## CONTENT_BASELINE_ONLY/1.0
 
@@ -73,3 +75,14 @@ Limits: 64 KiB request, eight decisions per proposal, 64 globally, 1 MiB decisio
 store, eight dossiers and 32 grants. Capacity is a conflict, never eviction.
 The full HOB/PB family, effect/apply and active native approval UI remain open.
 Early consumer mapping does not change L4 scope/pins or introduce a peer ACK gate.
+
+## Protected implementation and closure boundary
+
+[PR292](https://github.com/pcvantol/forge/pull/292) merged at
+`13cd5d2b37fedceddd8d4dda65477f3494e9d4c1` after complete independent
+Quality/Security, required full CI and changed-production coverage strictly>80.2%.
+The [delivery record](../qualification/R54_PROJECT_PROPOSAL_CONTENT_DECISION_DELIVERY_2026_10_15.md)
+preserves actual Mac and labeled hosted HTTP evidence, original failures,
+current separate TDE FAIL, predecessor terminals and the remaining finalization/
+NEW exact-final-main gates. Only the owning terminal register can close those
+future gates after fresh actual evidence; candidate PASS is not final-main PASS.

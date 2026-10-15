@@ -1,6 +1,6 @@
 # Project bootstrap V1 — Forge implementation roadmap
 
-**Owner:** Forge. **Status:** R50 PB-F0/portable PB-F1 subset qualified; R51 PB-F2 supplied-input preview implementation delivered; full remaining nodes PLANNED. **NO_BUMP.**
+**Owner:** Forge. **Status:** R50–R53 selected subsets CLOSED; R54 content-only decision implementation delivered, final qualification OPEN; full remaining nodes PLANNED. **NO_BUMP.**
 This scoped roadmap concretizes L1/L1-R in the [canonical strategic roadmap](../../knowledge/bootstrap/10_ROADMAP.md), consumes L0 baseline enforcement and F2/FH services, and does not replace those programmes. Design closure is not implementation closure of FWV1-G002/G003/G004/G010.
 
 Read the [architecture and artifact contract](../architecture/PROJECT_BOOTSTRAP_AND_ARTIFACT_MANIFEST_V1.md) and [40 qualification families](../architecture/PROJECT_BOOTSTRAP_QUALIFICATION_V1.md). The [JSON DAG](project-bootstrap-v1.json) is a non-executable delivery index. It contains only Forge work; peer nodes below are evidence requirements owned and scheduled by peers.
@@ -45,3 +45,25 @@ Quality/Security and current candidate installed qualification PASS. The
 [delivery record](../qualification/R51_PROJECT_ADOPTION_DELIVERY_2026_10_13.md)
 keeps finalization and NEW exact-final-main installed qualification open. Full PB-F1/PB-F2 and peerflows
 remain open. Existing R50 pins and L2/L4 tasks/pins/budgets remain unchanged.
+
+## Current selected-subset reconciliation — R54
+
+The earlier R51 delivery-stage checkpoint above remains historical. Its
+[terminal record](https://github.com/pcvantol/forge/issues/207#issuecomment-6148412716)
+closed only supplied-input preview on Forge2.17.0/b3581003.
+[R52 terminal](https://github.com/pcvantol/forge/issues/207#issuecomment-6155303736)
+closed private PREPARE/READ on Forge2.18.0/96e1d736;
+[R53 terminal](https://github.com/pcvantol/forge/issues/207#issuecomment-6168444579)
+closed pre-project advisory on Forge2.19.0/877602f. Their original history,
+qualification receipts, producer pins and operational counters are preserved.
+
+The selected R54 PB-F2/HOB-F02 subset adds exact human-bound, finite
+CONTENT_BASELINE_ONLY/1.0 decisions over existing portable GENESIS proposals.
+[Contract](../architecture/PROJECT_PROPOSAL_CONTENT_DECISION_V1.md) and
+[delivery record](../qualification/R54_PROJECT_PROPOSAL_CONTENT_DECISION_DELIVERY_2026_10_15.md)
+bind protected implementation PR292/main13cd5d2, complete source assurance and
+current candidate evidence. Own finalization and NEW exact-final-main installed
+HTTP/restart/readback/cleanup remain OPEN until the owning terminal register.
+Business AND Architecture are required; open points remain visible; original
+R52 proposal bytes remain unchanged. This closes no full PB-F2/PB-F7/HOB family,
+effect/apply/provisioning/readiness or native active-approval workflow.
