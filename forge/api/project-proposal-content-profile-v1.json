@@ -1,0 +1,37 @@
+{
+  "profile_id": "CONTENT_BASELINE_ONLY/1.0",
+  "meaning": "CONTENT_BASELINE_ONLY",
+  "required_roles": [
+    "BUSINESS",
+    "ARCHITECTURE"
+  ],
+  "proposal_kind": "pb-render/1.0",
+  "baseline": "portable-docs/1.0.0",
+  "role": "authority",
+  "mode": "GENESIS",
+  "host_profile": "LOCAL_POSIX",
+  "effects": false,
+  "mandatory_controls": [
+    "EXACT_SOURCE_AND_ARTIFACT_BINDING",
+    "SUPPORTED_DOCUMENT_ONLY_PROFILE",
+    "CURRENT_HUMAN_ROLE_AUTHORITY",
+    "REASON_REQUIRED",
+    "OPEN_POINTS_ACKNOWLEDGED"
+  ],
+  "open_points": "Visible future engineering questions are not automatic document-baseline blockers; approval acknowledges all supplied open questions.",
+  "not_assessed": [
+    "physical_target",
+    "repository_quality",
+    "security",
+    "TDE",
+    "execution_readiness"
+  ],
+  "not_authorized": [
+    "registration",
+    "repository_effect",
+    "risk_waiver",
+    "execution_plan",
+    "Action",
+    "Mission"
+  ]
+}

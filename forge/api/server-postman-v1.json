@@ -2617,6 +2617,94 @@
           ]
         }
       }
+    },
+    {
+      "name": "GET /v1/project-proposal-decisions/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{contentDecisionToken}}"
+          },
+          {
+            "key": "X-Forge-Content-Audience",
+            "value": "{{contentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{forgeBaseUrl}}/v1/project-proposal-decisions/capability",
+        "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
+      }
+    },
+    {
+      "name": "POST /v1/project-proposal-decisions/decisions",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{contentDecisionToken}}"
+          },
+          {
+            "key": "X-Forge-Content-Audience",
+            "value": "{{contentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{forgeBaseUrl}}/v1/project-proposal-decisions/decisions",
+        "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
+      }
+    },
+    {
+      "name": "GET /v1/project-proposal-decisions/proposals/{plan_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{contentDecisionToken}}"
+          },
+          {
+            "key": "X-Forge-Content-Audience",
+            "value": "{{contentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{forgeBaseUrl}}/v1/project-proposal-decisions/proposals/{{plan_id}}?dossier_id={{dossier_id}}",
+        "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
+      }
+    },
+    {
+      "name": "GET /v1/project-proposal-decisions/intents/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{contentDecisionToken}}"
+          },
+          {
+            "key": "X-Forge-Content-Audience",
+            "value": "{{contentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{forgeBaseUrl}}/v1/project-proposal-decisions/intents/{{operation_id}}?dossier_id={{dossier_id}}",
+        "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
+      }
     }
   ]
 }

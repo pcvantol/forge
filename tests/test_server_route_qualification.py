@@ -21,6 +21,11 @@ TOKEN = "route-qualification-bearer"
 # Versioned V1 acceptance inventory, independent of the production tuple and
 # contract files. A removed or silently omitted case must fail this gate.
 EXPECTED_ROUTES = frozenset({
+    ('GET', '/v1/project-proposal-decisions/capability'),
+    ('POST', '/v1/project-proposal-decisions/decisions'),
+    ('GET', '/v1/project-proposal-decisions/proposals/{plan_id}'),
+    ('GET', '/v1/project-proposal-decisions/intents/{operation_id}'),
+
     ("GET", "/v1/concept-advisory/capability"),
     ("POST", "/v1/concept-advisory/turns"),
     ("GET", "/v1/concept-advisory/history"),
@@ -267,8 +272,8 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
-                            if path.startswith('/v1/onboarding/') or path.startswith('/v1/concept-advisory/'):
-                                self.assertEqual(status,403);self.assertEqual(body['error']['code'],'CONCEPT_SCOPE_DENIED' if path.startswith('/v1/concept-advisory/') else 'PROPOSAL_SCOPE_DENIED')
+                            if path.startswith('/v1/project-proposal-decisions/') or path.startswith('/v1/onboarding/') or path.startswith('/v1/concept-advisory/'):
+                                self.assertEqual(status,403);self.assertEqual(body['error']['code'],'CONCEPT_SCOPE_DENIED' if path.startswith('/v1/concept-advisory/') else 'CONTENT_SCOPE_DENIED' if path.startswith('/v1/project-proposal-decisions/') else 'PROPOSAL_SCOPE_DENIED')
                                 observed.add((method,path));continue
                             if path == '/v1/approved-workset-activity' or path.startswith('/v1/approved-workset-activity/'):
                                 self.assertEqual(status, 403)
