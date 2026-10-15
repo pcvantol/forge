@@ -1308,7 +1308,7 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                     review_mission = api._review_mission_for_decision(
                         self.command, path, authorization,
                     ) if kind == "WORKSPACE_REVIEW" else None
-                    if (path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/onboarding/") or path.startswith("/v1/concept-advisory/")) and (self.headers.get_all("X-Actor") or self.headers.get_all("X-Viewer") or self.headers.get_all("X-Role")):
+                    if (path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/onboarding/") or path.startswith("/v1/concept-advisory/")) and (self.headers.get_all("X-Actor") or self.headers.get_all("X-Viewer")) or (path.startswith("/v1/project-proposal-decisions/") and self.headers.get_all("X-Role")):
                         raise ValueError("untrusted actor header unsupported")
                     if (path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/onboarding/") or path.startswith("/v1/concept-advisory/")) and self.command == "GET" and self.headers.get("Content-Length", "0") != "0":
                         raise ValueError("proposal GET body forbidden")

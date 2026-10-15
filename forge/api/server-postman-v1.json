@@ -2636,7 +2636,17 @@
             "value": "application/json"
           }
         ],
-        "url": "{{forgeBaseUrl}}/v1/project-proposal-decisions/capability",
+        "url": {
+          "raw": "{{baseUrl}}/v1/project-proposal-decisions/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "project-proposal-decisions",
+            "capability"
+          ]
+        },
         "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
       }
     },
@@ -2658,7 +2668,17 @@
             "value": "application/json"
           }
         ],
-        "url": "{{forgeBaseUrl}}/v1/project-proposal-decisions/decisions",
+        "url": {
+          "raw": "{{baseUrl}}/v1/project-proposal-decisions/decisions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "project-proposal-decisions",
+            "decisions"
+          ]
+        },
         "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
       }
     },
@@ -2680,7 +2700,18 @@
             "value": "application/json"
           }
         ],
-        "url": "{{forgeBaseUrl}}/v1/project-proposal-decisions/proposals/{{plan_id}}?dossier_id={{dossier_id}}",
+        "url": {
+          "raw": "{{baseUrl}}/v1/project-proposal-decisions/proposals/{plan_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "project-proposal-decisions",
+            "proposals",
+            "{plan_id}"
+          ]
+        },
         "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
       }
     },
@@ -2702,7 +2733,18 @@
             "value": "application/json"
           }
         ],
-        "url": "{{forgeBaseUrl}}/v1/project-proposal-decisions/intents/{{operation_id}}?dossier_id={{dossier_id}}",
+        "url": {
+          "raw": "{{baseUrl}}/v1/project-proposal-decisions/intents/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "project-proposal-decisions",
+            "intents",
+            "{operation_id}"
+          ]
+        },
         "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
       }
     }

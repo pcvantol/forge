@@ -523,6 +523,70 @@
           }
         }
       }
+    },
+    "TransportError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_version",
+        "error"
+      ],
+      "properties": {
+        "api_version": {
+          "const": "1"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "pattern": "^[A-Z_]+$"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "PublicationError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code"
+          ],
+          "properties": {
+            "code": {
+              "const": "PROPOSAL_PUBLICATION_DENIED"
+            }
+          }
+        }
+      }
+    },
+    "ErrorResponse": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Error"
+        },
+        {
+          "$ref": "#/$defs/TransportError"
+        },
+        {
+          "$ref": "#/$defs/PublicationError"
+        }
+      ]
     }
   },
   "oneOf": [
@@ -537,6 +601,12 @@
     },
     {
       "$ref": "#/$defs/Error"
+    },
+    {
+      "$ref": "#/$defs/TransportError"
+    },
+    {
+      "$ref": "#/$defs/PublicationError"
     }
   ]
 }

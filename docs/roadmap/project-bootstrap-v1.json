@@ -179,7 +179,7 @@
       "HOB-F01/S3",
       "HOB-F02"
     ],
-    "state": "IMPLEMENTATION_DELIVERED_FINALIZATION_OPEN",
+    "state": "CLOSED_SELECTED_SUBSET",
     "contract": "forge-preproject-concept-advisory/v1",
     "architecture": "docs/architecture/PREPROJECT_CONCEPT_ADVISORY_V1.md",
     "full_onboarding_delivered": false,
@@ -188,6 +188,26 @@
     "delivery_record": "docs/qualification/R53_PREPROJECT_CONCEPT_ADVISORY_DELIVERY_2026_10_14.md",
     "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38530347478/artifacts/11880097127",
     "finalization_effect": "NO_BUMP",
-    "closure_gate": "NEW exact-final-main current CI and installed HTTP/recovery/readback/cleanup, owning terminal register"
+    "closure_gate": "NEW exact-final-main current CI and installed HTTP/recovery/readback/cleanup, owning terminal register",
+    "terminal_evidence": "https://github.com/pcvantol/forge/issues/207#issuecomment-6168444579"
+  },
+  "project_proposal_content_decision_subset": {
+    "assignment_id": "L3-PROJECT-PROPOSAL-CONTENT-DECISION-V1-20261015",
+    "coordination_batch": "L234-ONBOARDING-NEXT-20261015",
+    "source_nodes": [
+      "PB-F2",
+      "HOB-F02"
+    ],
+    "state": "IMPLEMENTING_NOT_QUALIFIED",
+    "profile_id": "CONTENT_BASELINE_ONLY/1.0",
+    "required_roles": [
+      "BUSINESS",
+      "ARCHITECTURE"
+    ],
+    "contract": "forge-project-proposal-content-decision/v1",
+    "architecture": "docs/architecture/PROJECT_PROPOSAL_CONTENT_DECISION_V1.md",
+    "effect_authority": false,
+    "full_pb_f2_closed": false,
+    "predecessors": "R53 and predecessors CLOSED; original pins and evidence retained"
   }
 }

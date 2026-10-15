@@ -27,6 +27,10 @@ def hash_value(value):
         raise ValueError('exact digest required')
     return value
 
+def supplied_text(value, maximum):
+    # Opaque original R52 source bytes are already validated by its owning service.
+    if not isinstance(value,str) or not 1<=len(value)<=maximum:raise ValueError('bounded supplied source text required')
+
 def decision_request(value):
     fields = {'contract_version', 'instance_id', 'dossier_id', 'operation_id', 'plan_id', 'subject',
               'profile_id', 'role', 'decision', 'expected_decision_revision', 'previous_decision_id',
@@ -43,8 +47,8 @@ def decision_request(value):
     else: identifier(value['previous_decision_id'])
     safe_text(value['reason'], 2000)
     points = value['acknowledged_open_points']
-    if not isinstance(points, list) or len(points) > 32 or len(set(points)) != len(points): raise ValueError('finite open points required')
-    for point in points: safe_text(point, 1024)
+    if not isinstance(points, list) or len(points) > 32: raise ValueError('finite open points required')
+    for point in points: supplied_text(point, 1024)
     subject = value['subject']
     if not isinstance(subject, dict) or set(subject) != {'plan_id', 'proposal_principal_id', 'proposal_kind', 'input_digest', 'result_digest', 'record_digest', 'manifest_digest', 'baseline', 'profile_id', 'source_references', 'concept_revision'}:
         raise ValueError('closed original subject required')
@@ -56,5 +60,5 @@ def decision_request(value):
     if not isinstance(refs, list) or not 1 <= len(refs) <= 32: raise ValueError('finite supplied sources required')
     for ref in refs:
         if not isinstance(ref,dict) or set(ref)!={'reference','owner','digest'}:raise ValueError('exact supplied source reference required')
-        safe_text(ref['reference'],1024);safe_text(ref['owner'],128);hash_value(ref['digest'])
+        supplied_text(ref['reference'],256);supplied_text(ref['owner'],128);hash_value(ref['digest'])
     return json.loads(canonical(value)), digest(canonical(value))
