@@ -131,7 +131,7 @@ import diagnostics also returned71; no local sandbox bypass or producer fix.
 ## Retained corrections and own finalization
 
 Own cumulative corrections4/candidatecycles4 at implementation delivery;
-correction5/candidatecycle6 during own finalization remain cumulative.
+corrections6/candidatecycles7 during own finalization remain cumulative.
 Original failures/early reviews remain retained. Causal groups: partial UNBORN
 HEAD/tree consistency; create-once pairing storage; fixed B8R declaration rule
 and primary command/diagnostic failure separation/no premature public PASS;
@@ -152,6 +152,12 @@ repair handles only PROPOSAL_PUBLICATION_DENIED, verifies current capability,
 and continues original GET within the unchanged ten-second window. Ordinary
 scope/peer failures remain fatal; no second POST, timeout extension or product
 authorization change. The same source/fixture regression retains one record.
+Independent review of that repair found late HTTP200 could pass the absolute
+ten-second deadline because socket inactivity timeout is not a whole-response
+budget. Correction6 retains both red regressions (late success and actual slow
+trickle); the qualifier now bounds complete HTTP connect/headers/body and
+rechecks absolute time before accepting responses. All original deadlines are
+unchanged; this is no product/controller/peer-policy alteration.
 Own finalization therefore also carries this narrow required qualifier repair
 and coupled tests; source production bytes/version remain unchanged.
 

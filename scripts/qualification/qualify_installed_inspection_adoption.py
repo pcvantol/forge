@@ -5,7 +5,7 @@ from copy import deepcopy
 from tempfile import mkdtemp
 from hashlib import sha256
 from datetime import UTC, datetime, timedelta
-from threading import Thread
+from threading import Thread, Timer
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.util import spec_from_file_location, module_from_spec
 import argparse
@@ -81,13 +81,31 @@ def port():
 
 
 def request(port_number, method, target, headers, body=None, lost=False, timeout=15):
+    deadline = time.monotonic()+timeout
     client = http.client.HTTPConnection('127.0.0.1',port_number,timeout=timeout)
+    watchdog = None
     try:
+        client.connect()
+        peer_socket = client.sock
+        def interrupt():
+            try:
+                peer_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            peer_socket.close()
+        remaining = deadline-time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('qualification total HTTP deadline')
+        watchdog = Timer(remaining,interrupt)
+        watchdog.daemon = True
+        watchdog.start()
         client.request(method,target,body=None if body is None else json.dumps(body).encode(),headers={**headers,'Content-Type':'application/json'})
         if lost:
             return None
         response = client.getresponse()
         raw = response.read(1048577)
+        if time.monotonic() >= deadline:
+            raise TimeoutError('qualification total HTTP deadline')
         value = json.loads(raw)
         if target.startswith('/v1/inspection-adoptions/'):
             from jsonschema import Draft202012Validator
@@ -96,6 +114,9 @@ def request(port_number, method, target, headers, body=None, lost=False, timeout
                 Draft202012Validator(json.loads((SOURCE/'forge/api/inspection-adoptions-v1.json').read_text())).validate(body)
         return response.status,raw,value
     finally:
+        if watchdog is not None:
+            watchdog.cancel()
+            watchdog.join(.2)
         client.close()
 
 
@@ -112,6 +133,8 @@ def recover_original(port_number, intent, headers, output):
         if remaining <= 0:
             raise RuntimeError('lost answer original readback deadline')
         code, raw, value = request(port_number,'GET',intent,headers,timeout=min(15,remaining))
+        if time.monotonic() >= deadline:
+            raise RuntimeError('lost answer original readback deadline')
         if code == 200:
             return code,raw,value
         attempts += 1
@@ -121,6 +144,8 @@ def recover_original(port_number, intent, headers, output):
             if remaining <= 0:
                 raise RuntimeError('lost answer original readback deadline')
             current, _, _ = request(port_number,'GET','/v1/inspection-adoptions/capability',headers,timeout=min(15,remaining))
+            if time.monotonic() >= deadline:
+                raise RuntimeError('lost answer original readback deadline')
             if current != 200:
                 raise RuntimeError('lost answer current authority denied:'+str(current))
         elif code not in (202,404):

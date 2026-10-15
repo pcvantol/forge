@@ -75,3 +75,29 @@ class OriginalReadbackRecoveryTests(unittest.TestCase):
             with self.subTest(responses=responses),tempfile.TemporaryDirectory() as name,patch.object(q,'request',side_effect=responses) as send:
                 with self.assertRaises(RuntimeError):q.recover_original(1234,'/original',{},Path(name))
                 self.assertEqual(send.call_count,len(responses))
+
+class RecoveryAbsoluteDeadlineTests(unittest.TestCase):
+    def test_late_success_is_not_accepted_after_original_readback_deadline(self):
+        with tempfile.TemporaryDirectory() as name,patch.object(q.time,'monotonic',side_effect=[0,0,11]),patch.object(q,'request',return_value=(200,b'original',{'original':True})):
+            with self.assertRaisesRegex(RuntimeError,'deadline'):q.recover_original(1234,'/original',{},Path(name))
+
+    def test_actual_slow_trickle_is_bounded_by_total_http_budget(self):
+        from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+        from threading import Thread
+        import http.client
+        import time
+        class Slow(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200);self.send_header('Content-Length','4');self.end_headers()
+                try:
+                    for b in b'null':
+                        self.wfile.write(bytes([b]));self.wfile.flush();time.sleep(.08)
+                except OSError:pass
+            def log_message(self,*_):pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),Slow)
+        worker=Thread(target=server.serve_forever,daemon=True);worker.start();start=time.monotonic()
+        try:
+            with self.assertRaises((OSError,http.client.HTTPException)):
+                q.request(server.server_port,'GET','/synthetic',{},timeout=.15)
+            self.assertLess(time.monotonic()-start,.3)
+        finally:server.shutdown();worker.join(2);server.server_close()
