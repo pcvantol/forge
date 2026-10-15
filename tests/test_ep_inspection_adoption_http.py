@@ -255,3 +255,31 @@ class InspectionAdoptionHTTPTests(unittest.TestCase):
         self.assertEqual(second['approval'],'NOT_PERFORMED')
         self.assertEqual(second['result']['source_binding']['operation_id'],'op-explicit-new')
         self.assertEqual(len(self.grant._store()['records']),2)
+
+    def test_pending_read_publication_race_denies_stale_projection_then_original_get_recovers(self):
+        from threading import current_thread
+        ready=Event();finish=Event();answers=[]
+        peer=InspectionAdoptionService._peer
+        handle=InspectionAdoptionService.handle
+        def held(service,*args,**kwargs):
+            if current_thread().name=='pending-writer':
+                ready.set();self.assertTrue(finish.wait(5))
+            return peer(service,*args,**kwargs)
+        def committed_before_publication(service,*args,**kwargs):
+            status,body=handle(service,*args,**kwargs)
+            if status==202:
+                finish.set();writer.join(5);self.assertFalse(writer.is_alive())
+            return status,body
+        auth='Bearer '+(self.root/'new.private').read_text().strip()
+        writer=Thread(name='pending-writer',target=lambda:answers.append(InspectionAdoptionService(self.grant).handle('POST',BASE+'/plans',auth,'synthetic-workspace',self.body)))
+        try:
+            with patch.object(InspectionAdoptionService,'_peer',held),patch.object(InspectionAdoptionService,'handle',committed_before_publication):
+                writer.start();self.assertTrue(ready.wait(5))
+                status,body=self.read()
+                self.assertEqual(status,403)
+                self.assertEqual(body,{'error':{'code':'PROPOSAL_PUBLICATION_DENIED'}})
+            status,original=self.read()
+            self.assertEqual((status,original),answers[0])
+            self.assertEqual(status,200)
+            self.assertEqual(len(self.grant._store()['records']),1)
+        finally:finish.set();writer.join(5)

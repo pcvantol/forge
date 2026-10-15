@@ -130,7 +130,8 @@ import diagnostics also returned71; no local sandbox bypass or producer fix.
 
 ## Retained corrections and own finalization
 
-Own cumulative corrections4/candidatecycles4 at implementation delivery.
+Own cumulative corrections4/candidatecycles4 at implementation delivery;
+correction5/candidatecycle6 during own finalization remain cumulative.
 Original failures/early reviews remain retained. Causal groups: partial UNBORN
 HEAD/tree consistency; create-once pairing storage; fixed B8R declaration rule
 and primary command/diagnostic failure separation/no premature public PASS;
@@ -139,6 +140,20 @@ Real nonzero/timeout plus retention-failure regressions preserve primary errors,
 stop owned process groups and keep secondary failures explicit. No timeout or
 acceptance relaxation. Earlier hosted small PASS artifacts are not full CI PASS;
 obsolete full runs cancelled for concrete reviewed fixes remain cancelled.
+
+The first own finalization CI38801816347 failed at original lost-answer
+readback HTTP403; original red receipt12003289938 and log remain retained.
+A deterministic actual Forge HTTP regression demonstrates a pending projection
+can lose its publication CAS to the same successful prepare commit: stale
+publication is correctly denied, then a fresh original GET returns the one
+original proposal. The original failed runner did not preserve that response
+body, so its exact error code is not reconstructed as fact. A bounded qualifier
+repair handles only PROPOSAL_PUBLICATION_DENIED, verifies current capability,
+and continues original GET within the unchanged ten-second window. Ordinary
+scope/peer failures remain fatal; no second POST, timeout extension or product
+authorization change. The same source/fixture regression retains one record.
+Own finalization therefore also carries this narrow required qualifier repair
+and coupled tests; source production bytes/version remain unchanged.
 
 This separate nonempty NO_BUMP finalization reconciles only selected PB-F2 /
 HOB-F02 inspection-consumer documentary preview, and the already CLOSED R54

@@ -59,3 +59,19 @@ class RemainingDeadlineTests(unittest.TestCase):
             self.assertLess(time.monotonic()-start,1)
             self.assertEqual(q.BINDING.CAPTURE.COMMAND_TIMEOUT,30)
             self.assertEqual(records[0]['primary_failure']['category'],'COMMAND_TIMEOUT')
+
+class OriginalReadbackRecoveryTests(unittest.TestCase):
+    def test_publication_race_uses_only_original_get_and_checks_current_capability(self):
+        responses=[(403,b'{"error":{"code":"PROPOSAL_PUBLICATION_DENIED"}}',{'error':{'code':'PROPOSAL_PUBLICATION_DENIED'}}),
+                   (200,b'{}',{}),(200,b'original',{'original':True})]
+        with tempfile.TemporaryDirectory() as name,patch.object(q,'request',side_effect=responses) as send:
+            self.assertEqual(q.recover_original(1234,'/v1/inspection-adoptions/intents/selected?dossier_id=d',{},Path(name)),(200,b'original',{'original':True}))
+            self.assertEqual([call.args[1] for call in send.call_args_list],['GET']*3)
+            self.assertIn('capability',send.call_args_list[1].args[2])
+
+    def test_actual_scope_denial_and_failed_current_authority_are_not_retried(self):
+        for responses in ([(403,b'{}',{'error':{'code':'INSPECTION_ADOPTION_SCOPE_DENIED'}})],
+                          [(403,b'{}',{'error':{'code':'PROPOSAL_PUBLICATION_DENIED'}}),(401,b'{}',{})]):
+            with self.subTest(responses=responses),tempfile.TemporaryDirectory() as name,patch.object(q,'request',side_effect=responses) as send:
+                with self.assertRaises(RuntimeError):q.recover_original(1234,'/original',{},Path(name))
+                self.assertEqual(send.call_count,len(responses))
