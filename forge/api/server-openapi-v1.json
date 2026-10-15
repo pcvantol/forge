@@ -4259,6 +4259,416 @@
           }
         }
       }
+    },
+    "/v1/project-proposal-decisions/capability": {
+      "get": {
+        "summary": "Content baseline decision: capability",
+        "security": [
+          {
+            "ProjectProposalContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/Capability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/project-proposal-decisions/decisions": {
+      "post": {
+        "summary": "Content baseline decision: decisions",
+        "security": [
+          {
+            "ProjectProposalContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "project-proposal-decisions-v1.json#/$defs/Request"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/project-proposal-decisions/proposals/{plan_id}": {
+      "get": {
+        "summary": "Content baseline decision: {plan_id}",
+        "security": [
+          {
+            "ProjectProposalContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/project-proposal-decisions/intents/{operation_id}": {
+      "get": {
+        "summary": "Content baseline decision: {operation_id}",
+        "security": [
+          {
+            "ProjectProposalContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "project-proposal-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4326,6 +4736,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Distinct finite owner-issued pre-project READ/ADVISE with principal/audience/dossier/conversation/current transfer/provider binding; no approval or R52 rights."
+      },
+      "ProjectProposalContentBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate owner-issued human-bound content READ/DECIDE grant; not admin, R52 or R53 authority."
       }
     },
     "schemas": {
