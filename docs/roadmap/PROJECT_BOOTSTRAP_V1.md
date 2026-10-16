@@ -1,6 +1,6 @@
 # Project bootstrap V1 — Forge implementation roadmap
 
-**Owner:** Forge. **Status:** R50–R54 selected subsets CLOSED; R55 inspection adoption implementation delivered, own finalization/final qualification OPEN; full remaining nodes PLANNED. **NO_BUMP.**
+**Owner:** Forge. **Status:** R50–R55 selected subsets CLOSED; R56 exact Genesis plan/effect-decision implementation delivered, own finalization/final qualification OPEN; full remaining nodes PLANNED. **NO_BUMP.**
 This scoped roadmap concretizes L1/L1-R in the [canonical strategic roadmap](../../knowledge/bootstrap/10_ROADMAP.md), consumes L0 baseline enforcement and F2/FH services, and does not replace those programmes. Design closure is not implementation closure of FWV1-G002/G003/G004/G010.
 
 Read the [architecture and artifact contract](../architecture/PROJECT_BOOTSTRAP_AND_ARTIFACT_MANIFEST_V1.md) and [40 qualification families](../architecture/PROJECT_BOOTSTRAP_QUALIFICATION_V1.md). The [JSON DAG](project-bootstrap-v1.json) is a non-executable delivery index. It contains only Forge work; peer nodes below are evidence requirements owned and scheduled by peers.
@@ -85,6 +85,37 @@ content/context/currentness/absence stays unknown. Full PB-F2/PB-F7/HOB,
 provisioning/effect/remote and full qualification families remain open. L2's
 independent later progress work and L4plan106/pins/budgets are unchanged.
 
-This own nonempty finalization still requires its independent reviews/checks,
-normal protected merge and NEW exact-final-main installed HTTP/restart/readback/
-cleanup plus immutable handoff/terminal record. No automatic successor.
+The [R55 terminal](https://github.com/pcvantol/forge/issues/207#issuecomment-6204282319)
+closed this selected subset on Forge2.21.0/schema46, final
+maincd483fd9b17a96d0deac0f0264ab6fc32c75e778 via separate finalization PR295.
+The original delivery-stage record above remains historical; its full CI,
+exact-final-main installed HTTP/restart/readback and safe cleanup are bound by
+that existing terminal. Original EP2.3.121/f3b56303 pin, failures and counters
+remain unchanged. No predecessor is reopened.
+
+## Current selected Genesis plan/effect-decision subset — R56
+
+[Exact Genesis contract](../architecture/GENESIS_BOOTSTRAP_EFFECT_PLAN_V1.md)
+and [own delivery/finalization record](../qualification/R56_GENESIS_BOOTSTRAP_EFFECT_PLAN_DELIVERY_2026_10_16.md)
+select only PB-F0/PB-F2/HOB-F02 pre-admission planning and a separate finite,
+currently authorized human effect decision. Original R52/R50 document bytes,
+manifest/catalogue/validator pins and original R54 BUSINESS AND ARCHITECTURE
+content decisions remain bound. Seven authenticated own HTTP routes and the
+ordinary local CLI reuse the owning services; readback/replays/Server OS
+restart recover original records without another proposal or decision.
+
+Plans remain EP_ADMISSION_REQUIRED/PROPOSED_NOT_RESERVED. A Forge effect
+decision is not an EP grant, target absence/readiness, reservation, execution
+or Mission approval. No target/Git/B8R effect, EP admission/apply trigger,
+provider/model, Action or Mission. Physical execution/identity reservation
+remain L2-owned under the concrete JOIN; all producer pins and L4's selected
+consumer scope remain independent.
+
+Implementation PR296 and its actual protected merge are recorded in the own
+delivery record. This separate nonempty NO_BUMP finalization still needs its
+own independent reviews/checks, protected merge and NEW exact-final-main
+installed HTTP/CLI/recovery/restored-fault/non-effect proof, immutable peer
+handoff/terminal readback and cleanup. The owning terminal is the closure
+receipt; candidate artifacts do not close R56. Full PB-F2/PB-F7/HOB parents,
+PB-F3 apply coordinator, actual Genesis readiness, adoption effects, Managed,
+promotion and broad onboarding remain OPEN. No automatic successor.
