@@ -24,6 +24,7 @@ def run(args):
         if report['primary_failure'] or not report['capture_complete']:
             raise RuntimeError('installed owning setup/capture failed')
         return json.loads(stdout)
+    primary=None
     try:
         with TemporaryDirectory(prefix='r56-genesis-installed-') as tmp:
             parent=Path(tmp).resolve(); root=parent/'synthetic'
@@ -47,7 +48,8 @@ def run(args):
                 command(['-m','forge.genesis_bootstrap_cli',*data,'init'],root)
                 scope=['--proposal-principal-id','synthetic-service','--audience','synthetic-workspace','--dossier-id','synthetic-dossier','--source-plan-id',source['plan_id'],'--expires-at',expiry]
                 command(['-m','forge.genesis_bootstrap_cli',*data,'issue','--principal-id','synthetic-service',*scope,'--permission','READ','--permission','PREPARE','--token-file',str(root/'bootstrap.private')],root)
-                from forge.genesis_bootstrap_contract import EFFECTS,EFFECT_PURPOSE
+                EFFECTS=('CREATE_NEW_TARGET','INITIALIZE_LOCAL_GIT','WRITE_EXACT_MANIFEST_FILES','RUN_EXTERNALLY_PINNED_VALIDATION','CREATE_LOCAL_COMMIT','REGISTER_COMMITTED_AUTHORITY_ATTACHMENT')
+                EFFECT_PURPOSE='GENESIS_BOOTSTRAP_EFFECT_ONLY/1.0'
                 r={'contract_version':CONTRACT,'instance_id':setup['instance_id'],'dossier_id':'synthetic-dossier','operation_id':'exact-plan','source_plan_id':source['plan_id'],'source_subject':content['subject'],'expected_content_revision':2,'target':{'ep_instance_id':'synthetic-ep','placement_ref':'synthetic-placement','target_ref':'synthetic-target'},'effects':list(EFFECTS),'expires_at':expiry,'expected_plan_revision':0,'previous_plan_id':None,'blocking_open_points':[]}
                 source_bytes=(root/'runtime/onboarding/proposals/store.json').read_bytes()
                 status,view=C.call(port,root/'bootstrap.private','POST','/v1/genesis-bootstrap/plans',r)
@@ -84,8 +86,11 @@ def run(args):
             receipt['plan_digest']=plan['plan_digest']; receipt['file_count']=37
         receipt['cleanup']=not parent.exists(); receipt['result']='PASS'
         return receipt
+    except BaseException as error:
+        primary=error
+        raise
     finally:
-        (args.output_dir/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+        C.BINDING.retain_receipt(args.output_dir,receipt,primary)
 
 
 def main():
