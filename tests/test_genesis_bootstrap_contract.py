@@ -106,3 +106,44 @@ class GenesisJoinBindingTests(TestCase):
         self.assertNotEqual(bundle['ep_bundle_binding']['canonical_digest'],bundle['bundle_digest'])
         self.assertEqual(bundle['validation']['document_validation_phase'],'BEFORE_GIT_METADATA')
         self.assertEqual(bundle['validation']['target_entrypoint_qualification'],'NOT_ASSERTED_WITH_GIT_METADATA')
+
+    def test_closed_finite_plan_and_effect_requests_reject_unbound_or_unbounded_input(self):
+        from forge.genesis_bootstrap_contract import plan_request,effect_request,CONTRACT,EFFECT_PURPOSE
+        _,_,request,_=plan_fixture()
+        for update in ({'expected_plan_revision':True},{'expected_plan_revision':8},{'previous_plan_id':'unexpected'},
+                       {'expected_plan_revision':1,'previous_plan_id':None},{'blocking_open_points':'not-a-list'},
+                       {'target':{'ep_instance_id':'ep'}},{'source_subject':{}},{'expires_at':'no-time'}):
+            with self.subTest(update=update),self.assertRaises((ValueError,TypeError)):
+                plan_request({**request,**update})
+        decision={'contract_version':CONTRACT,'instance_id':'instance','dossier_id':'dossier','operation_id':'operation',
+                  'plan_id':'plan','plan_digest':'a'*64,'purpose':EFFECT_PURPOSE,'decision':'APPROVE_EFFECT','reason':'Exact synthetic confirmation.',
+                  'expected_decision_revision':0,'previous_decision_id':None}
+        effect_request(decision)
+        for update in ({'purpose':'CONTENT_BASELINE_ONLY/1.0'},{'decision':'APPROVE_ANYTHING'},
+                       {'expected_decision_revision':True},{'expected_decision_revision':8},
+                       {'previous_decision_id':'unexpected'},{'expected_decision_revision':1,'previous_decision_id':None},
+                       {'reason':''},{'plan_digest':'invalid'},{'actor':'forged'}):
+            with self.subTest(update=update),self.assertRaises((ValueError,TypeError)):
+                effect_request({**decision,**update})
+
+    def test_frozen_profile_rejects_tampered_pins_input_manifest_and_declaration(self):
+        from forge.project_bootstrap.service import BASE_PATH
+        def change_manifest(record,mutate):
+            row=next(r for r in record['result']['artifacts'] if r['path']=='engineering/bootstrap-manifest.json')
+            value=json.loads(row['content']);mutate(value)
+            value['manifest_digest']=digest(canonical({k:v for k,v in value.items() if k!='manifest_digest'}))
+            row['content']=canonical(value).decode();row['sha256']=digest(row['content'].encode())
+        for choice in ('empty','mode','baseline','input','inventory','entry-hash','declaration'):
+            record=original();rows=record['result']['artifacts']
+            if choice=='empty':record['result']['artifacts']=[]
+            elif choice=='mode':rows[0]['mode']=0o755
+            elif choice in ('baseline','input'):
+                name=BASE_PATH+'/validate.py' if choice=='baseline' else 'engineering/render-input.json'
+                row=next(r for r in rows if r['path']==name);row['content']+=' ';row['sha256']=digest(row['content'].encode())
+            elif choice=='inventory':change_manifest(record,lambda m:m['artifacts'].pop())
+            elif choice=='entry-hash':change_manifest(record,lambda m:m['artifacts'][0].update(expected_after_digest='f'*64))
+            else:
+                row=next(r for r in rows if r['path']=='.engineering-platform/repository.json')
+                value=json.loads(row['content']);value['validation']['entrypoint']='bash untrusted.sh';row['content']=canonical(value).decode();row['sha256']=digest(row['content'].encode())
+                change_manifest(record,lambda m:m['artifacts'][0].update(expected_after_digest=row['sha256'],bytes=len(row['content'].encode())))
+            with self.subTest(choice=choice),self.assertRaises(ValueError):frozen_bundle(record)

@@ -15,9 +15,21 @@ CONTRACT='forge-genesis-bootstrap-effect-plan/v1'
 
 def run(args):
     args.output_dir.mkdir(mode=0o700)
-    receipt={'result':'FAIL','cases':[],'cleanup':False,'decisions':'SYNTHETIC_TECHNICAL_NOT_OWNER_APPROVAL',
+    receipt={'qualification':'GENESIS_BOOTSTRAP_EFFECT_PLAN_HTTP_V1','result':'FAIL','cases':[],'cleanup':False,'decisions':'SYNTHETIC_TECHNICAL_NOT_OWNER_APPROVAL',
              'transport':'ACTUAL_NONEDITABLE_HTTP_SEPARATE_SERVER_OS',
              **C.BINDING.installed_binding(args.python,args.wheel,args.source_revision)}
+    schema_path=Path(subprocess.check_output([str(args.python),'-I','-c',"from importlib.resources import files;print(files('forge').joinpath('api/genesis-bootstrap-v1.json'))"],cwd=args.wheel.parent).decode().strip())
+    schema=json.loads(schema_path.read_bytes())
+    from jsonschema import Draft202012Validator
+    from jsonschema.exceptions import ValidationError
+    previous_validator=C.validate_wire
+    def wire(path,value,body,status):
+        previous_validator(path,value,body,status)
+        if path.startswith('/v1/genesis-bootstrap/'):
+            Draft202012Validator(schema).validate(value)
+            if status==200 and body is not None:
+                Draft202012Validator(schema).validate(body)
+    C.validate_wire=wire
     count=0
     def command(arguments,root):
         nonlocal count
@@ -158,12 +170,13 @@ def run(args):
             try:
                 location.write_bytes(original_source.replace(marker,marker.replace(b'False',b'True')))
                 with C.server(args.python,root,args.output_dir) as (port,_,_):
-                    status,value=C.call(port,root/'bootstrap.private','GET',path)
+                    status=None;value={}
                     try:
+                        status,value=C.call(port,root/'bootstrap.private','GET',path)
                         assert status==200 and value['execution_authorized'] is False
-                    except AssertionError:
+                    except (AssertionError,ValidationError) as detector_error:
                         red=True
-                        (args.output_dir/'restored-fault-detector-original-failure.public.json').write_text(json.dumps({'result':'EXPECTED_FAIL','defect':'FALSE_EXECUTION_AUTHORIZATION','actual_status':status,'observed_execution_authorized':value.get('execution_authorized')}))
+                        (args.output_dir/'restored-fault-detector-original-failure.public.json').write_text(json.dumps({'result':'EXPECTED_FAIL','defect':'FALSE_EXECUTION_AUTHORIZATION','actual_status':status,'observed_execution_authorized':value.get('execution_authorized'),'detector_failure':type(detector_error).__name__}))
                 assert red
             finally:
                 location.write_bytes(original_source)
@@ -181,6 +194,7 @@ def run(args):
         primary=error
         raise
     finally:
+        C.validate_wire=previous_validator
         if 'parent' in locals():
             receipt['cleanup']=not parent.exists()
         C.BINDING.retain_receipt(args.output_dir,receipt,primary)
