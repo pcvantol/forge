@@ -1,0 +1,23 @@
+{
+  "cases": [
+    "actual-original-r52-http-and-distinct-r54-role-decisions",
+    "exact-37-original-bytes-no-rerender-no-reservation-no-target-effect",
+    "separate-canonical-human-finite-exact-effect-purpose-idempotent-readback",
+    "separate-server-os-restart-original-decision-and-plan-no-execution",
+    "ordinary-installed-cli-http-original-readback-parity"
+  ],
+  "cleanup": true,
+  "decisions": "SYNTHETIC_TECHNICAL_NOT_OWNER_APPROVAL",
+  "entrypoints_source_wheel_installed_verified": true,
+  "file_count": 37,
+  "no_project_repo_ep_model_mission_effects": true,
+  "operator_identity_evidence": "ACTUAL_MACOS_GENERATED_UID",
+  "payload_files_verified": 346,
+  "plan_digest": "fb21f2a2e87b2ba4081e76940a0db4a61be713391e2ffacb34164547f43544ee",
+  "result": "PASS",
+  "source_revision": "ae4a3946d450e52b243089068a1be53e56af5803",
+  "source_tree": "a24fff7ea562d2d09707afaf1a752594a2c77b50",
+  "transport": "ACTUAL_NONEDITABLE_HTTP_SEPARATE_SERVER_OS",
+  "version": "2.22.0",
+  "wheel_sha256": "12ec736b6c087f70a7abec077dd900eb2c530443480eea6894d44b113f958ad0"
+}

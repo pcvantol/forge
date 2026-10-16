@@ -9,6 +9,11 @@
     "bundle_digest": "c5bf81a0db6669c8c0097105ce6fcaca80f2b3743f28a0556472e5ecc499c7dc",
     "catalog_asset_sha256": "757e9c0bc8a7c646badb5c0ae0c6dd024174f4d079b7390a6517ee78da0f375f",
     "catalog_canonical_digest": "757e9c0bc8a7c646badb5c0ae0c6dd024174f4d079b7390a6517ee78da0f375f",
+    "ep_bundle_binding": {
+      "canonical_digest": "0c2c0fb41a68793be0960bb4289d7590060c8092ebb976852e1c4674b0f66b1d",
+      "contract_version": "pb-render/1.0",
+      "kind": "RENDERED_PROPOSAL_EXAMPLE"
+    },
     "files": [
       {
         "bytes": 224,
@@ -318,13 +323,17 @@
     "renderer_source_digest": "a7a16db4d735d9411ff3a3c7997d8aff82be2d4b6f2059aa56bf250b7e104536",
     "renderer_version": "1.0.0",
     "validation": {
+      "committed_verification": "EXACT_TREE_BLOB_100644_AND_WORKTREE_0644",
+      "document_validation_phase": "BEFORE_GIT_METADATA",
       "entrypoint": "bash scripts/validate.sh",
       "external_trust": "EP_OWNER_QUALIFIED_PIN_REQUIRED",
       "file_mode": "0644",
       "isolation": "ISOLATED_NO_SITE_PACKAGES",
       "profile": "PORTABLE_HASH_SCHEMA_PROFILE",
+      "repeat_validation": "EXACT_COMMITTED_DOCUMENT_PROJECTION_ONLY",
       "required_python": "3.14",
       "script_sha256": "4965a1e7710acc106631d3ef8b41054f8a5698dee6d565cc2162baef095df5ae",
+      "target_entrypoint_qualification": "NOT_ASSERTED_WITH_GIT_METADATA",
       "validator_path": "engineering/baselines/portable-docs/1.0.0/validate.py",
       "validator_sha256": "3ce4eca67c659d65ea2df70439d7f61bc8e4eb16b3d4b64b397d7fc3bdc16ae2"
     }
@@ -353,7 +362,7 @@
   ],
   "operation_id": "synthetic-genesis-plan",
   "original_content_decisions": [],
-  "plan_digest": "a0aee0b08e75dd0ab1a159a4180080b2171119919dc7a00ba6a12c28c6ebee27",
+  "plan_digest": "54477798164008cd00bc31124fa89bf3941e8d1fa8f0febc7608275699c763f5",
   "plan_id": "bootstrap-plan-451db909ab3ccc55dac59b3ca11d4457",
   "plan_revision": 1,
   "previous_plan_id": null,

@@ -575,7 +575,8 @@
             "catalog_asset_sha256",
             "catalog_canonical_digest",
             "identity",
-            "validation"
+            "validation",
+            "ep_bundle_binding"
           ],
           "properties": {
             "files": {
@@ -693,7 +694,11 @@
                 "validator_sha256",
                 "required_python",
                 "isolation",
-                "external_trust"
+                "external_trust",
+                "document_validation_phase",
+                "committed_verification",
+                "repeat_validation",
+                "target_entrypoint_qualification"
               ],
               "properties": {
                 "profile": {
@@ -728,6 +733,39 @@
                 },
                 "external_trust": {
                   "const": "EP_OWNER_QUALIFIED_PIN_REQUIRED"
+                },
+                "document_validation_phase": {
+                  "const": "BEFORE_GIT_METADATA"
+                },
+                "committed_verification": {
+                  "const": "EXACT_TREE_BLOB_100644_AND_WORKTREE_0644"
+                },
+                "repeat_validation": {
+                  "const": "EXACT_COMMITTED_DOCUMENT_PROJECTION_ONLY"
+                },
+                "target_entrypoint_qualification": {
+                  "const": "NOT_ASSERTED_WITH_GIT_METADATA"
+                }
+              }
+            },
+            "ep_bundle_binding": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "contract_version",
+                "kind",
+                "canonical_digest"
+              ],
+              "properties": {
+                "contract_version": {
+                  "const": "pb-render/1.0"
+                },
+                "kind": {
+                  "const": "RENDERED_PROPOSAL_EXAMPLE"
+                },
+                "canonical_digest": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
                 }
               }
             }
@@ -855,7 +893,9 @@
         "decision",
         "reason",
         "expected_decision_revision",
-        "previous_decision_id"
+        "previous_decision_id",
+        "request_digest",
+        "decision_digest"
       ],
       "properties": {
         "decision_id": {
@@ -969,6 +1009,14 @@
               "type": "null"
             }
           ]
+        },
+        "request_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "decision_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     },

@@ -2,8 +2,8 @@
 
 R56/plan1, L3-GENESIS-BOOTSTRAP-EFFECT-PLAN-V1-20261016.
 JOIN L2-L3-GENESIS-LOCAL-BOOTSTRAP-V1-20261016. Forge2.22.0/schema46 candidate.
-This is the early concrete contract and pure frozen-plan implementation, not
-qualified HTTP/decision delivery. R55 and predecessors remain CLOSED.
+This is the selected concrete contract. The first exact installed HTTP/CLI
+chain passed on ae4a394; full matrix/protected delivery/finalization remain OPEN. R55 and predecessors remain CLOSED.
 
 ## Exact outcome and ownership
 
@@ -47,17 +47,17 @@ example expiry is test data, never an active grant. The full plan is currently a
 pure source fixture; normal product requests will reference owning R52 records,
 not accept a client-uploaded bundle/approved JSON.
 
-## Selected own HTTP / CLI contract being implemented
+## Selected own HTTP / CLI contract
 
 Contract forge-genesis-bootstrap-effect-plan/v1; separate explicit finite
 GENESIS_BOOTSTRAP_EFFECT_ONLY/1.0 owner grants. Existing PREPARE/READ/content
-DECIDE/peer/admin grants do not gain effect rights. DECIDE_EFFECT will bind the
+DECIDE/peer/admin grants do not gain effect rights. DECIDE_EFFECT binds the
 actual installed human operator and current existing OWNER_PROGRAMME_AUTHORIZATION
 capability, plus exact finite plan ID/digest and selected source/target scope.
 This does not create a new canonical role or EP capability. No chat/actorheader
 or general read token acts as a human decision.
 
-Selected routes (implementation in progress, not already shipped):
+Selected routes (candidate implementation; release qualification remains OPEN):
 
 - GET /v1/genesis-bootstrap/capability
 - POST /v1/genesis-bootstrap/plans
@@ -67,7 +67,7 @@ Selected routes (implementation in progress, not already shipped):
 - GET /v1/genesis-bootstrap/decisions/{decision_id}?dossier_id=...
 - GET /v1/genesis-bootstrap/decision-intents/{operation_id}?dossier_id=...
 
-Bearer plus X-Forge-Bootstrap-Audience. Ordinary local CLI parity will share
+Bearer plus X-Forge-Bootstrap-Audience. Ordinary local CLI forge-genesis-bootstrap shares
 these owning services and existing private publication/storage primitives.
 There is no EP route in this interface. L2 publishes its own actual routes,
 headers, scope and receipt; no historical design endpoint is presumed live.
@@ -97,3 +97,36 @@ HTTP/restart/readback/non-effect/cleanup remain OPEN. Full PB-F0/PB-F2/HOB,
 PB-F3 apply coordination, actual Genesis readiness, adoption/Managed/promotion
 remain open. L4-plan107/progresspin and R55 EP2.3.121 inspection pin unchanged.
 No general peer ACK, native UI, signing or installer wait; no automatic successor.
+
+## Concrete L2 candidate mapping, 2026-10-16
+
+L2 owning comments6209744558 and6209809752 were read in full. They describe
+candidate EP routes, not delivered endpoints. This Forge slice invokes none.
+`documents.ep_bundle_binding` binds the exact R50 transport envelope: contract
+pb-render/1.0, kind RENDERED_PROPOSAL_EXAMPLE, files keyed by the unchanged
+relative paths with `{sha256, utf8: original content}`. Its canonical_digest is
+independent of `documents.bundle_digest`, which remains the original R52
+artifact-array/result digest. This is lossless transport mapping, no renderer.
+The fixed original fixture's EP envelope digest is
+0c2c0fb41a68793be0960bb4289d7590060c8092ebb976852e1c4674b0f66b1d.
+
+| L2 candidate effect_plan_binding | Exact Forge owning value |
+| --- | --- |
+| plan_id / plan_revision / plan_digest | plan fields with those names |
+| decision_id / decision_digest | immutable original_decision fields; decision_digest excludes only itself and binds original request_digest + actual human/grant/time |
+| proposal_id / proposal_digest | plan.source_subject.plan_id / plan.source_subject.result_digest (original R52 artifact-array digest) |
+| source_instance_id | plan.instance_id |
+| source_actor_id | original_decision.principal_id, actual finite human effect actor; provenance only, never EP authentication |
+| context_id | plan.dossier_id, same finite private context |
+
+EP's request envelope/bundle digest and Forge plan/source/result digests have
+separate named meanings. A future coordinator must use this mapping unchanged;
+no EP grant, apply envelope or endpoint is emitted by current Forge services.
+
+The original externally pinned portable validator inventories every document.
+It runs BEFORE_GIT_METADATA, not against a `.git`-bearing target. EP subsequently
+checks exact committed tree/blobs100644 and worktree files0644/declaration.
+Any repeated portable validation uses an explicitly declared projection of
+those verified committed documents. Original scripts/validate.sh and every
+baseline byte remain unchanged. No claim is made that that command passes
+inside an initialized Git target; full target engineering readiness is unowned.

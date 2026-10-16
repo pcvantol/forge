@@ -3,7 +3,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from datetime import UTC,datetime,timedelta
 from importlib.util import spec_from_file_location,module_from_spec
-import argparse,json,subprocess,sys,hashlib,sqlite3
+import argparse,json,subprocess,sys,hashlib,sqlite3,socket,time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 
 SOURCE=Path(__file__).resolve().parents[2]
@@ -64,7 +65,7 @@ def run(args):
                 assert (root/'runtime/onboarding/proposals/store.json').read_bytes()==source_bytes
                 receipt['cases'].append('exact-37-original-bytes-no-rerender-no-reservation-no-target-effect')
                 exact=root/'plans.private';exact.write_text(json.dumps([{'plan_id':plan['plan_id'],'plan_digest':plan['plan_digest']}])) ;exact.chmod(0o600)
-                command(['-m','forge.genesis_bootstrap_cli',*data,'issue','--principal-id',setup['human_principal_id'],*scope,'--permission','READ','--permission','DECIDE_EFFECT','--exact-plans-file',str(exact),'--token-file',str(root/'effect.private')],root)
+                effect_grant=command(['-m','forge.genesis_bootstrap_cli',*data,'issue','--principal-id',setup['human_principal_id'],*scope,'--permission','READ','--permission','DECIDE_EFFECT','--exact-plans-file',str(exact),'--token-file',str(root/'effect.private')],root)
                 d={'contract_version':CONTRACT,'instance_id':setup['instance_id'],'dossier_id':'synthetic-dossier','operation_id':'exact-effect','plan_id':plan['plan_id'],'plan_digest':plan['plan_digest'],'purpose':EFFECT_PURPOSE,'decision':'APPROVE_EFFECT','reason':'Synthetic technical confirmation of this exact document-only plan; no execution permission.','expected_decision_revision':0,'previous_decision_id':None}
                 status,decided=C.call(port,root/'effect.private','POST','/v1/genesis-bootstrap/decisions',d)
                 assert status==200,(status,decided)
@@ -91,6 +92,88 @@ def run(args):
                     assert db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==0
             receipt['no_project_repo_ep_model_mission_effects']=True
             receipt['operator_identity_evidence']='ACTUAL_MACOS_GENERATED_UID'
+            # Reuse the original persisted plan/decisions; no new proposal or renderer.
+            with C.server(args.python,root,args.output_dir) as (port,third,_):
+                path='/v1/genesis-bootstrap/plans/'+plan['plan_id']+'?dossier_id=synthetic-dossier'
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    answers=list(pool.map(lambda _:C.call(port,root/'bootstrap.private','POST','/v1/genesis-bootstrap/plans',r),range(2)))
+                assert all(status==200 and value['plan']==plan for status,value in answers)
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    answers=list(pool.map(lambda _:C.call(port,root/'effect.private','POST','/v1/genesis-bootstrap/decisions',d),range(2)))
+                assert all(status==200 and value['original_decision']==original_decision for status,value in answers)
+                for token in ('admin.private','prepare.private','decide.private'):
+                    assert C.call(port,root/token,'GET','/v1/genesis-bootstrap/capability')[0]==403
+                assert C.call(port,root/'bootstrap.private','POST','/v1/genesis-bootstrap/decisions',d)[0]==403
+                assert C.call(port,root/'bootstrap.private','GET',path.replace('synthetic-dossier','foreign-dossier'))[0]==403
+                assert C.call(port,root/'bootstrap.private','POST','/v1/genesis-bootstrap/plans',{**r,'instance_id':'foreign-instance'})[0]==403
+                assert C.call(port,root/'bootstrap.private','POST','/v1/genesis-bootstrap/plans',{**r,'effects':['WRITE_ARBITRARY']})[0]==400
+                receipt['cases'].append('actual-concurrent-exact-replays-cross-purpose-instance-dossier-effect-denials')
+                lost={**d,'operation_id':'lost-original-effect','decision':'REQUEST_CHANGES','reason':'Synthetic change request to exercise lost commit response.','expected_decision_revision':1,'previous_decision_id':original_decision['decision_id']}
+                raw=json.dumps(lost).encode()
+                headers=('POST /v1/genesis-bootstrap/decisions HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer '+(root/'effect.private').read_text().strip()+'\r\nX-Forge-Bootstrap-Audience: synthetic-workspace\r\nContent-Type: application/json\r\nContent-Length: '+str(len(raw))+'\r\nConnection: close\r\n\r\n').encode()
+                with socket.create_connection(('127.0.0.1',port),timeout=3) as client:
+                    client.sendall(headers+raw);client.shutdown(socket.SHUT_WR)
+                deadline=time.monotonic()+10
+                while True:
+                    status,lost_read=C.call(port,root/'effect.private','GET','/v1/genesis-bootstrap/decision-intents/lost-original-effect?dossier_id=synthetic-dossier')
+                    if status==200:break
+                    if status!=404 or time.monotonic()>deadline:raise RuntimeError('original lost decision unavailable')
+                    time.sleep(.05)
+                lost_record=lost_read['original_decision'];assert lost_read['effect_decision_revision']==2
+            with C.server(args.python,root,args.output_dir) as (port,fourth,_):
+                assert fourth!=third
+                status,restored=C.call(port,root/'effect.private','GET','/v1/genesis-bootstrap/decision-intents/lost-original-effect?dossier_id=synthetic-dossier')
+                assert status==200 and restored['original_decision']==lost_record and restored['effect_decision_revision']==2
+                receipt['cases'].append('actual-lost-success-response-and-additional-server-os-restart-no-second-decision')
+                again={**d,'operation_id':'explicit-successor','expected_decision_revision':2,'previous_decision_id':lost_record['decision_id']}
+                status,current=C.call(port,root/'effect.private','POST','/v1/genesis-bootstrap/decisions',again)
+                assert status==200 and current['effect_decision_currently_applicable']
+                change=C.request_for(content,'BUSINESS','original-content-change');change['decision']='REQUEST_CHANGES'
+                status,changed_content=C.call(port,root/'decide.private','POST','/v1/project-proposal-decisions/decisions',change);assert status==200
+                status,changed=C.call(port,root/'bootstrap.private','GET',path)
+                assert status==200 and not changed['effect_decision_currently_applicable'] and 'SOURCE_CONTENT_CHANGED' in changed['inapplicability_reasons']
+                assert changed['effect_history'][0]==original_decision
+                assert C.call(port,root/'effect.private','POST','/v1/genesis-bootstrap/decisions',{**again,'operation_id':'blocked-changed-source','expected_decision_revision':3,'previous_decision_id':current['original_decision']['decision_id']})[0]==409
+                receipt['cases'].append('current-content-change-invalidates-positive-effect-with-original-history-preserved')
+                command(['-m','forge.genesis_bootstrap_cli',*data,'revoke','--grant-id',effect_grant['grant_id']],root)
+                assert C.call(port,root/'effect.private','GET','/v1/genesis-bootstrap/capability')[0] in (401,403)
+                assert C.call(port,root/'bootstrap.private','GET',path)[1]['effect_history'][0]==original_decision
+                short=(datetime.now(UTC)+timedelta(seconds=2)).isoformat()
+                short_scope=scope.copy();short_scope[short_scope.index('--expires-at')+1]=short
+                command(['-m','forge.genesis_bootstrap_cli',*data,'issue','--principal-id','synthetic-observer',*short_scope,'--permission','READ','--token-file',str(root/'short.private')],root)
+                while datetime.now(UTC)<datetime.fromisoformat(short):time.sleep(.03)
+                assert C.call(port,root/'short.private','GET','/v1/genesis-bootstrap/capability')[0] in (401,403)
+                receipt['cases'].append('actual-owner-revoke-real-clock-expiry-no-cached-protected-success')
+                own_store=root/'runtime/onboarding/genesis-bootstrap/store.json';saved=own_store.read_bytes()
+                own_store.unlink()
+                try:assert C.call(port,root/'bootstrap.private','GET',path)[0]==503
+                finally:own_store.write_bytes(saved);own_store.chmod(0o600)
+                assert C.call(port,root/'bootstrap.private','GET',path)[1]['effect_history'][0]==original_decision
+                receipt['cases'].append('initialized-store-loss-fails-closed-and-exact-original-restoration')
+            # Introduce one real bounded isolated installed-source defect, then restore it.
+            location=Path(subprocess.check_output([str(args.python),'-I','-c','import forge.genesis_bootstrap_service as m;print(m.__file__)'],cwd=root).decode().strip())
+            original_source=location.read_bytes();marker=b"'state':'EP_ADMISSION_REQUIRED','execution_authorized':False"
+            assert original_source.count(marker)==1
+            red=False
+            try:
+                location.write_bytes(original_source.replace(marker,marker.replace(b'False',b'True')))
+                with C.server(args.python,root,args.output_dir) as (port,_,_):
+                    status,value=C.call(port,root/'bootstrap.private','GET',path)
+                    try:
+                        assert status==200 and value['execution_authorized'] is False
+                    except AssertionError:
+                        red=True
+                        (args.output_dir/'restored-fault-detector-original-failure.public.json').write_text(json.dumps({'result':'EXPECTED_FAIL','defect':'FALSE_EXECUTION_AUTHORIZATION','actual_status':status,'observed_execution_authorized':value.get('execution_authorized')}))
+                assert red
+            finally:
+                location.write_bytes(original_source)
+            assert location.read_bytes()==original_source
+            with C.server(args.python,root,args.output_dir) as (port,_,_):
+                status,value=C.call(port,root/'bootstrap.private','GET',path)
+                assert status==200 and value['execution_authorized'] is False and value['effect_history'][0]==original_decision
+            receipt['restored_fault_detector']={'red':red,'restored_green':True,'installed_source_sha256':hashlib.sha256(original_source).hexdigest()}
+            receipt['cases'].append('same-actual-http-detector-red-for-restored-real-installed-defect-then-green')
+            receipt['operator_identity_evidence']='MODELED_TRUSTED_OS_FIXTURE' if C.MODELED_OS else 'ACTUAL_MACOS_GENERATED_UID'
             receipt['plan_digest']=plan['plan_digest']; receipt['file_count']=37
         receipt['cleanup']=not parent.exists(); receipt['result']='PASS'
         return receipt
@@ -104,8 +187,9 @@ def run(args):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--python',type=Path,required=True);parser.add_argument('--wheel',type=Path,required=True);parser.add_argument('--source-revision',required=True);parser.add_argument('--output-dir',type=Path,required=True)
-    args=parser.parse_args();print(json.dumps(run(args),indent=2))
+    parser=argparse.ArgumentParser();parser.add_argument('--python',type=Path,required=True);parser.add_argument('--wheel',type=Path,required=True);parser.add_argument('--source-revision',required=True);parser.add_argument('--output-dir',type=Path,required=True);parser.add_argument('--modeled-os-identity',action='store_true')
+    args=parser.parse_args();C.MODELED_OS=args.modeled_os_identity
+    print(json.dumps(run(args),indent=2))
 
 if __name__=='__main__':
     main()

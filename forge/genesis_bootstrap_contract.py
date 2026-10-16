@@ -60,8 +60,11 @@ def frozen_bundle(record):
                             'repository':{'id':identity['repository_id'],'role':'authority'},'validation':{'kind':'command','entrypoint':'bash scripts/validate.sh'}}
     if declaration != expected_declaration or identity['repository_id'] != identity['authority_repository_id']:
         raise ContractError('original identity/declaration incompatible')
+    portable={'contract_version':'pb-render/1.0','kind':'RENDERED_PROPOSAL_EXAMPLE',
+              'files':{r['path']:{'sha256':r['sha256'],'utf8':r['content']} for r in rows}}
     files = [{**deepcopy(r),'bytes':len(payload[r['path']]),'expected_before':'ABSENT'} for r in rows]
-    return {'files':files,'bundle_digest':digest(canonical(rows)), 'manifest_digest':manifest['manifest_digest'],
+    return {'files':files,'bundle_digest':digest(canonical(rows)),
+            'ep_bundle_binding':{'contract_version':'pb-render/1.0','kind':'RENDERED_PROPOSAL_EXAMPLE','canonical_digest':digest(canonical(portable))}, 'manifest_digest':manifest['manifest_digest'],
             'manifest_file_sha256':digest(payload[manifest_path]),'manifest_self_reference':manifest['self_reference'],
             'renderer_version':manifest['renderer_version'],'renderer_source_digest':manifest['renderer_source_digest'],
             'baseline':BASELINE,'catalog_asset_sha256':CATALOG_DIGEST,'catalog_canonical_digest':digest(canonical(registry)),
@@ -70,7 +73,11 @@ def frozen_bundle(record):
                           'script_sha256':digest(payload['scripts/validate.sh']),'file_mode':'0644',
                           'validator_path':BASE_PATH+'/validate.py','validator_sha256':digest(selected['validate.py']),
                           'required_python':'3.14','isolation':'ISOLATED_NO_SITE_PACKAGES',
-                          'external_trust':'EP_OWNER_QUALIFIED_PIN_REQUIRED'}}
+                          'external_trust':'EP_OWNER_QUALIFIED_PIN_REQUIRED',
+                          'document_validation_phase':'BEFORE_GIT_METADATA',
+                          'committed_verification':'EXACT_TREE_BLOB_100644_AND_WORKTREE_0644',
+                          'repeat_validation':'EXACT_COMMITTED_DOCUMENT_PROJECTION_ONLY',
+                          'target_entrypoint_qualification':'NOT_ASSERTED_WITH_GIT_METADATA'}}
 
 
 def plan_request(value):

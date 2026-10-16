@@ -95,3 +95,14 @@ class FrozenGenesisPlanTests(TestCase):
         self.assertNotEqual(first['plan_id'],second['plan_id']);self.assertNotEqual(first['plan_digest'],second['plan_digest'])
         self.assertEqual(second['previous_plan_id'],first['plan_id']);self.assertEqual(second['plan_revision'],2)
         self.assertFalse(second['execution_authorized']);self.assertEqual(second['state'],'EP_ADMISSION_REQUIRED')
+
+class GenesisJoinBindingTests(TestCase):
+    def test_ep_envelope_and_original_array_digests_are_distinct_exact_bindings(self):
+        record,content,request,principal=plan_fixture()
+        bundle=frozen_bundle(record)
+        original_envelope=json.loads(Path('examples/project-bootstrap/authority-bundle.json').read_text())
+        self.assertEqual(bundle['ep_bundle_binding']['canonical_digest'],digest(canonical(original_envelope)))
+        self.assertEqual(bundle['ep_bundle_binding']['canonical_digest'],'0c2c0fb41a68793be0960bb4289d7590060c8092ebb976852e1c4674b0f66b1d')
+        self.assertNotEqual(bundle['ep_bundle_binding']['canonical_digest'],bundle['bundle_digest'])
+        self.assertEqual(bundle['validation']['document_validation_phase'],'BEFORE_GIT_METADATA')
+        self.assertEqual(bundle['validation']['target_entrypoint_qualification'],'NOT_ASSERTED_WITH_GIT_METADATA')

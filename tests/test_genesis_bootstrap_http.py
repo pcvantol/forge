@@ -165,3 +165,50 @@ class GenesisBootstrapHttpTest(unittest.TestCase):
         with patch('forge.genesis_bootstrap_cli.publish_cli',side_effect=interrupted),patch('sys.stdout',output):
             result=main(['--data-root',str(self.root/'runtime'),'capability','--token-file',str(self.root/'bootstrap.private'),'--audience','synthetic-workspace'])
         self.assertEqual(result,1);self.assertEqual(output.getvalue(),'{"partial":')
+
+    def test_actual_cli_init_issue_prepare_decide_original_read_revoke_and_closed_error(self):
+        import io
+        from forge.genesis_bootstrap_cli import main
+        def cli(*args,success=True):
+            output=io.StringIO()
+            with patch('sys.stdout',output):code=main(['--data-root',str(self.root/'runtime'),*args])
+            self.assertEqual(code,0 if success else 1,output.getvalue());return json.loads(output.getvalue())
+        self.approve_content();self.assertEqual(cli('init')['state'],'PRIVATE_GENESIS_BOOTSTRAP_INITIALIZED')
+        auth=['--token-file',str(self.root/'bootstrap.private'),'--audience','synthetic-workspace']
+        self.assertFalse(cli('capability',*auth)['execution_authorized'])
+        request=self.request();file=self.root/'plan-request.private';file.write_text(json.dumps(request));file.chmod(0o600)
+        view=cli('plan',*auth,'--request-file',str(file));plan=view['plan']
+        self.assertEqual(cli('read',*auth,'--dossier-id','synthetic-dossier','--reference',plan['plan_id'])['plan'],plan)
+        self.assertEqual(cli('intent',*auth,'--dossier-id','synthetic-dossier','--reference','plan-original')['plan'],plan)
+        exact=self.root/'exact-plans.private';exact.write_text(json.dumps([{'plan_id':plan['plan_id'],'plan_digest':plan['plan_digest']}]));exact.chmod(0o600)
+        issued=cli('issue','--principal-id',self.setup['human_principal_id'],'--proposal-principal-id','synthetic-service','--audience','synthetic-workspace','--dossier-id','synthetic-dossier','--source-plan-id',self.source['plan_id'],'--permission','READ','--permission','DECIDE_EFFECT','--expires-at',self.expiry,'--token-file',str(self.root/'cli-effect.private'),'--exact-plans-file',str(exact))
+        human=['--token-file',str(self.root/'cli-effect.private'),'--audience','synthetic-workspace']
+        file.write_text(json.dumps(self.effect(view)));file.chmod(0o600)
+        decided=cli('decide',*human,'--request-file',str(file));self.assertTrue(decided['effect_decision_currently_applicable'])
+        for action,reference in [('decision',decided['original_decision']['decision_id']),('decision-intent','effect-original')]:
+            self.assertEqual(cli(action,*human,'--dossier-id','synthetic-dossier','--reference',reference)['original_decision'],decided['original_decision'])
+        self.assertEqual(cli('revoke','--grant-id',issued['grant_id'])['state'],'REVOKED')
+        self.assertIn('error',cli('capability',*human,success=False))
+        self.assertIn('error',cli('read',*auth,'--dossier-id','synthetic-dossier','--reference','missing',success=False))
+
+    def test_finite_owner_scope_and_corrupt_grants_cannot_delegate_effects(self):
+        self.approve_content();_,view=self.prepare();plan=view['plan']
+        with self.assertRaises(PermissionError):
+            self.issue('unrelated-human','not-the-canonical-human',['READ','DECIDE_EFFECT'],[{'plan_id':plan['plan_id'],'plan_digest':plan['plan_digest']}])
+        with self.assertRaises(PermissionError):
+            self.issue('wrong-plan',self.setup['human_principal_id'],['READ','DECIDE_EFFECT'],[{'plan_id':plan['plan_id'],'plan_digest':'f'*64}])
+        with self.assertRaises(PermissionError):
+            self.issue('missing-plan',self.setup['human_principal_id'],['READ','DECIDE_EFFECT'],[{'plan_id':'unretained-plan','plan_digest':'f'*64}])
+        with self.assertRaises(ValueError):
+            self.issue('unbounded-effect',self.setup['human_principal_id'],['READ','DECIDE_EFFECT'])
+        with self.assertRaises(ValueError):
+            self.issue('unknown-purpose',self.setup['human_principal_id'],['READ','APPLY'])
+        with self.assertRaises(ValueError):
+            self.grant.issue(principal_id='synthetic-service',audience='synthetic-workspace',proposal_principal_id='synthetic-service',dossier_ids=['synthetic-dossier'],source_plan_ids=[self.source['plan_id']],permissions=['READ'],exact_plans=[],expires_at=self.expiry,token_path=self.grant.store)
+        before=self.grant.path.read_bytes()
+        for field,value in [('purpose','CONTENT_BASELINE_ONLY/1.0'),('human_binding',{'operator_id':'x'}),('operator_binding','not-a-digest'),('state','UNKNOWN')]:
+            rows=json.loads(before);rows['records'][0][field]=value;self.grant.path.write_text(json.dumps(rows));self.grant.path.chmod(0o600)
+            try:self.assertIn(self.call('GET',BASE+'/capability')[0],(401,403))
+            finally:self.grant.path.write_bytes(before);self.grant.path.chmod(0o600)
+        self.assertEqual(self.call('GET',BASE+'/capability')[0],200)
+        with self.assertRaises(ValueError):self.grant.revoke('unretained-grant')

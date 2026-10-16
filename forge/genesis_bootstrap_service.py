@@ -35,6 +35,8 @@ class GenesisBootstrapService:
                 expected='bootstrap-'+prefix+'-'+digest(canonical([request['instance_id'],doc['principal_id'],doc['audience'],request['dossier_id'],request['operation_id']]))[:32]
                 if h!=row['request_digest'] or key!=doc[identity] or key!=expected:
                     raise ValueError('original Genesis identity invalid')
+                if row['kind']=='EFFECT_DECISION' and (doc['request_digest']!=h or doc['decision_digest']!=digest(canonical({k:v for k,v in doc.items() if k!='decision_digest'}))):
+                    raise ValueError('original effect decision digest invalid')
                 if row['kind']=='PLAN' and doc['plan_digest']!=digest(canonical({k:v for k,v in doc.items() if k!='plan_digest'})):
                     raise ValueError('original plan digest invalid')
             self.lineages(store)
@@ -135,7 +137,7 @@ class GenesisBootstrapService:
                  +'Proposed project/repository: '+plan['documents']['identity']['project_id']+' / '+plan['documents']['identity']['repository_id']+'\n'
                  +'Target references: '+plan['target']['ep_instance_id']+' / '+plan['target']['placement_ref']+' / '+plan['target']['target_ref']+'\n'
                  +'Effects requested: '+', '.join(plan['effects'])+'\n'
-                 +'Validation: bash scripts/validate.sh through externally trusted Python3.14 isolated validation.\n'
+                 +'Validation: original bash scripts/validate.sh through externally trusted Python3.14 isolated validation before Git metadata; committed-document verification remains with the execution host.\n'
                  +'Open questions: '+str(len(plan['open_questions']))+'; required unanswered: '+str(len(plan['blocking_open_points']))+'\n'
                  +'No target write, execution-host credential, network publication or Mission is performed.')
         return {'summary':summary,'contract_version':CONTRACT,'instance_id':p.instance_id,'principal_id':p.principal_id,'audience':p.audience,'dossier_id':plan['dossier_id'],
@@ -214,6 +216,7 @@ class GenesisBootstrapService:
                 raise BootstrapConflict('GENESIS_EFFECT_INAPPLICABLE')
             decision={'decision_id':key,'decision_revision':len(history)+1,'principal_id':p.principal_id,'audience':p.audience,
                       'grant_id':p.grant_id,'human_binding':p.human_binding,'occurred_at':datetime.now(UTC).isoformat(),**request}
+            decision['request_digest']=h; decision['decision_digest']=digest(canonical(decision))
             self.save(store,key,'EFFECT_DECISION',request,h,decision)
             return self.view(p,store,plan['plan_id'],decision)
 
