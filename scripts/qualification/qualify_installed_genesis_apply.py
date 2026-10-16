@@ -4,13 +4,14 @@ This does not replace the later negative/recovery matrix or final-main proof.
 It requires the separately qualified producer pin before initializing a target.
 """
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from importlib.util import spec_from_file_location, module_from_spec
 import json
 import fnmatch
 import configparser
+from concurrent.futures import ThreadPoolExecutor
 import signal
 import tomllib
 import os
@@ -28,6 +29,168 @@ spec = spec_from_file_location('genesis_owning_qualification', HERE/'qualify_ins
 G = module_from_spec(spec); spec.loader.exec_module(G)
 C = G.C
 CONTRACT = 'forge-genesis-apply/v1'
+
+# Test-only crash barriers wrap actual owning producer persistence boundaries.
+# No ledger state, authority, effect result or product byte is fabricated.
+FAULT_LAUNCHER = r"""import json,os,signal,sys
+from pathlib import Path
+from engineering_platform import genesis_service as service,server
+point,marker,root,instance=sys.argv[1:]
+def barrier():
+ pending=Path(marker+'.pending')
+ with pending.open('x') as stream:
+  os.chmod(pending,0o600);json.dump({'pid':os.getpid(),'point':point},stream)
+  stream.flush();os.fsync(stream.fileno())
+ os.replace(pending,marker)
+ os.kill(os.getpid(),signal.SIGSTOP)
+if point=='ACCEPT':
+ original=service.admit
+ def wrapped(*a,**k):
+  result=original(*a,**k)
+  if result['newly_admitted']:barrier()
+  return result
+ service.admit=wrapped
+elif point=='REGISTER':
+ original=service.execute
+ def wrapped(*a,**k):
+  result=original(*a,**k);barrier();return result
+ service.execute=wrapped
+else:
+ original=service._execute_step
+ def wrapped(*a,**k):
+  result=original(*a,**k)
+  if k['step']==point:barrier()
+  return result
+ service._execute_step=wrapped
+raise SystemExit(server.main(['serve','--data-root',root,'--expected-instance-id',instance]))
+"""
+
+
+def apply_outcome(*args):
+    try:return apply_call(*args)
+    except (OSError, TimeoutError) as lost:
+        return 503, {'transport_failure':type(lost).__name__}
+
+
+def retained_call(output, name, *args):
+    status, value = apply_outcome(*args)
+    private(output/(name+'.http.private.json'), {'status':status, 'response':value})
+    return status, value
+
+
+def original_recovery(args, ep, servers, forge, body, report, port, forge_pid):
+    """Kill/restart the exact own OS children after a real durable boundary."""
+    marker=ep.root/'barrier.private.json'
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending=pool.submit(retained_call,args.output_dir,'lost-original-post',port,forge/'apply.private',
+                            'POST','/v1/genesis-apply/operations',body)
+        deadline=time.monotonic()+120
+        while not marker.exists():
+            if time.monotonic()>deadline:raise TimeoutError('actual EP crash boundary not reached')
+            time.sleep(.05)
+        boundary=json.loads(marker.read_bytes())
+        if boundary!={'pid':ep.process.pid,'point':args.crash_boundary}:raise RuntimeError('own crash boundary identity differs')
+        counts,evidence,rows=ep.facts()
+        private(args.output_dir/'before-crash-owning-evidence.private.json',{'counts':counts,'evidence':evidence,'rows':rows})
+        before_state=rows['ep_genesis_operations'][0]['state']
+        old_ep=ep.process.pid
+        ep.stop() # exact original unreaped child and identity-checked workers
+        servers.close() # independent real Forge Server stop, same durable stores
+        pending.result(timeout=40)
+    ep.start(fault=False)
+    new_port,new_forge,_=servers.enter_context(C.server(args.python,forge,args.output_dir))
+    if new_forge==forge_pid or ep.process.pid==old_ep:raise RuntimeError('separate OS restart not demonstrated')
+    path='/v1/genesis-apply/operations/original-apply?dossier_id=synthetic-dossier'
+    status,original=retained_call(args.output_dir,'after-two-os-restarts-original-get',new_port,forge/'apply.private','GET',path)
+    if status!=200:raise RuntimeError('original operation unavailable after independent OS restarts')
+    if original['operation_id']!=body['operation_id'] or original['original_request']!=body or original['explicit_attempts']!=1:
+        raise RuntimeError('original intent changed after restart')
+    if ep.facts()[1]!=evidence:raise RuntimeError('Forge GET performed an EP effect')
+    report['actual_crash_recovery']={'boundary':args.crash_boundary,'before_state':before_state,
+        'before_forge_pid':forge_pid,'after_forge_pid':new_forge,'before_ep_pid':old_ep,'after_ep_pid':ep.process.pid,
+        'original_get_state':original['state'],'no_effect_on_get':True}
+    if original['state']!='COMPLETE':
+        resume={'contract_version':CONTRACT,'instance_id':body['instance_id'],'dossier_id':body['dossier_id'],
+                'operation_id':body['operation_id'],'attempt_id':'explicit-owning-recovery','original_request_digest':original['original_request_digest']}
+        status,original=retained_call(args.output_dir,'explicit-original-resume',new_port,forge/'apply.private',
+                                     'POST','/v1/genesis-apply/operations/original-apply/resume',resume)
+    return new_port,status,original
+
+
+
+def completion_matrix(args, ep, servers, forge, body, operation, report, port):
+    """Actual HTTP refusals and causal restored installed defect; own data only."""
+    baseline=ep.facts()
+    failures=[]
+    for label,change in [('instance',{'instance_id':'foreign'}),('context',{'dossier_id':'foreign'}),
+            ('plan',{'plan_digest':'f'*64}),('decision',{'decision_digest':'f'*64}),
+            ('pairing',{'pairing_id':'foreign'}),('caller-role',{'role':'OWNER'}),
+            ('caller-target',{'target_ref':'foreign'})]:
+        status,value=retained_call(args.output_dir,'refusal-'+label,port,forge/'apply.private','POST','/v1/genesis-apply/operations',{**body,**change})
+        if status not in (400,403,404,409):raise RuntimeError('changed context/intent unexpectedly accepted: '+label)
+        failures.append(label)
+    status,_=retained_call(args.output_dir,'refusal-old-purpose',port,forge/'effect.private','POST','/v1/genesis-apply/operations',body)
+    if status!=403:raise RuntimeError('old effect grant upgraded into apply authority')
+    item='/v1/genesis-apply/operations/original-apply?dossier_id=synthetic-dossier'
+    for label,relative in [('own-journal','onboarding/genesis-apply/store.json'),('own-source','onboarding/genesis-bootstrap/store.json')]:
+        path=forge/'runtime'/relative
+        raw=path.read_bytes();retained=path.with_name(path.name+'.r57-retained')
+        path.rename(retained)
+        try:
+            status,_=retained_call(args.output_dir,'missing-'+label,port,forge/'apply.private','GET',item)
+            if status not in (409,503):raise RuntimeError('missing initialized source treated as healthy')
+            private(path,b'{}\n')
+            status,_=retained_call(args.output_dir,'corrupt-'+label,port,forge/'apply.private','GET',item)
+            if status not in (409,503):raise RuntimeError('corrupt initialized source treated as healthy')
+        finally:
+            if path.exists():path.unlink()
+            retained.rename(path)
+        if path.read_bytes()!=raw:raise RuntimeError('original owning source restoration differs')
+    def detector(current_port):
+        status,value=retained_call(args.output_dir,'detector-'+str(time.monotonic_ns()),current_port,forge/'apply.private','GET',item)
+        if status!=200:raise RuntimeError('actual original operation detector unavailable')
+        if value['original_ep_operation']['commit']!=operation['commit'] or value['state']!='COMPLETE':raise RuntimeError('original operation differs')
+        assert value['project_readiness']=='NOT_ASSESSED','R57_FALSE_PROJECT_READINESS'
+        return value
+    detector(port)
+    module=Path(subprocess.check_output([str(args.python),'-I','-c','import forge.genesis_apply_service as m;print(m.__file__)'],cwd=args.wheel.parent).decode().strip())
+    original=module.read_bytes();needle=b"'project_readiness':'NOT_ASSESSED'"
+    if original.count(needle)!=1:raise RuntimeError('exact isolated installed defect target unavailable')
+    servers.close()
+    try:
+        module.write_bytes(original.replace(needle,b"'project_readiness':'READY'"))
+        faulty_port,_,_=servers.enter_context(C.server(args.python,forge,args.output_dir))
+        try:detector(faulty_port)
+        except AssertionError as error:
+            if str(error)!='R57_FALSE_PROJECT_READINESS':raise
+            report['restored_defect_red']={'category':'AssertionError','detector':'R57_FALSE_PROJECT_READINESS','installed_module_original_sha256':sha256(original).hexdigest()}
+        else:raise RuntimeError('restored real installed defect escaped its detector')
+    finally:
+        primary=sys.exc_info()[1];cleanup_errors=[]
+        try:servers.close()
+        except BaseException as error:cleanup_errors.append(error)
+        try:
+            module.write_bytes(original)
+            if module.read_bytes()!=original:raise RuntimeError('isolated installed bytes not restored')
+        except BaseException as error:cleanup_errors.append(error)
+        if cleanup_errors:
+            if primary is not None:
+                for error in cleanup_errors:primary.add_note('isolated fault cleanup: '+type(error).__name__)
+            else:
+                for error in cleanup_errors[1:]:cleanup_errors[0].add_note('additional cleanup: '+type(error).__name__)
+                raise cleanup_errors[0]
+    port,_,_=servers.enter_context(C.server(args.python,forge,args.output_dir))
+    detector(port);report['restored_defect_green']=True
+    if ep.facts()!=baseline:raise RuntimeError('negative/read/fault detector produced an EP effect')
+    # Owning producer revocation is performed by the separate synthetic EP owner.
+    ep.command('genesis_cli','revoke','--grant-id','r57-owner-genesis')
+    status,_=retained_call(args.output_dir,'revoked-ep-no-disclosure',port,forge/'apply.private','GET',item)
+    if status not in (403,424):raise RuntimeError('revoked EP authority disclosed a successful result')
+    if ep.facts()!=baseline:raise RuntimeError('revocation/read changed original physical effects')
+    report['negative_matrix']={'changed_bindings_refused':failures,'old_effect_grant_refused':True,
+        'missing_and_corrupt_initialized_journal_and_source_refused':True,'ep_revocation_refused':True,
+        'no_extra_ep_effects':True}
+    return port
 
 
 def canonical(value):
@@ -222,10 +385,12 @@ class EPServer:
         token=self.root/'ep-token.private';private(token,answer.pop('credential').encode())
         return answer,token
 
-    def start(self):
+    def start(self, *, fault=True):
         self.log=(self.output/'ep-server.private.log').open('ab');os.chmod(self.output/'ep-server.private.log',0o600)
-        self.process=subprocess.Popen([str(self.args.ep_python),'-I','-m','engineering_platform.server','serve','--data-root',str(self.data),
-            '--expected-instance-id',self.instance],cwd=self.root,env=self.env,stdout=self.log,stderr=self.log,start_new_session=True)
+        command=[str(self.args.ep_python),'-I','-m','engineering_platform.server','serve','--data-root',str(self.data),'--expected-instance-id',self.instance]
+        if fault and getattr(self.args,'crash_boundary',None):
+            command=[str(self.args.ep_python),'-I','-c',FAULT_LAUNCHER,self.args.crash_boundary,str(self.root/'barrier.private.json'),str(self.data),self.instance]
+        self.process=subprocess.Popen(command,cwd=self.root,env=self.env,stdout=self.log,stderr=self.log,start_new_session=True)
         deadline=time.monotonic()+20
         while time.monotonic()<deadline:
             if os.waitid(os.P_PID,self.process.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT) is not None:raise RuntimeError('own EP Server exited')
@@ -357,7 +522,8 @@ def run(args):
         command(['-m','forge.proposal_content_cli',*data,'issue','--principal-id',setup['human_principal_id'],'--proposal-principal-id','synthetic-service',
                  '--audience','synthetic-workspace','--dossier-id','synthetic-dossier','--permission','READ','--permission','DECIDE','--role','BUSINESS','--role','ARCHITECTURE',
                  '--expires-at',expiry,'--token-file',str(forge/'decide.private')],forge)
-        with C.server(args.python,forge,args.output_dir) as (port,forge_pid,_):
+        with ExitStack() as servers:
+            port,forge_pid,_=servers.enter_context(C.server(args.python,forge,args.output_dir))
             original=json.loads(subprocess.check_output(['git','-C',str(G.SOURCE),'show',args.source_revision+':examples/project-bootstrap/authority-input.json']))
             status,proposal=C.call(port,forge/'prepare.private','POST','/v1/onboarding/plans',dict(contract_version='forge-project-proposal-http/v1',
                 instance_id=setup['instance_id'],dossier_id='synthetic-dossier',operation_id='original-proposal',proposal_kind='pb-render/1.0',input=original))
@@ -395,10 +561,10 @@ def run(args):
             command(['-m','forge.genesis_apply_cli',*data,'bind-peer','--config-file',str(config_path),'--credential-file',str(ep_token)],forge)
             command(['-m','forge.genesis_apply_cli',*data,'issue','--principal-id',setup['human_principal_id'],*scope,'--permission','READ','--permission','REQUEST_APPLY','--permission','RESUME','--exact-plans-file',str(exact),'--token-file',str(forge/'apply.private')],forge)
             body=dict(contract_version=CONTRACT,instance_id=setup['instance_id'],dossier_id='synthetic-dossier',operation_id='original-apply',plan_id=plan['plan_id'],plan_digest=plan['plan_digest'],decision_id=decision['decision_id'],decision_digest=decision['decision_digest'],pairing_id='original-owner-pair')
-            try:
-                status,result=apply_call(port,forge/'apply.private','POST','/v1/genesis-apply/operations',body)
-            except (OSError,TimeoutError) as lost:
-                status,result=503,{'transport_failure':type(lost).__name__}
+            if getattr(args,'crash_boundary',None):
+                port,status,result=original_recovery(args,ep,servers,forge,body,report,port,forge_pid)
+            else:
+                status,result=retained_call(args.output_dir,'initial-apply',port,forge/'apply.private','POST','/v1/genesis-apply/operations',body)
             report['initial_apply_status']=status
             deadline=time.monotonic()+300
             reads=0
@@ -408,7 +574,7 @@ def run(args):
                 if reads>=40 or time.monotonic()>=deadline:raise TimeoutError('original EP operation did not prove completion')
                 if status not in (200,503):raise RuntimeError('original operation refused')
                 time.sleep(5);reads+=1
-                status,result=apply_call(port,forge/'apply.private','GET','/v1/genesis-apply/operations/original-apply?dossier_id=synthetic-dossier')
+                status,result=retained_call(args.output_dir,'original-read-'+str(reads),port,forge/'apply.private','GET','/v1/genesis-apply/operations/original-apply?dossier_id=synthetic-dossier')
                 if status==200 and result['state'] in ('PARTIAL','EFFECT_UNCERTAIN'):
                     raise RuntimeError('own EP result requires explicit recovery, not automatic resume')
             report['bounded_original_reads']=reads
@@ -417,7 +583,7 @@ def run(args):
             Draft202012Validator(schema).validate(result)
             operation=result['original_ep_operation'];assert result['project_readiness']=='NOT_ASSESSED' and result['mission']=='NOT_REQUESTED'
             status,replay=apply_call(port,forge/'apply.private','POST','/v1/genesis-apply/operations',body);assert status==200
-            assert replay['original_ep_operation']['commit']==operation['commit'] and replay['explicit_attempts']==1
+            assert replay['original_ep_operation']['commit']==operation['commit'] and replay['explicit_attempts']==(2 if getattr(args,'crash_boundary',None) not in (None,'REGISTER') else 1)
             counts,evidence,registered_rows=ep.facts();assert all(counts[t]==1 for t in ('ep_genesis_operations','ep_project_registrations','ep_repository_registrations','ep_local_repository_bindings'))
             assert all(counts[t]==0 for t in ('ep_submissions','ep_execution_runs','engineering_transactions'))
             git=lambda *a:subprocess.check_output(['/usr/bin/git','-C',str(ep.target),*a],timeout=20)
@@ -434,6 +600,10 @@ def run(args):
             report.update(cases=['actual-r52-r54-r56-original-http-chain','separate-test-owner-issued-ep-grant','actual-forge-to-ep-post-get',
                 'independent-37-committed-byte-and-mode-readback','one-commit-tree-trusted-validator-and-b8r','same-original-replay-no-second-admission'],
                 operation_id=operation['operation_id'],commit=operation['commit'],tree=operation['tree'],ep_counts=counts,b8r=b8r,explicit_attempts=replay['explicit_attempts'])
+            if getattr(args,'security_matrix',False):
+                port=completion_matrix(args,ep,servers,forge,body,operation,report,port)
+                report['post_matrix_forge']=C.BINDING.installed_binding(args.python,args.wheel,args.source_revision)
+                report['post_matrix_ep']=ep_payload(args)
         report['chain_assertions']='PASS'
     except BaseException as error:
         primary=error;report['failure']={'category':type(error).__name__}
@@ -469,6 +639,8 @@ def main():
         p.add_argument('--'+field,type=Path,required=True)
     for field in ('source-revision','ep-source-revision','ep-source-tree','ep-wheel-sha256'):
         p.add_argument('--'+field,required=True)
+    p.add_argument('--security-matrix',action='store_true')
+    p.add_argument('--crash-boundary',choices=('ACCEPT','GIT_REF','VERIFY_COMMIT','REGISTER'))
     args=p.parse_args();print(json.dumps(run(args),sort_keys=True))
 
 
