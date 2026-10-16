@@ -66,3 +66,26 @@ class GenesisPeerDeadlineTests(TestCase):
         self.assertIsNone(kwargs['body'])
         self.assertEqual(kwargs['headers']['EP-Audience'],'genesis-bootstrap')
         self.assertEqual(self.connection.request.call_count,1)
+
+    def test_actual_http_resume_obeys_owning_zero_length_body_guard(self):
+        from http.server import BaseHTTPRequestHandler,HTTPServer
+        from threading import Thread
+        observed={}
+        class StrictSyntheticResume(BaseHTTPRequestHandler):
+            def do_POST(self):
+                observed.update(path=self.path,length=self.headers.get('Content-Length'))
+                raw=b'{"synthetic_original":true}\n'
+                self.send_response(200 if observed['length']=='0' else 400)
+                self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
+            def log_message(self,*args):pass
+        server=HTTPServer(('127.0.0.1',0),StrictSyntheticResume)
+        thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            pairing={**self.pairing,'endpoint':'http://127.0.0.1:'+str(server.server_port)}
+            # Use actual stdlib connection/clock, not the fixture transport mocks.
+            self.factory.stop();self.time.stop();self.timer.stop()
+            raw=exchange(pairing,'POST',resume=True,before_send=lambda _:None)
+            self.assertEqual(raw,b'{"synthetic_original":true}\n')
+            self.assertEqual(observed,{'path':'/v1/bootstrap/genesis/operations/original/resume','length':'0'})
+        finally:
+            server.shutdown();thread.join(3);server.server_close()
