@@ -183,7 +183,7 @@ def completion_matrix(args, ep, servers, forge, body, operation, report, port):
     detector(port);report['restored_defect_green']=True
     if ep.facts()!=baseline:raise RuntimeError('negative/read/fault detector produced an EP effect')
     # Owning producer revocation is performed by the separate synthetic EP owner.
-    ep.command('genesis_cli','revoke','--grant-id','r57-owner-genesis')
+    ep.command('genesis_cli','revoke','--grant-id','r57-owner-genesis','--operation-id','owner-revoke-original-apply')
     status,_=retained_call(args.output_dir,'revoked-ep-no-disclosure',port,forge/'apply.private','GET',item)
     if status not in (403,424):raise RuntimeError('revoked EP authority disclosed a successful result')
     if ep.facts()!=baseline:raise RuntimeError('revocation/read changed original physical effects')
@@ -497,7 +497,8 @@ def run(args):
     args.output_dir.mkdir(mode=0o700)
     report={'qualification':'R57_FIRST_SMALL_REAL_INSTALLED_CHAIN','result':'FAIL','cleanup':False,'cases':[],
             'scope':'SYNTHETIC_NEW_LOCAL_DOCUMENT_ONLY; NOT_PROJECT_READINESS; NOT_FULL_MATRIX',
-            'human_decisions':'SYNTHETIC_TECHNICAL_NOT_REAL_OWNER_APPROVAL'}
+            'human_decisions':'SYNTHETIC_TECHNICAL_NOT_REAL_OWNER_APPROVAL',
+            'operator_identity_evidence':'MODELED_TRUSTED_OS_FIXTURE' if C.MODELED_OS else 'ACTUAL_MACOS_GENERATED_UID'}
     primary=None;ep=None;root=args.scratch_root
     try:
         pin=probe(args.python,'import json;from forge.genesis_apply_peer import QUALIFIED_PRODUCER;print(json.dumps(QUALIFIED_PRODUCER))',args.wheel.parent)
@@ -639,9 +640,10 @@ def main():
         p.add_argument('--'+field,type=Path,required=True)
     for field in ('source-revision','ep-source-revision','ep-source-tree','ep-wheel-sha256'):
         p.add_argument('--'+field,required=True)
+    p.add_argument('--modeled-os-identity',action='store_true')
     p.add_argument('--security-matrix',action='store_true')
     p.add_argument('--crash-boundary',choices=('ACCEPT','GIT_REF','VERIFY_COMMIT','REGISTER'))
-    args=p.parse_args();print(json.dumps(run(args),sort_keys=True))
+    args=p.parse_args();C.MODELED_OS=args.modeled_os_identity;print(json.dumps(run(args),sort_keys=True))
 
 
 if __name__=='__main__':main()
