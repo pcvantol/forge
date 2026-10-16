@@ -193,13 +193,16 @@ def concurrent_original(Q,c):
             'POST','/v1/genesis-apply/operations',body)
     with ThreadPoolExecutor(max_workers=3) as pool:values=list(pool.map(submit,range(3)))
     if values[2][0] not in (403,409):raise RuntimeError('concurrent changed intent was accepted')
-    if any(status not in (200,503) for status,value in values[:2]):raise RuntimeError('unexpected concurrent original outcome')
+    if any(status not in (200,424,503) for status,value in values[:2]):raise RuntimeError('unexpected concurrent original outcome')
     for status,value in values[:2]:
-        if status==503 and value.get('error',{}).get('code') not in ('EP_GENESIS_TRANSPORT_UNCERTAIN','EP_GENESIS_DEADLINE_EXCEEDED'):
+        if ((status==503 and value.get('error',{}).get('code') not in ('EP_GENESIS_TRANSPORT_UNCERTAIN','EP_GENESIS_DEADLINE_EXCEEDED'))
+                or (status==424 and value.get('error',{}).get('code')!='EP_GENESIS_HTTP_404')):
             raise RuntimeError('unrelated source/storage/authority failure cannot prove concurrency')
     for status,value in values[:2]:
         if status==200:return status,value,{'original_statuses':[v[0] for v in values[:2]],'conflict_status':values[2][0]}
-    return values[0][0],values[0][1],{'original_statuses':[v[0] for v in values[:2]],'conflict_status':values[2][0]}
+    for status,value in values[:2]:
+        if status==503:return status,value,{'original_statuses':[v[0] for v in values[:2]],'conflict_status':values[2][0]}
+    raise RuntimeError('no actual original response or transport uncertainty to recover')
 
 
 def late_publication(Q,c):
@@ -261,3 +264,75 @@ def concurrent_readbacks(Q,c,operation):
             raise RuntimeError('concurrent original caller did not recover the same single committed operation')
         values.append({'status':status,'operation_id':value['operation_id'],'commit':operation['commit'],'explicit_attempts':1})
     return values
+
+
+def retain_owned(Q,root,ep,output):
+    """Private primary bytes after own processes stop, before exclusive cleanup.
+
+    Raw bearer/config containers and credentials directories are excluded.
+    Nothing is extracted or followed through an archived symlink.
+    """
+    import os
+    import tarfile
+    selected=[('ep-target',ep.target),('ep-native-evidence',ep.data/'g/evidence'),
+        ('forge-onboarding',root/'f/runtime/onboarding')]
+    for base,path in (('ep-central',ep.data/'epdata.sqlite'),('forge-central',root/'f/runtime/forge.db')):
+        for suffix in ('','-wal','-shm'):
+            value=Path(str(path)+suffix)
+            if value.exists():selected.append((base+suffix,value))
+    archive=output/'owned-primary-evidence.private.tar'
+    import stat
+    def add_owned(saved,fd,archive_name):
+        # Every component is opened relative to a pinned own directory. No
+        # symlink, special file or externally hardlinked payload is admissible.
+        try:
+            before=os.fstat(fd)
+            if before.st_uid!=os.getuid():raise RuntimeError('archive ownership differs')
+            item=tarfile.TarInfo(archive_name);item.mode=stat.S_IMODE(before.st_mode)
+            item.uid=before.st_uid;item.gid=before.st_gid;item.mtime=before.st_mtime
+            if stat.S_ISDIR(before.st_mode):
+                item.type=tarfile.DIRTYPE;saved.addfile(item)
+                for child in sorted(os.listdir(fd)):
+                    childfd=os.open(child,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=fd)
+                    add_owned(saved,childfd,archive_name+'/'+child)
+            elif stat.S_ISREG(before.st_mode) and before.st_nlink==1:
+                item.size=before.st_size
+                with os.fdopen(os.dup(fd),'rb') as payload:saved.addfile(item,payload)
+                after=os.fstat(fd)
+                if (before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_size,after.st_mtime_ns,after.st_ctime_ns):
+                    raise RuntimeError('archive payload changed during capture')
+            else:raise RuntimeError('archive symlink/special/hardlink refused')
+        finally:os.close(fd)
+    rootfd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        marker=__import__('json').loads((root/'.r57-owner.json').read_bytes())
+        info=os.fstat(rootfd)
+        if marker['uid']!=os.getuid() or marker['identity']!=[info.st_dev,info.st_ino]:raise RuntimeError('archive root identity differs')
+        with archive.open('xb') as stream:
+            os.chmod(archive,0o600)
+            with tarfile.open(fileobj=stream,mode='w',dereference=False) as saved:
+                for name,path in selected:
+                    parts=path.relative_to(root).parts
+                    parent=os.dup(rootfd)
+                    try:
+                        for part in parts[:-1]:
+                            child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+                            os.close(parent);parent=child
+                        selectedfd=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
+                    except FileNotFoundError:continue  # Only absent optional selection, never recursive payload loss.
+                    finally:os.close(parent)
+                    add_owned(saved,selectedfd,name)
+            stream.flush();os.fsync(stream.fileno())
+    finally:os.close(rootfd)
+    with tarfile.open(archive,'r') as saved:
+        members=saved.getmembers()
+        if any(p.name.startswith('/') or '..' in Path(p.name).parts for p in members):raise RuntimeError('own archive member boundary differs')
+        # Consume every retained regular payload to reject truncated tar data.
+        for member in members:
+            if member.isfile():
+                with saved.extractfile(member) as payload:
+                    while payload.read(65536):pass
+    result={'archive':archive.name,'sha256':sha256(archive.read_bytes()).hexdigest(),'members':len(members),
+        'private':True,'raw_bearers_and_config_containers_excluded':True,'owned_processes_stopped_before_capture':True}
+    Q.private(output/'owned-primary-evidence.private.json',result)
+    return result

@@ -682,6 +682,7 @@ def run(args):
                     marker=json.loads((root/'.r57-owner.json').read_bytes());info=root.stat()
                     if marker['uid']!=os.getuid() or marker['identity']!=[info.st_dev,info.st_ino]:raise RuntimeError('own scratch identity changed')
                     require_worker_groups_exited(evidence)
+                    report['retained_primary_evidence']=extra.retain_owned(helpers,root,ep,args.output_dir)
                     shutil.rmtree(root);report['cleanup']=True
             else:report['cleanup']=True
         except BaseException as cleanup:

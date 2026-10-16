@@ -175,3 +175,69 @@ def verify_process_identity(expected):
             self.assertIn('deliberately failed wait',' '.join(raised.exception.__notes__))
             report=json.loads((args.output_dir/'first-real-installed-chain.public.json').read_bytes())
             self.assertEqual(report['result'],'FAIL');self.assertEqual(report['failure']['stage'],'negative-context-cleanup')
+
+    def test_concurrency_detector_accepts_only_exact_pending_peer_or_transport_failures(self):
+        spec=spec_from_file_location('r57_actual_matrix_guards',ROOT/'scripts/qualification/genesis_apply_matrix.py')
+        matrix=module_from_spec(spec);spec.loader.exec_module(matrix)
+        context=dict(body={'plan_digest':'a'*64},output=Path('/unused'),port=0,forge=Path('/unused'))
+        statuses=[(503,{'error':{'code':'EP_GENESIS_TRANSPORT_UNCERTAIN'}}),(424,{'error':{'code':'EP_GENESIS_HTTP_404'}}),(409,{'error':{'code':'GENESIS_EXACT_ORIGINAL_DECISION_REQUIRED'}})]
+        def execute(values):
+            helpers=SimpleNamespace(retained_call=lambda output,label,*a:values[int(label.rsplit('-',1)[1])])
+            return matrix.concurrent_original(helpers,context)
+        status,_,summary=execute(statuses)
+        self.assertEqual(status,503);self.assertEqual(summary['original_statuses'],[503,424])
+        for status,code in ((503,'GENESIS_APPLY_STORAGE_UNAVAILABLE'),(424,'EP_GENESIS_HTTP_403'),(403,'FORBIDDEN')):
+            changed=list(statuses);changed[1]=(status,{'error':{'code':code}})
+            with self.subTest(code=code),self.assertRaises(RuntimeError):execute(changed)
+
+    def test_private_primary_retention_excludes_bearers_and_refuses_all_link_escapes(self):
+        import os,tarfile
+        spec=spec_from_file_location('r57_retention_guards',ROOT/'scripts/qualification/genesis_apply_matrix.py')
+        matrix=module_from_spec(spec);spec.loader.exec_module(matrix)
+        with TemporaryDirectory() as temp:
+            base=Path(temp);root=base/'own';target=root/'w/r';target.mkdir(parents=True)
+            data=root/'s';(data/'g/evidence').mkdir(parents=True)
+            (target/'README.md').write_bytes(b'exact own document\n');(data/'g/evidence/native.stdout').write_bytes(b'original worker evidence\n')
+            (data/'epdata.sqlite').write_bytes(b'synthetic retained database bytes')
+            creds=root/'f/runtime/credentials';creds.mkdir(parents=True);(creds/'token.private').write_bytes(b'NEVER_ARCHIVE_THIS_BEARER')
+            (root/'ep-token.private').write_bytes(b'NEVER_ARCHIVE_EP_BEARER')
+            outside=base/'outside';outside.write_bytes(b'NEVER_FOLLOW_SYMLINK_SECRET')
+            info=root.stat();Q.private(root/'.r57-owner.json',{'uid':os.getuid(),'identity':[info.st_dev,info.st_ino]})
+            output=base/'evidence';output.mkdir()
+            helpers=SimpleNamespace(private=Q.private);ep=SimpleNamespace(target=target,data=data)
+            result=matrix.retain_owned(helpers,root,ep,output)
+            self.assertTrue(result['private']);archive=output/result['archive'];self.assertEqual(archive.stat().st_mode&0o777,0o600)
+            with tarfile.open(archive,'r') as retained:
+                self.assertEqual(retained.extractfile('ep-target/README.md').read(),b'exact own document\n')
+                self.assertEqual(retained.extractfile('ep-native-evidence/native.stdout').read(),b'original worker evidence\n')
+            raw=archive.read_bytes()
+            for secret in (b'NEVER_ARCHIVE_THIS_BEARER',b'NEVER_ARCHIVE_EP_BEARER',b'NEVER_FOLLOW_SYMLINK_SECRET'):self.assertNotIn(secret,raw)
+
+            for kind in ('leaf','ancestor','hardlink'):
+                with self.subTest(kind=kind):
+                    attempt=base/('evidence-'+kind);attempt.mkdir()
+                    if kind=='leaf':(target/'link').symlink_to(outside)
+                    elif kind=='hardlink':os.link(outside,target/'link')
+                    else:
+                        (root/'w').rename(root/'saved-w')
+                        foreign=base/'foreign';(foreign/'r').mkdir(parents=True)
+                        (foreign/'r/token.private').write_bytes(b'NEVER_FOLLOW_SYMLINK_SECRET')
+                        (root/'w').symlink_to(foreign,target_is_directory=True)
+                    try:
+                        with self.assertRaises((OSError,RuntimeError)):matrix.retain_owned(helpers,root,ep,attempt)
+                        archive=attempt/'owned-primary-evidence.private.tar'
+                        if archive.exists():self.assertNotIn(b'NEVER_FOLLOW_SYMLINK_SECRET',archive.read_bytes())
+                    finally:
+                        if kind=='ancestor':
+                            (root/'w').unlink();(root/'saved-w').rename(root/'w')
+                        else:(target/'link').unlink()
+
+            attempt=base/'evidence-disappearing-child';attempt.mkdir()
+            original_listdir=os.listdir;target_inode=target.stat().st_ino
+            def remove_listed_child(fd):
+                names=original_listdir(fd)
+                if os.fstat(fd).st_ino==target_inode:(target/'README.md').unlink()
+                return names
+            with patch.object(os,'listdir',side_effect=remove_listed_child):
+                with self.assertRaises(FileNotFoundError):matrix.retain_owned(helpers,root,ep,attempt)
+            self.assertTrue(root.exists())
