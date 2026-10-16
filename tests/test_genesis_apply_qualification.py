@@ -186,7 +186,9 @@ def verify_process_identity(expected):
             return matrix.concurrent_original(helpers,context)
         status,_,summary=execute(statuses)
         self.assertEqual(status,503);self.assertEqual(summary['original_statuses'],[503,424])
-        for status,code in ((503,'GENESIS_APPLY_STORAGE_UNAVAILABLE'),(424,'EP_GENESIS_HTTP_403'),(403,'FORBIDDEN')):
+        fenced=list(statuses);fenced[1]=(409,{'error':{'code':'GENESIS_LATE_RESPONSE_FENCED'}})
+        self.assertEqual(execute(fenced)[0],503)
+        for status,code in ((503,'GENESIS_APPLY_STORAGE_UNAVAILABLE'),(424,'EP_GENESIS_HTTP_403'),(409,'GENESIS_ORIGINAL_INTENT_CONFLICT'),(403,'FORBIDDEN')):
             changed=list(statuses);changed[1]=(status,{'error':{'code':code}})
             with self.subTest(code=code),self.assertRaises(RuntimeError):execute(changed)
 

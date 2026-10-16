@@ -193,10 +193,11 @@ def concurrent_original(Q,c):
             'POST','/v1/genesis-apply/operations',body)
     with ThreadPoolExecutor(max_workers=3) as pool:values=list(pool.map(submit,range(3)))
     if values[2][0] not in (403,409):raise RuntimeError('concurrent changed intent was accepted')
-    if any(status not in (200,424,503) for status,value in values[:2]):raise RuntimeError('unexpected concurrent original outcome')
+    if any(status not in (200,409,424,503) for status,value in values[:2]):raise RuntimeError('unexpected concurrent original outcome')
     for status,value in values[:2]:
         if ((status==503 and value.get('error',{}).get('code') not in ('EP_GENESIS_TRANSPORT_UNCERTAIN','EP_GENESIS_DEADLINE_EXCEEDED'))
-                or (status==424 and value.get('error',{}).get('code')!='EP_GENESIS_HTTP_404')):
+                or (status==424 and value.get('error',{}).get('code')!='EP_GENESIS_HTTP_404')
+                or (status==409 and value.get('error',{}).get('code')!='GENESIS_LATE_RESPONSE_FENCED')):
             raise RuntimeError('unrelated source/storage/authority failure cannot prove concurrency')
     for status,value in values[:2]:
         if status==200:return status,value,{'original_statuses':[v[0] for v in values[:2]],'conflict_status':values[2][0]}
