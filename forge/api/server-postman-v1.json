@@ -55,6 +55,14 @@
     {
       "key": "proposalDossier",
       "value": "synthetic-product-a"
+    },
+    {
+      "key": "genesisBootstrapToken",
+      "value": ""
+    },
+    {
+      "key": "genesisBootstrapAudience",
+      "value": "synthetic-workspace"
     }
   ],
   "auth": {
@@ -2876,6 +2884,276 @@
           ]
         },
         "description": "Existing selected EP snapshot, GET-only peer; use closed request schema. Reads require explicit dossier_id query. No effect authority."
+      }
+    },
+    {
+      "name": "GET /v1/genesis-bootstrap/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisBootstrapToken}}"
+          },
+          {
+            "key": "X-Forge-Bootstrap-Audience",
+            "value": "{{genesisBootstrapAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-bootstrap",
+            "capability"
+          ]
+        },
+        "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority."
+      }
+    },
+    {
+      "name": "POST /v1/genesis-bootstrap/plans",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisBootstrapToken}}"
+          },
+          {
+            "key": "X-Forge-Bootstrap-Audience",
+            "value": "{{genesisBootstrapAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/plans",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-bootstrap",
+            "plans"
+          ]
+        },
+        "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority.",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "POST /v1/genesis-bootstrap/decisions",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisBootstrapToken}}"
+          },
+          {
+            "key": "X-Forge-Bootstrap-Audience",
+            "value": "{{genesisBootstrapAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/decisions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-bootstrap",
+            "decisions"
+          ]
+        },
+        "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority.",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "GET /v1/genesis-bootstrap/plans/{plan_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisBootstrapToken}}"
+          },
+          {
+            "key": "X-Forge-Bootstrap-Audience",
+            "value": "{{genesisBootstrapAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/plans/{plan_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-bootstrap",
+            "plans",
+            "{plan_id}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{dossierId}}"
+            }
+          ]
+        },
+        "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority."
+      }
+    },
+    {
+      "name": "GET /v1/genesis-bootstrap/intents/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisBootstrapToken}}"
+          },
+          {
+            "key": "X-Forge-Bootstrap-Audience",
+            "value": "{{genesisBootstrapAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/intents/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-bootstrap",
+            "intents",
+            "{operation_id}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{dossierId}}"
+            }
+          ]
+        },
+        "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority."
+      }
+    },
+    {
+      "name": "GET /v1/genesis-bootstrap/decisions/{decision_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisBootstrapToken}}"
+          },
+          {
+            "key": "X-Forge-Bootstrap-Audience",
+            "value": "{{genesisBootstrapAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/decisions/{decision_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-bootstrap",
+            "decisions",
+            "{decision_id}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{dossierId}}"
+            }
+          ]
+        },
+        "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority."
+      }
+    },
+    {
+      "name": "GET /v1/genesis-bootstrap/decision-intents/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisBootstrapToken}}"
+          },
+          {
+            "key": "X-Forge-Bootstrap-Audience",
+            "value": "{{genesisBootstrapAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/decision-intents/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-bootstrap",
+            "decision-intents",
+            "{operation_id}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{dossierId}}"
+            }
+          ]
+        },
+        "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority."
       }
     }
   ]

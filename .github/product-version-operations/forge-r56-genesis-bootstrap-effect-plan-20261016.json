@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.21.0",
+  "classification_rationale": "L3-GENESIS-BOOTSTRAP-EFFECT-PLAN-V1-20261016",
+  "component": "product",
+  "event_lineage": "L3-GENESIS-BOOTSTRAP-EFFECT-PLAN-V1-20261016",
+  "expected_head": "cd483fd9b17a96d0deac0f0264ab6fc32c75e778",
+  "operation_id": "forge-r56-genesis-bootstrap-effect-plan-20261016",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.22.0"
+}

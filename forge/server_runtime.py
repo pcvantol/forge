@@ -72,6 +72,8 @@ from .workspace_worklist_control_grant import WorkspaceWorklistControlGrant
 from .concept_advisory_grant import ConceptAdvisoryGrant
 from .concept_advisory_service import ConceptAdvisoryService
 from .project_proposal_grant import ProjectProposalGrant
+from .genesis_bootstrap_grant import GenesisBootstrapGrant
+from .genesis_bootstrap_service import GenesisBootstrapService
 from .proposal_content_grant import ProposalContentGrant
 from .ep_inspection_grant import InspectionAdoptionGrant
 from .ep_inspection_service import InspectionAdoptionService
@@ -107,6 +109,13 @@ SERVER_ROUTE_INVENTORY = (
     ("POST", "/v1/inspection-adoptions/plans"),
     ("GET", "/v1/inspection-adoptions/plans/{plan_id}"),
     ("GET", "/v1/inspection-adoptions/intents/{operation_id}"),
+    ("GET", "/v1/genesis-bootstrap/capability"),
+    ("POST", "/v1/genesis-bootstrap/plans"),
+    ("POST", "/v1/genesis-bootstrap/decisions"),
+    ("GET", "/v1/genesis-bootstrap/plans/{plan_id}"),
+    ("GET", "/v1/genesis-bootstrap/intents/{operation_id}"),
+    ("GET", "/v1/genesis-bootstrap/decisions/{decision_id}"),
+    ("GET", "/v1/genesis-bootstrap/decision-intents/{operation_id}"),
     ("GET", "/v1/project-proposal-decisions/capability"),
     ("POST", "/v1/project-proposal-decisions/decisions"),
     ("GET", "/v1/project-proposal-decisions/proposals/{plan_id}"),
@@ -813,6 +822,7 @@ class ForgeServerAPI:
         self.worklist_control_grant = worklist_control_grant
         self.proposal_grant = ProjectProposalGrant(services.root, instance.instance_id)
         self.concept_grant = ConceptAdvisoryGrant(services.root, instance.instance_id)
+        self.bootstrap_grant = GenesisBootstrapGrant(services.root, instance.instance_id)
         self.content_grant = ProposalContentGrant(services.root, instance.instance_id)
         self.inspection_grant = InspectionAdoptionGrant(services.root, instance.instance_id)
         self.advisory_grant = advisory_grant
@@ -842,6 +852,8 @@ class ForgeServerAPI:
     def _authentication_kind(self, authorization: str | None) -> str | None:
         if self._authenticated(authorization):
             return "ADMIN"
+        if self.bootstrap_grant.authenticate(authorization):
+            return "GENESIS_BOOTSTRAP"
         if self.inspection_grant.authenticate(authorization):
             return "EP_INSPECTION_ADOPTION"
         if self.content_grant.authenticate(authorization):
@@ -1008,6 +1020,13 @@ class ForgeServerAPI:
             return APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                 "code": "REQUEST_INVALID", "message": "Request target must be origin-form",
             }}, headers)
+        if path == '/v1/genesis-bootstrap' or path.startswith('/v1/genesis-bootstrap/'):
+            if kind != 'GENESIS_BOOTSTRAP':
+                return APIResponse(403, {'contract_version':'forge-genesis-bootstrap-effect-plan/v1','error':{'code':'GENESIS_SCOPE_DENIED'}}, headers)
+            status, document = GenesisBootstrapService(self.bootstrap_grant).handle(method,target,authorization,proposal_audience,body)
+            return APIResponse(status,document,headers)
+        if kind == 'GENESIS_BOOTSTRAP':
+            return APIResponse(403, {'contract_version':'forge-genesis-bootstrap-effect-plan/v1','error':{'code':'GENESIS_SCOPE_DENIED'}}, headers)
         if path == '/v1/inspection-adoptions' or path.startswith('/v1/inspection-adoptions/'):
             if kind != 'EP_INSPECTION_ADOPTION':
                 return APIResponse(403, {'contract_version':'forge-ep-inspection-adoption-preview/v1','error':{'code':'INSPECTION_ADOPTION_SCOPE_DENIED'}}, headers)
@@ -1288,7 +1307,7 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 length = int(length_text)
             except ValueError as error:
                 raise ValueError("request Content-Length is invalid") from error
-            limit = 262144 if self.path.startswith('/v1/inspection-adoptions/') else 65536 if self.path.startswith('/v1/project-proposal-decisions/') else 32768 if self.path.startswith('/v1/concept-advisory/') else 262144 if self.path.startswith('/v1/onboarding/') else _MAX_BODY
+            limit = 65536 if self.path.startswith('/v1/genesis-bootstrap/') else 262144 if self.path.startswith('/v1/inspection-adoptions/') else 65536 if self.path.startswith('/v1/project-proposal-decisions/') else 32768 if self.path.startswith('/v1/concept-advisory/') else 262144 if self.path.startswith('/v1/onboarding/') else _MAX_BODY
             if length < 0 or length > limit:
                 raise ValueError("request body exceeds Forge Server limit")
             raw = self.rfile.read(length)
@@ -1310,7 +1329,7 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                 if len(authorizations) > 1:
                     raise ValueError("request Authorization is ambiguous")
                 authorization = authorizations[0] if authorizations else None
-                audience_values = self.headers.get_all("X-Forge-Proposal-Audience", []) + self.headers.get_all("X-Forge-Concept-Audience", []) + self.headers.get_all("X-Forge-Content-Audience", []) + self.headers.get_all("X-Forge-Inspection-Audience", [])
+                audience_values = self.headers.get_all("X-Forge-Bootstrap-Audience", []) + self.headers.get_all("X-Forge-Proposal-Audience", []) + self.headers.get_all("X-Forge-Concept-Audience", []) + self.headers.get_all("X-Forge-Content-Audience", []) + self.headers.get_all("X-Forge-Inspection-Audience", [])
                 if len(audience_values) > 1: raise ValueError("ambiguous proposal audience")
                 proposal_audience = audience_values[0] if audience_values else None
                 kind = api._authentication_kind(authorization)
@@ -1324,20 +1343,20 @@ def make_server(host: str, port: int, api: ForgeServerAPI) -> ThreadingHTTPServe
                     review_mission = api._review_mission_for_decision(
                         self.command, path, authorization,
                     ) if kind == "WORKSPACE_REVIEW" else None
-                    if (path.startswith("/v1/inspection-adoptions/") or path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/onboarding/") or path.startswith("/v1/concept-advisory/")) and (self.headers.get_all("X-Actor") or self.headers.get_all("X-Viewer")) or ((path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/inspection-adoptions/")) and self.headers.get_all("X-Role")):
+                    if (path.startswith("/v1/genesis-bootstrap/") or path.startswith("/v1/inspection-adoptions/") or path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/onboarding/") or path.startswith("/v1/concept-advisory/")) and (self.headers.get_all("X-Actor") or self.headers.get_all("X-Viewer")) or ((path.startswith("/v1/genesis-bootstrap/") or path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/inspection-adoptions/")) and self.headers.get_all("X-Role")):
                         raise ValueError("untrusted actor header unsupported")
-                    if (path.startswith("/v1/inspection-adoptions/") or path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/onboarding/") or path.startswith("/v1/concept-advisory/")) and self.command == "GET" and self.headers.get("Content-Length", "0") != "0":
+                    if (path.startswith("/v1/genesis-bootstrap/") or path.startswith("/v1/inspection-adoptions/") or path.startswith("/v1/project-proposal-decisions/") or path.startswith("/v1/onboarding/") or path.startswith("/v1/concept-advisory/")) and self.command == "GET" and self.headers.get("Content-Length", "0") != "0":
                         raise ValueError("proposal GET body forbidden")
-                    body = self._body() if kind in {"EP_INSPECTION_ADOPTION", "PROPOSAL_CONTENT_DECISION", "CONCEPT_ADVISORY", "PROJECT_PROPOSAL", "ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE", "CANDIDATE_DECISION", "WORKSET_RELEASE", "MISSION_FINAL_ACCEPTANCE", "WORKSET_ORDER"} or review_mission is not None else None
+                    body = self._body() if kind in {"GENESIS_BOOTSTRAP", "EP_INSPECTION_ADOPTION", "PROPOSAL_CONTENT_DECISION", "CONCEPT_ADVISORY", "PROJECT_PROPOSAL", "ADMIN", "WORKSPACE_WORKLIST_CONTROL", "ADVISORY", "ADVISORY_CANDIDATE", "CANDIDATE_DECISION", "WORKSET_RELEASE", "MISSION_FINAL_ACCEPTANCE", "WORKSET_ORDER"} or review_mission is not None else None
                     response = api.handle(self.command, target, authorization, body, proposal_audience=proposal_audience)
             except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
                 response = APIResponse(400, {"api_version": SERVER_API_VERSION, "error": {
                     "code": "REQUEST_INVALID", "message": "HTTP request was rejected",
                 }}, ForgeServerAPI._headers())
             payload = json.dumps(response.body, sort_keys=True, separators=(",", ":")).encode("utf-8")
-            if (kind in ('PROPOSAL_CONTENT_DECISION','PROJECT_PROPOSAL','CONCEPT_ADVISORY') and response.status == 200) or (kind == 'EP_INSPECTION_ADOPTION' and response.status in (200,202)):
+            if (kind in ('GENESIS_BOOTSTRAP','PROPOSAL_CONTENT_DECISION','PROJECT_PROPOSAL','CONCEPT_ADVISORY') and response.status == 200) or (kind == 'EP_INSPECTION_ADOPTION' and response.status in (200,202)):
                 from .project_proposal_publication import publish
-                publish(self,api.inspection_grant if kind == "EP_INSPECTION_ADOPTION" else api.content_grant if kind == "PROPOSAL_CONTENT_DECISION" else (api.concept_grant if kind == "CONCEPT_ADVISORY" else api.proposal_grant),authorization,proposal_audience,response,payload)
+                publish(self,api.bootstrap_grant if kind == "GENESIS_BOOTSTRAP" else api.inspection_grant if kind == "EP_INSPECTION_ADOPTION" else api.content_grant if kind == "PROPOSAL_CONTENT_DECISION" else (api.concept_grant if kind == "CONCEPT_ADVISORY" else api.proposal_grant),authorization,proposal_audience,response,payload)
                 return
             self.send_response(response.status)
             for name, value in response.headers.items():

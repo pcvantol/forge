@@ -29,6 +29,7 @@ Issues = "https://github.com/pcvantol/forge/issues"
 
 [project.scripts]
 forge-inspection-adoption = "forge.ep_inspection_cli:main"
+forge-genesis-bootstrap = "forge.genesis_bootstrap_cli:main"
 forge-project-proposal-decisions = "forge.proposal_content_cli:main"
 forge-concept-advisory = "forge.concept_advisory_cli:main"
 forge-project-proposal-grant = "forge.project_proposal_grant:main"

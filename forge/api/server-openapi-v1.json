@@ -5227,6 +5227,750 @@
           }
         }
       }
+    },
+    "/v1/genesis-bootstrap/capability": {
+      "get": {
+        "summary": "Genesis pre-admission: capability",
+        "security": [
+          {
+            "GenesisBootstrapBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Bootstrap-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/Capability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/genesis-bootstrap/plans": {
+      "post": {
+        "summary": "Genesis pre-admission: plans",
+        "security": [
+          {
+            "GenesisBootstrapBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Bootstrap-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "genesis-bootstrap-v1.json#/$defs/PlanRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/genesis-bootstrap/decisions": {
+      "post": {
+        "summary": "Genesis pre-admission: decisions",
+        "security": [
+          {
+            "GenesisBootstrapBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Bootstrap-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "genesis-bootstrap-v1.json#/$defs/EffectRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/genesis-bootstrap/plans/{plan_id}": {
+      "get": {
+        "summary": "Genesis pre-admission: plans/{plan_id}",
+        "security": [
+          {
+            "GenesisBootstrapBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Bootstrap-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/genesis-bootstrap/intents/{operation_id}": {
+      "get": {
+        "summary": "Genesis pre-admission: intents/{operation_id}",
+        "security": [
+          {
+            "GenesisBootstrapBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Bootstrap-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/genesis-bootstrap/decisions/{decision_id}": {
+      "get": {
+        "summary": "Genesis pre-admission: decisions/{decision_id}",
+        "security": [
+          {
+            "GenesisBootstrapBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Bootstrap-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "decision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/genesis-bootstrap/decision-intents/{operation_id}": {
+      "get": {
+        "summary": "Genesis pre-admission: decision-intents/{operation_id}",
+        "security": [
+          {
+            "GenesisBootstrapBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Bootstrap-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-bootstrap-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5304,6 +6048,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Separate finite explicit owner-issued inspection adoption PREPARE/READ over one trusted original EP pairing; no old grant fallback."
+      },
+      "GenesisBootstrapBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Explicit finite GENESIS_BOOTSTRAP_EFFECT_ONLY/1.0 grant; no EP execution authority"
       }
     },
     "schemas": {
