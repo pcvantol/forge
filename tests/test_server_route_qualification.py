@@ -283,6 +283,9 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path.startswith('/v1/genesis-bootstrap/'):
+                                self.assertEqual(status,403);self.assertEqual(body['error']['code'],'GENESIS_SCOPE_DENIED')
+                                observed.add((method,path));continue
                             if path.startswith('/v1/inspection-adoptions/') or path.startswith('/v1/project-proposal-decisions/') or path.startswith('/v1/onboarding/') or path.startswith('/v1/concept-advisory/'):
                                 self.assertEqual(status,403);self.assertEqual(body['error']['code'],'INSPECTION_ADOPTION_SCOPE_DENIED' if path.startswith('/v1/inspection-adoptions/') else 'CONCEPT_SCOPE_DENIED' if path.startswith('/v1/concept-advisory/') else 'CONTENT_SCOPE_DENIED' if path.startswith('/v1/project-proposal-decisions/') else 'PROPOSAL_SCOPE_DENIED')
                                 observed.add((method,path));continue

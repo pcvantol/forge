@@ -159,7 +159,7 @@ class GenesisBootstrapHttpTest(unittest.TestCase):
     def test_cli_late_publication_failure_does_not_append_second_json(self):
         import io
         from forge.genesis_bootstrap_cli import main
-        def interrupted(grant,auth,audience,document):
+        def interrupted(grant,auth,audience,document,**kwargs):
             print('{"partial":',end='');raise PermissionError('revoked after first chunk')
         output=io.StringIO()
         with patch('forge.genesis_bootstrap_cli.publish_cli',side_effect=interrupted),patch('sys.stdout',output):

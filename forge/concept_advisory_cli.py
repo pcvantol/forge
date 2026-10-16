@@ -15,7 +15,9 @@ from .project_bootstrap.schema import load_json
 from .workspace_review_grant import _private_bytes
 
 
-def publish_cli(grant, authorization, audience, document):
+def publish_cli(grant, authorization, audience, document, *, chunk_bytes=4096):
+    if type(chunk_bytes) is not int or not 1 <= chunk_bytes <= 65536:
+        raise ValueError("finite publication chunk required")
     raw = (json.dumps(document, sort_keys=True)+'\n').encode()
     if isinstance(sys.stdout, io.StringIO):
         # An in-memory caller buffer cannot block waiting on a consumer.
@@ -35,7 +37,7 @@ def publish_cli(grant, authorization, audience, document):
                 with grant.publication(authorization, audience, document, deadline=deadline):
                     if time.monotonic() >= deadline:
                         raise TimeoutError('bounded CLI publication deadline')
-                    sent = os.write(fd, raw[offset:offset+4096])
+                    sent = os.write(fd, raw[offset:offset+chunk_bytes])
             except BlockingIOError:
                 continue
             if sent <= 0:

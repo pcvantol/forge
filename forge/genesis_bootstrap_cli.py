@@ -54,7 +54,7 @@ def main(argv=None):
             if status!=200:
                 print(json.dumps(document,sort_keys=True)); return 1
             try:
-                publish_cli(grant,auth,args.audience,document)
+                publish_cli(grant,auth,args.audience,document,chunk_bytes=65536)
             except (OSError,ValueError,RuntimeError,PermissionError,sqlite3.Error):
                 return 1
             return 0

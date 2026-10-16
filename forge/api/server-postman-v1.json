@@ -3019,7 +3019,7 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/v1/genesis-bootstrap/plans/{plan_id}?dossier_id={{dossierId}}",
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/plans/{plan_id}",
           "host": [
             "{{baseUrl}}"
           ],
@@ -3058,7 +3058,7 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/v1/genesis-bootstrap/intents/{operation_id}?dossier_id={{dossierId}}",
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/intents/{operation_id}",
           "host": [
             "{{baseUrl}}"
           ],
@@ -3097,7 +3097,7 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/v1/genesis-bootstrap/decisions/{decision_id}?dossier_id={{dossierId}}",
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/decisions/{decision_id}",
           "host": [
             "{{baseUrl}}"
           ],
@@ -3136,7 +3136,7 @@
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/v1/genesis-bootstrap/decision-intents/{operation_id}?dossier_id={{dossierId}}",
+          "raw": "{{baseUrl}}/v1/genesis-bootstrap/decision-intents/{operation_id}",
           "host": [
             "{{baseUrl}}"
           ],
