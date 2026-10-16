@@ -80,6 +80,14 @@ def frozen_bundle(record):
                           'target_entrypoint_qualification':'NOT_ASSERTED_WITH_GIT_METADATA'}}
 
 
+def finite_expiry(value):
+    import re
+    from .approved_worklist import timestamp
+    if not isinstance(value,str) or len(value)>64 or re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})',value) is None:
+        raise ContractError('bounded RFC3339 expiry required')
+    return timestamp(value)
+
+
 def plan_request(value):
     from .approved_worklist import identifier, timestamp
     fields = {'contract_version','instance_id','dossier_id','operation_id','source_plan_id','source_subject',
@@ -93,7 +101,7 @@ def plan_request(value):
         raise ContractError('opaque EP placement and target references required')
     for text in target.values():identifier(text)
     if value['effects']!=list(EFFECTS):raise ContractError('exact finite Genesis effect set required')
-    timestamp(value['expires_at'])
+    finite_expiry(value['expires_at'])
     for name,maximum in [('expected_plan_revision',7),('expected_content_revision',8)]:
         if type(value[name]) is not int or not 0<=value[name]<=maximum:raise ContractError('finite expected revision required')
     if value['expected_plan_revision']==0:

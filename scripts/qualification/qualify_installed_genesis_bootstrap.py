@@ -13,6 +13,34 @@ C=module_from_spec(spec);spec.loader.exec_module(C)
 CONTRACT='forge-genesis-bootstrap-effect-plan/v1'
 
 
+def capture_command(python,arguments,root,output,case):
+    report,stdout,stderr=C.BINDING.CAPTURE.capture(C.invocation(python,arguments),case=case,output=output,cwd=root,env={'PATH':'/usr/bin:/bin','HOME':str(root)},expected=0)
+    primary=None
+    if report['primary_failure'] or not report['capture_complete']:
+        primary=RuntimeError('installed owning command/capture failed')
+        primary.capture_report=report
+    try:
+        C.BINDING.CAPTURE.retain(output/(case+'.capture.private.json'),(json.dumps(report,sort_keys=True,indent=2)+'\n').encode())
+    except OSError as retention_error:
+        report['secondary_failures'].append({'stage':'report-retention','category':type(retention_error).__name__})
+        report['capture_complete']=False
+        if primary is None:
+            primary=retention_error
+            primary.capture_report=report
+        else:
+            primary.add_note('command report retention failed: '+type(retention_error).__name__)
+    if primary is not None:
+        raise primary
+    return json.loads(stdout)
+
+
+def exact_fault_red(error,observation,path):
+    # Only the deliberately introduced authority flag defect is an expected red.
+    return (tuple(error.absolute_path)==('execution_authorized',) and error.validator=='const'
+            and error.validator_value is False and error.instance is True
+            and observation=={'path':path,'status':200,'execution_authorized':True})
+
+
 def run(args):
     args.output_dir.mkdir(mode=0o700)
     receipt={'qualification':'GENESIS_BOOTSTRAP_EFFECT_PLAN_HTTP_V1','result':'FAIL','cases':[],'cleanup':False,'decisions':'SYNTHETIC_TECHNICAL_NOT_OWNER_APPROVAL',
@@ -22,11 +50,15 @@ def run(args):
     schema=json.loads(schema_path.read_bytes())
     from jsonschema import Draft202012Validator
     from jsonschema.exceptions import ValidationError
+    observation={}
     previous_validator=C.validate_wire
     def wire(path,value,body,status):
         previous_validator(path,value,body,status)
         if path.startswith('/v1/genesis-bootstrap/'):
-            Draft202012Validator(schema).validate(value)
+            observation.clear();observation.update(path=path,status=status,execution_authorized=value.get('execution_authorized'))
+            branch='Capability' if status==200 and path.endswith('/capability') else 'Response' if status==200 else 'ErrorResponse'
+            response_schema={'$schema':schema['$schema'],'$defs':schema['$defs'],'$ref':'#/$defs/'+branch}
+            Draft202012Validator(response_schema).validate(value)
             if status==200 and body is not None:
                 Draft202012Validator(schema).validate(body)
     C.validate_wire=wire
@@ -34,10 +66,7 @@ def run(args):
     def command(arguments,root):
         nonlocal count
         count+=1
-        report,stdout,stderr=C.BINDING.CAPTURE.capture(C.invocation(args.python,arguments),case='genesis-setup-'+str(count),output=args.output_dir,cwd=root,env={'PATH':'/usr/bin:/bin','HOME':str(root)},expected=0)
-        if report['primary_failure'] or not report['capture_complete']:
-            raise RuntimeError('installed owning setup/capture failed')
-        return json.loads(stdout)
+        return capture_command(args.python,arguments,root,args.output_dir,'genesis-setup-'+str(count))
     primary=None
     try:
         with TemporaryDirectory(prefix='r56-genesis-installed-') as tmp:
@@ -170,13 +199,13 @@ def run(args):
             try:
                 location.write_bytes(original_source.replace(marker,marker.replace(b'False',b'True')))
                 with C.server(args.python,root,args.output_dir) as (port,_,_):
-                    status=None;value={}
                     try:
-                        status,value=C.call(port,root/'bootstrap.private','GET',path)
-                        assert status==200 and value['execution_authorized'] is False
-                    except (AssertionError,ValidationError) as detector_error:
+                        C.call(port,root/'bootstrap.private','GET',path)
+                    except ValidationError as detector_error:
+                        if not exact_fault_red(detector_error,observation,path):
+                            raise
                         red=True
-                        (args.output_dir/'restored-fault-detector-original-failure.public.json').write_text(json.dumps({'result':'EXPECTED_FAIL','defect':'FALSE_EXECUTION_AUTHORIZATION','actual_status':status,'observed_execution_authorized':value.get('execution_authorized'),'detector_failure':type(detector_error).__name__}))
+                        (args.output_dir/'restored-fault-detector-original-failure.public.json').write_text(json.dumps({'result':'EXPECTED_FAIL','defect':'FALSE_EXECUTION_AUTHORIZATION','actual_status':observation['status'],'observed_execution_authorized':observation['execution_authorized'],'detector_failure':type(detector_error).__name__}))
                 assert red
             finally:
                 location.write_bytes(original_source)
@@ -192,6 +221,7 @@ def run(args):
         return receipt
     except BaseException as error:
         primary=error
+        receipt['failure']={'category':type(error).__name__,'capture_report':getattr(error,'capture_report',None)}
         raise
     finally:
         C.validate_wire=previous_validator

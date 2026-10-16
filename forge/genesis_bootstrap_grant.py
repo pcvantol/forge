@@ -15,7 +15,7 @@ from .candidate_decision_grant import signer
 from .runtime.dynamic_mission import InstalledDynamicMissionRuntime
 from .workspace_review_grant import _private_bytes, _write_private, _new_token
 from .proposal_content_contract import hash_value
-from .genesis_bootstrap_contract import CONTRACT, EFFECT_PURPOSE
+from .genesis_bootstrap_contract import CONTRACT, EFFECT_PURPOSE, finite_expiry
 
 
 def human(root, instance, principal, decide):
@@ -98,7 +98,7 @@ class GenesisBootstrapGrant(ProjectProposalGrant):
             for key in ('grant_id','principal_id','instance_id','audience','proposal_principal_id'):
                 identifier(row[key])
             self.bounds(row['dossier_ids'], row['source_plan_ids'], row['permissions'], row['exact_plans'])
-            timestamp(row['expires_at']); hash_value(row['operator_binding']); hash_value(row['token_digest'])
+            finite_expiry(row['expires_at']); hash_value(row['operator_binding']); hash_value(row['token_digest'])
             binding = row['human_binding']
             if not isinstance(binding, dict) or set(binding) != {'operator_id','operator_binding_version','installation_id'} or type(binding['operator_binding_version']) is not int or binding['operator_binding_version'] < 1:
                 raise ValueError('original human binding required')
@@ -118,7 +118,7 @@ class GenesisBootstrapGrant(ProjectProposalGrant):
         for value in (principal_id, audience, proposal_principal_id):
             identifier(value)
         self.bounds(dossier_ids, source_plan_ids, permissions, exact_plans)
-        if not datetime.now(UTC) < timestamp(expires_at) <= datetime.now(UTC)+timedelta(days=30):
+        if not datetime.now(UTC) < finite_expiry(expires_at) <= datetime.now(UTC)+timedelta(days=30):
             raise ValueError('finite Genesis grant expiry required')
         token_path = Path(token_path)
         # Credentials cannot overwrite any runtime state, other grants or evidence.
@@ -158,7 +158,7 @@ class GenesisBootstrapGrant(ProjectProposalGrant):
             return {k:v for k,v in row.items() if k not in ('operator_binding','token_digest')}
 
     def current(self, row):
-        if row['state'] != 'ACTIVE' or timestamp(row['expires_at']) <= datetime.now(UTC) or row['operator_binding'] != operator_binding(self.root,self.instance_id):
+        if row['state'] != 'ACTIVE' or finite_expiry(row['expires_at']) <= datetime.now(UTC) or row['operator_binding'] != operator_binding(self.root,self.instance_id):
             raise PermissionError('Genesis grant inactive')
         if human(self.root,self.instance_id,row['principal_id'],'DECIDE_EFFECT' in row['permissions']) != row['human_binding']:
             raise PermissionError('current human binding changed')

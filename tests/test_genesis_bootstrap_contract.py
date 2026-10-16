@@ -147,3 +147,10 @@ class GenesisJoinBindingTests(TestCase):
                 value=json.loads(row['content']);value['validation']['entrypoint']='bash untrusted.sh';row['content']=canonical(value).decode();row['sha256']=digest(row['content'].encode())
                 change_manifest(record,lambda m:m['artifacts'][0].update(expected_after_digest=row['sha256'],bytes=len(row['content'].encode())))
             with self.subTest(choice=choice),self.assertRaises(ValueError):frozen_bundle(record)
+
+    def test_expiry_is_bounded_rfc3339_before_any_persist(self):
+        from forge.genesis_bootstrap_contract import plan_request,finite_expiry
+        _,_,request,_=plan_fixture()
+        for bad in ('2026-10-17T00:00:00.'+'1'*100+'+00:00','20261017T000000+0000','2026-10-17 00:00:00+00:00','2026-10-17T00:00:00','2026-13-17T00:00:00Z'):
+            with self.subTest(value=bad),self.assertRaises(ValueError):plan_request({**request,'expires_at':bad})
+        self.assertEqual(finite_expiry('2026-10-17T00:00:00Z'),finite_expiry('2026-10-17T00:00:00.000000+00:00'))
