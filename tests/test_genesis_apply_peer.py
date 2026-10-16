@@ -63,6 +63,6 @@ class GenesisPeerDeadlineTests(TestCase):
         self.assertEqual(result,b'{}\n')
         args, kwargs = self.connection.request.call_args
         self.assertEqual(args,('POST','/v1/bootstrap/genesis/operations/original/resume'))
-        self.assertEqual(kwargs['body'],b'{}\n')
+        self.assertIsNone(kwargs['body'])
         self.assertEqual(kwargs['headers']['EP-Audience'],'genesis-bootstrap')
         self.assertEqual(self.connection.request.call_count,1)

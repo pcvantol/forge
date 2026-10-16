@@ -79,7 +79,8 @@ def exchange(pairing, method, *, body=None, resume=False, deadline=None, before_
                'EP-Consumer-ID': binding['consumer_id'], 'EP-Principal': binding['principal'], 'EP-Audience': 'genesis-bootstrap'}
     path = '/v1/bootstrap/genesis/operations'
     if method == 'GET' or resume: path += '/'+operation+('/resume' if resume else '')
-    payload = canonical(body) if body is not None else (b'{}\n' if resume else None)
+    # Owning EP resume explicitly forbids a request body (Content-Length0).
+    payload = canonical(body) if body is not None else None
     if payload is not None: headers['Content-Type'] = 'application/json'
     connection = http.client.HTTPConnection(host, port, timeout=timeout)
     hard_deadline = time.monotonic()+timeout; watchdog = None

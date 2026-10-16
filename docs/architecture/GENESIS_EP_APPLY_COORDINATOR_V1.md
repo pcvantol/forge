@@ -47,7 +47,8 @@ GET /v1/bootstrap/genesis/operations/{operation_id}, and explicit POST to its
 /resume. Exact EP authorization uses a distinct CREATE_GENESIS_LOCAL bearer
 and EP-Bootstrap-Contract, EP-Instance-ID, EP-Host-ID, EP-Consumer-ID,
 EP-Principal, EP-Audience headers. Source actor never fills an auth header.
-These routes are enabled only after the actual independently qualified L2
+GET and explicit resume carry no body; EP rejects any nonzero Content-Length
+on them. These routes are enabled only after the actual independently qualified L2
 final-main/schema/wheel handoff is pinned. A merged candidate is insufficient.
 Existing R55 EP inspection pins and L4 consumer pins remain unchanged.
 
