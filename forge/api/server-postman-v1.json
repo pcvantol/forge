@@ -3155,6 +3155,129 @@
         },
         "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority."
       }
+    },
+    {
+      "name": "POST /v1/genesis-apply/operations",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisApplyToken}}"
+          },
+          {
+            "key": "X-Forge-Genesis-Apply-Audience",
+            "value": "{{genesisApplyAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-apply/operations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-apply",
+            "operations"
+          ]
+        },
+        "description": "Explicit owner-paired CREATE_GENESIS_LOCAL over exact original R52/R54/R56 binding. GET never sends effects; lost replies recover original operation. No project readiness or Mission.",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "GET /v1/genesis-apply/operations/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisApplyToken}}"
+          },
+          {
+            "key": "X-Forge-Genesis-Apply-Audience",
+            "value": "{{genesisApplyAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-apply/operations/{operation_id}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-apply",
+            "operations",
+            "{operation_id}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{dossierId}}"
+            }
+          ]
+        },
+        "description": "Explicit owner-paired CREATE_GENESIS_LOCAL over exact original R52/R54/R56 binding. GET never sends effects; lost replies recover original operation. No project readiness or Mission."
+      }
+    },
+    {
+      "name": "POST /v1/genesis-apply/operations/{operation_id}/resume",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{genesisApplyToken}}"
+          },
+          {
+            "key": "X-Forge-Genesis-Apply-Audience",
+            "value": "{{genesisApplyAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/genesis-apply/operations/{operation_id}/resume",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "genesis-apply",
+            "operations",
+            "{operation_id}",
+            "resume"
+          ]
+        },
+        "description": "Explicit owner-paired CREATE_GENESIS_LOCAL over exact original R52/R54/R56 binding. GET never sends effects; lost replies recover original operation. No project readiness or Mission.",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
     }
   ]
 }

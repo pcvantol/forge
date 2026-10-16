@@ -119,3 +119,22 @@ handoff/terminal readback and cleanup. The owning terminal is the closure
 receipt; candidate artifacts do not close R56. Full PB-F2/PB-F7/HOB parents,
 PB-F3 apply coordinator, actual Genesis readiness, adoption effects, Managed,
 promotion and broad onboarding remain OPEN. No automatic successor.
+
+## R56 terminal reconciliation and selected R57 original effect coordinator
+
+[R56 terminal](https://github.com/pcvantol/forge/issues/207#issuecomment-6215404997)
+closed its bounded pre-admission plan/separate effect-decision subset on
+Forge2.22.0/schema46, final main523a13f3196c096da217421e74130df474fadcc6,
+implementation PR296 and separate protected finalization PR297. The earlier
+stage checkpoint above remains historical. Its failures, original producer pins,
+702-open-finding observe-only TDE FAIL and counters remain retained.
+
+[R57 selected contract](../architecture/GENESIS_EP_APPLY_COORDINATOR_V1.md)
+adds only explicit exact original local Genesis-effect coordination over R52,
+R54 and R56. Forge2.23.0/schema46 is allocated; source/independent assurance,
+qualified L2 producer handoff, installed HTTP/Git/B8R/recovery, normal protected
+delivery, own finalization and NEW exact-final-main qualification remain OPEN.
+Actual EP completion is not project/Mission readiness. R56 and predecessors
+stay CLOSED; full PB-F3/PB-F7/HOB/readiness/Managed/promotion remain OPEN.
+L4-plan108/Forge2.21.0/EP2.3.121 consumer pins and budgets are unchanged.
+No automatic successor.

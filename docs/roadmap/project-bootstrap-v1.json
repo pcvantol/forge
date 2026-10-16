@@ -241,5 +241,18 @@
     "candidate_installed_proof": "https://github.com/pcvantol/forge/actions/runs/38790025378/artifacts/12000150726",
     "finalization_effect": "NO_BUMP",
     "closure_gate": "Own finalization checks/reviews/required CI/protected merge; NEW exact-final-main installed HTTP/restart/readback/cleanup and terminal register"
+  },
+  "r57_selected_effect_coordinator": {
+    "assignment_id": "L3-GENESIS-EP-APPLY-COORDINATOR-V1-20261016",
+    "join_id": "L2-L3-GENESIS-APPLY-V1-20261016",
+    "status": "IMPLEMENTING_PENDING_QUALIFICATION",
+    "contract": "docs/architecture/GENESIS_EP_APPLY_COORDINATOR_V1.md",
+    "version_allocation": "2.23.0",
+    "schema_version": 46,
+    "predecessor_terminal": "https://github.com/pcvantol/forge/issues/207#issuecomment-6215404997",
+    "predecessor_final_main": "523a13f3196c096da217421e74130df474fadcc6",
+    "parents_unchanged": true,
+    "readiness": "NOT_ASSESSED",
+    "automatic_successor": false
   }
 }
