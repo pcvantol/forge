@@ -127,3 +127,22 @@ to source `4d0c0461d7a5ec7fb7a50aa42f775cc4be09faa5`, tree
 `3ccf4d3ba775c9f4503e986fce5416b33fe1d125d0b18244beeae562868aa231` and ordinary wheel SHA256
 `bc49e7a3b15c9021b16546a5ca96e5fbf280072d900d8d3dc173dee4b79d5b9e`.
 Own R57 installed integration and complete delivery remain OPEN.
+
+
+## Owning qualified host boundary
+
+The L2 final-main handoff qualifies the full installed native Genesis chain on
+macOS at finite short private placements; Linux's canonical wheel identity,
+component fixtures and general native controls are separate evidence. It does
+not qualify full native Genesis execution on Linux. The original three Ubuntu
+R57 native-start failures remain preserved, including actual BrokenPipeError32
+before PREFLIGHT completed. No Linux full-chain PASS is claimed.
+
+The same14 real native qualification cases run in a separate ordinary macOS CI
+job with the same25-minute boundary. The existing required Ubuntu Test and
+static validation job runs with always() and explicitly requires native job
+success before its unchanged tests, coverage and installed gates. A native
+failure, cancellation or skip cannot become a successful skipped required job.
+No sandbox profile, test assertion or producer contract is relaxed. Hosted
+operator fixtures remain explicitly modeled, separate from actual local Mac
+owner identity. This hosting correction is not a Linux capability delivery.

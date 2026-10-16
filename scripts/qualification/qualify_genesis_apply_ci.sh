@@ -3,7 +3,7 @@
 set -euo pipefail
 test "${GITHUB_ACTIONS:-}" = true
 test "${RUNNER_ENVIRONMENT:-}" = github-hosted
-test "${RUNNER_OS:-}" = Linux
+test "${RUNNER_OS:-}" = macOS
 qualification_source="$(pwd)"
 qualification_root="$RUNNER_TEMP/forge-genesis-apply-ci"
 qualification_ep_sha=4d0c0461d7a5ec7fb7a50aa42f775cc4be09faa5
@@ -17,7 +17,7 @@ test "$(git -C "$qualification_root/ep-source" rev-parse 'HEAD^{tree}')" = b095b
 python "$qualification_root/ep-source/tools/qualification/build_platform_wheel.py" --source-root "$qualification_root/ep-source" --version 2.3.123 --wheel-directory "$qualification_root/ep-wheel"
 python -m pip wheel . --no-deps --wheel-dir "$qualification_root/forge-wheel"
 # Exclusive short runtime and scratch names retain the owning finite placement policy.
-if test ! -d /private/tmp; then sudo install -d -m1777 /private/tmp; fi
+test -d /private/tmp
 test ! -e /private/tmp/g57
 python -m venv /private/tmp/g57
 python -m venv "$qualification_root/forge-installed"
@@ -36,7 +36,7 @@ found=[p for p in (root/'node_modules/@openai').rglob('codex') if '/vendor/' in 
 if len(found)!=1:raise SystemExit('one genuine platform native executable required')
 (root/'bin/codex').symlink_to(found[0].resolve())
 NATIVE
-bash "$qualification_root/ep-source/tools/qualification/prepare_ci_native_sandbox.sh"
+# The qualified native chain is macOS. Linux namespace setup is not applicable.
 qualification_index=70
 for qualification_boundary in source-r54 source-r56 verify registered concurrent-late revoke-accept expire-accept revoke-gitref before-revoke before-expire target-race reservation uncertain partial; do
   qualification_index=$((qualification_index+1))
