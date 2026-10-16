@@ -43,7 +43,7 @@ def exact_fault_red(error,observation,path):
 
 def run(args):
     args.output_dir.mkdir(mode=0o700)
-    receipt={'qualification':'GENESIS_BOOTSTRAP_EFFECT_PLAN_HTTP_V1','result':'FAIL','cases':[],'cleanup':False,'decisions':'SYNTHETIC_TECHNICAL_NOT_OWNER_APPROVAL',
+    receipt={'operator_identity_evidence':'NOT_YET_QUALIFIED','qualification':'GENESIS_BOOTSTRAP_EFFECT_PLAN_HTTP_V1','result':'FAIL','cases':[],'cleanup':False,'decisions':'SYNTHETIC_TECHNICAL_NOT_OWNER_APPROVAL',
              'transport':'ACTUAL_NONEDITABLE_HTTP_SEPARATE_SERVER_OS',
              **C.BINDING.installed_binding(args.python,args.wheel,args.source_revision)}
     schema_path=Path(subprocess.check_output([str(args.python),'-I','-c',"from importlib.resources import files;print(files('forge').joinpath('api/genesis-bootstrap-v1.json'))"],cwd=args.wheel.parent).decode().strip())
@@ -72,6 +72,7 @@ def run(args):
         with TemporaryDirectory(prefix='r56-genesis-installed-') as tmp:
             parent=Path(tmp).resolve(); root=parent/'synthetic'
             setup=command([str(Path(__file__).with_name('proposal_content_fixture.py')),str(root)],parent)
+            receipt['operator_identity_evidence']='MODELED_TRUSTED_OS_FIXTURE' if C.MODELED_OS else 'ACTUAL_MACOS_GENERATED_UID'
             data=['--data-root',str(root/'runtime')]
             command(['-m','forge.proposal_content_cli',*data,'init'],root)
             expiry=(datetime.now(UTC)+timedelta(hours=1)).isoformat()
@@ -128,11 +129,6 @@ def run(args):
                 assert cli_receipt['exit_code']==0 and cli_receipt['sha256']==hashlib.sha256(cli_file.read_bytes()).hexdigest()
                 cli=json.loads(cli_file.read_bytes());assert cli==recovered
                 receipt['cases'].append('ordinary-installed-cli-http-original-readback-parity')
-            with closing(sqlite3.connect(root/'runtime/forge.db')) as db:
-                for table in ['mission_id_allocations','mission_state','governance_decisions','planning_provider_generation_permits']:
-                    assert db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==0
-            receipt['no_project_repo_ep_model_mission_effects']=True
-            receipt['operator_identity_evidence']='ACTUAL_MACOS_GENERATED_UID'
             # Reuse the original persisted plan/decisions; no new proposal or renderer.
             with C.server(args.python,root,args.output_dir) as (port,third,_):
                 path='/v1/genesis-bootstrap/plans/'+plan['plan_id']+'?dossier_id=synthetic-dossier'
@@ -213,9 +209,16 @@ def run(args):
             with C.server(args.python,root,args.output_dir) as (port,_,_):
                 status,value=C.call(port,root/'bootstrap.private','GET',path)
                 assert status==200 and value['execution_authorized'] is False and value['effect_history'][0]==original_decision
+            with closing(sqlite3.connect(root/'runtime/forge.db')) as db:
+                for table in ['mission_id_allocations','mission_state','governance_decisions','planning_provider_generation_permits']:
+                    assert db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==0
+            assert (root/'runtime/onboarding/proposals/store.json').read_bytes()==source_bytes
+            assert len(json.loads((root/'runtime/onboarding/genesis-bootstrap/store.json').read_bytes())['records'])==4
+            receipt['no_project_repo_ep_model_mission_effects']=True
+            receipt['retained_original_proposals']=1
+            receipt['retained_effect_decisions']=3
             receipt['restored_fault_detector']={'red':red,'restored_green':True,'installed_source_sha256':hashlib.sha256(original_source).hexdigest()}
             receipt['cases'].append('same-actual-http-detector-red-for-restored-real-installed-defect-then-green')
-            receipt['operator_identity_evidence']='MODELED_TRUSTED_OS_FIXTURE' if C.MODELED_OS else 'ACTUAL_MACOS_GENERATED_UID'
             receipt['plan_digest']=plan['plan_digest']; receipt['file_count']=37
         receipt['cleanup']=not parent.exists(); receipt['result']='PASS'
         return receipt
