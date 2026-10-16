@@ -42,7 +42,7 @@ The fixed original R50 example EP-envelope digest remains
 Original array digest, manifest semantic digest, file digest and request digest
 retain their distinct meanings. No file mode or executable-bit invention.
 
-Actual candidate producer routes are POST /v1/bootstrap/genesis/operations,
+Actual qualified producer routes are POST /v1/bootstrap/genesis/operations,
 GET /v1/bootstrap/genesis/operations/{operation_id}, and explicit POST to its
 /resume. Exact EP authorization uses a distinct CREATE_GENESIS_LOCAL bearer
 and EP-Bootstrap-Contract, EP-Instance-ID, EP-Host-ID, EP-Consumer-ID,
@@ -118,3 +118,12 @@ Quality/Security, actual unchanged observe-only TDE disposition, protected exact
 head implementation, own nonempty reviewed/protected finalization, NEW exact
 final-main installed chain and safe cleanup remain OPEN until exact receipts.
 No full PB-F3/PB-F7/HOB/readiness parent closure or automatic successor.
+
+## Qualified producer handoff
+
+L2 terminal handoff #142/6223927644 and #207/6223928601 binds EP2.3.123
+to source `4d0c0461d7a5ec7fb7a50aa42f775cc4be09faa5`, tree
+`b095ba006beccd79171115a7deab55ef7b7c4ff9`, response schema SHA256
+`3ccf4d3ba775c9f4503e986fce5416b33fe1d125d0b18244beeae562868aa231` and ordinary wheel SHA256
+`bc49e7a3b15c9021b16546a5ca96e5fbf280072d900d8d3dc173dee4b79d5b9e`.
+Own R57 installed integration and complete delivery remain OPEN.

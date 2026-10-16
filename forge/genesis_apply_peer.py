@@ -13,7 +13,7 @@ from .project_bootstrap.service import digest
 MAX_RESPONSE = 524288
 # Filled only from the separately qualified L2 exact-final-main handoff.
 # A merged candidate and its local tests do not qualify a producer.
-QUALIFIED_PRODUCER = None
+QUALIFIED_PRODUCER = {'producer_revision': '4d0c0461d7a5ec7fb7a50aa42f775cc4be09faa5', 'producer_tree': 'b095ba006beccd79171115a7deab55ef7b7c4ff9', 'producer_schema_sha256': '3ccf4d3ba775c9f4503e986fce5416b33fe1d125d0b18244beeae562868aa231', 'producer_version': '2.3.123'}
 
 
 def receipt(raw, pairing, request, documents):
