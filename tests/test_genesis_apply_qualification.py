@@ -146,3 +146,32 @@ def verify_process_identity(expected):
             with self.assertRaisesRegex(RuntimeError,'active or uncertain'):Q.require_worker_groups_exited(evidence)
         with patch.object(Q.os,'killpg',side_effect=PermissionError('live group')),patch.object(Q,'group_active',return_value=True):
             with self.assertRaises(PermissionError):Q.require_worker_groups_exited(evidence)
+
+    def test_expected_negative_completion_cannot_hide_final_receipt_retention_failure(self):
+        # Exercise actual run() exception/cleanup boundary, not an EP outcome.
+        with TemporaryDirectory() as temp:
+            root=Path(temp);args=SimpleNamespace(output_dir=root/'evidence',scratch_root=root/'untouched',python=Path('/unused'),wheel=root/'unused.whl')
+            with patch.object(Q,'probe',side_effect=Q.ExpectedNegativeComplete),patch.object(Q,'private',side_effect=OSError('deliberate receipt failure')):
+                with self.assertRaisesRegex(OSError,'deliberate receipt failure'):Q.run(args)
+            self.assertFalse(args.scratch_root.exists())
+
+    def test_expected_negative_completion_cannot_hide_own_cleanup_identity_failure(self):
+        import os
+        with TemporaryDirectory() as temp:
+            root=Path(temp);scratch=root/'own-scratch';scratch.mkdir()
+            (scratch/'.r57-owner.json').write_text(json.dumps({'uid':os.getuid(),'identity':[-1,-1]}))
+            args=SimpleNamespace(output_dir=root/'evidence',scratch_root=scratch,python=Path('/unused'),wheel=root/'unused.whl')
+            with patch.object(Q,'probe',side_effect=Q.ExpectedNegativeComplete):
+                with self.assertRaisesRegex(RuntimeError,'own scratch identity changed'):Q.run(args)
+            report=json.loads((args.output_dir/'first-real-installed-chain.public.json').read_bytes())
+            self.assertEqual(report['result'],'FAIL');self.assertFalse(report['cleanup']);self.assertTrue(scratch.exists())
+
+    def test_expected_negative_context_cannot_discard_original_server_cleanup_failure(self):
+        with TemporaryDirectory() as temp:
+            root=Path(temp);args=SimpleNamespace(output_dir=root/'evidence',scratch_root=root/'untouched',python=Path('/unused'),wheel=root/'unused.whl')
+            completed=Q.ExpectedNegativeComplete();completed.add_note('owned Server cleanup incomplete: deliberately failed wait')
+            with patch.object(Q,'probe',side_effect=completed):
+                with self.assertRaisesRegex(RuntimeError,'unresolved Server cleanup failure') as raised:Q.run(args)
+            self.assertIn('deliberately failed wait',' '.join(raised.exception.__notes__))
+            report=json.loads((args.output_dir/'first-real-installed-chain.public.json').read_bytes())
+            self.assertEqual(report['result'],'FAIL');self.assertEqual(report['failure']['stage'],'negative-context-cleanup')

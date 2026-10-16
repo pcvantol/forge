@@ -11,6 +11,7 @@ from importlib.util import spec_from_file_location, module_from_spec
 import json
 import fnmatch
 import configparser
+from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor
 import signal
 import tomllib
@@ -30,9 +31,14 @@ G = module_from_spec(spec); spec.loader.exec_module(G)
 C = G.C
 CONTRACT = 'forge-genesis-apply/v1'
 
+
+class ExpectedNegativeComplete(Exception):
+    """Internal completed probe; final cleanup/retention still decides exit."""
+
+
 # Test-only crash barriers wrap actual owning producer persistence boundaries.
 # No ledger state, authority, effect result or product byte is fabricated.
-FAULT_LAUNCHER = r"""import json,os,signal,sys
+FAULT_LAUNCHER = r"""import json,os,signal,sys,time
 from pathlib import Path
 from engineering_platform import genesis_service as service,server
 point,marker,root,instance=sys.argv[1:]
@@ -42,7 +48,12 @@ def barrier():
   os.chmod(pending,0o600);json.dump({'pid':os.getpid(),'point':point},stream)
   stream.flush();os.fsync(stream.fileno())
  os.replace(pending,marker)
- os.kill(os.getpid(),signal.SIGSTOP)
+ if point=='READ_THREAD':
+  deadline=time.monotonic()+120
+  while not Path(marker+'.release').exists():
+   if time.monotonic()>deadline:raise TimeoutError('finite owning read barrier not released')
+   time.sleep(.01)
+ else:os.kill(os.getpid(),signal.SIGSTOP)
 if point=='ACCEPT':
  original=service.admit
  def wrapped(*a,**k):
@@ -50,6 +61,11 @@ if point=='ACCEPT':
   if result['newly_admitted']:barrier()
   return result
  service.admit=wrapped
+elif point=='READ_THREAD':
+ original=service.read
+ def wrapped(*a,**k):
+  result=original(*a,**k);barrier();return result
+ service.read=wrapped
 elif point=='REGISTER':
  original=service.execute
  def wrapped(*a,**k):
@@ -93,6 +109,12 @@ def original_recovery(args, ep, servers, forge, body, report, port, forge_pid):
         counts,evidence,rows=ep.facts()
         private(args.output_dir/'before-crash-owning-evidence.private.json',{'counts':counts,'evidence':evidence,'rows':rows})
         before_state=rows['ep_genesis_operations'][0]['state']
+        if getattr(args,'authority_fault',None)=='REVOKE':
+            ep.command('genesis_cli','revoke','--grant-id','r57-owner-genesis','--operation-id','owner-boundary-revoke')
+        elif getattr(args,'authority_fault',None)=='EXPIRE':
+            remaining=(datetime.fromisoformat(args.ep_grant_expiry)-datetime.now(UTC)).total_seconds()
+            if remaining>35:raise RuntimeError('finite real expiry fixture required')
+            if remaining>0:time.sleep(remaining+.1)
         old_ep=ep.process.pid
         ep.stop() # exact original unreaped child and identity-checked workers
         servers.close() # independent real Forge Server stop, same durable stores
@@ -102,6 +124,13 @@ def original_recovery(args, ep, servers, forge, body, report, port, forge_pid):
     if new_forge==forge_pid or ep.process.pid==old_ep:raise RuntimeError('separate OS restart not demonstrated')
     path='/v1/genesis-apply/operations/original-apply?dossier_id=synthetic-dossier'
     status,original=retained_call(args.output_dir,'after-two-os-restarts-original-get',new_port,forge/'apply.private','GET',path)
+    if getattr(args,'authority_fault',None):
+        if status not in (403,424):raise RuntimeError('expired/revoked boundary accepted a new operation/read')
+        if ep.facts()[1]!=evidence or ep.facts()[0]!=counts:raise RuntimeError('authority refusal changed original physical evidence')
+        report['authority_boundary_refusal']={'fault':args.authority_fault,'boundary':args.crash_boundary,
+            'actual_status':status,'original_evidence_unchanged':True,'before_state':before_state,
+            'old_ep_pid':old_ep,'new_ep_pid':ep.process.pid,'old_forge_pid':forge_pid,'new_forge_pid':new_forge}
+        return new_port,status,original
     if status!=200:raise RuntimeError('original operation unavailable after independent OS restarts')
     if original['operation_id']!=body['operation_id'] or original['original_request']!=body or original['explicit_attempts']!=1:
         raise RuntimeError('original intent changed after restart')
@@ -362,7 +391,7 @@ class EPServer:
             else:primary.add_note('EP command report retention failed: '+type(retention).__name__)
         if primary is not None:raise primary
         value=json.loads(stdout)
-        if module=='genesis_cli' and arguments and arguments[0]=='issue' and 'credential' in value:
+        if arguments and arguments[0]=='issue' and 'credential' in value:
             # A successful credential-bearing stdout is a secret container.
             # Preserve its digest and redacted metadata, then remove only that
             # exact newly owned container; failed diagnostics remain private.
@@ -380,7 +409,7 @@ class EPServer:
         private(validator,raw)
         config=self.root/'grant.private.json'
         private(config,dict(grant_id='r57-owner-genesis',issuance_id='r57-owner-issuance',consumer_id='forge-r57',principal='synthetic-r57-owner',
-            target_name='r',workspace_root=str(self.workspace),validator_path=str(validator),request=request,ttl_seconds=3600))
+            target_name='r',workspace_root=str(self.workspace),validator_path=str(validator),request=request,ttl_seconds=getattr(self.args,'ep_ttl',3600)))
         answer=self.command('genesis_cli','issue','--config',str(config))
         token=self.root/'ep-token.private';private(token,answer.pop('credential').encode())
         return answer,token
@@ -542,16 +571,16 @@ def run(args):
             status,view=C.call(port,forge/'bootstrap.private','POST','/v1/genesis-bootstrap/plans',request);assert status==200,(status,view)
             plan=view['plan'];exact=forge/'exact-plans.private';private(exact,[dict(plan_id=plan['plan_id'],plan_digest=plan['plan_digest'])])
             command(['-m','forge.genesis_bootstrap_cli',*data,'issue','--principal-id',setup['human_principal_id'],*scope,'--permission','READ','--permission','DECIDE_EFFECT','--exact-plans-file',str(exact),'--token-file',str(forge/'effect.private')],forge)
-            decision=dict(contract_version=G.CONTRACT,instance_id=setup['instance_id'],dossier_id='synthetic-dossier',operation_id='original-effect-decision',plan_id=plan['plan_id'],plan_digest=plan['plan_digest'],
+            effect_request=dict(contract_version=G.CONTRACT,instance_id=setup['instance_id'],dossier_id='synthetic-dossier',operation_id='original-effect-decision',plan_id=plan['plan_id'],plan_digest=plan['plan_digest'],
                 purpose='GENESIS_BOOTSTRAP_EFFECT_ONLY/1.0',decision='APPROVE_EFFECT',reason='Synthetic exact technical effect qualification only.',expected_decision_revision=0,previous_decision_id=None)
-            status,view=C.call(port,forge/'effect.private','POST','/v1/genesis-bootstrap/decisions',decision);assert status==200,(status,view)
+            status,view=C.call(port,forge/'effect.private','POST','/v1/genesis-bootstrap/decisions',effect_request);assert status==200,(status,view)
             decision=view['original_decision'];documents=plan['documents']
             ep_request=dict(contract_version='1.0',operation_id='original-apply',target_ref=plan['target']['target_ref'],
                 effect_plan_binding=dict(plan_id=plan['plan_id'],plan_revision=plan['plan_revision'],plan_digest=plan['plan_digest'],decision_id=decision['decision_id'],decision_digest=decision['decision_digest'],
                     proposal_id=proposal['plan_id'],proposal_digest=plan['source_subject']['result_digest'],source_instance_id=setup['instance_id'],source_actor_id=decision['principal_id'],context_id='synthetic-dossier'),
                 bundle=dict(contract_version='pb-render/1.0',kind='RENDERED_PROPOSAL_EXAMPLE',files={r['path']:dict(sha256=r['sha256'],utf8=r['content']) for r in documents['files']}))
             args.validator_digest=documents['validation']['validator_sha256']
-            ep_grant,ep_token=ep.issue(ep_request);ep.start()
+            ep_grant,ep_token=ep.issue(ep_request);args.ep_grant_expiry=ep_grant['expires_at'];ep.start()
             command(['-m','forge.genesis_apply_cli',*data,'init'],forge)
             config={**pin,'pairing_id':'original-owner-pair','endpoint':'http://127.0.0.1:'+str(ep.port),
                 'binding':dict(instance_id=ep.instance,host_id=sha256((os.uname().nodename+':'+str(os.geteuid())).encode()).hexdigest(),consumer_id='forge-r57',principal='synthetic-r57-owner',operation_id='original-apply'),
@@ -560,13 +589,37 @@ def run(args):
                 'request_digest':sha256(canonical(ep_request)).hexdigest(),'input_digest':plan['source_subject']['input_digest']}
             config_path=forge/'peer-config.private';private(config_path,config)
             command(['-m','forge.genesis_apply_cli',*data,'bind-peer','--config-file',str(config_path),'--credential-file',str(ep_token)],forge)
-            command(['-m','forge.genesis_apply_cli',*data,'issue','--principal-id',setup['human_principal_id'],*scope,'--permission','READ','--permission','REQUEST_APPLY','--permission','RESUME','--exact-plans-file',str(exact),'--token-file',str(forge/'apply.private')],forge)
+            apply_issue=command(['-m','forge.genesis_apply_cli',*data,'issue','--principal-id',setup['human_principal_id'],*scope,'--permission','READ','--permission','REQUEST_APPLY','--permission','RESUME','--exact-plans-file',str(exact),'--token-file',str(forge/'apply.private')],forge)
             body=dict(contract_version=CONTRACT,instance_id=setup['instance_id'],dossier_id='synthetic-dossier',operation_id='original-apply',plan_id=plan['plan_id'],plan_digest=plan['plan_digest'],decision_id=decision['decision_id'],decision_digest=decision['decision_digest'],pairing_id='original-owner-pair')
-            if getattr(args,'crash_boundary',None):
+            extra_spec=spec_from_file_location('r57_actual_peer_matrix',HERE/'genesis_apply_matrix.py')
+            extra=module_from_spec(extra_spec);extra_spec.loader.exec_module(extra)
+            helpers=SimpleNamespace(C=C,private=private,canonical=canonical,retained_call=retained_call)
+            context=dict(config=config,ep=ep,ep_token=ep_token,ep_request=ep_request,output=args.output_dir,
+                command=command,data=data,scope=scope,setup=setup,forge=forge,port=port,body=body,
+                documents=documents,proposal=proposal,effect_request=effect_request,decision=decision,ep_grant=ep_grant,apply_issue=apply_issue)
+            if getattr(args,'extended_matrix',False):report['pre_admission_negative_matrix']=extra.prechecks(helpers,context)
+            if getattr(args,'before_refusal',None) or getattr(args,'reservation_race',False):
+                if getattr(args,'reservation_race',False):report['before_refusal']=extra.reservation_refusal(helpers,context)
+                else:report['before_refusal']=extra.before_refusal(helpers,context,args.before_refusal)
+                report['qualification']='R57_REAL_PRE_ADMISSION_REFUSAL'
+                report['cases']=['actual-current-owner-authority-and-original-intent','no-extra-ep-admission-or-effect']
+                evidence=ep.facts()[1]
+                raise ExpectedNegativeComplete
+            if getattr(args,'concurrent',False):
+                status,result,report['actual_concurrency']=extra.concurrent_original(helpers,context)
+            elif getattr(args,'crash_boundary',None):
                 port,status,result=original_recovery(args,ep,servers,forge,body,report,port,forge_pid)
             else:
                 status,result=retained_call(args.output_dir,'initial-apply',port,forge/'apply.private','POST','/v1/genesis-apply/operations',body)
             report['initial_apply_status']=status
+            if report.get('authority_boundary_refusal'):
+                ep_status,ep_value=extra.peer(helpers,context,'actual-inactive-boundary-owner')
+                if ep_status!=401 or ep_value!={'error':'BOOTSTRAP_GRANT_INACTIVE'}:raise RuntimeError('actual EP boundary authority not inactive')
+                report['actual_ep_auth_refusal']={'status':ep_status,'response':ep_value}
+                evidence=ep.facts()[1]
+                report['qualification']='R57_REAL_AUTHORITY_BOUNDARY_REFUSAL'
+                report['cases']=['original-admission-preserved','real-current-ep-authority-refused','no-further-effect-on-read-or-restart']
+                raise ExpectedNegativeComplete
             deadline=time.monotonic()+300
             reads=0
             # Only bounded authenticated original GETs follow uncertainty or
@@ -601,11 +654,21 @@ def run(args):
             report.update(cases=['actual-r52-r54-r56-original-http-chain','separate-test-owner-issued-ep-grant','actual-forge-to-ep-post-get',
                 'independent-37-committed-byte-and-mode-readback','one-commit-tree-trusted-validator-and-b8r','same-original-replay-no-second-admission'],
                 operation_id=operation['operation_id'],commit=operation['commit'],tree=operation['tree'],ep_counts=counts,b8r=b8r,explicit_attempts=replay['explicit_attempts'])
+            context['port']=port
+            if getattr(args,'concurrent',False):report['actual_concurrency']['both_original_readbacks']=extra.concurrent_readbacks(helpers,context,operation)
+            if getattr(args,'extended_matrix',False):report['availability_and_progress']=extra.availability_and_progress(helpers,context,operation)
+            if getattr(args,'late_publication',False):report['late_publication']=extra.late_publication(helpers,context)
+            if getattr(args,'source_change',None):report['changed_source_matrix']=extra.source_change(helpers,context,args.source_change)
             if getattr(args,'security_matrix',False):
                 port=completion_matrix(args,ep,servers,forge,body,operation,report,port)
                 report['post_matrix_forge']=C.BINDING.installed_binding(args.python,args.wheel,args.source_revision)
                 report['post_matrix_ep']=ep_payload(args)
         report['chain_assertions']='PASS'
+    except ExpectedNegativeComplete as completed:
+        if getattr(completed,'__notes__',None):
+            primary=RuntimeError('expected negative probe has unresolved Server cleanup failure')
+            for note in completed.__notes__:primary.add_note(note)
+            report['failure']={'category':type(primary).__name__,'stage':'negative-context-cleanup'}
     except BaseException as error:
         primary=error;report['failure']={'category':type(error).__name__}
         if hasattr(error,'capture_report'):report['failure']['command_outcome']=error.capture_report
@@ -640,10 +703,28 @@ def main():
         p.add_argument('--'+field,type=Path,required=True)
     for field in ('source-revision','ep-source-revision','ep-source-tree','ep-wheel-sha256'):
         p.add_argument('--'+field,required=True)
+    p.add_argument('--concurrent',action='store_true')
+    p.add_argument('--late-publication',action='store_true')
+    p.add_argument('--before-refusal',choices=('REVOKE','EXPIRE','TARGET_RACE'))
+    p.add_argument('--reservation-race',action='store_true')
+    p.add_argument('--ep-ttl',type=int,choices=(30,3600),default=3600)
+    p.add_argument('--authority-fault',choices=('REVOKE','EXPIRE'))
+    p.add_argument('--extended-matrix',action='store_true')
+    p.add_argument('--source-change',choices=('R54','R56'))
     p.add_argument('--modeled-os-identity',action='store_true')
     p.add_argument('--security-matrix',action='store_true')
     p.add_argument('--crash-boundary',choices=('ACCEPT','GIT_REF','VERIFY_COMMIT','REGISTER'))
-    args=p.parse_args();C.MODELED_OS=args.modeled_os_identity;print(json.dumps(run(args),sort_keys=True))
+    args=p.parse_args()
+    if args.authority_fault and not args.crash_boundary:p.error('authority fault requires an explicit real persisted boundary')
+    if (args.authority_fault=='EXPIRE' or args.before_refusal=='EXPIRE') and args.ep_ttl!=30:p.error('actual expiry case requires finite thirty-second EP grant')
+    extra_flags=(args.concurrent or args.late_publication or args.source_change or args.security_matrix or args.extended_matrix)
+    if args.before_refusal and (args.crash_boundary or args.authority_fault or args.reservation_race or extra_flags):p.error('before-refusal is an exclusive probe')
+    if args.reservation_race and (args.crash_boundary!='ACCEPT' or args.authority_fault or extra_flags):p.error('reservation probe requires only its ACCEPT barrier')
+    if args.authority_fault and extra_flags:p.error('authority-boundary refusal is an exclusive probe')
+    if args.concurrent and args.crash_boundary:p.error('concurrency cannot select a crash barrier')
+    if args.late_publication and (args.crash_boundary or args.source_change or args.security_matrix):p.error('late publication requires an exclusive unused read barrier')
+    if args.source_change and args.security_matrix:p.error('source supersession and grant revocation require separate probes')
+    C.MODELED_OS=args.modeled_os_identity;print(json.dumps(run(args),sort_keys=True))
 
 
 if __name__=='__main__':main()
