@@ -25,6 +25,13 @@ EXPECTED_ROUTES = frozenset({
     ('POST', '/v1/inspection-adoptions/plans'),
     ('GET', '/v1/inspection-adoptions/plans/{plan_id}'),
     ('GET', '/v1/inspection-adoptions/intents/{operation_id}'),
+    ('GET', '/v1/genesis-bootstrap/capability'),
+    ('POST', '/v1/genesis-bootstrap/plans'),
+    ('POST', '/v1/genesis-bootstrap/decisions'),
+    ('GET', '/v1/genesis-bootstrap/plans/{plan_id}'),
+    ('GET', '/v1/genesis-bootstrap/intents/{operation_id}'),
+    ('GET', '/v1/genesis-bootstrap/decisions/{decision_id}'),
+    ('GET', '/v1/genesis-bootstrap/decision-intents/{operation_id}'),
     ('GET', '/v1/project-proposal-decisions/capability'),
     ('POST', '/v1/project-proposal-decisions/decisions'),
     ('GET', '/v1/project-proposal-decisions/proposals/{plan_id}'),
@@ -204,7 +211,7 @@ class ServerRouteQualificationTests(unittest.TestCase):
              .replace("{{missionId}}", "{mission_id}"))
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 97)
+        self.assertEqual(len(EXPECTED_ROUTES), 104)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)

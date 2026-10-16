@@ -53,7 +53,11 @@ def main(argv=None):
                 status,document=service.handle('GET',base+'/'+leaves[args.action]+'/'+args.reference+'?dossier_id='+args.dossier_id,auth,args.audience)
             if status!=200:
                 print(json.dumps(document,sort_keys=True)); return 1
-            publish_cli(grant,auth,args.audience,document); return 0
+            try:
+                publish_cli(grant,auth,args.audience,document)
+            except (OSError,ValueError,RuntimeError,PermissionError,sqlite3.Error):
+                return 1
+            return 0
         print(json.dumps(document,sort_keys=True)); return 0
     except (OSError,ValueError,TypeError,KeyError,RuntimeError,PermissionError,sqlite3.Error):
         print(json.dumps({'contract_version':CONTRACT,'error':{'code':'GENESIS_CLI_UNAVAILABLE'}})); return 1

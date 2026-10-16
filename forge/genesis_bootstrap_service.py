@@ -130,7 +130,15 @@ class GenesisBootstrapService:
                     pass
         if original is not None and original not in decisions:
             raise PermissionError('foreign original effect decision')
-        return {'contract_version':CONTRACT,'instance_id':p.instance_id,'principal_id':p.principal_id,'audience':p.audience,'dossier_id':plan['dossier_id'],
+        summary=('Create one new document-only local authority repository; physical admission remains with the execution host.\n'
+                 +'Documents: '+str(len(plan['documents']['files']))+' unchanged original files, mode0644.\n'
+                 +'Proposed project/repository: '+plan['documents']['identity']['project_id']+' / '+plan['documents']['identity']['repository_id']+'\n'
+                 +'Target references: '+plan['target']['ep_instance_id']+' / '+plan['target']['placement_ref']+' / '+plan['target']['target_ref']+'\n'
+                 +'Effects requested: '+', '.join(plan['effects'])+'\n'
+                 +'Validation: bash scripts/validate.sh through externally trusted Python3.14 isolated validation.\n'
+                 +'Open questions: '+str(len(plan['open_questions']))+'; required unanswered: '+str(len(plan['blocking_open_points']))+'\n'
+                 +'No target write, execution-host credential, network publication or Mission is performed.')
+        return {'summary':summary,'contract_version':CONTRACT,'instance_id':p.instance_id,'principal_id':p.principal_id,'audience':p.audience,'dossier_id':plan['dossier_id'],
                 'plan':plan,'effect_decision_revision':len(decisions),'effect_history':decisions,'original_decision':original,
                 'effect_decision_eligible':eligible,'inapplicability_reasons':reasons,'effect_decision_currently_applicable':applicable,
                 'state':'EP_ADMISSION_REQUIRED','execution_authorized':False,'target_write':'NOT_PERFORMED','ep_credential':'NOT_ISSUED'}

@@ -3,7 +3,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from datetime import UTC,datetime,timedelta
 from importlib.util import spec_from_file_location,module_from_spec
-import argparse,json,subprocess,sys,hashlib
+import argparse,json,subprocess,sys,hashlib,sqlite3
+from contextlib import closing
 
 SOURCE=Path(__file__).resolve().parents[2]
 spec=spec_from_file_location('content_qualification',Path(__file__).with_name('qualify_installed_proposal_content_http.py'))
@@ -80,9 +81,16 @@ def run(args):
                 assert status==200 and recovered['original_decision']==original_decision and recovered['plan']==plan and recovered['effect_decision_revision']==1,(status,recovered)
                 assert not recovered['execution_authorized'] and recovered['target_write']=='NOT_PERFORMED' and recovered['ep_credential']=='NOT_ISSUED'
                 receipt['cases'].append('separate-server-os-restart-original-decision-and-plan-no-execution')
-                cli=command(['-m','forge.genesis_bootstrap_cli',*data,'decision-intent','--token-file',str(root/'effect.private'),'--audience','synthetic-workspace','--dossier-id','synthetic-dossier','--reference','exact-effect'],root)
-                assert cli==recovered
+                cli_file=root/'original-readback.private'
+                cli_receipt=command([str(Path(__file__).with_name('genesis_cli_readback.py')),str(cli_file),*data,'decision-intent','--token-file',str(root/'effect.private'),'--audience','synthetic-workspace','--dossier-id','synthetic-dossier','--reference','exact-effect'],root)
+                assert cli_receipt['exit_code']==0 and cli_receipt['sha256']==hashlib.sha256(cli_file.read_bytes()).hexdigest()
+                cli=json.loads(cli_file.read_bytes());assert cli==recovered
                 receipt['cases'].append('ordinary-installed-cli-http-original-readback-parity')
+            with closing(sqlite3.connect(root/'runtime/forge.db')) as db:
+                for table in ['mission_id_allocations','mission_state','governance_decisions','planning_provider_generation_permits']:
+                    assert db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==0
+            receipt['no_project_repo_ep_model_mission_effects']=True
+            receipt['operator_identity_evidence']='ACTUAL_MACOS_GENERATED_UID'
             receipt['plan_digest']=plan['plan_digest']; receipt['file_count']=37
         receipt['cleanup']=not parent.exists(); receipt['result']='PASS'
         return receipt
@@ -90,6 +98,8 @@ def run(args):
         primary=error
         raise
     finally:
+        if 'parent' in locals():
+            receipt['cleanup']=not parent.exists()
         C.BINDING.retain_receipt(args.output_dir,receipt,primary)
 
 
