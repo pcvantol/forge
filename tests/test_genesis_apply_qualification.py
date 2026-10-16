@@ -182,11 +182,15 @@ def verify_process_identity(expected):
         temp=TemporaryDirectory();self.addCleanup(temp.cleanup);data=Path(temp.name)
         (data/'g/evidence').mkdir(parents=True)
         Q.private(data/'g/evidence/r57-primary-error.private.json',{'type':'FileNotFoundError','errno':2,'detail':'NEVER_PUBLIC',
+            'primary':{'type':'BootstrapError','code':'BOOTSTRAP_HOST_GROUP_ACTIVE_OR_UNCERTAIN','detail':'NEVER_PUBLIC','frames':[]},
+            'cleanup_errors':[{'type':'PermissionError','errno':1,'detail':'NEVER_PUBLIC','frames':[]}],
             'frames':[{'file':'genesis_service.py','function':'_execute_step','line':343},{'file':'/private/secret','function':'NEVER_PUBLIC','line':1}]})
         ep=SimpleNamespace(data=data,facts=lambda:({'ep_genesis_operations':1},[evidence],{'ep_genesis_operations':[row]}))
         value=Q.failure_diagnostics(ep,{'error':{'code':'EP_GENESIS_HTTP_409','message':'NEVER_PUBLIC'}})
         self.assertEqual(value['consumer_error_code'],'EP_GENESIS_HTTP_409')
         self.assertEqual(value['owning_exception']['type'],'FileNotFoundError');self.assertEqual(value['owning_exception']['errno'],2)
+        self.assertEqual(value['owning_exception']['primary']['code'],'BOOTSTRAP_HOST_GROUP_ACTIVE_OR_UNCERTAIN')
+        self.assertEqual(value['owning_exception']['cleanup_errors'][0]['errno'],1)
         self.assertEqual(value['producer_operations'][0]['state'],'PARTIAL')
         self.assertEqual(value['producer_operations'][0]['last_error'],'BOOTSTRAP_HOST_STEP_FAILED')
         self.assertEqual(value['producer_operations'][0]['attempts'][0]['exit_code'],7)

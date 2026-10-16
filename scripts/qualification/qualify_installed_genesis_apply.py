@@ -94,10 +94,19 @@ def observed(*a,**k):
   try:
    import traceback,re
    names={'genesis_service.py','genesis_native.py','subprocess.py','provider_process_identity.py','server.py'}
-   frames=[{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__) if Path(f.filename).name in names and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',f.name)]
+   def bounded(error,depth=0):
+    value={'type':type(error).__name__,'errno':getattr(error,'errno',None),
+     'code':getattr(error,'code',None) if isinstance(getattr(error,'code',None),str) and re.fullmatch(r'BOOTSTRAP_[A-Z0-9_]{1,100}',error.code) else None,
+     'frames':[{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__) if Path(f.filename).name in names and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',f.name)]}
+    if depth<3:
+     primary=getattr(error,'primary',None)
+     if isinstance(primary,BaseException):value['primary']=bounded(primary,depth+1)
+     cleanup=getattr(error,'cleanup_errors',())
+     if isinstance(cleanup,(tuple,list)):value['cleanup_errors']=[bounded(e,depth+1) for e in cleanup[:16] if isinstance(e,BaseException)]
+    return value
    target=Path(root)/'g/evidence/r57-primary-error.private.json'
    with target.open('x') as stream:
-    os.chmod(target,0o600);json.dump({'type':type(error).__name__,'errno':getattr(error,'errno',None),'frames':frames},stream)
+    os.chmod(target,0o600);json.dump(bounded(error),stream)
   except BaseException as retention:error.add_note('bounded owning error observation unavailable: '+type(retention).__name__)
   raise
 service.execute=observed
@@ -128,9 +137,15 @@ def failure_diagnostics(ep,result):
         if diagnostic.exists():
             value=json.loads(diagnostic.read_bytes())
             allowed_files={'genesis_service.py','genesis_native.py','subprocess.py','provider_process_identity.py','server.py'}
-            answer['owning_exception']={'type':value.get('type') if isinstance(value.get('type'),str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',value['type']) else None,
-                'errno':value.get('errno') if isinstance(value.get('errno'),int) else None,
-                'frames':[{'file':f['file'],'function':f['function'],'line':f['line']} for f in value.get('frames',[]) if f.get('file') in allowed_files and isinstance(f.get('function'),str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',f['function']) and isinstance(f.get('line'),int)]}
+            def closed(value,depth=0):
+                answer={'type':value.get('type') if isinstance(value.get('type'),str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',value['type']) else None,
+                    'errno':value.get('errno') if isinstance(value.get('errno'),int) else None,'code':code(value.get('code')),
+                    'frames':[{'file':f['file'],'function':f['function'],'line':f['line']} for f in value.get('frames',[]) if f.get('file') in allowed_files and isinstance(f.get('function'),str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',f['function']) and isinstance(f.get('line'),int)]}
+                if depth<3:
+                    if isinstance(value.get('primary'),dict):answer['primary']=closed(value['primary'],depth+1)
+                    if isinstance(value.get('cleanup_errors'),list):answer['cleanup_errors']=[closed(e,depth+1) for e in value['cleanup_errors'][:16] if isinstance(e,dict)]
+                return answer
+            answer['owning_exception']=closed(value)
         counts,evidence,rows=ep.facts()
         allowed_states={'RESERVED','EXECUTING','PARTIAL','EFFECT_UNCERTAIN','COMPLETE'}
         steps={'PREFLIGHT','CREATE_TARGET','WRITE_FILES','VALIDATE_DOCS','GIT_INIT','GIT_PREPARE','GIT_OBJECT','GIT_REF','VERIFY_COMMIT','REGISTER_AND_ATTACH'}
