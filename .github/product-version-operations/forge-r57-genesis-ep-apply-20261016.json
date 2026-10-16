@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.22.0",
+  "classification_rationale": "L3-GENESIS-EP-APPLY-COORDINATOR-V1-20261016",
+  "component": "product",
+  "event_lineage": "L3-GENESIS-EP-APPLY-COORDINATOR-V1-20261016",
+  "expected_head": "523a13f3196c096da217421e74130df474fadcc6",
+  "operation_id": "forge-r57-genesis-ep-apply-20261016",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "MINOR",
+  "requested_bump": "minor",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.23.0"
+}

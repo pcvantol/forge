@@ -10,10 +10,36 @@ permissions:
   contents: read
 
 jobs:
+  genesis-native:
+    name: Qualified macOS Genesis native execution
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - run: python -m pip install '.[validation]'
+      - name: Genesis qualified producer apply and separate OS recovery
+        timeout-minutes: 25
+        run: bash scripts/qualification/qualify_genesis_apply_ci.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: forge-genesis-apply-${{ github.sha }}
+          path: ${{ runner.temp }}/forge-genesis-apply-ci/proof-*/*.public.json
+          if-no-files-found: error
   test:
     name: Test and static validation
+    needs: genesis-native
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
     steps:
+      - name: Require qualified native Genesis execution
+        env:
+          GENESIS_NATIVE_RESULT: ${{ needs.genesis-native.result }}
+        run: test "$GENESIS_NATIVE_RESULT" = success
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

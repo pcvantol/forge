@@ -5971,6 +5971,320 @@
           }
         }
       }
+    },
+    "/v1/genesis-apply/operations": {
+      "post": {
+        "summary": "POST original Genesis operation",
+        "security": [
+          {
+            "GenesisApplyBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Genesis-Apply-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            }
+          }
+        ],
+        "description": "Explicit owner-paired CREATE_GENESIS_LOCAL over exact original R52/R54/R56 binding. GET never sends effects; lost replies recover original operation. No project readiness or Mission.",
+        "responses": {
+          "200": {
+            "description": "Original operation response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required; shared Server authentication envelope"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "genesis-apply-v1.json#/$defs/ApplyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/genesis-apply/operations/{operation_id}": {
+      "get": {
+        "summary": "GET original Genesis operation",
+        "security": [
+          {
+            "GenesisApplyBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Genesis-Apply-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            }
+          }
+        ],
+        "description": "Explicit owner-paired CREATE_GENESIS_LOCAL over exact original R52/R54/R56 binding. GET never sends effects; lost replies recover original operation. No project readiness or Mission.",
+        "responses": {
+          "200": {
+            "description": "Original operation response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required; shared Server authentication envelope"
+          }
+        }
+      }
+    },
+    "/v1/genesis-apply/operations/{operation_id}/resume": {
+      "post": {
+        "summary": "POST original Genesis operation",
+        "security": [
+          {
+            "GenesisApplyBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Genesis-Apply-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            }
+          }
+        ],
+        "description": "Explicit owner-paired CREATE_GENESIS_LOCAL over exact original R52/R54/R56 binding. GET never sends effects; lost replies recover original operation. No project readiness or Mission.",
+        "responses": {
+          "200": {
+            "description": "Original operation response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed refusal or unavailable original",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "genesis-apply-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required; shared Server authentication envelope"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "genesis-apply-v1.json#/$defs/ResumeRequest"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6053,6 +6367,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Explicit finite GENESIS_BOOTSTRAP_EFFECT_ONLY/1.0 grant; no EP execution authority"
+      },
+      "GenesisApplyBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate finite owner-issued READ/REQUEST_APPLY/RESUME authority for exact original source plans. Never the EP provisioning grant."
       }
     },
     "schemas": {
