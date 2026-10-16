@@ -136,3 +136,33 @@ def plan_document(record, content, request, principal):
     plan['plan_digest']=digest(canonical(plan))
     if len(canonical(plan))>1048576:raise ContractError('finite effect plan result required')
     return plan
+
+
+class BootstrapConflict(ValueError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def effect_request(value):
+    from .approved_worklist import identifier
+    from .proposal_content_contract import hash_value
+    from .advisory_contract import text
+    fields = {'contract_version','instance_id','dossier_id','operation_id','plan_id','plan_digest','purpose',
+              'decision','reason','expected_decision_revision','previous_decision_id'}
+    if not isinstance(value,dict) or set(value)!=fields or value['contract_version']!=CONTRACT or value['purpose']!=EFFECT_PURPOSE or len(canonical(value))>65536:
+        raise ContractError('closed exact Genesis effect decision required')
+    for key in ('instance_id','dossier_id','operation_id','plan_id'):
+        identifier(value[key])
+    hash_value(value['plan_digest']); text(value['reason'],2000)
+    if value['decision'] not in ('APPROVE_EFFECT','REQUEST_CHANGES'):
+        raise ContractError('explicit effect decision required')
+    n=value['expected_decision_revision']
+    if type(n) is not int or not 0<=n<8:
+        raise ContractError('finite effect revision required')
+    if n==0:
+        if value['previous_decision_id'] is not None:
+            raise ContractError('first effect decision has no predecessor')
+    else:
+        identifier(value['previous_decision_id'])
+    return load_json(canonical(value)),digest(canonical(value))
