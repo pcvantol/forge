@@ -166,6 +166,22 @@ class GenesisBootstrapHttpTest(unittest.TestCase):
             result=main(['--data-root',str(self.root/'runtime'),'capability','--token-file',str(self.root/'bootstrap.private'),'--audience','synthetic-workspace'])
         self.assertEqual(result,1);self.assertEqual(output.getvalue(),'{"partial":')
 
+    def test_corrupt_grant_during_late_cli_chunk_cannot_append_secondary_stdout(self):
+        import io
+        from forge.genesis_bootstrap_cli import main
+        output=io.StringIO();original=self.grant.path.read_bytes()
+        def corrupt_after_first_chunk(grant,auth,audience,document,**kwargs):
+            print('{"partial":',end='')
+            rows=grant._records();rows[0]['dossier_ids']=[{}];grant.save_records(rows)
+            # The real retained-grant validator encounters an unhashable scope.
+            grant.authorize(auth,audience=audience)
+        try:
+            with patch('forge.genesis_bootstrap_cli.publish_cli',side_effect=corrupt_after_first_chunk),patch('sys.stdout',output):
+                result=main(['--data-root',str(self.root/'runtime'),'capability','--token-file',str(self.root/'bootstrap.private'),'--audience','synthetic-workspace'])
+            self.assertEqual(result,1);self.assertEqual(output.getvalue(),'{"partial":')
+        finally:
+            self.grant.path.write_bytes(original);self.grant.path.chmod(0o600)
+
     def test_actual_cli_init_issue_prepare_decide_original_read_revoke_and_closed_error(self):
         import io
         from forge.genesis_bootstrap_cli import main
