@@ -87,7 +87,7 @@ Quality and Security PASS both bind9f4db61; superseded reports and all failed
 or obsolete-cancelled attempts remain retained.
 
 Current installed terminal counts prove1 original proposal,3 traceable effect
-decisions and unchanged original R52 store bytes after every matrix case,
+decisions and unchanged original R52 store bytes after the complete matrix,
 with zero canonical Mission allocations/states/governance decisions/model
 permits. Modeled hosted identity and actual earlier Mac identity remain distinct.
 No expected-failure control is labelled a real authorization or a second outcome.
