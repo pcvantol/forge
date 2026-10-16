@@ -179,14 +179,49 @@ def verify_process_identity(expected):
     def test_failure_diagnostics_preserve_only_closed_public_enums_and_numeric_counts(self):
         row={'state':'PARTIAL'};evidence={'completed_steps':['CREATE_TARGET','/private/secret'],'last_error':'BOOTSTRAP_HOST_STEP_FAILED',
             'attempts':[{'step':'CREATE_TARGET','exit_code':7,'process':{'credential':'NEVER_PUBLIC'}}]}
-        ep=SimpleNamespace(facts=lambda:({'ep_genesis_operations':1},[evidence],{'ep_genesis_operations':[row]}))
+        temp=TemporaryDirectory();self.addCleanup(temp.cleanup);data=Path(temp.name)
+        (data/'g/evidence').mkdir(parents=True)
+        Q.private(data/'g/evidence/r57-primary-error.private.json',{'type':'FileNotFoundError','errno':2,'detail':'NEVER_PUBLIC',
+            'frames':[{'file':'genesis_service.py','function':'_execute_step','line':343},{'file':'/private/secret','function':'NEVER_PUBLIC','line':1}]})
+        ep=SimpleNamespace(data=data,facts=lambda:({'ep_genesis_operations':1},[evidence],{'ep_genesis_operations':[row]}))
         value=Q.failure_diagnostics(ep,{'error':{'code':'EP_GENESIS_HTTP_409','message':'NEVER_PUBLIC'}})
         self.assertEqual(value['consumer_error_code'],'EP_GENESIS_HTTP_409')
+        self.assertEqual(value['owning_exception']['type'],'FileNotFoundError');self.assertEqual(value['owning_exception']['errno'],2)
         self.assertEqual(value['producer_operations'][0]['state'],'PARTIAL')
         self.assertEqual(value['producer_operations'][0]['last_error'],'BOOTSTRAP_HOST_STEP_FAILED')
         self.assertEqual(value['producer_operations'][0]['attempts'][0]['exit_code'],7)
         raw=json.dumps(value);self.assertNotIn('NEVER_PUBLIC',raw);self.assertNotIn('/private/secret',raw)
         self.assertIsNone(Q.failure_diagnostics(None,{'error':{'code':'/private/secret'}})['consumer_error_code'])
+
+    def test_failed_diagnostic_retention_cannot_replace_original_qualification_error(self):
+        with TemporaryDirectory() as temp:
+            root=Path(temp);args=SimpleNamespace(output_dir=root/'evidence',scratch_root=root/'untouched',python=Path('/unused'),wheel=root/'unused.whl')
+            with patch.object(Q,'probe',side_effect=OSError('original qualification failure')),patch.object(Q,'failure_diagnostics',side_effect=RuntimeError('secondary diagnostic failure')):
+                with self.assertRaisesRegex(OSError,'original qualification failure') as raised:Q.run(args)
+            self.assertIn('RuntimeError',' '.join(raised.exception.__notes__))
+            report=json.loads((args.output_dir/'first-real-installed-chain.public.json').read_bytes())
+            self.assertEqual(report['result'],'FAIL');self.assertEqual(report['failure']['category'],'OSError')
+
+    def test_owning_ledger_restoration_never_overwrites_links_or_replaces_primary_failure(self):
+        import os
+        with TemporaryDirectory() as temp:
+            root=Path(temp);ledger=root/'db';retained=root/'original';destination=root/'rejected'
+            retained.write_bytes(b'exact original ledger');info=retained.stat();identity=(info.st_dev,info.st_ino)
+            ledger.symlink_to(root/'absent')
+            with self.assertRaisesRegex(RuntimeError,'ownership differs'):Q.restore_owning_ledger(ledger,retained,destination,identity,None)
+            self.assertTrue(ledger.is_symlink());self.assertEqual(retained.read_bytes(),b'exact original ledger');ledger.unlink()
+            ledger.write_bytes(b'rejected replacement');destination.symlink_to(root/'absent')
+            with self.assertRaises(FileExistsError):Q.restore_owning_ledger(ledger,retained,destination,identity,None)
+            self.assertTrue(destination.is_symlink());self.assertEqual(ledger.read_bytes(),b'rejected replacement')
+            destination.unlink();ledger.unlink()
+            primary=OSError('original probe error')
+            with patch.object(Q,'retain_rejected_ledger',side_effect=ValueError('first retention error')),patch.object(Q.os,'link',side_effect=PermissionError('secondary restore error')):
+                Q.restore_owning_ledger(ledger,retained,destination,identity,primary)
+                self.assertIn('ValueError',' '.join(primary.__notes__));self.assertIn('PermissionError',' '.join(primary.__notes__))
+                with self.assertRaisesRegex(ValueError,'first retention error') as raised:Q.restore_owning_ledger(ledger,retained,destination,identity,None)
+                self.assertIn('PermissionError',' '.join(raised.exception.__notes__))
+            Q.restore_owning_ledger(ledger,retained,destination,identity,None)
+            self.assertEqual(ledger.read_bytes(),b'exact original ledger');self.assertEqual(ledger.stat().st_ino,identity[1]);self.assertEqual(ledger.stat().st_nlink,1)
 
     def test_concurrency_detector_accepts_only_exact_pending_peer_or_transport_failures(self):
         spec=spec_from_file_location('r57_actual_matrix_guards',ROOT/'scripts/qualification/genesis_apply_matrix.py')

@@ -80,13 +80,27 @@ elif point=='REGISTER':
  def wrapped(*a,**k):
   result=original(*a,**k);barrier();return result
  service.execute=wrapped
-else:
+elif point!='OBSERVE_ONLY':
  original=service._execute_step
  def wrapped(*a,**k):
   result=original(*a,**k)
   if k['step']==point:barrier()
   return result
  service._execute_step=wrapped
+observed_execute=service.execute
+def observed(*a,**k):
+ try:return observed_execute(*a,**k)
+ except BaseException as error:
+  try:
+   import traceback,re
+   names={'genesis_service.py','genesis_native.py','subprocess.py','provider_process_identity.py','server.py'}
+   frames=[{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__) if Path(f.filename).name in names and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',f.name)]
+   target=Path(root)/'g/evidence/r57-primary-error.private.json'
+   with target.open('x') as stream:
+    os.chmod(target,0o600);json.dump({'type':type(error).__name__,'errno':getattr(error,'errno',None),'frames':frames},stream)
+  except BaseException as retention:error.add_note('bounded owning error observation unavailable: '+type(retention).__name__)
+  raise
+service.execute=observed
 raise SystemExit(server.main(['serve','--data-root',root,'--expected-instance-id',instance]))
 """
 
@@ -110,6 +124,13 @@ def failure_diagnostics(ep,result):
         return value if isinstance(value,str) and re.fullmatch(r'(?:EP_GENESIS_|GENESIS_|BOOTSTRAP_)[A-Z0-9_]{1,100}',value) else None
     answer={'consumer_error_code':code(result.get('error',{}).get('code')) if isinstance(result,dict) else None}
     if ep is not None:
+        diagnostic=ep.data/'g/evidence/r57-primary-error.private.json'
+        if diagnostic.exists():
+            value=json.loads(diagnostic.read_bytes())
+            allowed_files={'genesis_service.py','genesis_native.py','subprocess.py','provider_process_identity.py','server.py'}
+            answer['owning_exception']={'type':value.get('type') if isinstance(value.get('type'),str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',value['type']) else None,
+                'errno':value.get('errno') if isinstance(value.get('errno'),int) else None,
+                'frames':[{'file':f['file'],'function':f['function'],'line':f['line']} for f in value.get('frames',[]) if f.get('file') in allowed_files and isinstance(f.get('function'),str) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,100}',f['function']) and isinstance(f.get('line'),int)]}
         counts,evidence,rows=ep.facts()
         allowed_states={'RESERVED','EXECUTING','PARTIAL','EFFECT_UNCERTAIN','COMPLETE'}
         steps={'PREFLIGHT','CREATE_TARGET','WRITE_FILES','VALIDATE_DOCS','GIT_INIT','GIT_PREPARE','GIT_OBJECT','GIT_REF','VERIFY_COMMIT','REGISTER_AND_ATTACH'}
@@ -175,6 +196,39 @@ def original_recovery(args, ep, servers, forge, body, report, port, forge_pid):
 
 
 
+def retain_rejected_ledger(ledger,destination,original_identity):
+    """Retain only an owned replacement; atomic link refuses any existing slot."""
+    import stat
+    if not os.path.lexists(ledger):return
+    info=ledger.lstat()
+    if (info.st_dev,info.st_ino)==original_identity or info.st_uid!=os.getuid() or not stat.S_ISREG(info.st_mode) or info.st_nlink!=1:
+        raise RuntimeError('rejected ledger ownership differs')
+    os.link(ledger,destination,follow_symlinks=False)
+    if (ledger.lstat().st_dev,ledger.lstat().st_ino)!=(info.st_dev,info.st_ino):raise RuntimeError('rejected ledger changed')
+    ledger.unlink()
+
+
+def restore_owning_ledger(ledger,retained,destination,original_identity,primary):
+    failures=[]
+    try:retain_rejected_ledger(ledger,destination,original_identity)
+    except BaseException as error:failures.append(error)
+    try:
+        import stat
+        info=retained.lstat()
+        if (info.st_dev,info.st_ino)!=original_identity or info.st_uid!=os.getuid() or not stat.S_ISREG(info.st_mode) or info.st_nlink!=1:
+            raise RuntimeError('original retained ledger identity differs')
+        # link() never replaces any occupied slot, including a dangling link.
+        os.link(retained,ledger,follow_symlinks=False)
+        retained.unlink()
+    except BaseException as error:failures.append(error)
+    if failures:
+        if primary is not None:
+            for error in failures:primary.add_note('own ledger retention/restoration failed: '+type(error).__name__)
+        else:
+            for error in failures[1:]:failures[0].add_note('additional original-ledger restoration failed: '+type(error).__name__)
+            raise failures[0]
+
+
 def completion_matrix(args, ep, servers, forge, body, operation, report, port):
     """Actual HTTP refusals and causal restored installed defect; own data only."""
     baseline=ep.facts()
@@ -204,16 +258,17 @@ def completion_matrix(args, ep, servers, forge, body, operation, report, port):
             retained.rename(path)
         if path.read_bytes()!=raw:raise RuntimeError('original owning source restoration differs')
     ledger=ep.data/'epdata.sqlite';raw_ledger=ledger.read_bytes();retained_ledger=ledger.with_name('epdata.r57-original.sqlite')
+    info=ledger.lstat();original_identity=(info.st_dev,info.st_ino)
     ledger.rename(retained_ledger)
     try:
         status,_=retained_call(args.output_dir,'missing-owning-ep-ledger',port,forge/'apply.private','GET',item)
         if status not in (403,424,503):raise RuntimeError('missing initialized EP ledger treated as healthy')
+        retain_rejected_ledger(ledger,ep.data/'g/evidence/r57-missing-replacement-ledger.private.sqlite',original_identity)
         private(ledger,b'NOT_A_SQLITE_LEDGER\n')
         status,_=retained_call(args.output_dir,'corrupt-owning-ep-ledger',port,forge/'apply.private','GET',item)
         if status not in (403,424,503):raise RuntimeError('corrupt initialized EP ledger treated as healthy')
     finally:
-        if ledger.exists():ledger.unlink()
-        retained_ledger.rename(ledger)
+        restore_owning_ledger(ledger,retained_ledger,ep.data/'g/evidence/r57-corrupt-replacement-ledger.private.sqlite',original_identity,sys.exc_info()[1])
     if ledger.read_bytes()!=raw_ledger or ep.facts()!=baseline:raise RuntimeError('original EP ledger restoration differs')
     def detector(current_port):
         status,value=retained_call(args.output_dir,'detector-'+str(time.monotonic_ns()),current_port,forge/'apply.private','GET',item)
@@ -458,8 +513,7 @@ class EPServer:
         self.log=(self.output/'ep-server.private.log').open('ab');os.chmod(self.output/'ep-server.private.log',0o600)
         command=[str(self.args.ep_python),'-I','-m','engineering_platform.server','serve','--data-root',str(self.data),'--expected-instance-id',self.instance]
         point=getattr(self.args,'crash_boundary',None) or ('FAIL_'+self.args.interruption_step if getattr(self.args,'interruption_step',None) else None)
-        if fault and point:
-            command=[str(self.args.ep_python),'-I','-c',FAULT_LAUNCHER,point,str(self.root/'barrier.private.json'),str(self.data),self.instance]
+        command=[str(self.args.ep_python),'-I','-c',FAULT_LAUNCHER,point if fault and point else 'OBSERVE_ONLY',str(self.root/'barrier.private.json'),str(self.data),self.instance]
         self.process=subprocess.Popen(command,cwd=self.root,env=self.env,stdout=self.log,stderr=self.log,start_new_session=True)
         deadline=time.monotonic()+20
         while time.monotonic()<deadline:
