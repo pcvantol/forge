@@ -337,3 +337,27 @@ def retain_owned(Q,root,ep,output):
         'private':True,'raw_bearers_and_config_containers_excluded':True,'owned_processes_stopped_before_capture':True}
     Q.private(output/'owned-primary-evidence.private.json',result)
     return result
+
+
+def interrupted_recovery(Q,c,servers,report,forge_pid,step):
+    """Actual owning execute() error handling persists the literal partial state."""
+    ep=c['ep'];path='/v1/genesis-apply/operations/original-apply?dossier_id=synthetic-dossier'
+    status,value=Q.retained_call(c['output'],'actual-interrupted-post',c['port'],c['forge']/'apply.private','POST','/v1/genesis-apply/operations',c['body'])
+    if status!=424 or value.get('error',{}).get('code')!='EP_GENESIS_HTTP_409':raise RuntimeError('genuine owning controlled interruption unavailable')
+    status,original=Q.retained_call(c['output'],'actual-interrupted-original-get',c['port'],c['forge']/'apply.private','GET',path)
+    expected='EFFECT_UNCERTAIN' if step=='PREFLIGHT' else 'PARTIAL'
+    if (status!=200 or original['state']!=expected or original['original_ep_operation']['last_error']!='BOOTSTRAP_QUALIFICATION_CONTROLLED_INTERRUPT'
+            or original['original_request']!=c['body'] or original['explicit_attempts']!=1):raise RuntimeError('literal original interrupted state not preserved')
+    baseline=ep.facts();old_ep=ep.process.pid
+    ep.stop();servers.close();ep.start(fault=False)
+    port,new_forge,_=servers.enter_context(Q.C.server(ep.args.python,c['forge'],c['output']))
+    if ep.process.pid==old_ep or new_forge==forge_pid:raise RuntimeError('interruption recovery lacks independent OS restart')
+    status,readback=Q.retained_call(c['output'],'interrupted-after-os-restarts-original-get',port,c['forge']/'apply.private','GET',path)
+    if status!=200 or readback['state']!=expected or readback['original_request']!=c['body'] or ep.facts()!=baseline:raise RuntimeError('original interrupted readback changed effects or identity')
+    resume={'contract_version':'forge-genesis-apply/v1','instance_id':c['body']['instance_id'],'dossier_id':c['body']['dossier_id'],
+        'operation_id':c['body']['operation_id'],'attempt_id':'explicit-interrupted-recovery','original_request_digest':original['original_request_digest']}
+    status,value=Q.retained_call(c['output'],'explicit-interrupted-resume',port,c['forge']/'apply.private','POST','/v1/genesis-apply/operations/original-apply/resume',resume)
+    report['literal_interrupted_recovery']={'state':expected,'actual_get_status':200,'controlled_error_after_real_step':step,
+        'old_ep_pid':old_ep,'new_ep_pid':ep.process.pid,'old_forge_pid':forge_pid,'new_forge_pid':new_forge,'no_effect_on_original_get':True,'explicit_original_resume':True}
+    c['port']=port
+    return port,status,value

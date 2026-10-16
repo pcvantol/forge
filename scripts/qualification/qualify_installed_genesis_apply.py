@@ -66,6 +66,15 @@ elif point=='READ_THREAD':
  def wrapped(*a,**k):
   result=original(*a,**k);barrier();return result
  service.read=wrapped
+elif point.startswith('FAIL_'):
+ original=service._execute_step
+ def wrapped(*a,**k):
+  result=original(*a,**k)
+  if k['step']==point.removeprefix('FAIL_'):
+   from engineering_platform.genesis_contract import BootstrapError
+   raise BootstrapError('BOOTSTRAP_QUALIFICATION_CONTROLLED_INTERRUPT',409)
+  return result
+ service._execute_step=wrapped
 elif point=='REGISTER':
  original=service.execute
  def wrapped(*a,**k):
@@ -92,6 +101,25 @@ def retained_call(output, name, *args):
     status, value = apply_outcome(*args)
     private(output/(name+'.http.private.json'), {'status':status, 'response':value})
     return status, value
+
+
+def failure_diagnostics(ep,result):
+    """Only closed numeric/enum diagnostics, never tokens, commands or paths."""
+    import re
+    def code(value):
+        return value if isinstance(value,str) and re.fullmatch(r'(?:EP_GENESIS_|GENESIS_|BOOTSTRAP_)[A-Z0-9_]{1,100}',value) else None
+    answer={'consumer_error_code':code(result.get('error',{}).get('code')) if isinstance(result,dict) else None}
+    if ep is not None:
+        counts,evidence,rows=ep.facts()
+        allowed_states={'RESERVED','EXECUTING','PARTIAL','EFFECT_UNCERTAIN','COMPLETE'}
+        steps={'PREFLIGHT','CREATE_TARGET','WRITE_FILES','VALIDATE_DOCS','GIT_INIT','GIT_PREPARE','GIT_OBJECT','GIT_REF','VERIFY_COMMIT','REGISTER_AND_ATTACH'}
+        answer['producer_counts']={k:v for k,v in counts.items() if isinstance(v,int) and not isinstance(v,bool)}
+        answer['producer_operations']=[{'state':row['state'] if row['state'] in allowed_states else 'INVALID',
+            'completed_steps':[step for step in value.get('completed_steps',[]) if step in steps],
+            'last_error':code(value.get('last_error')),
+            'attempts':[{'step':a.get('step') if a.get('step') in steps else 'INVALID','exit_code':a.get('exit_code') if isinstance(a.get('exit_code'),int) else None} for a in value.get('attempts',[])]}
+            for row,value in zip(rows['ep_genesis_operations'],evidence)]
+    return answer
 
 
 def original_recovery(args, ep, servers, forge, body, report, port, forge_pid):
@@ -161,7 +189,7 @@ def completion_matrix(args, ep, servers, forge, body, operation, report, port):
     status,_=retained_call(args.output_dir,'refusal-old-purpose',port,forge/'effect.private','POST','/v1/genesis-apply/operations',body)
     if status!=403:raise RuntimeError('old effect grant upgraded into apply authority')
     item='/v1/genesis-apply/operations/original-apply?dossier_id=synthetic-dossier'
-    for label,relative in [('own-journal','onboarding/genesis-apply/store.json'),('own-source','onboarding/genesis-bootstrap/store.json')]:
+    for label,relative in [('own-journal','onboarding/genesis-apply/store.json'),('own-source','onboarding/genesis-bootstrap/store.json'),('own-content-source','onboarding/content-decisions/store.json')]:
         path=forge/'runtime'/relative
         raw=path.read_bytes();retained=path.with_name(path.name+'.r57-retained')
         path.rename(retained)
@@ -175,6 +203,18 @@ def completion_matrix(args, ep, servers, forge, body, operation, report, port):
             if path.exists():path.unlink()
             retained.rename(path)
         if path.read_bytes()!=raw:raise RuntimeError('original owning source restoration differs')
+    ledger=ep.data/'epdata.sqlite';raw_ledger=ledger.read_bytes();retained_ledger=ledger.with_name('epdata.r57-original.sqlite')
+    ledger.rename(retained_ledger)
+    try:
+        status,_=retained_call(args.output_dir,'missing-owning-ep-ledger',port,forge/'apply.private','GET',item)
+        if status not in (403,424,503):raise RuntimeError('missing initialized EP ledger treated as healthy')
+        private(ledger,b'NOT_A_SQLITE_LEDGER\n')
+        status,_=retained_call(args.output_dir,'corrupt-owning-ep-ledger',port,forge/'apply.private','GET',item)
+        if status not in (403,424,503):raise RuntimeError('corrupt initialized EP ledger treated as healthy')
+    finally:
+        if ledger.exists():ledger.unlink()
+        retained_ledger.rename(ledger)
+    if ledger.read_bytes()!=raw_ledger or ep.facts()!=baseline:raise RuntimeError('original EP ledger restoration differs')
     def detector(current_port):
         status,value=retained_call(args.output_dir,'detector-'+str(time.monotonic_ns()),current_port,forge/'apply.private','GET',item)
         if status!=200:raise RuntimeError('actual original operation detector unavailable')
@@ -217,7 +257,7 @@ def completion_matrix(args, ep, servers, forge, body, operation, report, port):
     if status not in (403,424):raise RuntimeError('revoked EP authority disclosed a successful result')
     if ep.facts()!=baseline:raise RuntimeError('revocation/read changed original physical effects')
     report['negative_matrix']={'changed_bindings_refused':failures,'old_effect_grant_refused':True,
-        'missing_and_corrupt_initialized_journal_and_source_refused':True,'ep_revocation_refused':True,
+        'missing_and_corrupt_initialized_journal_and_source_refused':True,'missing_and_corrupt_owning_ep_ledger_refused':True,'missing_and_corrupt_r54_source_refused':True,'ep_revocation_refused':True,
         'no_extra_ep_effects':True}
     return port
 
@@ -417,8 +457,9 @@ class EPServer:
     def start(self, *, fault=True):
         self.log=(self.output/'ep-server.private.log').open('ab');os.chmod(self.output/'ep-server.private.log',0o600)
         command=[str(self.args.ep_python),'-I','-m','engineering_platform.server','serve','--data-root',str(self.data),'--expected-instance-id',self.instance]
-        if fault and getattr(self.args,'crash_boundary',None):
-            command=[str(self.args.ep_python),'-I','-c',FAULT_LAUNCHER,self.args.crash_boundary,str(self.root/'barrier.private.json'),str(self.data),self.instance]
+        point=getattr(self.args,'crash_boundary',None) or ('FAIL_'+self.args.interruption_step if getattr(self.args,'interruption_step',None) else None)
+        if fault and point:
+            command=[str(self.args.ep_python),'-I','-c',FAULT_LAUNCHER,point,str(self.root/'barrier.private.json'),str(self.data),self.instance]
         self.process=subprocess.Popen(command,cwd=self.root,env=self.env,stdout=self.log,stderr=self.log,start_new_session=True)
         deadline=time.monotonic()+20
         while time.monotonic()<deadline:
@@ -607,6 +648,8 @@ def run(args):
                 raise ExpectedNegativeComplete
             if getattr(args,'concurrent',False):
                 status,result,report['actual_concurrency']=extra.concurrent_original(helpers,context)
+            elif getattr(args,'interruption_step',None):
+                port,status,result=extra.interrupted_recovery(helpers,context,servers,report,forge_pid,args.interruption_step)
             elif getattr(args,'crash_boundary',None):
                 port,status,result=original_recovery(args,ep,servers,forge,body,report,port,forge_pid)
             else:
@@ -637,7 +680,7 @@ def run(args):
             Draft202012Validator(schema).validate(result)
             operation=result['original_ep_operation'];assert result['project_readiness']=='NOT_ASSESSED' and result['mission']=='NOT_REQUESTED'
             status,replay=apply_call(port,forge/'apply.private','POST','/v1/genesis-apply/operations',body);assert status==200
-            assert replay['original_ep_operation']['commit']==operation['commit'] and replay['explicit_attempts']==(2 if getattr(args,'crash_boundary',None) not in (None,'REGISTER') else 1)
+            assert replay['original_ep_operation']['commit']==operation['commit'] and replay['explicit_attempts']==(2 if getattr(args,'interruption_step',None) or getattr(args,'crash_boundary',None) not in (None,'REGISTER') else 1)
             counts,evidence,registered_rows=ep.facts();assert all(counts[t]==1 for t in ('ep_genesis_operations','ep_project_registrations','ep_repository_registrations','ep_local_repository_bindings'))
             assert all(counts[t]==0 for t in ('ep_submissions','ep_execution_runs','engineering_transactions'))
             git=lambda *a:subprocess.check_output(['/usr/bin/git','-C',str(ep.target),*a],timeout=20)
@@ -672,6 +715,9 @@ def run(args):
     except BaseException as error:
         primary=error;report['failure']={'category':type(error).__name__}
         if hasattr(error,'capture_report'):report['failure']['command_outcome']=error.capture_report
+        try:
+            report['failure']['bounded_diagnostics']=failure_diagnostics(ep,locals().get('result'))
+        except BaseException as secondary:error.add_note('bounded failure diagnostics unavailable: '+type(secondary).__name__)
     finally:
         try:
             if ep is not None:ep.stop()
@@ -714,10 +760,12 @@ def main():
     p.add_argument('--source-change',choices=('R54','R56'))
     p.add_argument('--modeled-os-identity',action='store_true')
     p.add_argument('--security-matrix',action='store_true')
+    p.add_argument('--interruption-step',choices=('PREFLIGHT','WRITE_FILES'))
     p.add_argument('--crash-boundary',choices=('ACCEPT','GIT_REF','VERIFY_COMMIT','REGISTER'))
     args=p.parse_args()
     if args.authority_fault and not args.crash_boundary:p.error('authority fault requires an explicit real persisted boundary')
     if (args.authority_fault=='EXPIRE' or args.before_refusal=='EXPIRE') and args.ep_ttl!=30:p.error('actual expiry case requires finite thirty-second EP grant')
+    if args.interruption_step and (args.crash_boundary or args.authority_fault or args.before_refusal or args.reservation_race or args.concurrent or args.late_publication or args.source_change or args.security_matrix or args.extended_matrix):p.error('interruption recovery requires an exclusive genuine execution error')
     extra_flags=(args.concurrent or args.late_publication or args.source_change or args.security_matrix or args.extended_matrix)
     if args.before_refusal and (args.crash_boundary or args.authority_fault or args.reservation_race or extra_flags):p.error('before-refusal is an exclusive probe')
     if args.reservation_race and (args.crash_boundary!='ACCEPT' or args.authority_fault or extra_flags):p.error('reservation probe requires only its ACCEPT barrier')

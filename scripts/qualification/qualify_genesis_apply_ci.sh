@@ -38,7 +38,7 @@ if len(found)!=1:raise SystemExit('one genuine platform native executable requir
 NATIVE
 bash "$qualification_root/ep-source/tools/qualification/prepare_ci_native_sandbox.sh"
 qualification_index=70
-for qualification_boundary in source-r54 source-r56 verify registered concurrent-late revoke-accept expire-accept revoke-gitref before-revoke before-expire target-race reservation; do
+for qualification_boundary in source-r54 source-r56 verify registered concurrent-late revoke-accept expire-accept revoke-gitref before-revoke before-expire target-race reservation uncertain partial; do
   qualification_index=$((qualification_index+1))
   qualification_flags=()
   case "$qualification_boundary" in
@@ -54,6 +54,8 @@ for qualification_boundary in source-r54 source-r56 verify registered concurrent
     before-expire) qualification_flags=(--before-refusal EXPIRE --ep-ttl 30);;
     target-race) qualification_flags=(--before-refusal TARGET_RACE);;
     reservation) qualification_flags=(--crash-boundary ACCEPT --reservation-race);;
+    uncertain) qualification_flags=(--interruption-step PREFLIGHT);;
+    partial) qualification_flags=(--interruption-step WRITE_FILES);;
     *) exit 2;;
   esac
   "$qualification_root/forge-installed/bin/python" -I \

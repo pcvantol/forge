@@ -176,6 +176,18 @@ def verify_process_identity(expected):
             report=json.loads((args.output_dir/'first-real-installed-chain.public.json').read_bytes())
             self.assertEqual(report['result'],'FAIL');self.assertEqual(report['failure']['stage'],'negative-context-cleanup')
 
+    def test_failure_diagnostics_preserve_only_closed_public_enums_and_numeric_counts(self):
+        row={'state':'PARTIAL'};evidence={'completed_steps':['CREATE_TARGET','/private/secret'],'last_error':'BOOTSTRAP_HOST_STEP_FAILED',
+            'attempts':[{'step':'CREATE_TARGET','exit_code':7,'process':{'credential':'NEVER_PUBLIC'}}]}
+        ep=SimpleNamespace(facts=lambda:({'ep_genesis_operations':1},[evidence],{'ep_genesis_operations':[row]}))
+        value=Q.failure_diagnostics(ep,{'error':{'code':'EP_GENESIS_HTTP_409','message':'NEVER_PUBLIC'}})
+        self.assertEqual(value['consumer_error_code'],'EP_GENESIS_HTTP_409')
+        self.assertEqual(value['producer_operations'][0]['state'],'PARTIAL')
+        self.assertEqual(value['producer_operations'][0]['last_error'],'BOOTSTRAP_HOST_STEP_FAILED')
+        self.assertEqual(value['producer_operations'][0]['attempts'][0]['exit_code'],7)
+        raw=json.dumps(value);self.assertNotIn('NEVER_PUBLIC',raw);self.assertNotIn('/private/secret',raw)
+        self.assertIsNone(Q.failure_diagnostics(None,{'error':{'code':'/private/secret'}})['consumer_error_code'])
+
     def test_concurrency_detector_accepts_only_exact_pending_peer_or_transport_failures(self):
         spec=spec_from_file_location('r57_actual_matrix_guards',ROOT/'scripts/qualification/genesis_apply_matrix.py')
         matrix=module_from_spec(spec);spec.loader.exec_module(matrix)
