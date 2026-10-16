@@ -155,6 +155,19 @@ def group_active(group):
     return False
 
 
+def require_worker_groups_exited(evidence):
+    for value in evidence:
+        for attempt in value['attempts']:
+            group=attempt.get('process',{}).get('process_group')
+            if group:
+                try:os.killpg(group,0)
+                except ProcessLookupError:continue
+                except PermissionError:
+                    if not group_active(group):continue
+                    raise
+                if group_active(group):raise RuntimeError('own EP worker group remains active or uncertain')
+
+
 class EPServer:
     def __init__(self,args,root,output):
         self.args,self.root,self.output=args,root,output
@@ -434,13 +447,7 @@ def run(args):
                 if primary is None:
                     marker=json.loads((root/'.r57-owner.json').read_bytes());info=root.stat()
                     if marker['uid']!=os.getuid() or marker['identity']!=[info.st_dev,info.st_ino]:raise RuntimeError('own scratch identity changed')
-                    for value in evidence:
-                        for attempt in value['attempts']:
-                            group=attempt.get('process',{}).get('process_group')
-                            if group:
-                                try:os.killpg(group,0)
-                                except ProcessLookupError:continue
-                                raise RuntimeError('own EP worker group remains active or uncertain')
+                    require_worker_groups_exited(evidence)
                     shutil.rmtree(root);report['cleanup']=True
             else:report['cleanup']=True
         except BaseException as cleanup:

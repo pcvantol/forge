@@ -137,3 +137,12 @@ def verify_process_identity(expected):
                     try:os.killpg(parent.pid,signal.SIGKILL)
                     except ProcessLookupError:pass
                     parent.wait(timeout=5)
+
+    def test_outer_cleanup_distinguishes_exited_zombies_from_live_or_unknown_workers(self):
+        evidence=[{'attempts':[{'process':{'process_group':12345}}]}]
+        with patch.object(Q.os,'killpg',side_effect=PermissionError('exited group')),patch.object(Q,'group_active',return_value=False):
+            Q.require_worker_groups_exited(evidence)
+        with patch.object(Q.os,'killpg',return_value=None),patch.object(Q,'group_active',return_value=True):
+            with self.assertRaisesRegex(RuntimeError,'active or uncertain'):Q.require_worker_groups_exited(evidence)
+        with patch.object(Q.os,'killpg',side_effect=PermissionError('live group')),patch.object(Q,'group_active',return_value=True):
+            with self.assertRaises(PermissionError):Q.require_worker_groups_exited(evidence)
