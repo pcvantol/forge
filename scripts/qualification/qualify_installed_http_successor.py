@@ -1283,6 +1283,20 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
                 if time.monotonic() >= deadline:
                     raise RuntimeError("concurrent start barrier timed out")
                 time.sleep(0.01)
+            if (root / "controlled-late-start.private").exists():
+                original_preflight = runtime.preflight
+                def controlled_preflight(*args, **kwargs):
+                    result = original_preflight(*args, **kwargs)
+                    marker = root / ("race-start-b.preflight.private" if phase == "race-start-a" else "race-start-a.finished.private")
+                    if phase == "race-start-b":
+                        (root / "race-start-b.preflight.private").write_text("observed")
+                    control_deadline = time.monotonic() + 20
+                    while not marker.exists():
+                        if time.monotonic() >= control_deadline:
+                            raise RuntimeError("controlled late-start barrier timed out")
+                        time.sleep(0.01)
+                    return result
+                runtime.preflight = controlled_preflight
             try:
                 runtime.start(mission_id, _initial_truth())
             except Exception as error:
@@ -1291,6 +1305,9 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
                 })
             else:
                 fixture._write(root / f"{phase}.race.private.json", {"result": "STARTED"})
+            finally:
+                if phase == "race-start-a":
+                    (root / "race-start-a.finished.private").write_text("finished")
         elif phase == "after-a-cut":
             def before_successor() -> bool:
                 observed = runtime.states.get(mission_id)
@@ -2512,6 +2529,23 @@ def _scenario(root: Path, scenario: str, wheel: Path, *, observer=None) -> dict:
             **({"recovery": recovery_summary} if recovery_summary is not None else {})}
 
 
+def _concurrent_observation(outcomes, submissions, invocations):
+    """Closed public facts, excluding arbitrary exception messages and paths."""
+    from forge.state import MissionExecutionStatus
+    known_types = {"RuntimeServiceBusy", "MissionStateStoreError", "InstalledDynamicMissionError"}
+    known_reasons = {
+        "canonical runtime is busy": "RUNTIME_BUSY",
+        "public start requires a canonically admitted zero-Action Mission": "NOT_ZERO_ACTION",
+        **{f"mission state transition {state.value} -> CREATED is not permitted":
+           "TRANSITION_" + state.value + "_TO_CREATED_DENIED" for state in MissionExecutionStatus},
+    }
+    return {"outcomes": [{"result": item.get("result") if item.get("result") in {"STARTED", "REJECTED"} else "UNKNOWN",
+                          "type": item.get("type") if item.get("type") in known_types else "OTHER",
+                          "reason_code": known_reasons.get(item.get("reason"), "UNCLASSIFIED")}
+                         for item in outcomes],
+            "submission_count": submissions, "planner_invocation_count": invocations}
+
+
 def _concurrent_start_case(root: Path, wheel: Path) -> dict:
     """Race two installed Forge processes at the public zero-Action start gate."""
     root.mkdir()
@@ -2578,7 +2612,10 @@ def _concurrent_start_case(root: Path, wheel: Path) -> dict:
                 or rejection.get("reason") != expected_rejections.get(rejection.get("type"))
                 or len(simulator.submission_ids()) != 1
                 or len(fixture._read(root / "provider-inputs.private.json")) != 1):
-            raise RuntimeError("concurrent starters crossed the single-flight Action boundary")
+            error = RuntimeError("concurrent starters crossed the single-flight Action boundary")
+            error.single_flight_observation = _concurrent_observation(
+                outcomes, len(simulator.submission_ids()), len(fixture._read(root / "provider-inputs.private.json")))
+            raise error
         submission_id = simulator.submission_ids()[0]
         payload = simulator.submitted_payload(submission_id)
         pending = validate_fixture(
@@ -2743,6 +2780,7 @@ def main() -> int:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--source-revision")
     parser.add_argument("--scenario", choices=SCENARIOS)
+    parser.add_argument("--late-start-control", action="store_true")
     parser.add_argument("--governance-case", choices=GOVERNANCE_CASES)
     parser.add_argument("--preflight-case", choices=tuple(PREFLIGHT_CASES))
     parser.add_argument("--provider-case", choices=PROVIDER_CASES)
@@ -2942,6 +2980,9 @@ def main() -> int:
     for scenario in scenarios:
         try:
             if scenario == "concurrent-start":
+                if args.late_start_control:
+                    (root / scenario).mkdir(parents=True, exist_ok=True)
+                    (root / scenario / "controlled-late-start.private").write_text("fixture-only")
                 summaries.append(_with_case_cleanup(
                     root / scenario, _concurrent_start_case, args.wheel.resolve(),
                 ))
@@ -2957,6 +2998,8 @@ def main() -> int:
                                               for frame in traceback.extract_tb(error.__traceback__)],
                                    "stage_trace": fixture._read(
                                        root / scenario / "stage-trace.public.json", [])})
+            if scenario == "concurrent-start" and hasattr(error, "single_flight_observation"):
+                report["failure"]["single_flight"] = error.single_flight_observation
             fixture._write(root / "installed-http-successor.public.json", report)
             print(json.dumps(report, sort_keys=True))
             return 1
