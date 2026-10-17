@@ -38,6 +38,16 @@ def counts(root):
     return result
 
 
+def _publish_boundary_pid(root):
+    pending = root / 'boundary.pending.private'
+    pending.touch(mode=0o600, exist_ok=False)
+    try:
+        pending.write_text(str(os.getpid()))
+        os.replace(pending, root / 'boundary.ready.private')
+    finally:
+        pending.unlink(missing_ok=True)
+
+
 def phase(root, stage, mode):
     ready, _ = cases(); q = ready.qual
     command = json.loads((root/'request.private.json').read_text())
@@ -64,7 +74,7 @@ def phase(root, stage, mode):
                            'governance_decisions','candidate_decision_receipts','mission_state')) == expected
                 if stage=='crash-after-allocation':hit = hit and actual['allocations']==1
             if hit:
-                (root/'boundary.ready.private').write_text(str(os.getpid()))
+                _publish_boundary_pid(root)
                 time.sleep(20)
         return q.utils.fixture.IDENTITY
     with patch.object(q.utils.composition.MacOSGeneratedUIDIdentityAdapter,'resolve',side_effect=identity), ExitStack() as stack:

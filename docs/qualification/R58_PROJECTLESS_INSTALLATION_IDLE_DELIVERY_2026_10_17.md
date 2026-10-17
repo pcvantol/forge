@@ -164,6 +164,40 @@ proofs and budgets remain preserved; this Finalization adds its own review
 and CI records without reset. Earlier complete CI39020535589 is separately
 source-bound SUCCESS1657tests/2798.237s; it does not replace the current result.
 
+## Postimplementation main qualification repair
+
+Automatic implementation-mainCI39027908952 later failed in the existing
+chat-first installed producer after16 passing cases. Its original public
+receipt reports AssertionError at test_mission_concept_recovery without the
+nested traceback. The missing private nested log is not reconstructed and
+the exact original assertion remains UNKNOWN. Original
+[artifact12100376974](https://github.com/pcvantol/forge/actions/runs/39027908952/artifacts/12100376974)
+ZIP SHA25660740cfd1a90c7d225116b5de77b1b741d3da28df6f3604a0d9fd9a3f1e36c28
+and original failed-step log remain retained.
+
+Inspection and a deterministic actual paused writer independently demonstrated
+the same empty-ready-PID visibility flaw in that concept recovery harness.
+Its own atomic private pending-write/close/replace repair is linked to the
+existing two publication regressions, now exercised for both owned crash
+harnesses. This observed flaw is not asserted to reconstruct the earlier
+hosted failure. Canonical boundary predicates, exact child PID check,
+crash/kill/recovery assertions and all original deadlines remain unchanged.
+
+The installed concept qualifier now records bounded diagnostic facts for a
+failed test: allowlisted method/stage/error types and source filename/function/
+line, with bounded arrays. Raw exception messages, absolute paths and arbitrary
+subtest parameters remain in private logs. Secondary diagnostic errors preserve
+the original failing unittest result. A private log write failure cannot
+replace an existing test failure; a log failure after otherwise passing tests
+still blocks the gate. Four linked regressions exercise those boundaries.
+
+This necessary qualification-only repair is part of this own Finalization.
+Product/runtime, workflow gates, version, schema and acceptance criteria are
+unchanged. Fresh installed positive/negative concept qualification, complete
+current CI/TDE and separate source/Finalization assurance remain required;
+the earlier docs-only candidate and its checks remain historical source-bound
+facts. No prior failure or consumption is removed or relabelled PASS.
+
 ## Own finalization and terminal boundary
 
 This document records only actual scoped delivery evidence. Protected own
