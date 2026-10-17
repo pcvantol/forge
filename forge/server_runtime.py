@@ -1429,6 +1429,28 @@ class ForgeServerRuntime:
         provider = self.services.provider_readiness()
         if not provider.get("ready"):
             raise ForgeServerRuntimeError("instance-owned planning provider is not ready")
+        # A fresh installation has no project execution context yet. Prove the
+        # narrow empty-work condition from one validated read-only snapshot,
+        # under the same lease used by Mission intake and scheduler mutation.
+        # Any work/history, unreadable store or uncertainty retains the normal
+        # strict composition below; no peer exception is treated as IDLE.
+        from .runtime.bootstrap import RuntimeBootstrap
+        with RuntimeServiceLock(self.root / "forge.db").acquire():
+            database = RuntimeBootstrap(data_root=self.root, forge_version=canonical_version()).open_read_snapshot()
+            try:
+                work_tables = ("mission_state", "mission_id_allocations", "mission_intake_evidence",
+                               "mission_runtime_projections", "scheduler_submissions", "approved_worksets",
+                               "dispatcher_state", "planning_state", "bootstrap_portfolio_state",
+                               "execution_host_bindings", "execution_host_exchange_audit")
+                empty = all(database._connection.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() is None
+                            for table in work_tables)
+                if empty:
+                    if self.root_identity.drifted():
+                        raise ForgeServerRuntimeError("Forge Server selected instance root changed")
+                    self.state.scheduler("IDLE")
+                    return
+            finally:
+                database.close()
         with InstalledDynamicMissionRuntime.open(str(self.root), provider_id=self.provider_id) as runtime:
             service = ForgeRuntimeService(_ResumeOnlyLoop(runtime), runtime.states, runtime_database=runtime.database)
             tick = service.tick()
