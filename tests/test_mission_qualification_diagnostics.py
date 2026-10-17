@@ -50,14 +50,20 @@ class MissionQualificationDiagnosticTests(unittest.TestCase):
 
     def test_test_failure_survives_secondary_log_write_failure(self):
         module = driver()
-        with patch.object(Path, 'write_text', side_effect=OSError('log fault')):
-            self.assertFalse(module._retain_test_log(Path('unused'), StringIO('original failure'), True))
+        for error in [OSError('log fault'), ValueError('closed log stream'),
+                      UnicodeEncodeError('utf-8', chr(0xd800), 0, 1, 'secondary encoding fault')]:
+            with self.subTest(error_type=type(error).__name__):
+                with patch.object(Path, 'write_text', side_effect=error):
+                    self.assertFalse(module._retain_test_log(Path('unused'), StringIO('original failure'), True))
 
     def test_log_failure_still_blocks_an_otherwise_successful_gate(self):
         module = driver()
-        with patch.object(Path, 'write_text', side_effect=OSError('log fault')):
-            with self.assertRaises(OSError):
-                module._retain_test_log(Path('unused'), StringIO('test success'), False)
+        for error in [OSError('log fault'), ValueError('closed log stream'),
+                      UnicodeEncodeError('utf-8', chr(0xd800), 0, 1, 'secondary encoding fault')]:
+            with self.subTest(error_type=type(error).__name__):
+                with patch.object(Path, 'write_text', side_effect=error):
+                    with self.assertRaises(type(error)):
+                        module._retain_test_log(Path('unused'), StringIO('test success'), False)
 
 
 if __name__ == '__main__':

@@ -189,7 +189,10 @@ line, with bounded arrays. Raw exception messages, absolute paths and arbitrary
 subtest parameters remain in private logs. Secondary diagnostic errors preserve
 the original failing unittest result. A private log write failure cannot
 replace an existing test failure; a log failure after otherwise passing tests
-still blocks the gate. Four linked regressions exercise those boundaries.
+still blocks the gate. Four linked regressions exercise those boundaries,
+including OSError, closed-stream ValueError and UnicodeEncodeError on both the
+already-failed and otherwise-passing paths. Actual narrow-catch RED retained;
+the correction applies only to secondary qualification-log handling.
 
 This necessary qualification-only repair is part of this own Finalization.
 Product/runtime, workflow gates, version, schema and acceptance criteria are

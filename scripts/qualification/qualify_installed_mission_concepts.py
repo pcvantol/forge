@@ -89,7 +89,7 @@ class DiagnosticTestResult(unittest.TextTestResult):
 def _retain_test_log(path, stream, failed):
     try:
         path.write_text(stream.getvalue())
-    except OSError:
+    except Exception:
         if not failed:
             raise
         return False
