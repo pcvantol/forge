@@ -23,6 +23,16 @@ def boundary_counts(root):
         decisions=db.execute('SELECT count(*) FROM governance_decisions').fetchone()[0]
     return intents,decisions,receipts
 
+def _publish_boundary_pid(root):
+    # Publish only complete PID bytes; existence is the parent's crash signal.
+    pending = root / 'decision-boundary.pending.private'
+    pending.touch(mode=0o600, exist_ok=False)
+    try:
+        pending.write_text(str(os.getpid()))
+        os.replace(pending, root / 'decision-boundary.ready.private')
+    finally:
+        pending.unlink(missing_ok=True)
+
 def phase(root,stage):
     cases=test_driver();q=cases.qual;original=q.utils.fixture.IDENTITY
     payload=json.loads((root/'decision-request.private.json').read_text());baseline=0 if payload['kind']=='BUSINESS' else 1
@@ -31,7 +41,7 @@ def phase(root,stage):
             intents,decisions,receipts=boundary_counts(root)
             wanted={'crash-before-effect':(baseline,baseline),'crash-between-stores':(baseline+1,baseline),'crash-after-effect':(baseline+1,baseline+1)}[stage]
             if intents==baseline+1 and (decisions,receipts)==wanted:
-                (root/'decision-boundary.ready.private').write_text(str(os.getpid()));time.sleep(20)
+                _publish_boundary_pid(root);time.sleep(20)
         return original
     with patch.object(q.utils.composition.MacOSGeneratedUIDIdentityAdapter,'resolve',side_effect=identity),ExitStack() as stack:
         server=q.ForgeServerRuntime(data_root=root/'runtime',credential_file=root/'admin.private',host='127.0.0.1',port=0,provider_id=q.utils.fixture.PROVIDER)
