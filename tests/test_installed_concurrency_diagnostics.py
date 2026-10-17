@@ -24,3 +24,15 @@ class ConcurrentDiagnosticsTests(unittest.TestCase):
         value=module._concurrent_observation([{'result':'REJECTED','type':'RuntimeServiceBusy','reason':'canonical runtime is busy'}],2,2)
         self.assertEqual(value['outcomes'][0]['reason_code'],'RUNTIME_BUSY')
         self.assertEqual((value['submission_count'],value['planner_invocation_count']),(2,2))
+
+    def test_exact_observed_late_canonical_refusal_is_still_one_winner(self):
+        outcomes=[{'result':'STARTED'},{'result':'REJECTED','type':'MissionStateStoreError','reason':'mission state transition WAITING_FOR_EXECUTION -> CREATED is not permitted'}]
+        self.assertTrue(module._concurrent_accepted(outcomes,1,1))
+        for counts in ((2,1),(1,2),(0,1),(1,0)):
+            self.assertFalse(module._concurrent_accepted(outcomes,*counts))
+
+    def test_other_transitions_untyped_errors_and_two_winners_stay_red(self):
+        for typ,reason in [('MissionStateStoreError','mission state transition FAILED -> CREATED is not permitted'),('RuntimeError','canonical runtime is busy'),('MissionStateStoreError','unrelated storage error')]:
+            self.assertFalse(module._concurrent_accepted([{'result':'STARTED'},{'result':'REJECTED','type':typ,'reason':reason}],1,1))
+        self.assertFalse(module._concurrent_accepted([{'result':'STARTED'},{'result':'STARTED'}],1,1))
+        self.assertFalse(module._concurrent_accepted([{'result':'REJECTED'},{'result':'REJECTED'}],1,1))

@@ -2529,6 +2529,22 @@ def _scenario(root: Path, scenario: str, wheel: Path, *, observer=None) -> dict:
             **({"recovery": recovery_summary} if recovery_summary is not None else {})}
 
 
+def _concurrent_accepted(outcomes, submissions, invocations):
+    """One actual winner, one exact canonical refusal, and one original effect."""
+    expected = {
+        "RuntimeServiceBusy": ("canonical runtime is busy",),
+        "MissionStateStoreError": (
+            "mission state transition CREATED -> CREATED is not permitted",
+            "mission state transition WAITING_FOR_EXECUTION -> CREATED is not permitted",
+        ),
+        "InstalledDynamicMissionError": ("public start requires a canonically admitted zero-Action Mission",),
+    }
+    rejection = next((item for item in outcomes if item.get("result") == "REJECTED"), {})
+    return (sorted(item.get("result", "UNKNOWN") for item in outcomes) == ["REJECTED", "STARTED"]
+            and rejection.get("reason") in expected.get(rejection.get("type"), ())
+            and submissions == 1 and invocations == 1)
+
+
 def _concurrent_observation(outcomes, submissions, invocations):
     """Closed public facts, excluding arbitrary exception messages and paths."""
     from forge.state import MissionExecutionStatus
@@ -2604,16 +2620,8 @@ def _concurrent_start_case(root: Path, wheel: Path, late_start_control: bool = F
                 handle.close()
         outcomes = [fixture._read(root / f"{phase}.race.private.json")
                     for phase in ("race-start-a", "race-start-b")]
-        rejection = next((item for item in outcomes if item["result"] == "REJECTED"), {})
-        expected_rejections = {
-            RuntimeServiceBusy.__name__: "canonical runtime is busy",
-            MissionStateStoreError.__name__: "mission state transition CREATED -> CREATED is not permitted",
-            InstalledDynamicMissionError.__name__: "public start requires a canonically admitted zero-Action Mission",
-        }
-        if (sorted(item["result"] for item in outcomes) != ["REJECTED", "STARTED"]
-                or rejection.get("reason") != expected_rejections.get(rejection.get("type"))
-                or len(simulator.submission_ids()) != 1
-                or len(fixture._read(root / "provider-inputs.private.json")) != 1):
+        if not _concurrent_accepted(outcomes, len(simulator.submission_ids()),
+                                    len(fixture._read(root / "provider-inputs.private.json"))):
             error = RuntimeError("concurrent starters crossed the single-flight Action boundary")
             error.single_flight_observation = _concurrent_observation(
                 outcomes, len(simulator.submission_ids()), len(fixture._read(root / "provider-inputs.private.json")))
@@ -2799,6 +2807,8 @@ def main() -> int:
                                             "preflight-stage", "preflight-first", "preflight-repeat"))
     parser.add_argument("--endpoint")
     args = parser.parse_args()
+    if args.late_start_control and (args.scenario != "concurrent-start" or args.phase is not None):
+        parser.error("late-start control requires only the concurrent-start parent case")
     if args.source_revision is not None and (
         len(args.source_revision) != 40 or any(character not in "0123456789abcdef" for character in args.source_revision)
     ):
