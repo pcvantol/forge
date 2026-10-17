@@ -22,9 +22,10 @@ ADMIN='synthetic-forge-server-token'
 
 def child(root,port):
     from forge.secure_store import SecretState
+    from forge.operator_identity import NamedOperatorIdentity
     from forge.server_runtime import ForgeServerRuntime
     # External credential fixture, no actual Keychain read or write.
-    with patch('forge.installation_pairing.MacOSKeychainSecureStoreAdapter.resolve',return_value=(SecretState.RESOLVABLE,TOKEN)):
+    with patch('forge.installation_pairing.MacOSKeychainSecureStoreAdapter.resolve',return_value=(SecretState.RESOLVABLE,TOKEN)), patch('forge.operator_identity.MacOSGeneratedUIDIdentityAdapter.resolve',return_value=NamedOperatorIdentity('synthetic-projectless-operator',os.getuid())):
         app=ForgeServerRuntime(data_root=root,credential_file=root/'server-credential',host='127.0.0.1',port=port,tick_interval=.05)
         app.serve_forever()
 
@@ -107,6 +108,7 @@ def run(args):
                                     if body['scheduler']['state']==wanted:break
                                 except OSError:pass
                                 time.sleep(.05)
+                            if body is not None:receipt['last_observed_scheduler']=body['scheduler']
                             assert body is not None and body['scheduler']['state']==wanted
                             assert body['provider']['ready'] and body['component_connected']
                             assert body['service_ready']==(case in ('initial','restart')) and body['ready']==(case in ('initial','restart'))
