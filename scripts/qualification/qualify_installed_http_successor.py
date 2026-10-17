@@ -1283,20 +1283,7 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
                 if time.monotonic() >= deadline:
                     raise RuntimeError("concurrent start barrier timed out")
                 time.sleep(0.01)
-            if (root / "controlled-late-start.private").exists():
-                original_preflight = runtime.preflight
-                def controlled_preflight(*args, **kwargs):
-                    result = original_preflight(*args, **kwargs)
-                    marker = root / ("race-start-b.preflight.private" if phase == "race-start-a" else "race-start-a.finished.private")
-                    if phase == "race-start-b":
-                        (root / "race-start-b.preflight.private").write_text("observed")
-                    control_deadline = time.monotonic() + 20
-                    while not marker.exists():
-                        if time.monotonic() >= control_deadline:
-                            raise RuntimeError("controlled late-start barrier timed out")
-                        time.sleep(0.01)
-                    return result
-                runtime.preflight = controlled_preflight
+            _install_late_preflight(runtime, root, phase)
             try:
                 runtime.start(mission_id, _initial_truth())
             except Exception as error:
@@ -1306,8 +1293,7 @@ def _phase(root: Path, scenario: str, phase: str, endpoint: str) -> None:
             else:
                 fixture._write(root / f"{phase}.race.private.json", {"result": "STARTED"})
             finally:
-                if phase == "race-start-a":
-                    (root / "race-start-a.finished.private").write_text("finished")
+                _mark_start_finished(root, phase)
         elif phase == "after-a-cut":
             def before_successor() -> bool:
                 observed = runtime.states.get(mission_id)
@@ -2529,6 +2515,39 @@ def _scenario(root: Path, scenario: str, wheel: Path, *, observer=None) -> dict:
             **({"recovery": recovery_summary} if recovery_summary is not None else {})}
 
 
+def _install_late_preflight(runtime, root, phase):
+    if not (root / "controlled-late-start.private").exists():
+        return
+    original_preflight = runtime.preflight
+    def controlled_preflight(*args, **kwargs):
+        result = original_preflight(*args, **kwargs)
+        marker = root / ("race-start-b.preflight.private" if phase == "race-start-a" else "race-start-a.finished.private")
+        if phase == "race-start-b":
+            (root / "race-start-b.preflight.private").write_text("observed")
+        deadline = time.monotonic() + 20
+        while not marker.exists():
+            if time.monotonic() >= deadline:
+                raise RuntimeError("controlled late-start barrier timed out")
+            time.sleep(0.01)
+        return result
+    runtime.preflight = controlled_preflight
+
+
+def _mark_start_finished(root, phase):
+    if phase == "race-start-a" and (root / "controlled-late-start.private").exists():
+        (root / "race-start-a.finished.private").write_text("finished")
+
+
+def _validate_late_control(args, parser):
+    if args.late_start_control and (args.scenario != "concurrent-start" or args.phase is not None):
+        parser.error("late-start control requires only the concurrent-start parent case")
+
+
+def _attach_single_flight(report, error, scenario):
+    if scenario == "concurrent-start" and hasattr(error, "single_flight_observation"):
+        report["failure"]["single_flight"] = error.single_flight_observation
+
+
 def _concurrent_accepted(outcomes, submissions, invocations):
     """One actual winner, one exact canonical refusal, and one original effect."""
     expected = {
@@ -2807,8 +2826,7 @@ def main() -> int:
                                             "preflight-stage", "preflight-first", "preflight-repeat"))
     parser.add_argument("--endpoint")
     args = parser.parse_args()
-    if args.late_start_control and (args.scenario != "concurrent-start" or args.phase is not None):
-        parser.error("late-start control requires only the concurrent-start parent case")
+    _validate_late_control(args, parser)
     if args.source_revision is not None and (
         len(args.source_revision) != 40 or any(character not in "0123456789abcdef" for character in args.source_revision)
     ):
@@ -3007,8 +3025,7 @@ def main() -> int:
                                               for frame in traceback.extract_tb(error.__traceback__)],
                                    "stage_trace": fixture._read(
                                        root / scenario / "stage-trace.public.json", [])})
-            if scenario == "concurrent-start" and hasattr(error, "single_flight_observation"):
-                report["failure"]["single_flight"] = error.single_flight_observation
+            _attach_single_flight(report, error, scenario)
             fixture._write(root / "installed-http-successor.public.json", report)
             print(json.dumps(report, sort_keys=True))
             return 1

@@ -30,6 +30,57 @@ def child(root,port):
         app.serve_forever()
 
 
+def _wait_readiness(process, port, wanted):
+    deadline=time.monotonic()+15;body=None
+    while time.monotonic()<deadline:
+        assert process.poll() is None,'server exited before readback'
+        try:
+            request=Request(f'http://127.0.0.1:{port}/v1/readiness/installation',headers={'Authorization':'Bearer '+ADMIN})
+            try:
+                with urlopen(request,timeout=2) as response:body=json.load(response)
+            except HTTPError as error:
+                with error:body=json.load(error)
+            if body['scheduler']['state']==wanted:break
+        except OSError:pass
+        time.sleep(.05)
+    return body
+
+
+def _validate_readiness(body, case, wanted):
+    assert body is not None
+    assert body['scheduler']['state']==wanted
+    assert (body['provider']['ready'],body['component_connected'])==(True,True)
+    expected=case in ('initial','restart')
+    assert (body['service_ready'],body['ready'])==(expected,expected)
+    if case=='resumable-work':assert body['scheduler']['last_error']=='PeerConfigurationError'
+    assert (body['execution_ready'],body['project_authorized'])==(False,False)
+
+
+def _run_server_case(root, base, output, case, receipt):
+    with socket.socket() as probe:probe.bind(('127.0.0.1',0));port=probe.getsockname()[1]
+    with (output/(case+'.private.log')).open('xb') as stream:
+        process=subprocess.Popen([sys.executable,'-I',str(Path(__file__).resolve()),'--child','--root',str(root),'--port',str(port)],cwd=base,stdout=stream,stderr=stream)
+        try:
+            wanted='IDLE' if case in ('initial','restart') else 'NOT_READY'
+            body=_wait_readiness(process,port,wanted)
+            if body is not None:receipt['last_observed_scheduler']=body['scheduler']
+            _validate_readiness(body,case,wanted)
+            receipt['cases'].append({'case':case,'scheduler':wanted,'service_ready':body['service_ready'],'component_connected':body['component_connected'],'last_error':body['scheduler']['last_error'],'instance_id':body['instance_id'],'pid':process.pid})
+        finally:
+            process.terminate()
+            try:process.wait(timeout=8)
+            except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3);raise
+    assert process.returncode==0
+
+
+def _validate_uncertain_only(root):
+    with sqlite3.connect(root/'forge.db') as db:
+        assert db.execute('SELECT count(*) FROM mission_state').fetchone()[0]==0
+        assert db.execute('SELECT count(*) FROM dispatcher_state').fetchone()[0]==1
+        for table in ('mission_id_allocations','execution_host_peer_configuration','scheduler_submissions'):
+            assert db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]==0
+
+
 def run(args):
     spec=spec_from_file_location('projectless_installed_utils',SOURCE/'scripts/qualification/qualify_installed_http_successor.py')
     utils=module_from_spec(spec);spec.loader.exec_module(utils)
@@ -101,41 +152,8 @@ def run(args):
                             InstallationPairingService(root).configure(operation_id='synthetic-installation',binding_id='installation',endpoint=ep.base_url,ep_instance_id='synthetic-installation-ep',consumer_id='synthetic-consumer',credential_reference='keychain://synthetic/installation',allow_loopback_http=True)
                         db=RuntimeBootstrap(data_root=root,forge_version='qualification').open()
                         db.save_dispatcher_state(status='ACTIVE',mission_sequence=('synthetic-uncertain',),active_mission_id='synthetic-uncertain');db.close()
-                    with socket.socket() as probe:probe.bind(('127.0.0.1',0));port=probe.getsockname()[1]
-                    log=output/(case+'.private.log')
-                    with log.open('xb') as stream:
-                        process=subprocess.Popen([sys.executable,'-I',str(Path(__file__).resolve()),'--child','--root',str(root),'--port',str(port)],cwd=base,stdout=stream,stderr=stream)
-                        try:
-                            deadline=time.monotonic()+15;body=None
-                            while time.monotonic()<deadline:
-                                assert process.poll() is None,'server exited before readback'
-                                try:
-                                    request=Request(f'http://127.0.0.1:{port}/v1/readiness/installation',headers={'Authorization':'Bearer '+ADMIN})
-                                    try:
-                                        with urlopen(request,timeout=2) as response:body=json.load(response)
-                                    except HTTPError as error:
-                                        with error:body=json.load(error)
-                                    wanted='IDLE' if case in ('initial','restart') else 'NOT_READY'
-                                    if body['scheduler']['state']==wanted:break
-                                except OSError:pass
-                                time.sleep(.05)
-                            if body is not None:receipt['last_observed_scheduler']=body['scheduler']
-                            assert body is not None and body['scheduler']['state']==wanted
-                            assert body['provider']['ready'] and body['component_connected']
-                            assert body['service_ready']==(case in ('initial','restart')) and body['ready']==(case in ('initial','restart'))
-                            if case=='resumable-work':assert body['scheduler']['last_error']=='PeerConfigurationError'
-                            assert body['execution_ready'] is False and body['project_authorized'] is False
-                            receipt['cases'].append({'case':case,'scheduler':wanted,'service_ready':body['service_ready'],'component_connected':body['component_connected'],'last_error':body['scheduler']['last_error'],'instance_id':body['instance_id'],'pid':process.pid})
-                        finally:
-                            process.terminate()
-                            try:process.wait(timeout=8)
-                            except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3);raise
-                    assert process.returncode==0
-                with sqlite3.connect(root/'forge.db') as db:
-                    assert db.execute('SELECT count(*) FROM mission_state').fetchone()[0]==0
-                    assert db.execute('SELECT count(*) FROM dispatcher_state').fetchone()[0]==1
-                    for table in ('mission_id_allocations','execution_host_peer_configuration','scheduler_submissions'):
-                        assert db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]==0
+                    _run_server_case(root,base,output,case,receipt)
+                _validate_uncertain_only(root)
                 assert receipt['cases'][2]['instance_id']!=receipt['cases'][3]['instance_id']
                 assert reads
                 receipt['installation_http_reads']=len(reads)
