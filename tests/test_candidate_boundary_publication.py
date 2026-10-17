@@ -9,9 +9,9 @@ import unittest
 from unittest.mock import patch
 
 
-def driver():
+def driver(filename='qualify_installed_candidate_decisions.py'):
     source = Path(__file__).resolve().parents[1]
-    spec = spec_from_file_location('candidate_boundary_probe', source / 'scripts/qualification/qualify_installed_candidate_decisions.py')
+    spec = spec_from_file_location('candidate_boundary_probe', source / 'scripts/qualification' / filename)
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -19,13 +19,18 @@ def driver():
 
 class CandidateBoundaryPublicationTests(unittest.TestCase):
     def test_ready_path_is_not_visible_while_pid_write_is_incomplete(self):
-        module = driver()
+        for filename, marker in [('qualify_installed_candidate_decisions.py', 'decision-boundary.ready.private'), ('qualify_mission_concept_recovery.py', 'boundary.ready.private')]:
+            with self.subTest(qualifier=filename):
+                self.check_publication(filename, marker)
+
+    def check_publication(self, filename, marker):
+        module = driver(filename)
         opened, release = Event(), Event()
         original = Path.open
         failures = []
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            ready = root / 'decision-boundary.ready.private'
+            ready = root / marker
 
             @contextmanager
             def delayed_open(path, mode='r', *args, **kwargs):
@@ -58,7 +63,12 @@ class CandidateBoundaryPublicationTests(unittest.TestCase):
             self.assertEqual(list(root.iterdir()), [ready])
 
     def test_failed_publication_does_not_advertise_a_boundary(self):
-        module = driver()
+        for filename in ['qualify_installed_candidate_decisions.py', 'qualify_mission_concept_recovery.py']:
+            with self.subTest(qualifier=filename):
+                self.check_failed_publication(filename)
+
+    def check_failed_publication(self, filename):
+        module = driver(filename)
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             with patch.object(module.os, 'replace', side_effect=OSError('synthetic publication failure')):

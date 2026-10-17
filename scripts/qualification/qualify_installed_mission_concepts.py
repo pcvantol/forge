@@ -17,6 +17,85 @@ MODULES=('test_mission_concept_contract','test_mission_concept_provider',
          'test_mission_concept_readiness','test_mission_concept_continuity')
 
 
+
+_DIAGNOSTIC_METHODS = frozenset((
+    'test_real_os_crashes_and_lost_response_generation',
+    'test_real_os_crashes_between_compound_effects_and_lost_response',
+    'test_current_os_signer_drift_between_effects_stops_and_recovers_original_intent',
+    'test_concurrent_confirmation_rejects_contender_without_duplicate_effects',
+))
+_DIAGNOSTIC_STAGES = frozenset((
+    'crash-before-provider', 'crash-after-result', 'lost-response',
+    'crash-before-registration', 'crash-after-registration',
+    'crash-business-between-stores', 'crash-after-business',
+    'crash-architecture-between-stores', 'crash-after-architecture',
+    'crash-after-allocation', 'crash-after-intake',
+))
+_DIAGNOSTIC_ERRORS = frozenset((
+    'AssertionError', 'ValueError', 'RuntimeError', 'TimeoutExpired',
+    'HTTPError', 'URLError', 'FileNotFoundError', 'PermissionError',
+    'OSError', 'TypeError', 'KeyError', 'JSONDecodeError',
+))
+
+
+def _failure_facts(test, error, params):
+    import traceback
+    method = getattr(test, '_testMethodName', '')
+    kind = error[0].__name__
+    stage = params.get('stage')
+    frames = []
+    for frame in traceback.extract_tb(error[2]):
+        filename = Path(frame.filename).name
+        if filename in ('qualify_mission_concept_recovery.py', 'test_mission_concept_recovery.py'):
+            function = frame.name if frame.name in _DIAGNOSTIC_METHODS | {'phase', 'process_case', 'reopen', '_publish_boundary_pid'} else 'OTHER_FRAME'
+            frames.append({'file': filename, 'function': function, 'line': min(frame.lineno, 10000)})
+    return {
+        'test': method if method in _DIAGNOSTIC_METHODS else 'OTHER_TEST',
+        'error': kind if kind in _DIAGNOSTIC_ERRORS else 'OTHER_ERROR',
+        'stage': stage if stage in _DIAGNOSTIC_STAGES else 'OTHER_STAGE',
+        'frames': frames[-4:],
+    }
+
+
+class DiagnosticTestResult(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.failure_diagnostics = []
+
+    def _remember(self, test, error, params=None):
+        try:
+            facts = _failure_facts(test, error, {} if params is None else params)
+        except Exception:
+            # Secondary diagnostics cannot replace the original test outcome.
+            facts = {'test': 'OTHER_TEST', 'error': 'DIAGNOSTIC_UNAVAILABLE',
+                     'stage': 'OTHER_STAGE', 'frames': []}
+        if facts not in self.failure_diagnostics and len(self.failure_diagnostics) < 16:
+            self.failure_diagnostics.append(facts)
+
+    def addError(self, test, error):
+        self._remember(test, error)
+        super().addError(test, error)
+
+    def addFailure(self, test, error):
+        self._remember(test, error)
+        super().addFailure(test, error)
+
+    def addSubTest(self, test, subtest, error):
+        if error is not None:
+            self._remember(test, error, subtest.params)
+        super().addSubTest(test, subtest, error)
+
+
+def _retain_test_log(path, stream, failed):
+    try:
+        path.write_text(stream.getvalue())
+    except Exception:
+        if not failed:
+            raise
+        return False
+    return True
+
+
 def positive_control(root):
     spec=spec_from_file_location('concept_recovery_control',SOURCE/'scripts/qualification/qualify_mission_concept_recovery.py')
     driver=module_from_spec(spec);spec.loader.exec_module(driver)
@@ -59,6 +138,7 @@ def run(args):
         'source_revision':args.source_revision,'artifact':artifact,
         'schema_sha256':'sha256:'+sha256(schema.read_bytes()).hexdigest(),
         'result':'FAIL','case_count':0,'cases':[],'failure':None,
+        'failure_diagnostics':[], 'diagnostic_log_write_failures':0,
         'expected_failure_control':args.failure_control,
         'external_fault':'REVOKED_POSITIVE_CONCEPT_GRANT' if args.failure_control else None,
         'limitations':['Actual noneditable HTTP/auth/G001/context/provider adapter/validator/storage/approvals/Intake/worklist services.',
@@ -76,8 +156,10 @@ def run(args):
             module=__import__(name)
             suite=unittest.defaultTestLoader.loadTestsFromModule(module)
             stage=name;stream=StringIO()
-            result=unittest.TextTestRunner(stream=stream,verbosity=2).run(suite)
-            (output/(name+'.private.log')).write_text(stream.getvalue())
+            result=unittest.TextTestRunner(stream=stream,verbosity=2,resultclass=DiagnosticTestResult).run(suite)
+            receipt['failure_diagnostics'].extend(result.failure_diagnostics)
+            retained=_retain_test_log(output/(name+'.private.log'),stream,not result.wasSuccessful())
+            receipt['diagnostic_log_write_failures']+=int(not retained)
             if not result.wasSuccessful():raise AssertionError('selected installed concept boundary failed')
             receipt['cases'].append({'case':name,'test_count':result.testsRun,'result':'PASS'})
             receipt['case_count']+=result.testsRun
