@@ -53,6 +53,23 @@ jobs:
           name: forge-genesis-bootstrap-${{ github.sha }}
           path: ${{ runner.temp }}/forge-genesis-proof/*.public.json
           if-no-files-found: error
+      - name: Projectless installed scheduler HTTP and restart
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          wheel=("$RUNNER_TEMP"/forge-genesis-wheel/forge_autonomy-*.whl)
+          test "${#wheel[@]}" -eq 1
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/forge-genesis-installed/bin/python" -I \
+            "$GITHUB_WORKSPACE/scripts/qualification/qualify_installed_projectless_idle.py" \
+            --wheel "${wheel[0]}" --source-revision "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
+            --output-dir "$RUNNER_TEMP/forge-projectless-idle"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: forge-projectless-idle-${{ github.sha }}
+          path: ${{ runner.temp }}/forge-projectless-idle/installed-projectless-idle.public.json
+          if-no-files-found: error
       - run: bash scripts/validate.sh
         env:
           FORGE_WITH_COVERAGE: "1"
