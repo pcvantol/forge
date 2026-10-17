@@ -48,22 +48,29 @@ def run(args):
              'limits':'Synthetic external Codex login/OS identity/Keychain; actual installed Forge scheduler, canonical storage, authenticated HTTP and separate Server OS restart. EP simulator only; no live installer, VM or real credentials.'}
     try:
         with TemporaryDirectory(prefix='forge-r58-') as scratch:
-            base=Path(scratch).resolve();root=base/'runtime'
-            db=RuntimeBootstrap(data_root=root,forge_version='qualification').open()
+            def initialize(base):
+                base.mkdir(parents=True,exist_ok=True)
+                root=base/'runtime'
+                db=RuntimeBootstrap(data_root=root,forge_version='qualification').open()
+                identity=NamedOperatorIdentity('synthetic-projectless-operator',os.getuid())
+                operators=InstallationOperatorService(db,lambda:identity);context=operators.first_bind()
+                executable=base/'codex';executable.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "codex-cli 0.153.4"; exit 0; fi\nif [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Logged in using ChatGPT"; exit 0; fi\nexit 7\n');executable.chmod(0o700)
+                class Store:
+                    def status(self,reference):return SecretState.RESOLVABLE
+                PlanningProviderSecurityService(db,Store(),operators).configure(configuration_id='synthetic-codex',provider_id='codex-chatgpt-session',operator_context=context,
+                    authentication_mode=ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION,provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,
+                    external_session_type=CODEX_CLI_CHATGPT_SESSION_TYPE,executable_path=str(executable),adapter_version='1.0',timeout_seconds=30,
+                    input_token_bound=64000,context_token_bound=128000,output_token_bound=16000)
+                instance=db.runtime_identity.runtime_id;db.close()
+                home=base/'provider-home';home.mkdir();config=base/'provider-config';config.mkdir()
+                ProviderExecutionContextService(root).configure(provider_id='codex-chatgpt-session',provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,
+                    executable_path=str(executable),provider_home=str(home),provider_config_home=str(config))
+                credential=root/'server-credential';credential.write_text(ADMIN);credential.chmod(0o600)
+                return root,instance
+            base=Path(scratch).resolve()
             identity=NamedOperatorIdentity('synthetic-projectless-operator',os.getuid())
-            operators=InstallationOperatorService(db,lambda:identity);context=operators.first_bind()
-            executable=base/'codex';executable.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "codex-cli 0.153.4"; exit 0; fi\nif [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Logged in using ChatGPT"; exit 0; fi\nexit 7\n');executable.chmod(0o700)
-            class Store:
-                def status(self,reference):return SecretState.RESOLVABLE
-            PlanningProviderSecurityService(db,Store(),operators).configure(configuration_id='synthetic-codex',provider_id='codex-chatgpt-session',operator_context=context,
-                authentication_mode=ProviderAuthenticationMode.EXTERNAL_AUTHENTICATED_SESSION,provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,
-                external_session_type=CODEX_CLI_CHATGPT_SESSION_TYPE,executable_path=str(executable),adapter_version='1.0',timeout_seconds=30,
-                input_token_bound=64000,context_token_bound=128000,output_token_bound=16000)
-            instance=db.runtime_identity.runtime_id;db.close()
-            home=base/'provider-home';home.mkdir();config=base/'provider-config';config.mkdir()
-            ProviderExecutionContextService(root).configure(provider_id='codex-chatgpt-session',provider_type=CODEX_CLI_CHATGPT_SESSION_PROVIDER_TYPE,
-                executable_path=str(executable),provider_home=str(home),provider_config_home=str(config))
-            credential=root/'server-credential';credential.write_text(ADMIN);credential.chmod(0o600)
+            root,instance=initialize(base/'primary')
+            primary_root=root
             state=EpSimulatorState(bearer_token=TOKEN)
             ep=EpSimulatorServer(state);original=ep.server.RequestHandlerClass;reads=[]
             class Handler(original):
@@ -88,6 +95,10 @@ def run(args):
                         try:MissionStateStore(db,data_root=str(root)).create({'id':'synthetic-resume'},[{'id':'intent'}],[{'id':'action'}],occurred_at='2026-10-17T00:00:00Z')
                         finally:db.close()
                     if case=='uncertain-work':
+                        root,instance=initialize(base/'uncertain-only')
+                        assert root!=primary_root
+                        with patch('forge.operator_identity.MacOSGeneratedUIDIdentityAdapter.resolve',return_value=identity):
+                            InstallationPairingService(root).configure(operation_id='synthetic-installation',binding_id='installation',endpoint=ep.base_url,ep_instance_id='synthetic-installation-ep',consumer_id='synthetic-consumer',credential_reference='keychain://synthetic/installation',allow_loopback_http=True)
                         db=RuntimeBootstrap(data_root=root,forge_version='qualification').open()
                         db.save_dispatcher_state(status='ACTIVE',mission_sequence=('synthetic-uncertain',),active_mission_id='synthetic-uncertain');db.close()
                     with socket.socket() as probe:probe.bind(('127.0.0.1',0));port=probe.getsockname()[1]
@@ -114,16 +125,18 @@ def run(args):
                             assert body['service_ready']==(case in ('initial','restart')) and body['ready']==(case in ('initial','restart'))
                             if case=='resumable-work':assert body['scheduler']['last_error']=='PeerConfigurationError'
                             assert body['execution_ready'] is False and body['project_authorized'] is False
-                            receipt['cases'].append({'case':case,'scheduler':wanted,'service_ready':body['service_ready'],'component_connected':body['component_connected'],'last_error':body['scheduler']['last_error'],'pid':process.pid})
+                            receipt['cases'].append({'case':case,'scheduler':wanted,'service_ready':body['service_ready'],'component_connected':body['component_connected'],'last_error':body['scheduler']['last_error'],'instance_id':body['instance_id'],'pid':process.pid})
                         finally:
                             process.terminate()
                             try:process.wait(timeout=8)
                             except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3);raise
                     assert process.returncode==0
                 with sqlite3.connect(root/'forge.db') as db:
-                    assert db.execute('SELECT count(*) FROM mission_state').fetchone()[0]==1
+                    assert db.execute('SELECT count(*) FROM mission_state').fetchone()[0]==0
+                    assert db.execute('SELECT count(*) FROM dispatcher_state').fetchone()[0]==1
                     for table in ('mission_id_allocations','execution_host_peer_configuration','scheduler_submissions'):
                         assert db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]==0
+                assert receipt['cases'][2]['instance_id']!=receipt['cases'][3]['instance_id']
                 assert reads
                 receipt['installation_http_reads']=len(reads)
             receipt['result']='PASS'
