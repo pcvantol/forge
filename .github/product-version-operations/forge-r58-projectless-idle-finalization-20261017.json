@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.22.1",
+  "classification_rationale": "L3-PROJECTLESS-INSTALLATION-IDLE-V1-20261017-FINALIZATION",
+  "component": "product",
+  "event_lineage": "L3-PROJECTLESS-INSTALLATION-IDLE-V1-20261017-FINALIZATION",
+  "expected_head": "44300fe7739c7c3ce7d1b4b7a7f7dca569316c04",
+  "operation_id": "forge-r58-projectless-idle-finalization-20261017",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "NO_BUMP",
+  "requested_bump": "none",
+  "requested_version": null,
+  "schema_version": "1",
+  "target_version": "2.22.1"
+}
