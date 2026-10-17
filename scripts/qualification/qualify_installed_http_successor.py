@@ -2546,9 +2546,11 @@ def _concurrent_observation(outcomes, submissions, invocations):
             "submission_count": submissions, "planner_invocation_count": invocations}
 
 
-def _concurrent_start_case(root: Path, wheel: Path) -> dict:
+def _concurrent_start_case(root: Path, wheel: Path, late_start_control: bool = False) -> dict:
     """Race two installed Forge processes at the public zero-Action start gate."""
     root.mkdir()
+    if late_start_control:
+        (root / "controlled-late-start.private").write_text("fixture-only")
     fixture._write(root / "artifact-a.json", {
         "report": {"fields": ["report_data"]},
         "policy": {"authorization_required": True},
@@ -2980,11 +2982,8 @@ def main() -> int:
     for scenario in scenarios:
         try:
             if scenario == "concurrent-start":
-                if args.late_start_control:
-                    (root / scenario).mkdir(parents=True, exist_ok=True)
-                    (root / scenario / "controlled-late-start.private").write_text("fixture-only")
                 summaries.append(_with_case_cleanup(
-                    root / scenario, _concurrent_start_case, args.wheel.resolve(),
+                    root / scenario, _concurrent_start_case, args.wheel.resolve(), args.late_start_control,
                 ))
             else:
                 summaries.append(_with_case_cleanup(
