@@ -20,9 +20,10 @@ snapshot. Only provable emptiness of all eleven canonical work/history tables
 permits IDLE before full InstalledDynamicMissionRuntime composition. These
 include immutable exchange audit and non-FK dispatcher/planning/bootstrap state.
 Current schema, integrity, ownership, maintenance fence, lease and root identity
-remain enforced. Missing, corrupt, invalid, uncertain, fenced or nonempty storage
-retains the unchanged strict runtime path. There is no general exception-to-IDLE
-fallback. Project choice remains a later Workspace action; installation readiness
+remain enforced. Missing, corrupt, invalid or fenced storage fails closed during
+validation before runtime composition. Valid nonempty work/history takes the
+unchanged strict runtime path. Uncertainty cannot justify the empty-store proof;
+there is no general exception-to-IDLE fallback. Project choice remains a later Workspace action; installation readiness
 never claims project authority or execution readiness.
 
 This bounded fresh-empty classifier does not assert that arbitrary historical
@@ -33,9 +34,12 @@ runtime execution behavior remain required whenever work or uncertainty exists.
 ## Regression and installed evidence boundaries
 
 Original empty-runtime source regression was RED before correction. Twelve
-linked scheduler regressions cover provider readiness, persistent Mission work,
-allocation/intake/dispatch/planning/audit uncertainty, missing/corrupt/fenced
-storage, read-only storage digest and canonical lease behavior. Five additional
+linked scheduler regressions exercise provider readiness, persistent Mission
+work, orphan allocation/dispatch, hostbinding/audit and malformed-workset
+uncertainty, missing/corrupt storage, read-only storage digest, canonical lease
+contention and existing service-tick forwarding. Intake, planning and maintenance
+fences are additional source-enforced guards; separate intake-only, planning-only
+and active-maintenance cases are not claimed as executed regressions here. Five additional
 concurrency qualification guards reject duplicates, two winners, unknown/untyped
 errors and wrong canonical transitions.
 
