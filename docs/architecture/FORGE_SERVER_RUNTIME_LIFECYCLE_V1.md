@@ -306,3 +306,22 @@ normal recovery. Its controller correction is a new exact source binding;
 the original 2.7.38 wheel and historical controlled-interruption evidence
 retain their identities. This matrix makes no host reboot, power-loss or
 installer acceptance claim.
+
+## Projectless installation idle (R58)
+
+A new installed instance can be scheduler `IDLE` before a project is selected.
+The Server still requires its instance-owned provider readiness. Under the
+canonical runtime mutation lease it opens a validated read-only storage snapshot
+and proves absence of Mission state/allocation/intake/projection, submissions,
+approved worksets, dispatcher/planning/bootstrap portfolio state, execution-host
+bindings and immutable exchange audit. Only this narrow empty-work proof avoids
+composing the project-bound execution runtime. Missing, corrupt, fenced or
+unknown storage fails closed. Any retained work/history takes the existing
+strict runtime path with all provider, project, EP-host and authority checks;
+this change does not classify historical terminal records as an empty instance.
+
+Installation connectivity is still independently authenticated. Installation
+service readiness is not project authorization or execution readiness. No
+project, Mission, grant or repository is created by the empty probe. Each tick
+rechecks storage under the shared lease; no cached empty classification survives
+new work or restart. Runtime storage schema remains46.
