@@ -80,7 +80,12 @@ def run(args):
                 with patch('forge.operator_identity.MacOSGeneratedUIDIdentityAdapter.resolve',return_value=identity):
                     InstallationPairingService(root).configure(operation_id='synthetic-installation',binding_id='installation',endpoint=ep.base_url,
                         ep_instance_id='synthetic-installation-ep',consumer_id='synthetic-consumer',credential_reference='keychain://synthetic/installation',allow_loopback_http=True)
-                for case in ('initial','restart','uncertain-work'):
+                for case in ('initial','restart','resumable-work','uncertain-work'):
+                    if case=='resumable-work':
+                        from forge.state import MissionStateStore
+                        db=RuntimeBootstrap(data_root=root,forge_version='qualification').open()
+                        try:MissionStateStore(db,data_root=str(root)).create({'id':'synthetic-resume'},[{'id':'intent'}],[{'id':'action'}],occurred_at='2026-10-17T00:00:00Z')
+                        finally:db.close()
                     if case=='uncertain-work':
                         db=RuntimeBootstrap(data_root=root,forge_version='qualification').open()
                         db.save_dispatcher_state(status='ACTIVE',mission_sequence=('synthetic-uncertain',),active_mission_id='synthetic-uncertain');db.close()
@@ -98,22 +103,24 @@ def run(args):
                                         with urlopen(request,timeout=2) as response:body=json.load(response)
                                     except HTTPError as error:
                                         with error:body=json.load(error)
-                                    wanted='NOT_READY' if case=='uncertain-work' else 'IDLE'
+                                    wanted='IDLE' if case in ('initial','restart') else 'NOT_READY'
                                     if body['scheduler']['state']==wanted:break
                                 except OSError:pass
                                 time.sleep(.05)
                             assert body is not None and body['scheduler']['state']==wanted
                             assert body['provider']['ready'] and body['component_connected']
-                            assert body['service_ready']==(case!='uncertain-work') and body['ready']==(case!='uncertain-work')
+                            assert body['service_ready']==(case in ('initial','restart')) and body['ready']==(case in ('initial','restart'))
+                            if case=='resumable-work':assert body['scheduler']['last_error']=='PeerConfigurationError'
                             assert body['execution_ready'] is False and body['project_authorized'] is False
-                            receipt['cases'].append({'case':case,'scheduler':wanted,'service_ready':body['service_ready'],'component_connected':body['component_connected'],'pid':process.pid})
+                            receipt['cases'].append({'case':case,'scheduler':wanted,'service_ready':body['service_ready'],'component_connected':body['component_connected'],'last_error':body['scheduler']['last_error'],'pid':process.pid})
                         finally:
                             process.terminate()
                             try:process.wait(timeout=8)
                             except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3);raise
                     assert process.returncode==0
                 with sqlite3.connect(root/'forge.db') as db:
-                    for table in ('mission_state','mission_id_allocations','execution_host_peer_configuration','scheduler_submissions'):
+                    assert db.execute('SELECT count(*) FROM mission_state').fetchone()[0]==1
+                    for table in ('mission_id_allocations','execution_host_peer_configuration','scheduler_submissions'):
                         assert db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]==0
                 assert reads
                 receipt['installation_http_reads']=len(reads)
