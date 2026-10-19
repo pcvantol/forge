@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.14"
       - run: python -m pip install '.[validation]'
-      - name: EP inspection adoption (small installed original HTTP chain)
+      - name: EP inspection adoption and scoped content decisions (small installed original HTTP chain)
         timeout-minutes: 8
         run: bash scripts/qualification/qualify_inspection_adoption_ci.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

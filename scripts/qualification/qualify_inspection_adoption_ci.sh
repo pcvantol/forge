@@ -25,7 +25,7 @@ npm install --prefix "$qualification_root/native" --ignore-scripts --no-audit --
 bash "$qualification_root/ep-source/tools/qualification/prepare_ci_native_sandbox.sh"
 cd "$RUNNER_TEMP"
 "$qualification_root/forge-installed/bin/python" -I \
-  "$qualification_source/scripts/qualification/qualify_installed_inspection_adoption.py" \
+  "$qualification_source/scripts/qualification/qualify_installed_inspection_content.py" \
   --python "$qualification_root/forge-installed/bin/python" \
   --wheel "${qualification_wheels[0]}" \
   --source-revision "$(git -C "$qualification_source" rev-parse HEAD)" \

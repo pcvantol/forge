@@ -1,0 +1,16 @@
+{
+  "baseline_version": "2.22.1",
+  "classification_rationale": "R59 independent new MINOR content-decision slice; skip reserved unmerged R57 2.23.0 without modifying that branch",
+  "component": "product",
+  "event_lineage": "R59 independent new MINOR content-decision slice; skip reserved unmerged R57 2.23.0 without modifying that branch",
+  "expected_head": "8ee60c8409b2c3801e70cf129f20f1ff1480d03b",
+  "operation_id": "forge-r59-inspection-content-20261019",
+  "policy_revision": "forge-bootstrap-release-cadence-v2",
+  "product": "forge",
+  "projection_paths": "product-version.json",
+  "release_class": "EXACT",
+  "requested_bump": null,
+  "requested_version": "2.24.0",
+  "schema_version": "1",
+  "target_version": "2.24.0"
+}

@@ -3155,6 +3155,196 @@
         },
         "description": "Finite exact Genesis effect plan or separate human effect decision. EP admission remains required; no execution authority."
       }
+    },
+    {
+      "name": "GET /v1/inspection-adoption-decisions/capability",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionContentToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Content-Audience",
+            "value": "{{inspectionContentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoption-decisions/capability",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoption-decisions",
+            "capability"
+          ]
+        },
+        "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
+      }
+    },
+    {
+      "name": "POST /v1/inspection-adoption-decisions/decisions",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionContentToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Content-Audience",
+            "value": "{{inspectionContentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoption-decisions/decisions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoption-decisions",
+            "decisions"
+          ]
+        },
+        "description": "Use the closed inspection-adoption-decisions-v1.json Request and original capability/subject/review digest. Synthetic example is not a human approval.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contract_version\": \"forge-inspection-adoption-content-decision/v1\",\n  \"profile_id\": \"INSPECTION_ADOPTION_CONTENT_ONLY/1.0\",\n  \"instance_id\": \"{{inspectionInstanceId}}\",\n  \"dossier_id\": \"{{inspectionDossierId}}\",\n  \"plan_id\": \"{{inspectionPlanId}}\",\n  \"operation_id\": \"{{inspectionNewDecisionOperationId}}\",\n  \"subject_digest\": \"{{inspectionSubjectDigest}}\",\n  \"role\": \"{{inspectionRole}}\",\n  \"decision\": \"{{inspectionExplicitDecision}}\",\n  \"reason\": \"SYNTHETIC_TEST_NOT_PETER_APPROVAL: exact source content only.\",\n  \"expected_decision_revision\": {{inspectionDecisionRevision}},\n  \"previous_decision_id\": null,\n  \"acknowledged_review_digest\": \"{{inspectionReviewDigest}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "GET /v1/inspection-adoption-decisions/proposals/{plan_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionContentToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Content-Audience",
+            "value": "{{inspectionContentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoption-decisions/proposals/{{inspectionPlanId}}?dossier_id={{inspectionDossierId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoption-decisions",
+            "proposals",
+            "{{inspectionPlanId}}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{inspectionDossierId}}"
+            }
+          ]
+        },
+        "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
+      }
+    },
+    {
+      "name": "GET /v1/inspection-adoption-decisions/intents/{operation_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionContentToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Content-Audience",
+            "value": "{{inspectionContentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoption-decisions/intents/{{inspectionOperationId}}?dossier_id={{inspectionDossierId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoption-decisions",
+            "intents",
+            "{{inspectionOperationId}}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{inspectionDossierId}}"
+            }
+          ]
+        },
+        "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
+      }
+    },
+    {
+      "name": "GET /v1/inspection-adoption-decisions/decisions/{decision_id}",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{inspectionContentToken}}"
+          },
+          {
+            "key": "X-Forge-Inspection-Content-Audience",
+            "value": "{{inspectionContentAudience}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/v1/inspection-adoption-decisions/decisions/{{inspectionDecisionId}}?dossier_id={{inspectionDossierId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "v1",
+            "inspection-adoption-decisions",
+            "decisions",
+            "{{inspectionDecisionId}}"
+          ],
+          "query": [
+            {
+              "key": "dossier_id",
+              "value": "{{inspectionDossierId}}"
+            }
+          ]
+        },
+        "description": "Separate human-bound content decision; consult closed versioned schema and capability. No effect authority."
+      }
     }
   ]
 }
