@@ -5971,6 +5971,524 @@
           }
         }
       }
+    },
+    "/v1/inspection-adoption-decisions/capability": {
+      "get": {
+        "summary": "Historical R55 content decision: capability",
+        "security": [
+          {
+            "InspectionAdoptionContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/Capability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inspection-adoption-decisions/decisions": {
+      "post": {
+        "summary": "Historical R55 content decision: decisions",
+        "security": [
+          {
+            "InspectionAdoptionContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "inspection-adoption-decisions-v1.json#/$defs/Request"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inspection-adoption-decisions/proposals/{plan_id}": {
+      "get": {
+        "summary": "Historical R55 content decision: {plan_id}",
+        "security": [
+          {
+            "InspectionAdoptionContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inspection-adoption-decisions/intents/{operation_id}": {
+      "get": {
+        "summary": "Historical R55 content decision: {operation_id}",
+        "security": [
+          {
+            "InspectionAdoptionContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inspection-adoption-decisions/decisions/{decision_id}": {
+      "get": {
+        "summary": "Historical R55 content decision: {decision_id}",
+        "security": [
+          {
+            "InspectionAdoptionContentBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Forge-Inspection-Content-Audience",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "decision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dossier_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content decision response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Closed non-success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Current authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "inspection-adoption-decisions-v1.json#/$defs/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6053,6 +6571,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Explicit finite GENESIS_BOOTSTRAP_EFFECT_ONLY/1.0 grant; no EP execution authority"
+      },
+      "InspectionAdoptionContentBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Separate finite R55 inspection-adoption content role-purpose grant; current canonical human and original R55 READ authority required. No R54 purpose or effect authority."
       }
     },
     "schemas": {

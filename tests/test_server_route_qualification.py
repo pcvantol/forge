@@ -21,6 +21,11 @@ TOKEN = "route-qualification-bearer"
 # Versioned V1 acceptance inventory, independent of the production tuple and
 # contract files. A removed or silently omitted case must fail this gate.
 EXPECTED_ROUTES = frozenset({
+    ('GET', '/v1/inspection-adoption-decisions/capability'),
+    ('POST', '/v1/inspection-adoption-decisions/decisions'),
+    ('GET', '/v1/inspection-adoption-decisions/proposals/{plan_id}'),
+    ('GET', '/v1/inspection-adoption-decisions/decisions/{decision_id}'),
+    ('GET', '/v1/inspection-adoption-decisions/intents/{operation_id}'),
     ('GET', '/v1/inspection-adoptions/capability'),
     ('POST', '/v1/inspection-adoptions/plans'),
     ('GET', '/v1/inspection-adoptions/plans/{plan_id}'),
@@ -178,6 +183,7 @@ READ_ROUTES = {
 def _concrete(path: str) -> str:
     return (path.replace("{project_id}", "qualified-project")
             .replace("{operation_id}", "qualified-operation")
+            .replace("{plan_id}", "qualified-plan").replace("{decision_id}", "qualified-decision")
             .replace("{workset_id}", "qualified-workset").replace("{mission_id}", "MISSION-QUAL"))
 
 
@@ -208,10 +214,13 @@ class ServerRouteQualificationTests(unittest.TestCase):
             (item["request"]["method"].upper(),
              item["request"]["url"]["raw"].removeprefix("{{baseUrl}}")
              .replace("{{projectId}}", "{project_id}")
-             .replace("{{missionId}}", "{mission_id}"))
+             .replace("{{missionId}}", "{mission_id}")
+             .replace("{{inspectionPlanId}}", "{plan_id}")
+             .replace("{{inspectionDecisionId}}", "{decision_id}")
+             .replace("{{inspectionOperationId}}", "{operation_id}").split('?', 1)[0])
             for item in postman["item"]
         }
-        self.assertEqual(len(EXPECTED_ROUTES), 104)
+        self.assertEqual(len(EXPECTED_ROUTES), 109)
         self.assertEqual(set(SERVER_ROUTE_INVENTORY), EXPECTED_ROUTES)
         self.assertEqual(openapi_routes, EXPECTED_ROUTES)
         self.assertEqual(postman_routes, EXPECTED_ROUTES)
@@ -283,6 +292,9 @@ class ServerRouteQualificationTests(unittest.TestCase):
                                 server.server.server_port, method, path,
                                 authorization="Bearer " + TOKEN,
                             )
+                            if path.startswith('/v1/inspection-adoption-decisions/'):
+                                self.assertEqual(status,403);self.assertEqual(body['error']['code'],'INSPECTION_CONTENT_SCOPE_DENIED')
+                                observed.add((method,path));continue
                             if path.startswith('/v1/genesis-bootstrap/'):
                                 self.assertEqual(status,403);self.assertEqual(body['error']['code'],'GENESIS_SCOPE_DENIED')
                                 observed.add((method,path));continue

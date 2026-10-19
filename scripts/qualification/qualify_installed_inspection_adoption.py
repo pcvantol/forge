@@ -199,7 +199,7 @@ def tree(root):
     return {str(p.relative_to(root)):sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob('*')) if p.is_file()}
 
 
-def run(args):
+def run(args, content_probe=None):
     output = args.output_dir
     output.mkdir(mode=0o700)
     receipt = {'result':'FAIL','cases':[],'cleanup':False,**BINDING.installed_binding(args.python,args.wheel,args.source_revision)}
@@ -434,6 +434,8 @@ def run(args):
                     assert request(forge_port,'GET',intent,forged_headers)[2]==proposal
                     receipt['cases'].append('actual-installed-concurrency-key-conflict-old-grant-audience-and-coherent-payload-rejection')
 
+                if content_probe is not None:
+                    content_probe('decide',args,root,forge_root,setup,proposal,forge_server,command,receipt,output)
                 ep('engineering_platform.server','stop')
                 ep('engineering_platform.server','start','--bind-port',ep_port)
                 second_ep = json.loads((ep_root/'runtime.json').read_text())['pid']
@@ -442,6 +444,8 @@ def run(args):
                     code,_,same = request(forge_port,'GET',intent,forged_headers)
                     assert code==200 and same==proposal
                 receipt['cases'].append('separate-forge-and-ep-server-os-restarts-original-proposal-readback')
+                if content_probe is not None:
+                    content_probe('recover',args,root,forge_root,setup,proposal,forge_server,command,receipt,output)
                 # Relevant restored fault in ONLY this disposable Forge installation.
                 # The same real HTTP detector must fail when the original-digest guard is removed.
                 installed_peer = Path(subprocess.check_output([str(args.python),'-I','-c',

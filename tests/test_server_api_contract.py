@@ -25,6 +25,9 @@ class ForgeServerApiContractTests(unittest.TestCase):
         for item in postman["item"]:
             request = item["request"]
             raw = request["url"]["raw"].removeprefix("{{baseUrl}}")
+            raw = raw.split('?',1)[0]
+            for variable,key in [('inspectionPlanId','plan_id'),('inspectionDecisionId','decision_id'),('inspectionOperationId','operation_id')]:
+                raw=raw.replace('{{'+variable+'}}','{'+key+'}')
             raw = raw.replace("{{missionId}}", "{mission_id}")
             raw = raw.replace("{{projectId}}", "{project_id}")
             postman_routes.add((request["method"].upper(), raw))
@@ -34,6 +37,15 @@ class ForgeServerApiContractTests(unittest.TestCase):
         self.assertEqual(postman_routes, expected)
         self.assertEqual(openapi["openapi"], "3.1.0")
         self.assertEqual(openapi["components"]["securitySchemes"]["bearerAuth"]["scheme"], "bearer")
+
+    def test_inspection_content_postman_readbacks_supply_required_dossier_query(self):
+        postman=json.loads((API/'server-postman-v1.json').read_text())
+        reads=[x['request'] for x in postman['item'] if x['name'].startswith('GET /v1/inspection-adoption-decisions/') and not x['name'].endswith('/capability')]
+        self.assertEqual(len(reads),3)
+        for request in reads:
+            self.assertIn('?dossier_id={{inspectionDossierId}}',request['url']['raw'])
+            self.assertEqual(request['url']['query'],[{'key':'dossier_id','value':'{{inspectionDossierId}}'}])
+            self.assertTrue(any('{{inspection' in segment for segment in request['url']['path']))
 
     def test_project_dag_discovery_contract_is_typed_and_honest(self) -> None:
         openapi = json.loads((API / "server-openapi-v1.json").read_text(encoding="utf-8"))
