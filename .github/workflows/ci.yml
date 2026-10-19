@@ -28,7 +28,7 @@ jobs:
         if: always()
         with:
           name: forge-inspection-adoption-${{ github.sha }}
-          path: ${{ runner.temp }}/forge-inspection-adoption-ci/proof/installed-inspection-adoption.public.json
+          path: ${{ runner.temp }}/forge-inspection-adoption-ci/proof/*.public.json
           if-no-files-found: error
       - name: Genesis exact plan and finite effect decision (installed HTTP/CLI recovery)
         timeout-minutes: 8

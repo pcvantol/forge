@@ -5,11 +5,35 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from threading import Thread
 import json
 import unittest
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
+from hashlib import sha256
 
 spec=spec_from_file_location('r59_qualification',Path(__file__).resolve().parents[1]/'scripts/qualification/qualify_installed_inspection_content.py')
 qualification=module_from_spec(spec);spec.loader.exec_module(qualification)
 
 class CompleteSuccessLossTests(unittest.TestCase):
+    def test_original_fault_output_retained_exactly_but_private_unexpected_output_rejected(self):
+        detector="assert False, 'revoked-role-approval-detector'"
+        red=subprocess.run([sys.executable,'-I','-c',detector],capture_output=True)
+        green=subprocess.run([sys.executable,'-I','-c','pass'],capture_output=True)
+        with TemporaryDirectory() as name:
+            output=Path(name)
+            args={'binding':{'source_revision':'synthetic-fixture'},'detector':detector,'original':b'original','mutation':b'mutation'}
+            receipt=qualification.retain_fault(output,'RED',red,**args)
+            retained=json.loads((output/receipt['file']).read_text())
+            self.assertEqual(retained['original_stderr_text'].encode(),red.stderr)
+            self.assertEqual(retained['original_stderr_sha256'],sha256(red.stderr).hexdigest())
+            self.assertEqual(sha256((output/receipt['file']).read_bytes()).hexdigest(),receipt['sha256'])
+            qualification.retain_fault(output,'GREEN',green,restored=True,**args)
+            with self.assertRaises(RuntimeError):qualification.retain_fault(output,'RED',red,**args)
+        for stdout,stderr in [(b'private',red.stderr),(b'',red.stderr+b'Bearer private\n'),(b'',b'OtherError\n')]:
+            with TemporaryDirectory() as name:
+                fake=subprocess.CompletedProcess([],1,stdout,stderr)
+                with self.assertRaises(RuntimeError):qualification.retain_fault(Path(name),'RED',fake,**args)
+                self.assertEqual(list(Path(name).iterdir()),[])
+
     def test_full_success_loss_and_incomplete_or_failed_response_rejected(self):
         class Peer(BaseHTTPRequestHandler):
             status=200

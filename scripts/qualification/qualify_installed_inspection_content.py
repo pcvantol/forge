@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 import http.client
 import json
+import re
 import subprocess
 import shutil
 import time
@@ -75,6 +76,32 @@ def lose_complete_success(port, headers, body):
         client.close();relay.shutdown();thread.join(3);relay.server_close()
     assert lost and not thread.is_alive() and len(audit) == 1 and audit[0].get('success_status') == 200,audit
     return audit[0]
+
+
+def retain_fault(output, label, outcome, *, binding, detector, original, mutation, restored=False):
+    """Only verified-safe detector output is public; private source/credentials never are."""
+    if outcome.stdout != b'' or len(outcome.stderr) > 4096:
+        raise RuntimeError('detector output not safe for public retention')
+    stderr = outcome.stderr.decode('ascii')
+    allowed = (r'Traceback \(most recent call last\):\n  File "<string>", line 1, in <module>\n'
+               + '(?:    '+re.escape(detector)+r'\n[ ~^]+\n)?'
+               + r'AssertionError: revoked-role-approval-detector\n')
+    if label == 'RED':
+        if outcome.returncode == 0 or re.fullmatch(allowed,stderr) is None:
+            raise RuntimeError('original RED detector failure not safe or expected')
+    elif label != 'GREEN' or outcome.returncode != 0 or stderr or not restored:
+        raise RuntimeError('restored GREEN detector outcome required')
+    value = {'scope':'R59_INSTALLED_ROLE_APPLICABILITY_FAULT','label':label,'binding':binding,
+             'detector_sha256':sha256(detector.encode()).hexdigest(),'original_product_file_sha256':sha256(original).hexdigest(),
+             'faulty_product_file_sha256':sha256(mutation).hexdigest(),'original_returncode':outcome.returncode,
+             'original_stdout_text':'','original_stderr_text':stderr,
+             'original_stdout_sha256':sha256(outcome.stdout).hexdigest(),'original_stderr_sha256':sha256(outcome.stderr).hexdigest(),
+             'expected_healthy_state':'DECISION_NEEDED','original_product_bytes_restored':restored}
+    path = output/('r59-restored-fault-'+label+'.public.json')
+    if path.exists():
+        raise RuntimeError('preserve original detector receipt')
+    R55.private(path,value)
+    return {'file':path.name,'sha256':sha256(path.read_bytes()).hexdigest()}
 
 
 def probe(phase,args,root,forge_root,setup,proposal,server,command,receipt,output):
@@ -180,14 +207,18 @@ def probe(phase,args,root,forge_root,setup,proposal,server,command,receipt,outpu
         detector = "import http.client,json,sys;c=http.client.HTTPConnection('127.0.0.1',int(sys.argv[1]),timeout=15);c.request('GET',sys.argv[2],headers=json.load(sys.stdin));r=c.getresponse();v=json.loads(r.read());assert r.status==200 and v['state']=='DECISION_NEEDED', 'revoked-role-approval-detector'"
         def detect(port):
             return subprocess.run([str(args.python),'-I','-c',detector,str(port),target],input=json.dumps(headers('architecture')).encode(),capture_output=True,cwd=root,timeout=20)
+        faulty_service = saved_service.replace(guard,b'len(current) >= 1')
+        binding = {k:receipt[k] for k in ('source_revision','source_tree','wheel_sha256','version','operator_identity')}
         try:
-            installed_service.write_bytes(saved_service.replace(guard,b'len(current) >= 1'))
+            installed_service.write_bytes(faulty_service)
             shutil.rmtree(installed_service.parent/'__pycache__',ignore_errors=True)
             with server() as port:
                 red = detect(port)
                 R55.private(output/'r59-restored-fault-RED.stdout.private',red.stdout)
                 R55.private(output/'r59-restored-fault-RED.stderr.private',red.stderr)
                 assert red.returncode != 0 and b'revoked-role-approval-detector' in red.stderr
+                red_evidence = retain_fault(output,'RED',red,binding=binding,detector=detector,
+                    original=saved_service,mutation=faulty_service)
         finally:
             installed_service.write_bytes(saved_service)
             shutil.rmtree(installed_service.parent/'__pycache__',ignore_errors=True)
@@ -197,6 +228,9 @@ def probe(phase,args,root,forge_root,setup,proposal,server,command,receipt,outpu
             R55.private(output/'r59-restored-fault-GREEN.stdout.private',green.stdout)
             R55.private(output/'r59-restored-fault-GREEN.stderr.private',green.stderr)
             assert green.returncode == 0
+            green_evidence = retain_fault(output,'GREEN',green,binding=binding,detector=detector,
+                original=saved_service,mutation=faulty_service,restored=installed_service.read_bytes() == saved_service)
+        receipt['content_fault_evidence'] = {'red':red_evidence,'green':green_evidence}
         receipt['cases'].append('r59-restored-real-installed-role-applicability-defect-identical-detector-red-green-original-bytes-restored')
         receipt['cases'].append('r59-separate-forge-ep-restarts-original-history-corrupt-lost-store-denial-revoked-role-no-current-approval')
         with server() as port:
