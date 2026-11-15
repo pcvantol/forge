@@ -329,7 +329,7 @@ class ExistingReleaseReconciliationTests(unittest.TestCase):
         self.assertNotIn("pip install", validation)
         self.assertNotIn("installed_smoke", validation)
         self.assertNotIn("gh release edit", validation)
-        self.assertIn("actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97", smoke)
+        self.assertIn("actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0", smoke)
         self.assertIn('python-version: "3.14"', smoke)
         self.assertLess(smoke.index("actions/setup-python@"), smoke.index("Execute the qualified wheel"))
         self.assertIn("assert sys.version_info[:2] == (3, 14)", smoke)

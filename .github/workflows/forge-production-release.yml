@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5
         with:
           ref: ${{ needs.release-context.outputs.source_sha }}
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with: { python-version: '3.14' }
       - run: python3 -m pip install --upgrade 'setuptools>=83' build twine pip-audit 'bandit[toml]' cyclonedx-bom '.[validation]'
       - name: Build exactly one artifact set and qualify source
@@ -299,7 +299,7 @@ jobs:
           test "$(find pypi-dist -type f | wc -l)" = 2
       - name: Publish the already-qualified immutable distributions
         if: steps.existing.outputs.already_published != 'true'
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with: { packages-dir: pypi-dist }
 
   registry-readback-and-published-evidence:
@@ -314,7 +314,7 @@ jobs:
         with:
           name: forge-autonomy-${{ needs.release-context.outputs.version }}-${{ needs.release-context.outputs.source_sha }}
           path: ${{ runner.temp }}/forge-registry-readback/release-input
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with: { python-version: '3.14' }
       - name: Read back, hash, and reinstall both published distributions
         env:
